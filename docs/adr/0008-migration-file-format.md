@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Migration file format, hash chain, and bookkeeping
