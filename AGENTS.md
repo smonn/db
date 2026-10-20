@@ -8,6 +8,11 @@
 - Title PRs as Conventional Commits (`type(scope): summary`) in the imperative. Title issues by the problem.
 - Keep each PR to one self-contained change.
 
+## Repo tooling
+
+- Enforce a rule with a static check in CI whenever one can express it. Document only what no tool can check.
+- Write repo scripts in TypeScript under `scripts/`, run directly by Node. A shell file may only invoke one. Scripts get the same tests, lint, and formatting as `src/`.
+
 ## Design decisions
 
 - Write every ADR from `docs/adr/TEMPLATE.md`, which also holds the numbering and when-to-write rules.
