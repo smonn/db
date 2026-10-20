@@ -1,0 +1,23 @@
+# AGENTS.md
+
+## Pull requests and issues
+
+- Write PR bodies from `.github/pull_request_template.md` and issue bodies from `.github/ISSUE_TEMPLATE/issue.md`. `gh pr create` and `gh issue create` skip templates, so copy the sections yourself.
+- Keep every section and replace its comment. Write one line or `n/a` when a section has little to say.
+- Write tight: each sentence is a fact the reader needs.
+- Title PRs as Conventional Commits (`type(scope): summary`) in the imperative. Title issues by the problem.
+- Keep each PR to one self-contained change.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues on `smonn/db`, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels are used as-is (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
