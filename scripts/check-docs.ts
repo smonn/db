@@ -1,18 +1,18 @@
 import { readFileSync } from "node:fs";
 import { markdownFiles } from "./markdown-files.ts";
 
-export interface GlossaryEntry {
+export type GlossaryEntry = {
   headword: string;
   avoid: string[];
   startLine: number;
   endLine: number;
-}
+};
 
-export interface Problem {
+export type Problem = {
   file: string;
   line: number;
   message: string;
-}
+};
 
 const MAX_ADR_SENTENCES = 3;
 const EM_DASH = "\u2014";
