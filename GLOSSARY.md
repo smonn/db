@@ -14,8 +14,8 @@ A Postgres namespace that groups tables and other objects inside a Database, suc
 _Avoid_: Namespace
 
 **Definition**:
-The TypeScript description of a Database's desired tables and other objects, from Postgres's "data definition".
-_Avoid_: Schema, model, schema file
+The TypeScript description of a Database's desired tables and other objects, from Postgres's "data definition". Not the Schema, which groups objects inside a Database.
+_Avoid_: schema file
 
 **Unmodeled object**:
 A database object of a kind the Definition cannot express yet, such as a trigger, left untouched by generated Migrations.
