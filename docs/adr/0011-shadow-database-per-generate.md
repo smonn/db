@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # A fresh Shadow database for every generate
