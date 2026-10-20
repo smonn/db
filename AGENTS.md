@@ -1,5 +1,13 @@
 # AGENTS.md
 
+## Pull requests and issues
+
+- Write PR bodies from `.github/pull_request_template.md` and issue bodies from `.github/ISSUE_TEMPLATE/issue.md`. `gh pr create` and `gh issue create` skip templates, so copy the sections yourself.
+- Keep every section and replace its comment. Write one line or `n/a` when a section has little to say.
+- Write tight: each sentence is a fact the reader needs.
+- Title PRs as Conventional Commits (`type(scope): summary`) in the imperative. Title issues by the problem.
+- Keep each PR to one self-contained change.
+
 ## Agent skills
 
 ### Issue tracker
