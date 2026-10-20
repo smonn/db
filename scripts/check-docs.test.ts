@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   checkAdrBody,
+  checkAdrNumbers,
   checkAvoidTerms,
   checkEmDashes,
   checkGlossary,
@@ -113,6 +114,24 @@ One. Two. Three. Four.
         file: "docs/adr/0001-x.md",
         line: 5,
         message: "ADR body has 4 sentences; the template allows 3",
+      },
+    ]);
+  });
+});
+
+describe("checkAdrNumbers", () => {
+  test("passes distinct numbers", () => {
+    expect(checkAdrNumbers(["docs/adr/0001-a.md", "docs/adr/0002-b.md"])).toEqual([]);
+  });
+
+  test("flags every ADR after the first that reuses a number", () => {
+    expect(
+      checkAdrNumbers(["docs/adr/0011-a.md", "docs/adr/0011-b.md", "docs/adr/0012-c.md"]),
+    ).toEqual([
+      {
+        file: "docs/adr/0011-b.md",
+        line: 1,
+        message: "ADR number 0011 is also used by docs/adr/0011-a.md",
       },
     ]);
   });
