@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Modules grouped by future package, with host access behind ports
