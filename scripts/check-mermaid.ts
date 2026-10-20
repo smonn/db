@@ -1,3 +1,10 @@
+/**
+ * Renders every Mermaid block in the repo's Markdown with mermaid-cli (`mmdc`) and exits 1 if any
+ * fails to parse or render. Output goes to a temp directory and is discarded.
+ *
+ * Run from the repo root with `pnpm check:mermaid`; CI runs it in the Mermaid job. It needs the
+ * Chrome that puppeteer downloads on install.
+ */
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

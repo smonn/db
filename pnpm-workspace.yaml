@@ -1,2 +1,3 @@
 allowBuilds:
+  # mermaid-cli renders diagrams in headless Chrome, which puppeteer downloads in its install script.
   puppeteer: true

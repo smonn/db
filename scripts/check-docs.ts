@@ -1,3 +1,10 @@
+/**
+ * Checks the repo's Markdown against the glossary and ADR template: no `_Avoid_` term from
+ * GLOSSARY.md outside its own entry, no `_Avoid_` term that is also a headword, no ADR body over
+ * three sentences, and no em-dashes. Prints `file:line: problem` and exits 1 on any problem.
+ *
+ * Run from the repo root with `pnpm check:docs`; CI runs it in the Docs job.
+ */
 import { readFileSync } from "node:fs";
 import { markdownFiles } from "./markdown-files.ts";
 
