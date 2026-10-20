@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Statements are values that a client runs

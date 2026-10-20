@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # From-first queries with column objects
