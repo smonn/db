@@ -1,11 +1,12 @@
 /**
  * Checks the repo's Markdown against the glossary and ADR template: no `_Avoid_` term from
  * GLOSSARY.md outside its own entry, no `_Avoid_` term that is also a headword, no ADR body over
- * three sentences, and no em-dashes. Prints `file:line: problem` and exits 1 on any problem.
+ * three sentences, and no em-dashes. Also rejects literal em-dashes in `scripts/` and `src/`
+ * TypeScript. Prints `file:line: problem` and exits 1 on any problem.
  *
  * Run from the repo root with `pnpm check:docs`; CI runs it in the Docs job.
  */
-import { readFileSync } from "node:fs";
+import { globSync, readFileSync } from "node:fs";
 import { markdownFiles } from "./markdown-files.ts";
 
 export type GlossaryEntry = {
@@ -133,6 +134,10 @@ function main(): void {
     if (/^docs\/adr\/\d{4}-[^/]+\.md$/.test(file)) {
       problems.push(...checkAdrBody(file, text));
     }
+  }
+  // Editor tools can turn a typed `\u2014` escape into the literal character.
+  for (const file of globSync("{scripts,src}/**/*.ts").sort()) {
+    problems.push(...checkEmDashes(file, readFileSync(file, "utf8")));
   }
   for (const { file, line, message } of problems) console.error(`${file}:${line}: ${message}`);
   if (problems.length > 0) process.exitCode = 1;
