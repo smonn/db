@@ -7,6 +7,7 @@
 - Write tight: each sentence is a fact the reader needs.
 - Title PRs as Conventional Commits (`type(scope): summary`) in the imperative. Title issues by the problem.
 - Keep each PR to one self-contained change.
+- Agents may commit, push, and open a draft PR without asking. Mark it ready for review once CI passes, or right away while the repo has no CI. Only the maintainer merges, unless they approve an agent merging that PR.
 
 ## Repo tooling
 
