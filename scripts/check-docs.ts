@@ -1,5 +1,5 @@
-import { globSync, readFileSync } from "node:fs";
-import { basename } from "node:path";
+import { readFileSync } from "node:fs";
+import { markdownFiles } from "./markdown-files.ts";
 
 export interface GlossaryEntry {
   headword: string;
@@ -114,9 +114,7 @@ export function checkAdrBody(file: string, text: string): Problem[] {
 }
 
 function main(): void {
-  const files = globSync("**/*.md", {
-    exclude: (path) => ["node_modules", ".git", ".claude"].includes(basename(path)),
-  }).sort();
+  const files = markdownFiles();
   const glossary = parseGlossary(readFileSync("GLOSSARY.md", "utf8"));
   const problems = [...checkGlossary(glossary)];
   for (const file of files) {
