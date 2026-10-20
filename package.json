@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "check:docs": "node scripts/check-docs.ts",
+    "check:mermaid": "node scripts/check-mermaid.ts",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "test": "vitest run"
