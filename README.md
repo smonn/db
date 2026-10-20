@@ -8,7 +8,7 @@ A Postgres-first TypeScript toolkit: define your database in TypeScript, migrate
 
 - **Postgres first.** Use the database's full feature set rather than a portable subset.
 - **SQL you can see.** Every query and migration shows the exact SQL it runs.
-- **Migrations are portable SQL.** Plain files that tools like dbmate can run without this library, with a fast generate-edit-commit loop.
+- **Migrations are portable SQL.** Plain files you can run with `psql` and no library, with a fast generate-edit-commit loop.
 - **Types from the Definition.** Query types come straight from the TypeScript Definition, with no codegen step.
 - **Small surface, deep modules.** A functional core behind ports and adapters, and a runtime with no dependencies beyond the driver.
 
