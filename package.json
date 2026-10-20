@@ -5,8 +5,10 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
+    "check:docs": "node scripts/check-docs.ts",
     "format": "oxfmt",
-    "format:check": "oxfmt --check"
+    "format:check": "oxfmt --check",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@mermaid-js/mermaid-cli": "^12.0.0",

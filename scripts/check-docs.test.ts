@@ -1,0 +1,119 @@
+import { describe, expect, test } from "vitest";
+import {
+  checkAdrBody,
+  checkAvoidTerms,
+  checkEmDashes,
+  checkGlossary,
+  parseGlossary,
+} from "./check-docs.ts";
+
+const glossaryText = `# Glossary
+
+**Schema**:
+A Postgres namespace.
+_Avoid_: Namespace
+
+**Current migration**:
+The in-progress Migration.
+_Avoid_: Draft, pending migration
+`;
+
+const glossary = parseGlossary(glossaryText);
+
+describe("parseGlossary", () => {
+  test("reads each entry's headword, avoid terms, and line span", () => {
+    expect(glossary).toEqual([
+      { headword: "Schema", avoid: ["Namespace"], startLine: 3, endLine: 5 },
+      {
+        headword: "Current migration",
+        avoid: ["Draft", "pending migration"],
+        startLine: 7,
+        endLine: 9,
+      },
+    ]);
+  });
+});
+
+describe("checkGlossary", () => {
+  test("passes when no avoid term is a headword", () => {
+    expect(checkGlossary(glossary)).toEqual([]);
+  });
+
+  test("flags an avoid term that is also a headword", () => {
+    const entries = parseGlossary(`**Schema**:
+A namespace.
+
+**Definition**:
+The description.
+_Avoid_: schema, schema file
+`);
+    expect(checkGlossary(entries)).toEqual([
+      { file: "GLOSSARY.md", line: 6, message: '"schema" is avoided but is also a glossary term' },
+    ]);
+  });
+});
+
+describe("checkAvoidTerms", () => {
+  test("flags avoid terms case-insensitively, including plurals", () => {
+    const text = "Drafts are fine.\nA Pending Migrations list.\nNo match in redrafted.";
+    expect(checkAvoidTerms("docs/a.md", text, glossary)).toEqual([
+      { file: "docs/a.md", line: 1, message: 'avoid "Draft" (use "Current migration")' },
+      {
+        file: "docs/a.md",
+        line: 2,
+        message: 'avoid "pending migration" (use "Current migration")',
+      },
+    ]);
+  });
+
+  test("allows an avoid term inside its own glossary entry only", () => {
+    const text = `${glossaryText}\nA namespace again.\n`;
+    expect(checkAvoidTerms("GLOSSARY.md", text, glossary)).toEqual([
+      { file: "GLOSSARY.md", line: 11, message: 'avoid "Namespace" (use "Schema")' },
+    ]);
+  });
+});
+
+describe("checkEmDashes", () => {
+  test("flags each line with an em-dash", () => {
+    expect(checkEmDashes("a.md", "fine\nnot \u2014 fine\n")).toEqual([
+      { file: "a.md", line: 2, message: "em-dash" },
+    ]);
+  });
+});
+
+describe("checkAdrBody", () => {
+  const adr = (body: string) => `---
+status: proposed
+---
+
+# Title
+
+${body}
+
+## Considered Options
+
+One. Two. Three. Four.
+`;
+
+  test("passes a body of three sentences", () => {
+    const text = adr("One sentence, with `x.y` code. Two runs v0.1 here! Three?");
+    expect(checkAdrBody("docs/adr/0001-x.md", text)).toEqual([]);
+  });
+
+  test("ignores HTML comments", () => {
+    const text = adr("One. Two. Three.\n\n<!--\nHidden. Notes. Here.\n-->");
+    expect(checkAdrBody("docs/adr/0001-x.md", text)).toEqual([]);
+  });
+
+  test("flags a body over three sentences", () => {
+    const text = adr("One. Two.\nThree. Four.");
+    expect(checkAdrBody("docs/adr/0001-x.md", text)).toEqual([
+      {
+        file: "docs/adr/0001-x.md",
+        line: 5,
+        message: "ADR body has 4 sentences; the template allows 3",
+      },
+    ]);
+  });
+});
