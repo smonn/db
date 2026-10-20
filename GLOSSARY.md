@@ -36,6 +36,10 @@ _Avoid_: Draft, pending migration
 **Shadow database**:
 A throwaway Database built by replaying the Committed migrations, used as the "before" state when generating the Current migration.
 
+**Definition database**:
+A throwaway Database built from the Definition alone, used as the "after" state when generating the Current migration.
+_Avoid_: Target database, template database, desired database
+
 ### Data
 
 **Query**:

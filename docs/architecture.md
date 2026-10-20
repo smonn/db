@@ -88,18 +88,18 @@ flowchart TB
   subgraph dev["dev/ · @smonn/db/dev"]
     cli["<b>cli</b><br/>[Node composition root, bin]<br/>Parses commands, loads config and Definition, wires adapters"]
     generate["<b>generate</b><br/>[module]<br/>Builds, writes, and applies the Current migration; commits it"]
-    shadow["<b>shadow</b><br/>[module]<br/>Builds the Shadow database from Committed migrations"]
+    shadow["<b>shadow</b><br/>[module]<br/>Creates, sweeps, and drops the Shadow and Definition databases"]
     introspect["<b>introspect</b><br/>[module]<br/>Reads a catalog from a live Database"]
     diff["<b>diff</b><br/>[module]<br/>Compares two catalogs and emits Migration SQL"]
-    catalog["<b>catalog</b><br/>[module]<br/>The shared model both sides of the diff convert into"]
+    catalog["<b>catalog</b><br/>[module]<br/>The flat fact map both introspections produce"]
   end
 
   runtime["<b>runtime/</b><br/>[container]"]
   adapters["<b>adapters/</b><br/>[container]"]
 
   cli -- "runs" --> generate
-  generate -- "builds Shadow database with" --> shadow
-  generate -- "reads Shadow database with" --> introspect
+  generate -- "builds Shadow and Definition databases with" --> shadow
+  generate -- "reads both databases with" --> introspect
   generate -- "compares with" --> diff
   introspect -- "produces" --> catalog
   diff -- "compares" --> catalog
@@ -123,7 +123,7 @@ All port types live in `runtime/ports` as type-only exports, so adapters depend 
 
 ## Migration flow
 
-Which modules and ports each command touches. The steps restate ADR-0003, ADR-0007, ADR-0008, and ADR-0011; how the diff works is an open question on the [v0.1 map](https://github.com/smonn/db/issues/3).
+Which modules and ports each command touches. The steps restate ADR-0003, ADR-0007, ADR-0008, ADR-0011, and ADR-0013; [Diff engine](#diff-engine) covers the diff itself.
 
 ```mermaid
 sequenceDiagram
@@ -135,16 +135,18 @@ sequenceDiagram
   participant DB as Driver port
   participant Mig as runtime/migrator
 
-  Note over CLI,Mig: generate (ADR-0003)
+  Note over CLI,Mig: generate (ADR-0003, ADR-0013)
   CLI->>Gen: Definition, config
   Gen->>FS: read Committed migrations
   Gen->>Shadow: build Shadow database from them
   Shadow->>DB: run Committed migrations
-  Gen->>DB: introspect Shadow database
-  Gen->>Diff: Definition vs Shadow database
+  Gen->>Shadow: build Definition database from the Definition's DDL
+  Gen->>DB: introspect both databases
+  Gen->>Diff: Shadow catalog vs Definition catalog
   Diff-->>Gen: Current migration SQL
+  Gen->>DB: apply it to the Shadow, introspect, require no diff
   Gen->>FS: write Current migration
-  Gen->>DB: apply Current migration to dev Database
+  Gen->>DB: if its hash changed, reset dev Database and replay all migrations
 
   Note over CLI,Mig: commit (ADR-0003, ADR-0008)
   CLI->>Gen: commit
@@ -156,6 +158,49 @@ sequenceDiagram
   Mig->>Mig: verify hash chain, plan the rest
   Mig->>DB: run each remaining Committed migration
 ```
+
+## Diff engine
+
+How generate turns the Definition into the Current migration. ADR-0005 and ADR-0013 give the reasons; the rest is v0.1 design that can change without an ADR.
+
+### What v0.1 models
+
+Schemas, tables, columns (type, NOT NULL, default, identity), single and composite primary keys, and single-column unique constraints: exactly what the Definition can express. Foreign keys, indexes, and multi-column unique wait for v0.2. Both introspections skip the migrator's tracking schema (`smonn_db` unless configured), `pg_catalog`, `information_schema`, `pg_toast*`, `pg_temp*`, extension members, and every kind outside this list (ADR-0005).
+
+### Pipeline
+
+1. The Definition converts to a catalog as written, and the diff renders it against an empty catalog. That SQL builds the Definition database.
+2. `introspect` reads each database in one `REPEATABLE READ READ ONLY` transaction with `search_path` pinned to `pg_catalog`, keyed by name, never by OID.
+3. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL.
+4. Generate verifies the SQL in the Shadow (ADR-0013), then writes the Current migration.
+
+### Catalog
+
+A flat `Map<path, fact>`. A path is the dotted chain of names from the schema down (`public.users.email`, `public.users.email.default`), and each fact carries its parent's path and a plain-data payload compared by deep equality. A default, a primary key, and a unique constraint are separate facts, so one changed default is one difference. Payloads leave out the fact's own name, so renames can be added later. NOT NULL is a column attribute; Postgres 18's `pg_constraint` NOT NULL rows are folded into it.
+
+### Ordering
+
+Each action is one statement-sized change, such as create table, add column, or set default. One `order(actions)` function sorts them in fixed phases: drops of unique constraints, primary keys, columns, tables, and schemas; then creates of schemas, tables, and columns; then column alters (drop default, type, NOT NULL, set default, identity); then adds of primary keys and unique constraints. Ties are broken by path. Dropping a table or schema drops what it contains, so no separate drop is emitted for its children. A type change drops the old default first, because Postgres refuses to retype a column whose default can't be cast, and sets it again afterward. No v0.1 kind references another table, so phases are always correct. When foreign keys land, `order` becomes a topological sort over dependency edges, and nothing else changes.
+
+### SQL rules
+
+- Never `CASCADE` (ADR-0013).
+- Unique constraints are added with `ALTER TABLE ... ADD CONSTRAINT`, not inline, because `CREATE TABLE` silently drops an inline unique that duplicates the primary key.
+- A new column appends; column order differences are ignored, since Postgres can't reorder columns.
+- A type change is a plain `ALTER COLUMN ... TYPE` with no `USING`. When a cast is needed, edit the Current migration by hand.
+- Renaming a Definition key drops and creates, flagged as data loss (ADR-0010).
+
+### Hazards
+
+Each action kind declares its hazards (`data_loss`, `rewrite`, `access_exclusive_lock`) in a table, classified from the catalog, not the SQL text. Each hazard is written as a `-- hazard: <kind>` comment above its statement. Generation never blocks on a hazard. Whether commit blocks one, and a possible strict mode, are for [Config file and CLI for v0.1](https://github.com/smonn/db/issues/11) to decide.
+
+### Dev Database catch-up
+
+Whenever the Current migration's hash differs from `smonn_db.current`, generate resets the dev Database: it drops every non-system schema, then replays the Committed migrations and the Current migration. Resetting is exact after hand edits and branch switches, at the cost of dev data. Keeping that data is a v0.4 dev loop question.
+
+### Postgres versions
+
+v0.1 supports Postgres 18 and newer, and CI runs 18 and, once released, 19. `introspect` reads `server_version_num`, refuses an older server with an error naming the minimum, and branches in TypeScript when a catalog differs between versions.
 
 ## Import rules
 
