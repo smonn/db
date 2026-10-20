@@ -1,7 +1,7 @@
 /**
  * Checks the repo's Markdown against the glossary and ADR template: no `_Avoid_` term from
  * GLOSSARY.md outside its own entry, no `_Avoid_` term that is also a headword, no ADR body over
- * three sentences, and no em-dashes. Also rejects literal em-dashes in `scripts/` and `src/`
+ * three sentences, no two ADRs sharing a number, and no em-dashes. Also rejects literal em-dashes in `scripts/` and `src/`
  * TypeScript. Prints `file:line: problem` and exits 1 on any problem.
  *
  * Run from the repo root with `pnpm check:docs`; CI runs it in the Docs job.
@@ -121,10 +121,24 @@ export function checkAdrBody(file: string, text: string): Problem[] {
   ];
 }
 
+export function checkAdrNumbers(files: string[]): Problem[] {
+  const firstByNumber = new Map<string, string>();
+  return files.flatMap((file) => {
+    const number = /^docs\/adr\/(\d{4})-/.exec(file)?.[1];
+    if (number === undefined) return [];
+    const first = firstByNumber.get(number);
+    if (first === undefined) {
+      firstByNumber.set(number, file);
+      return [];
+    }
+    return [{ file, line: 1, message: `ADR number ${number} is also used by ${first}` }];
+  });
+}
+
 function main(): void {
   const files = markdownFiles();
   const glossary = parseGlossary(readFileSync("GLOSSARY.md", "utf8"));
-  const problems = [...checkGlossary(glossary)];
+  const problems = [...checkGlossary(glossary), ...checkAdrNumbers(files)];
   for (const file of files) {
     const text = readFileSync(file, "utf8");
     problems.push(...checkEmDashes(file, text));
