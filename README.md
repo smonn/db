@@ -22,6 +22,7 @@ A Postgres-first TypeScript toolkit: define your database in TypeScript, migrate
 ## Learn more
 
 - [Glossary](GLOSSARY.md): the project's vocabulary.
+- [Architecture](docs/architecture.md): modules, ports, and import rules.
 - [Architecture decisions](docs/adr/): what was decided and why.
 
 ## License
