@@ -21,7 +21,7 @@ The maintainer picked **[A query values](a-query-values/lib.ts)**, trimmed:
 - `select` and `returning` take only the object callback. A name-list shorthand may come later.
 - Predicates combine only through `where`'s second argument (`(u, { and, or, not }) => ...`). Predicate methods are dropped: a chain hides which expression is the root.
 - Table and schema names stay typed as `string`; revisit when joins need aliases.
-- Statements bound to named placeholders at run time (`client.all(q, { minAge: 18 })`) are a later idea. postgres.js already prepares each parameterized statement per connection.
+- Statements bound to named placeholders at run time (`client.all(q, { minAge: 18 })`) are a later idea. postgres.js runs raw text through `sql.unsafe`, which skips prepared statements unless passed `{ prepare: true }`.
 
 ## What both variants share
 
