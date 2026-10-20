@@ -8,6 +8,12 @@
 - Title PRs as Conventional Commits (`type(scope): summary`) in the imperative. Title issues by the problem.
 - Keep each PR to one self-contained change.
 
+## Design decisions
+
+- Write every ADR from `docs/adr/TEMPLATE.md`, which also holds the numbering and when-to-write rules.
+- Agents draft ADRs in `docs/adr/` with `status: proposed`. Only the maintainer moves one to `accepted`.
+- Give each ADR a rationale paraphrased from the maintainer's reasoning, in plain prose rather than verbatim quotes.
+
 ## Agent skills
 
 ### Issue tracker
