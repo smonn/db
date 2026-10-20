@@ -4,7 +4,7 @@ status: proposed
 
 # Definition as defineTable callbacks rolled up by defineDatabase
 
-A Definition is one file, named in config, whose default export is `defineDatabase({ public: { users, orders }, auth: { sessions } })`, and the keys name the schemas and tables. Each table is a nameless `defineTable((c) => ({ ... }))` whose callback hands over the column factories, so `c.` autocompletes every type without memorizing imports. Tables can still live in their own files, while the CLI reads one known entry point and lets Node's imports find the rest. Columns follow SQL DDL: nullable unless marked `.notNull()`, with object keys used verbatim as SQL names, because snake_case names need no quoting when someone writes SQL by hand against production.
+A Definition is one file, named in config, whose default export `defineDatabase({ public: { users, orders }, auth: { sessions } })` names schemas and tables by its keys, so the CLI reads one entry point and Node's imports find the table files. Each table is a nameless `defineTable((c) => ({ ... }))` whose callback hands over the column factories, so `c.` autocompletes every type without memorizing imports. Columns follow SQL DDL: nullable unless marked `.notNull()`, with object keys used verbatim as SQL names, because snake_case names need no quoting when someone writes SQL by hand against production.
 
 ## Considered Options
 
