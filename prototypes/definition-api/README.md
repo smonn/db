@@ -12,9 +12,20 @@ npm run check   # tsc 7: every variant must infer the rows in expected.ts and re
 npm run demo    # loads each Definition the way the CLI would and prints the catalog the diff receives
 ```
 
+## Outcome
+
+The maintainer picked **[D hybrid](d-hybrid/)**, a mix of B and C:
+
+- `defineTable((c) => ({ ... }), { primaryKey? })` takes a column callback and no name. Each table can sit in its own file.
+- One Definition file, named in config, default-exports `defineDatabase({ public: { users, orders }, auth: { sessions } })`. Its keys name the schemas and tables, and queries use the rolled-up tables (`db.public.users`).
+- Columns are nullable unless marked `.notNull()`, as in SQL. `.primaryKey()`, composite key columns, and identity columns are NOT NULL implicitly, as in Postgres.
+- Keys are the SQL names, with no mapping. A mapping layer and renames come after v0.1.
+
+Variant D's type check covers all four variants together: 0.009s check, 0.022s total, 15,395 instantiations. Its catalog matches A, B, and C.
+
 ## Variants
 
-All three declare the same Database (`public.users`, `public.orders`, `auth.sessions`) with all 15 v0.1 column types, and share one column model (`core.ts`). They differ only in structure.
+A, B, and C (below) came first. All three declare the same Database (`public.users`, `public.orders`, `auth.sessions`) with all 15 v0.1 column types, and share one column model (`core.ts`). They differ only in structure.
 
 | Variant | Shape | CLI finds tables by |
 | --- | --- | --- |

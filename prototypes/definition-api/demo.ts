@@ -9,8 +9,11 @@ import b from "./b-database-object/definition.ts";
 import { collectTables as collectC } from "./c-column-callback/db.ts";
 import * as c from "./c-column-callback/definition.ts";
 import { toCatalog } from "./core.ts";
+import d from "./d-hybrid/db.ts";
+import * as D from "./d-hybrid/lib.ts";
 
 const catalogs = {
+  "D hybrid": D.toCatalog(D.tablesOf(d)),
   "A flat tables": toCatalog(collectA(a)),
   "B database object": toCatalog(tablesOf(b)),
   "C column callback": toCatalog(collectC(c)),
