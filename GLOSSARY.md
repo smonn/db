@@ -38,7 +38,7 @@ A throwaway Database built by replaying the Committed migrations, used as the "b
 
 **Definition database**:
 A throwaway Database built from the Definition alone, used as the "after" state when generating the Current migration.
-_Avoid_: Target database, template database
+_Avoid_: Target database, template database, desired database
 
 ### Data
 

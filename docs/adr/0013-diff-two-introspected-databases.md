@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Generate diffs two introspected databases
@@ -10,7 +10,7 @@ Generate runs the Definition's DDL in a throwaway Definition database and intros
 
 - **Convert the Definition straight into the catalog**: saves the second database, but a normalizer has to match Postgres's deparsed text for every default, type alias, and identity sequence, and Atlas's `diff.go` shows how much code that takes.
 - **No verification**: one step fewer, but a migration that doesn't converge only shows up as a leftover diff on the next generate.
-- **Find blockers in `pg_depend` while generating**: reports every Unmodeled object in the way before any SQL runs, but needs code to map its rows back to catalog ids, while Postgres already refuses the same changes during verification.
+- **Find blockers in `pg_depend` while generating**: reports every Unmodeled object in the way before any SQL runs, but needs code to map its rows back to catalog paths, while Postgres already refuses the same changes during verification.
 
 ## Consequences
 

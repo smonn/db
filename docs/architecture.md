@@ -176,11 +176,11 @@ Schemas, tables, columns (type, NOT NULL, default, identity), single and composi
 
 ### Catalog
 
-A flat `Map<id, fact>`. An id is the dotted name path (`public.users.email`), and each fact carries its parent's id and a plain-data payload compared by deep equality. A default, a primary key, and a unique constraint are separate facts, so one changed default is one difference. Payloads leave out the fact's own name, so renames can be added later. NOT NULL is a column attribute; Postgres 18's `pg_constraint` NOT NULL rows are folded into it.
+A flat `Map<path, fact>`. A path is the dotted chain of names from the schema down (`public.users.email`, `public.users.email.default`), and each fact carries its parent's path and a plain-data payload compared by deep equality. A default, a primary key, and a unique constraint are separate facts, so one changed default is one difference. Payloads leave out the fact's own name, so renames can be added later. NOT NULL is a column attribute; Postgres 18's `pg_constraint` NOT NULL rows are folded into it.
 
 ### Ordering
 
-Each action is one statement-sized change, such as create table, add column, or set default. One `order(actions)` function sorts them in fixed phases: drops of unique constraints, primary keys, columns, tables, and schemas; then creates of schemas, tables, and columns; then column alters (drop default, type, NOT NULL, set default, identity); then adds of primary keys and unique constraints. Ties are broken by id. Dropping a table or schema drops what it contains, so no separate drop is emitted for its children. A type change drops the old default first, because Postgres refuses to retype a column whose default can't be cast, and sets it again afterward. No v0.1 kind references another table, so phases are always correct. When foreign keys land, `order` becomes a topological sort over dependency edges, and nothing else changes.
+Each action is one statement-sized change, such as create table, add column, or set default. One `order(actions)` function sorts them in fixed phases: drops of unique constraints, primary keys, columns, tables, and schemas; then creates of schemas, tables, and columns; then column alters (drop default, type, NOT NULL, set default, identity); then adds of primary keys and unique constraints. Ties are broken by path. Dropping a table or schema drops what it contains, so no separate drop is emitted for its children. A type change drops the old default first, because Postgres refuses to retype a column whose default can't be cast, and sets it again afterward. No v0.1 kind references another table, so phases are always correct. When foreign keys land, `order` becomes a topological sort over dependency edges, and nothing else changes.
 
 ### SQL rules
 
