@@ -8,6 +8,17 @@
 - Title PRs as Conventional Commits (`type(scope): summary`) in the imperative. Title issues by the problem.
 - Keep each PR to one self-contained change.
 
+## Repo tooling
+
+- Enforce a rule with a static check in CI whenever one can express it. Document only what no tool can check.
+- Write repo scripts in TypeScript under `scripts/`, run directly by Node. A shell file may only invoke one. Scripts get the same tests, lint, and formatting as `src/`.
+
+## Design decisions
+
+- Write every ADR from `docs/adr/TEMPLATE.md`, which also holds the numbering and when-to-write rules.
+- Agents draft ADRs in `docs/adr/` with `status: proposed`. Only the maintainer moves one to `accepted`.
+- Give each ADR a rationale paraphrased from the maintainer's reasoning, in plain prose rather than verbatim quotes.
+
 ## Agent skills
 
 ### Issue tracker
