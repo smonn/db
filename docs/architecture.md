@@ -6,50 +6,110 @@ How the source is laid out for v0.1 and which imports are allowed. The reasons a
 
 `src/` has three groups, one per future package. Each module is a folder with an `index.ts` holding only its public API. Tests sit next to the file they cover (`driver.ts` and `driver.test.ts`).
 
+The diagrams follow the [C4 model](https://c4model.com/). The container diagram shows how the groups relate to each other and to the outside world. Each component diagram zooms into one group; an arrow leaving the group points at the other group as a whole. Dashed boxes are outside the group being shown. The arrows show the main dependencies, not every one.
+
+### Containers
+
 ```mermaid
 flowchart TB
-  subgraph runtime["runtime/ → @smonn/db (zero dependencies)"]
-    ports["ports<br/>Driver, MigrationSource, FileSystem (types)"]
-    sql["sql<br/>fragments and rendering"]
-    definition["definition<br/>tables, columns, row types"]
-    query["query<br/>from, where, select, insert"]
-    migrator["migrator<br/>plan and apply Committed migrations"]
-  end
+  dev_user(["<b>Developer</b><br/>[person]<br/>Writes the Definition and queries, runs the CLI"])
+  app["<b>App</b><br/>[Node application]<br/>The user's code"]
 
-  subgraph adapters["adapters/"]
-    pgjs["postgres-js → @smonn/db/postgres-js"]
-    node["node → @smonn/db/node<br/>MigrationSource and FileSystem on disk"]
-  end
+  dev["<b>dev/</b><br/>[library + CLI: @smonn/db/dev, bin]<br/>Generates, commits, and applies migrations at dev time"]
+  runtime["<b>runtime/</b><br/>[library: @smonn/db, zero dependencies]<br/>Definition, queries, migrator, and port types"]
+  adapters["<b>adapters/</b><br/>[library: @smonn/db/postgres-js, @smonn/db/node]<br/>Implement the ports on a real driver and disk"]
 
-  subgraph dev["dev/ → @smonn/db/dev"]
-    catalog["catalog<br/>shared catalog model"]
-    introspect["introspect<br/>read a catalog from Postgres"]
-    diff["diff<br/>catalog changes to SQL"]
-    shadow["shadow<br/>Shadow database lifecycle"]
-    generate["generate<br/>Current migration workflow"]
-    cli["cli → bin<br/>Node composition root"]
-  end
+  pg[("<b>Postgres</b><br/>[database server]<br/>dev, Shadow, and production Databases")]
+  fs[("<b>Filesystem</b><br/>[disk]<br/>Definition files and Migrations")]
 
-  query --> sql
-  query --> definition
-  migrator --> ports
-  introspect --> ports
-  shadow --> ports
-  generate --> ports
-  pgjs --> ports
-  node --> ports
-  introspect --> catalog
-  diff --> catalog
-  generate --> diff
-  generate --> introspect
-  generate --> shadow
-  cli --> generate
-  cli --> migrator
-  cli --> pgjs
-  cli --> node
+  dev_user -- "runs generate, commit, migrate" --> dev
+  dev_user -- "writes" --> app
+  app -- "defines tables, builds queries, runs migrator" --> runtime
+  app -- "passes a Driver and MigrationSource" --> adapters
+  dev -- "uses Definition, migrator, port types" --> runtime
+  dev -- "CLI wires in" --> adapters
+  adapters -- "implements ports from" --> runtime
+  adapters -- "SQL via postgres.js" --> pg
+  adapters -- "reads and writes" --> fs
+
+  classDef external stroke-dasharray: 5 5
+  class dev_user,app,pg,fs external
 ```
 
-The arrows show the main dependencies, not every one.
+### runtime/ components
+
+```mermaid
+flowchart TB
+  subgraph runtime["runtime/ · @smonn/db"]
+    definition["<b>definition</b><br/>[module]<br/>Declares tables and columns; infers row types"]
+    query["<b>query</b><br/>[module]<br/>from, where, select, insert, one call per SQL clause"]
+    sql["<b>sql</b><br/>[module]<br/>SQL fragments, the sql template, rendering to text and params"]
+    migrator["<b>migrator</b><br/>[module]<br/>Verifies the hash chain and applies Committed migrations under an advisory lock"]
+    ports["<b>ports</b><br/>[types only]<br/>Driver, MigrationSource, FileSystem"]
+  end
+
+  adapters["<b>adapters/</b><br/>[container]"]
+
+  query -- "reads column types" --> definition
+  query -- "renders with" --> sql
+  migrator -- "reads migrations and runs SQL through" --> ports
+  adapters -- "implement" --> ports
+
+  classDef external stroke-dasharray: 5 5
+  class adapters external
+```
+
+### adapters/ components
+
+```mermaid
+flowchart TB
+  subgraph adapters["adapters/"]
+    pgjs["<b>postgres-js</b><br/>[adapter: @smonn/db/postgres-js]<br/>Driver on postgres.js; pg comes later"]
+    node["<b>node</b><br/>[adapter: @smonn/db/node]<br/>MigrationSource and FileSystem on node:fs"]
+  end
+
+  runtime["<b>runtime/</b><br/>[container]"]
+  pg[("<b>Postgres</b>")]
+  fs[("<b>Filesystem</b>")]
+
+  pgjs -- "implements Driver from" --> runtime
+  node -- "implements MigrationSource, FileSystem from" --> runtime
+  pgjs -- "SQL" --> pg
+  node -- "reads and writes" --> fs
+
+  classDef external stroke-dasharray: 5 5
+  class runtime,pg,fs external
+```
+
+### dev/ components
+
+```mermaid
+flowchart TB
+  subgraph dev["dev/ · @smonn/db/dev"]
+    cli["<b>cli</b><br/>[Node composition root, bin]<br/>Parses commands, loads config and Definition, wires adapters"]
+    generate["<b>generate</b><br/>[module]<br/>Builds, writes, and applies the Current migration; commits it"]
+    shadow["<b>shadow</b><br/>[module]<br/>Builds the Shadow database from Committed migrations"]
+    introspect["<b>introspect</b><br/>[module]<br/>Reads a catalog from a live Database"]
+    diff["<b>diff</b><br/>[module]<br/>Compares two catalogs and emits Migration SQL"]
+    catalog["<b>catalog</b><br/>[module]<br/>The shared model both sides of the diff convert into"]
+  end
+
+  runtime["<b>runtime/</b><br/>[container]"]
+  adapters["<b>adapters/</b><br/>[container]"]
+
+  cli -- "runs" --> generate
+  generate -- "builds Shadow database with" --> shadow
+  generate -- "reads Shadow database with" --> introspect
+  generate -- "compares with" --> diff
+  introspect -- "produces" --> catalog
+  diff -- "compares" --> catalog
+  cli -- "runs migrator, reads Definition from" --> runtime
+  generate -- "uses ports from" --> runtime
+  cli -- "wires in" --> adapters
+
+  classDef external stroke-dasharray: 5 5
+  class runtime,adapters external
+```
 
 ### Ports
 
