@@ -113,11 +113,11 @@ flowchart TB
 
 ### Ports
 
-| Port | Used by | v0.1 adapter |
-| --- | --- | --- |
-| Driver | migrator, introspect, shadow, generate, and running statements built with `query` | `postgres-js` (wraps postgres.js; `pg` comes later) |
-| MigrationSource | migrator (read-only, so migrations can be bundled or in memory) | `node` |
-| FileSystem | generate and commit (read, write, list, mkdir) | `node` |
+| Port            | Used by                                                                           | v0.1 adapter                                        |
+| --------------- | --------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Driver          | migrator, introspect, shadow, generate, and running statements built with `query` | `postgres-js` (wraps postgres.js; `pg` comes later) |
+| MigrationSource | migrator (read-only, so migrations can be bundled or in memory)                   | `node`                                              |
+| FileSystem      | generate and commit (read, write, list, mkdir)                                    | `node`                                              |
 
 All port types live in `runtime/ports` as type-only exports, so adapters depend on `runtime/` alone. Logger, Codec, Clock, and randomness will become ports after v0.1. Hashing uses a small `sha256` helper over the Web Crypto global rather than a port; ADR-0009 says why.
 
@@ -180,12 +180,12 @@ oxfmt formats TypeScript and Markdown. knip reports unused files, exports, and d
 
 ## Package entry points
 
-| Entry | Contents |
-| --- | --- |
-| `@smonn/db` | runtime: sql, definition, query, migrator, port types |
-| `@smonn/db/postgres-js` | Driver adapter |
-| `@smonn/db/node` | Node MigrationSource and FileSystem adapters |
-| `@smonn/db/dev` | catalog, introspect, diff, shadow, generate |
-| CLI binary | `dev/cli`, shipped as the package's `bin` |
+| Entry                   | Contents                                              |
+| ----------------------- | ----------------------------------------------------- |
+| `@smonn/db`             | runtime: sql, definition, query, migrator, port types |
+| `@smonn/db/postgres-js` | Driver adapter                                        |
+| `@smonn/db/node`        | Node MigrationSource and FileSystem adapters          |
+| `@smonn/db/dev`         | catalog, introspect, diff, shadow, generate           |
+| CLI binary              | `dev/cli`, shipped as the package's `bin`             |
 
 Each subpath maps to one future package, so a split renames imports one-to-one.
