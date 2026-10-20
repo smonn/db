@@ -123,7 +123,7 @@ All port types live in `runtime/ports` as type-only exports, so adapters depend 
 
 ## Migration flow
 
-Which modules and ports each command touches. The steps restate ADR-0003, ADR-0007, and ADR-0008; how the Shadow database is managed, how the diff works, and how the migrator tracks what ran are open questions on the [v0.1 map](https://github.com/smonn/db/issues/3).
+Which modules and ports each command touches. The steps restate ADR-0003, ADR-0007, ADR-0008, and ADR-0011; how the diff works is an open question on the [v0.1 map](https://github.com/smonn/db/issues/3).
 
 ```mermaid
 sequenceDiagram
