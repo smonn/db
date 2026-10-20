@@ -1,6 +1,10 @@
+## Issue
+
+<!-- "Closes #123" when merging finishes the issue, "Related to #123" when it doesn't, or "n/a". Repeat the keyword per issue: "Closes #1, closes #2". -->
+
 ## Why
 
-<!-- The problem this solves and any context a reviewer lacks. Link the issue: "Closes #123". -->
+<!-- The problem this solves and any context a reviewer lacks. -->
 
 ## What
 
