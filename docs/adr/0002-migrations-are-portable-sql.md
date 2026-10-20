@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Migrations are portable SQL

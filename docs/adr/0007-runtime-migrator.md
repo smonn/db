@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Production migrations run from the runtime

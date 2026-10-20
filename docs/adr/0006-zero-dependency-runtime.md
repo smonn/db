@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Zero-dependency runtime in one package

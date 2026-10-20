@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Current and committed migrations, after Graphile Migrate
