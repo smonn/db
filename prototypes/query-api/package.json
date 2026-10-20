@@ -1,0 +1,14 @@
+{
+  "name": "query-api-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc -p .",
+    "stress": "node stress/generate.ts && tsc -p stress --extendedDiagnostics",
+    "demo": "node demo.ts"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2"
+  }
+}
