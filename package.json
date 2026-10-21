@@ -15,6 +15,7 @@
     "format:check": "oxfmt --check",
     "knip": "knip",
     "lint": "oxlint",
+    "lint:actions": "node scripts/actionlint.ts",
     "test": "vitest run",
     "typecheck": "tsc"
   },

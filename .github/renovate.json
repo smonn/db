@@ -5,6 +5,17 @@
   "semanticCommits": "enabled",
   "minimumReleaseAge": "3 days",
   "rebaseWhen": "behind-base-branch",
+  "customManagers": [
+    {
+      "description": "A bump of the actionlint version also needs the new release sums in the same file.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^scripts/actionlint\\.ts$/"],
+      "matchStrings": ["export const version = \"(?<currentValue>[^\"]+)\";"],
+      "depNameTemplate": "rhysd/actionlint",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    }
+  ],
   "packageRules": [
     {
       "matchDepTypes": ["devDependencies"],
