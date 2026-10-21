@@ -2,8 +2,8 @@
  * Checks the repo's Markdown against the glossary and ADR template: no `_Avoid_` term from
  * GLOSSARY.md outside its own entry, no `_Avoid_` term that is also a headword, no ADR body over
  * three sentences, no case variant of a multi-word headword, no two ADRs sharing a number, and
- * no em-dashes. Also rejects literal em-dashes in `scripts/` and `src/`
- * TypeScript. Prints `file:line: problem` and exits 1 on any problem.
+ * no em-dashes. Also rejects literal em-dashes in `scripts/` and `src/` TypeScript. Prints
+ * `file:line: problem` and exits 1 on any problem.
  *
  * Run from the repo root with `pnpm check:docs`; CI runs it in the Docs job.
  */
@@ -90,7 +90,7 @@ export function checkAvoidTerms(file: string, text: string, entries: GlossaryEnt
   });
 }
 
-// Lowercase single-word headwords like "database" are ordinary English, so they're skipped.
+// Single-word headwords like "Database" are also ordinary English, so they're skipped.
 export function checkHeadwordCase(file: string, text: string, entries: GlossaryEntry[]): Problem[] {
   const headwords = entries.map((entry) => entry.headword).filter((word) => word.includes(" "));
   return text.split("\n").flatMap((line, index) => {
