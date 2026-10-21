@@ -9,6 +9,7 @@
     "check:imports": "node scripts/check-imports.ts",
     "check:index": "node scripts/check-index-exports.ts",
     "check:mermaid": "node scripts/check-mermaid.ts",
+    "check:pr": "node scripts/check-pr.ts",
     "coverage": "vitest run --coverage",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
