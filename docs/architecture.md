@@ -123,7 +123,7 @@ All port types live in `runtime/ports` as type-only exports, so adapters depend 
 
 ## Migration flow
 
-Which modules and ports each command touches. The steps restate ADR-0003, ADR-0007, ADR-0008, ADR-0011, and ADR-0013; [Diff engine](#diff-engine) covers the diff itself.
+Which modules and ports each command touches. The steps restate ADR-0003, ADR-0007, ADR-0008, ADR-0011, ADR-0013, and ADR-0016; [Diff engine](#diff-engine) covers the diff itself and [CLI](#cli) each command's rules.
 
 ```mermaid
 sequenceDiagram
@@ -146,11 +146,13 @@ sequenceDiagram
   Diff-->>Gen: Current migration SQL
   Gen->>DB: apply it to the Shadow, introspect, require no diff
   Gen->>FS: write Current migration
-  Gen->>DB: if its hash changed, reset dev Database and replay all migrations
+  Gen->>DB: if its hash or the Committed tip changed, reset the Dev database and replay all migrations
 
-  Note over CLI,Mig: commit (ADR-0003, ADR-0008)
-  CLI->>Gen: commit
-  Gen->>FS: write next Committed migration with hash-chain header
+  Note over CLI,Mig: commit (ADR-0003, ADR-0008, ADR-0015)
+  CLI->>Gen: commit, accepted Hazard kinds
+  Gen->>DB: require smonn_db.current to match the Current migration
+  Gen->>FS: write next Committed migration with hash-chain header, delete the Current migration
+  Gen->>DB: record it in smonn_db.migrations, clear smonn_db.current
 
   Note over CLI,Mig: migrate (ADR-0007)
   CLI->>Mig: MigrationSource, Driver
@@ -158,6 +160,47 @@ sequenceDiagram
   Mig->>Mig: verify hash chain, plan the rest
   Mig->>DB: run each remaining Committed migration
 ```
+
+## CLI
+
+The `smonndb` binary (a working name) and its config for v0.1. ADR-0014, ADR-0015, and ADR-0016 give the reasons; the rest can change without an ADR.
+
+### Config
+
+`smonndb.config.ts` in the working directory describes one Database, and `--config <path>` picks another. The CLI loads it with a plain `import()`, so it and the Definition use erasable TypeScript only (ADR-0014).
+
+```ts
+export default defineConfig({
+  definition: "./db/definition.ts",
+  migrations: "./db/migrations",
+  url: process.env.DATABASE_URL,
+  trackingSchema: "smonn_db", // optional, the default
+});
+```
+
+### Commands
+
+| Command         | What it does                                                                                                                                                                                                                                                                                                                                         |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `generate`      | Writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database, refusing to reset an unmarked Database (ADR-0016). A hand-edited file is kept and replayed as written, and generate prints the diff to what it would have generated.                                                                       |
+| `commit <slug>` | Freezes `current.sql` into `<next>-<slug>.sql`. The slug is kebab-case. Refuses with no `current.sql`, when dev hasn't replayed the file, or for any Hazard kind missing from `--accept <kind,...>`. It runs no shadow replay, since dev just replayed the same file, and records the new file and clears `smonn_db.current` in one dev transaction. |
+| `migrate`       | Runs the runtime migrator against `url`. The migrator refuses when `smonn_db.current` holds a row and Committed migrations are pending (ADR-0016).                                                                                                                                                                                                   |
+| `reset`         | Drops every non-system schema, then replays the Committed migrations and `current.sql` as written, without regenerating. `--erase` lets it run on an unmarked Database (ADR-0016).                                                                                                                                                                   |
+| `verify`        | Checks the hash chain of the Committed migration files offline, with no database.                                                                                                                                                                                                                                                                    |
+
+Every command takes `--config`. Arguments are parsed with `util.parseArgs`. There is no `--url` flag: point a command at another Database through the environment the config reads. Watch mode waits for v0.4.
+
+### Hand edits
+
+Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body that no longer matches counts as hand-edited, and generate stops overwriting it (ADR-0003). Deleting `current.sql` resumes generation. Commit replaces the header with ADR-0008's Previous and Hash headers.
+
+### Concurrency
+
+`generate`, `commit`, and `reset` share a `pg_try_advisory_lock` on the Dev database under a key distinct from the migrator's, and a second run exits at once with an error naming the lock. A waiting run would only redo the first run's reset.
+
+### Output
+
+Plain text: results to stdout, errors to stderr, with no colors when stdout isn't a TTY. Generate prints the file it wrote, each Hazard with its statement, and whether it reset the Dev database. Exit codes are 0 on success, 1 on any refusal or failure, and 2 on a usage error. `--json` waits until after v0.1.
 
 ## Diff engine
 
@@ -192,11 +235,11 @@ Each action is one statement-sized change, such as create table, add column, or 
 
 ### Hazards
 
-Each action kind declares its hazards (`data_loss`, `rewrite`, `access_exclusive_lock`) in a table, classified from the catalog, not the SQL text. Each hazard is written as a `-- hazard: <kind>` comment above its statement. Generation never blocks on a hazard. Whether commit blocks one, and a possible strict mode, are for [Config file and CLI for v0.1](https://github.com/smonn/db/issues/11) to decide.
+Each action kind declares its Hazards (`data_loss`, `rewrite`, `access_exclusive_lock`) in a table, classified from the catalog, not the SQL text. Each Hazard is written as a `-- hazard: <kind>` comment above its statement. Generation never blocks on a Hazard; commit does, per kind (ADR-0015).
 
-### Dev Database catch-up
+### Dev database catch-up
 
-Whenever the Current migration's hash differs from `smonn_db.current`, generate resets the dev Database: it drops every non-system schema, then replays the Committed migrations and the Current migration. Resetting is exact after hand edits and branch switches, at the cost of dev data. Keeping that data is a v0.4 dev loop question.
+Generate resets the Dev database whenever the Current migration's hash differs from `smonn_db.current`, or the last hash in `smonn_db.migrations` differs from the tip of the Committed migration files. A reset drops every non-system schema, then replays the Committed migrations and the Current migration, and runs only in a marked or empty Database (ADR-0016). The tip check covers a pulled Committed migration that leaves the regenerated Current migration byte-identical. Resetting is exact after hand edits and branch switches, at the cost of dev data. Keeping that data is a v0.4 dev loop question.
 
 ### Postgres versions
 
