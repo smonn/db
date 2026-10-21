@@ -61,6 +61,12 @@ describe("checkPr branch", () => {
     ]);
   });
 
+  test("still checks the title on a bot branch", () => {
+    expect(checkPr("Update oxlint", "renovate/oxlint-1.x")).toEqual([
+      'PR title "Update oxlint" is not a Conventional Commit: type(scope): summary',
+    ]);
+  });
+
   test("reports a bad title and a bad branch together", () => {
     expect(checkPr("add where", "main")).toHaveLength(2);
   });
