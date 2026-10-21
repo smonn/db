@@ -108,8 +108,7 @@ describe("checkEmDashes", () => {
   });
 });
 
-describe("checkAdrBody", () => {
-  const adr = (body: string) => `---
+const adr = (body: string) => `---
 status: proposed
 ---
 
@@ -122,6 +121,7 @@ ${body}
 One. Two. Three. Four.
 `;
 
+describe("checkAdrBody", () => {
   test("passes a body of three sentences", () => {
     const text = adr("One sentence, with `x.y` code. Two runs v0.1 here! Three?");
     expect(checkAdrBody("docs/adr/0001-x.md", text)).toEqual([]);
