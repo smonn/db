@@ -29,7 +29,7 @@ Issues live in GitHub Issues on `smonn/db`, managed with the `gh` CLI. See `docs
 
 ### Triage labels
 
-The five default triage labels are used as-is (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+The five default triage labels are used as-is (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). Every implementation issue also gets an `area:*` label. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

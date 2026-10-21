@@ -13,3 +13,18 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
 Edit the "Label in our tracker" column to match whatever vocabulary you actually use.
+
+## Area labels
+
+Every implementation issue also carries at least one `area:*` label naming the part of the codebase it changes. Wayfinder maps and their tickets carry none.
+
+| Label             | Covers                                |
+| ----------------- | ------------------------------------- |
+| `area:tooling`    | Build, lint, CI, and release tooling  |
+| `area:definition` | Definition API and column types       |
+| `area:diff`       | Catalog, introspect, diff, and Shadow |
+| `area:migrations` | Migration files, hash chain, migrator |
+| `area:queries`    | sql, query builder, and client        |
+| `area:cli`        | Config and `smonndb` commands         |
+
+Add a new `area:*` label here before applying it.
