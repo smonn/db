@@ -123,7 +123,11 @@ All port types live in `runtime/ports` as type-only exports, so adapters depend 
 
 ## Migration flow
 
-Which modules and ports each command touches. The steps restate ADR-0003, ADR-0007, ADR-0008, ADR-0011, ADR-0013, and ADR-0016; [Diff engine](#diff-engine) covers the diff itself and [CLI](#cli) each command's rules.
+Which modules and ports each command touches. Each diagram restates the ADRs under its heading; [Diff engine](#diff-engine) covers the diff itself and [CLI](#cli) each command's rules.
+
+### generate
+
+Restates ADR-0003, ADR-0011, and ADR-0013.
 
 ```mermaid
 sequenceDiagram
@@ -133,9 +137,7 @@ sequenceDiagram
   participant Diff as dev/diff
   participant FS as FileSystem port
   participant DB as Driver port
-  participant Mig as runtime/migrator
 
-  Note over CLI,Mig: generate (ADR-0003, ADR-0013)
   CLI->>Gen: Definition, config
   Gen->>FS: read Committed migrations
   Gen->>Shadow: build Shadow database from them
@@ -147,18 +149,57 @@ sequenceDiagram
   Gen->>DB: apply it to the Shadow, introspect, require no diff
   Gen->>FS: write Current migration
   Gen->>DB: if its hash or the Committed tip changed, reset the Dev database and replay all migrations
+```
 
-  Note over CLI,Mig: commit (ADR-0003, ADR-0008, ADR-0015)
+### commit
+
+Restates ADR-0003, ADR-0008, and ADR-0015.
+
+```mermaid
+sequenceDiagram
+  participant CLI as dev/cli
+  participant Gen as dev/generate
+  participant FS as FileSystem port
+  participant DB as Driver port
+
   CLI->>Gen: commit, accepted Hazard kinds
   Gen->>DB: require smonn_db.current to match the Current migration
   Gen->>FS: write next Committed migration with hash-chain header, delete the Current migration
   Gen->>DB: record it in smonn_db.migrations, clear smonn_db.current
+```
 
-  Note over CLI,Mig: migrate (ADR-0007)
+### migrate
+
+Restates ADR-0007.
+
+```mermaid
+sequenceDiagram
+  participant CLI as dev/cli
+  participant Mig as runtime/migrator
+  participant DB as Driver port
+
   CLI->>Mig: MigrationSource, Driver
   Mig->>DB: take advisory lock, read which Committed migrations ran
   Mig->>Mig: verify hash chain, plan the rest
   Mig->>DB: run each remaining Committed migration
+```
+
+### reset
+
+Restates ADR-0016.
+
+```mermaid
+sequenceDiagram
+  participant CLI as dev/cli
+  participant Gen as dev/generate
+  participant FS as FileSystem port
+  participant DB as Driver port
+
+  CLI->>Gen: reset, --erase if given
+  Gen->>DB: require a marked or empty Database, unless --erase
+  Gen->>DB: drop every non-system schema
+  Gen->>FS: read Committed migrations and the Current migration
+  Gen->>DB: replay them as written, mark the Database with smonn_db.current
 ```
 
 ## CLI
