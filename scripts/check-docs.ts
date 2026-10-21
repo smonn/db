@@ -8,6 +8,7 @@
  * Run from the repo root with `pnpm check:docs`; CI runs it in the Docs job.
  */
 import { globSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { markdownFiles } from "./markdown-files.ts";
 
 export type GlossaryEntry = {
@@ -154,12 +155,12 @@ export function checkAdrNumbers(files: string[]): Problem[] {
   });
 }
 
-function main(): void {
-  const files = markdownFiles();
-  const glossary = parseGlossary(readFileSync("GLOSSARY.md", "utf8"));
+export function main(cwd = "."): void {
+  const files = markdownFiles(cwd);
+  const glossary = parseGlossary(readFileSync(join(cwd, "GLOSSARY.md"), "utf8"));
   const problems = [...checkGlossary(glossary), ...checkAdrNumbers(files)];
   for (const file of files) {
-    const text = readFileSync(file, "utf8");
+    const text = readFileSync(join(cwd, file), "utf8");
     problems.push(...checkEmDashes(file, text));
     if (file === "README.md" || file === "GLOSSARY.md" || file.startsWith("docs/")) {
       problems.push(...checkAvoidTerms(file, text, glossary));
@@ -170,8 +171,8 @@ function main(): void {
     }
   }
   // Editor tools can turn a typed `\u2014` escape into the literal character.
-  for (const file of globSync("{scripts,src}/**/*.ts").sort()) {
-    problems.push(...checkEmDashes(file, readFileSync(file, "utf8")));
+  for (const file of globSync("{scripts,src}/**/*.ts", { cwd }).sort()) {
+    problems.push(...checkEmDashes(file, readFileSync(join(cwd, file), "utf8")));
   }
   for (const { file, line, message } of problems) console.error(`${file}:${line}: ${message}`);
   if (problems.length > 0) process.exitCode = 1;
