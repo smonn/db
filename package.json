@@ -6,14 +6,28 @@
   "type": "module",
   "scripts": {
     "check:docs": "node scripts/check-docs.ts",
+    "check:imports": "node scripts/check-imports.ts",
+    "check:index": "node scripts/check-index-exports.ts",
     "check:mermaid": "node scripts/check-mermaid.ts",
+    "coverage": "vitest run --coverage",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "test": "vitest run"
+    "knip": "knip",
+    "lint": "oxlint",
+    "test": "vitest run",
+    "typecheck": "tsc"
   },
   "devDependencies": {
     "@mermaid-js/mermaid-cli": "^12.0.0",
+    "@swc/core": "^1.16.18",
+    "@types/node": "^24.19.2",
+    "@vitest/coverage-v8": "^5.0.5",
+    "dependency-cruiser": "^18.7.0",
+    "knip": "^6.42.1",
     "oxfmt": "^0.73.0",
+    "oxlint": "^1.89.0",
+    "oxlint-tsgolint": "^7.0.2004",
+    "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   },
   "devEngines": {
