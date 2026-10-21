@@ -1,8 +1,9 @@
 /**
  * Checks the repo's Markdown against the glossary and ADR template: no `_Avoid_` term from
  * GLOSSARY.md outside its own entry, no `_Avoid_` term that is also a headword, no ADR body over
- * three sentences, no two ADRs sharing a number, and no em-dashes. Also rejects literal em-dashes in `scripts/` and `src/`
- * TypeScript. Prints `file:line: problem` and exits 1 on any problem.
+ * three sentences, no case variant of a multi-word headword, no two ADRs sharing a number, and
+ * no em-dashes. Also rejects literal em-dashes in `scripts/` and `src/` TypeScript. Prints
+ * `file:line: problem` and exits 1 on any problem.
  *
  * Run from the repo root with `pnpm check:docs`; CI runs it in the Docs job.
  */
@@ -89,6 +90,24 @@ export function checkAvoidTerms(file: string, text: string, entries: GlossaryEnt
   });
 }
 
+// Single-word headwords like "Database" are also ordinary English, so they're skipped.
+export function checkHeadwordCase(file: string, text: string, entries: GlossaryEntry[]): Problem[] {
+  const headwords = entries.map((entry) => entry.headword).filter((word) => word.includes(" "));
+  return text.split("\n").flatMap((line, index) => {
+    const prose = line.replace(/`[^`]*`/g, "code");
+    return headwords.flatMap((headword) =>
+      [...prose.matchAll(new RegExp(`\\b(${escapeRegExp(headword)})(?:s|es)?\\b`, "gi"))]
+        .map((match) => match[1] ?? "")
+        .filter((variant) => variant !== headword)
+        .map((variant) => ({
+          file,
+          line: index + 1,
+          message: `write "${headword}", not "${variant}"`,
+        })),
+    );
+  });
+}
+
 export function checkEmDashes(file: string, text: string): Problem[] {
   return text
     .split("\n")
@@ -144,6 +163,7 @@ function main(): void {
     problems.push(...checkEmDashes(file, text));
     if (file === "README.md" || file === "GLOSSARY.md" || file.startsWith("docs/")) {
       problems.push(...checkAvoidTerms(file, text, glossary));
+      problems.push(...checkHeadwordCase(file, text, glossary));
     }
     if (/^docs\/adr\/\d{4}-[^/]+\.md$/.test(file)) {
       problems.push(...checkAdrBody(file, text));
