@@ -71,12 +71,13 @@ describe("checkImports", () => {
           'import postgres from "postgres";\nexport function useTestDatabase(): unknown {\n  return postgres;\n}',
         "src/adapters/postgres-js/driver.test.ts":
           'import { test } from "vitest";\nexport { test };',
-        "src/adapters/node/fs.test.ts": 'import { test } from "vitest";\nexport { test };',
+        "src/adapters/node/fs.test.ts":
+          'import { test } from "vitest";\nimport { useTestDatabase } from "../postgres-js/test-database.test-helper.ts";\nexport { test, useTestDatabase };',
       }),
     ).toEqual([]);
   });
 
-  test("tests reach adapters/ and dev/ only through the test database helper", async () => {
+  test("tests cross module boundaries only to reach the test database helper", async () => {
     expect(
       await rulesBroken({
         "src/runtime/sql/sql.test.ts":
@@ -85,12 +86,16 @@ describe("checkImports", () => {
         "src/dev/shadow/shadow.test.ts":
           'import { diff } from "../diff/index.ts";\nimport { postgresJsDriver } from "../../adapters/postgres-js/driver.ts";\nexport { diff, postgresJsDriver };',
         "src/dev/diff/index.ts": "export function diff(): void {}",
+        "src/adapters/node/fs.test.ts":
+          'import { postgresJsDriver } from "../postgres-js/driver.ts";\nexport { postgresJsDriver };',
         "src/runtime/sql/index.ts":
           'import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";\nexport { useTestDatabase };',
         "src/adapters/postgres-js/test-database.test-helper.ts":
           "export function useTestDatabase(): void {}",
       }),
     ).toEqual([
+      "adapter-imports-ports-only",
+      "cross-module-through-index",
       "cross-module-through-index",
       "cross-module-through-index",
       "dev-no-adapters",
