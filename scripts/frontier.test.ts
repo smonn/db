@@ -1,5 +1,8 @@
-import { describe, expect, test } from "vitest";
-import { type Child, formatTicket, isTakeable, pickFrontier } from "./frontier.ts";
+import { spawnSync } from "node:child_process";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { type Child, formatTicket, isTakeable, main, pickFrontier } from "./frontier.ts";
+
+vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }));
 
 const ticket: Child = {
   number: 11,
@@ -52,5 +55,103 @@ describe("formatTicket", () => {
 
   test("omits the type when the ticket has no wayfinder label", () => {
     expect(formatTicket({ ...ticket, labels: [] })).toBe("#11 Config file and CLI for v0.1");
+  });
+});
+
+describe("main", () => {
+  const spawn = vi.mocked(spawnSync);
+
+  type Issue = {
+    number: number;
+    title: string;
+    state: "open" | "closed";
+    labels: { name: string }[];
+    assignees: { login: string }[];
+  };
+
+  function issue(number: number, overrides: Partial<Issue> = {}): Issue {
+    return {
+      number,
+      title: `Ticket ${number}`,
+      state: "open",
+      labels: [{ name: "wayfinder:grilling" }],
+      assignees: [],
+      ...overrides,
+    };
+  }
+
+  function ghReturns(responses: Record<string, Issue[]>): void {
+    spawn.mockImplementation((_command, args) => {
+      const path = (args as string[]).at(-1) ?? "";
+      const pages = responses[path];
+      if (pages === undefined) return { status: 1, stderr: ` no route ${path} ` } as never;
+      return { status: 0, stdout: JSON.stringify([pages]) } as never;
+    });
+  }
+
+  beforeEach(() => {
+    spawn.mockReset();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`exit ${code}`);
+    }) as never);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("prints the takeable children that have no open blocker", () => {
+    ghReturns({
+      "repos/{owner}/{repo}/issues/5/sub_issues": [
+        issue(8),
+        issue(9, { assignees: [{ login: "smonn" }] }),
+        issue(10),
+        issue(12, { labels: [] }),
+      ],
+      "repos/{owner}/{repo}/issues/8/dependencies/blocked_by": [issue(1, { state: "closed" })],
+      "repos/{owner}/{repo}/issues/10/dependencies/blocked_by": [issue(2)],
+      "repos/{owner}/{repo}/issues/12/dependencies/blocked_by": [],
+    });
+    main("5");
+    expect(console.log).toHaveBeenCalledWith("#8 Ticket 8 [wayfinder:grilling]\n#12 Ticket 12");
+    expect(spawn.mock.calls[0]).toEqual([
+      "gh",
+      ["api", "--paginate", "--slurp", "repos/{owner}/{repo}/issues/5/sub_issues"],
+      { encoding: "utf8" },
+    ]);
+  });
+
+  test("says so when no child is on the frontier", () => {
+    ghReturns({ "repos/{owner}/{repo}/issues/5/sub_issues": [issue(8, { state: "closed" })] });
+    main("5");
+    expect(console.log).toHaveBeenCalledWith("No frontier tickets.");
+  });
+
+  test("prints usage and exits 2 for a map number that is not a positive integer", () => {
+    for (const arg of [undefined, "abc", "0", "-3", "1.5"]) {
+      expect(() => main(arg)).toThrow("exit 2");
+    }
+    expect(console.error).toHaveBeenCalledWith(
+      "Usage: node scripts/frontier.ts <map issue number>",
+    );
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  test("prints the gh error and exits 1 when gh fails", () => {
+    ghReturns({});
+    expect(() => main("5")).toThrow("exit 1");
+    expect(console.error).toHaveBeenCalledWith(
+      "gh api repos/{owner}/{repo}/issues/5/sub_issues failed:\nno route repos/{owner}/{repo}/issues/5/sub_issues",
+    );
+  });
+
+  test("prints a thrown non-Error value as is", () => {
+    spawn.mockImplementation(() => {
+      throw "boom";
+    });
+    expect(() => main("5")).toThrow("exit 1");
+    expect(console.error).toHaveBeenCalledWith("boom");
   });
 });

@@ -59,8 +59,8 @@ function hasOpenBlocker(ticket: number): boolean {
   return (blockers as ApiIssue[]).some((blocker) => blocker.state === "open");
 }
 
-function main(): void {
-  const map = Number(process.argv[2]);
+export function main(arg = process.argv[2]): void {
+  const map = Number(arg);
   if (!Number.isInteger(map) || map <= 0) {
     console.error("Usage: node scripts/frontier.ts <map issue number>");
     process.exit(2);

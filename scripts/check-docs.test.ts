@@ -1,5 +1,9 @@
-import { describe, expect, test } from "vitest";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  main,
   checkAdrBody,
   checkAdrNumbers,
   checkAvoidTerms,
@@ -159,5 +163,68 @@ describe("checkAdrNumbers", () => {
         message: "ADR number 0011 is also used by docs/adr/0011-a.md",
       },
     ]);
+  });
+});
+
+describe("main", () => {
+  const emDash = String.fromCharCode(0x2014);
+  let root: string;
+
+  function write(path: string, text: string): void {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
+
+  function reported(): string[] {
+    return vi.mocked(console.error).mock.calls.map(([line]) => String(line));
+  }
+
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(join(tmpdir(), "check-docs-test-")));
+    write("GLOSSARY.md", glossaryText);
+    write("README.md", "A Schema holds tables.\n");
+    write("docs/adr/0001-first.md", "# First\n\nOne sentence.\n\n## Status\n\naccepted\n");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    process.exitCode = undefined;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    process.exitCode = undefined;
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("passes a clean tree", () => {
+    write("scripts/a.ts", "export const a = 1;\n");
+    main(root);
+    expect(reported()).toEqual([]);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  test("reports every kind of problem as file:line: message and exits 1", () => {
+    write("README.md", `A Namespace ${emDash} here.\nA current Migration too.\n`);
+    write("docs/adr/0001-second.md", "# Second\n\nOne. Two. Three. Four.\n");
+    write("notes.md", `Namespace ${emDash}\n`);
+    write("src/b.ts", `export const b = "${emDash}";\n`);
+    main(root);
+    expect(reported().sort()).toEqual(
+      [
+        "README.md:1: em-dash",
+        'README.md:1: avoid "Namespace" (use "Schema")',
+        'README.md:2: write "Current migration", not "current Migration"',
+        "docs/adr/0001-second.md:1: ADR body has 4 sentences; the template allows 3",
+        "docs/adr/0001-second.md:1: ADR number 0001 is also used by docs/adr/0001-first.md",
+        "notes.md:1: em-dash",
+        "src/b.ts:1: em-dash",
+      ].sort(),
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  test("flags a glossary term that is also avoided", () => {
+    write("GLOSSARY.md", "**Schema**:\nA namespace.\n_Avoid_: Table\n\n**Table**:\nA relation.\n");
+    main(root);
+    expect(reported()).toContain('GLOSSARY.md:3: "Table" is avoided but is also a glossary term');
+    expect(process.exitCode).toBe(1);
   });
 });
