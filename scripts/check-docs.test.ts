@@ -5,6 +5,7 @@ import {
   checkAvoidTerms,
   checkEmDashes,
   checkGlossary,
+  checkHeadwordCase,
   parseGlossary,
 } from "./check-docs.ts";
 
@@ -72,6 +73,30 @@ describe("checkAvoidTerms", () => {
     expect(checkAvoidTerms("GLOSSARY.md", text, glossary)).toEqual([
       { file: "GLOSSARY.md", line: 11, message: 'avoid "Namespace" (use "Schema")' },
     ]);
+  });
+});
+
+describe("checkHeadwordCase", () => {
+  test("flags case variants of a multi-word headword, including plurals", () => {
+    const text = "The current migration.\nTwo Current Migrations here.";
+    expect(checkHeadwordCase("docs/a.md", text, glossary)).toEqual([
+      { file: "docs/a.md", line: 1, message: 'write "Current migration", not "current migration"' },
+      {
+        file: "docs/a.md",
+        line: 2,
+        message: 'write "Current migration", not "Current Migration"',
+      },
+    ]);
+  });
+
+  test("passes the headword's own case and plural", () => {
+    const text = "The Current migration's hash.\nOld Current migrations.";
+    expect(checkHeadwordCase("docs/a.md", text, glossary)).toEqual([]);
+  });
+
+  test("ignores code spans and single-word headwords", () => {
+    const text = "Run `current migration` in a schema.";
+    expect(checkHeadwordCase("docs/a.md", text, glossary)).toEqual([]);
   });
 });
 
