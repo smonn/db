@@ -10,7 +10,7 @@ export type TestDatabase = {
 
 const ignoreNotice = (): void => {};
 
-/** Explains a rejected login, which most often means another project's Postgres holds the port. */
+/** Explains a rejected login (SQLSTATE class 28), which most often means another project's Postgres holds the port. */
 export function explainConnectionError(error: unknown, serverUrl: string): unknown {
   if (!(error instanceof postgres.PostgresError) || !error.code.startsWith("28")) {
     return error;
