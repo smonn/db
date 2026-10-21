@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { type Child, formatTicket, isTakeable, main, pickFrontier } from "./frontier.ts";
 
-vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }));
+vi.mock("node:child_process", () => ({ spawnSync: vi.fn<typeof spawnSync>() }));
 
 const ticket: Child = {
   number: 11,
@@ -82,10 +82,11 @@ describe("main", () => {
 
   function ghReturns(responses: Record<string, Issue[]>): void {
     spawn.mockImplementation((_command, args) => {
-      const path = (args as string[]).at(-1) ?? "";
+      const path = args?.at(-1) ?? "";
       const pages = responses[path];
-      if (pages === undefined) return { status: 1, stderr: ` no route ${path} ` } as never;
-      return { status: 0, stdout: JSON.stringify([pages]) } as never;
+      const result = { pid: 0, output: [], stdout: "", stderr: "", status: 0, signal: null };
+      if (pages === undefined) return { ...result, status: 1, stderr: ` no route ${path} ` };
+      return { ...result, stdout: JSON.stringify([pages]) };
     });
   }
 
@@ -93,9 +94,9 @@ describe("main", () => {
     spawn.mockReset();
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+    vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`exit ${code}`);
-    }) as never);
+    });
   });
 
   afterEach(() => {
@@ -131,7 +132,9 @@ describe("main", () => {
 
   test("prints usage and exits 2 for a map number that is not a positive integer", () => {
     for (const arg of [undefined, "abc", "0", "-3", "1.5"]) {
-      expect(() => main(arg)).toThrow("exit 2");
+      expect(() => {
+        main(arg);
+      }).toThrow("exit 2");
     }
     expect(console.error).toHaveBeenCalledWith(
       "Usage: node scripts/frontier.ts <map issue number>",
@@ -141,7 +144,9 @@ describe("main", () => {
 
   test("prints the gh error and exits 1 when gh fails", () => {
     ghReturns({});
-    expect(() => main("5")).toThrow("exit 1");
+    expect(() => {
+      main("5");
+    }).toThrow("exit 1");
     expect(console.error).toHaveBeenCalledWith(
       "gh api repos/{owner}/{repo}/issues/5/sub_issues failed:\nno route repos/{owner}/{repo}/issues/5/sub_issues",
     );
@@ -149,9 +154,12 @@ describe("main", () => {
 
   test("prints a thrown non-Error value as is", () => {
     spawn.mockImplementation(() => {
+      // oxlint-disable-next-line eslint/no-throw-literal, typescript/only-throw-error -- main's non-Error branch is the subject.
       throw "boom";
     });
-    expect(() => main("5")).toThrow("exit 1");
+    expect(() => {
+      main("5");
+    }).toThrow("exit 1");
     expect(console.error).toHaveBeenCalledWith("boom");
   });
 });

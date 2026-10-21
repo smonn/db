@@ -166,17 +166,17 @@ describe("checkAdrNumbers", () => {
   });
 });
 
+function reported(): string[] {
+  return vi.mocked(console.error).mock.calls.map(([line]) => String(line));
+}
+
 describe("main", () => {
-  const emDash = String.fromCharCode(0x2014);
+  const emDash = String.fromCodePoint(0x2014);
   let root: string;
 
   function write(path: string, text: string): void {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), text);
-  }
-
-  function reported(): string[] {
-    return vi.mocked(console.error).mock.calls.map(([line]) => String(line));
   }
 
   beforeEach(() => {
@@ -207,7 +207,7 @@ describe("main", () => {
     write("notes.md", `Namespace ${emDash}\n`);
     write("src/b.ts", `export const b = "${emDash}";\n`);
     main(root);
-    expect(reported().sort()).toEqual(
+    expect(reported().toSorted()).toEqual(
       [
         "README.md:1: em-dash",
         'README.md:1: avoid "Namespace" (use "Schema")',
@@ -216,7 +216,7 @@ describe("main", () => {
         "docs/adr/0001-second.md:1: ADR number 0001 is also used by docs/adr/0001-first.md",
         "notes.md:1: em-dash",
         "src/b.ts:1: em-dash",
-      ].sort(),
+      ].toSorted(),
     );
     expect(process.exitCode).toBe(1);
   });
