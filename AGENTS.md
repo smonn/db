@@ -25,7 +25,7 @@
 
 ### Issue tracker
 
-Issues live in GitHub Issues on `smonn/db`, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues on `smonn/db`, managed with the `gh` CLI. Claim an issue by assigning it (`--add-assignee @me`) before starting work. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
