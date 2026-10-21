@@ -19,6 +19,10 @@ A Postgres-first TypeScript toolkit: define your database in TypeScript, migrate
 - **Down migrations.** Undo a change with a new forward migration.
 - **Edge and browser runtimes.** Node 24 and later is the target. Others stay possible but untested.
 
+## Development
+
+Tests need a Postgres 18 server. `docker compose up -d --wait` starts one on port 5432, or on `POSTGRES_PORT` when set. Then run `DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres pnpm test`. Each test file gets its own fresh database, dropped afterward.
+
 ## Learn more
 
 - [Glossary](GLOSSARY.md): the project's vocabulary.
