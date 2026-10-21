@@ -87,7 +87,7 @@ flowchart TB
 flowchart TB
   subgraph dev["dev/ · @smonn/db/dev"]
     cli["<b>cli</b><br/>[Node composition root, bin]<br/>Parses commands, loads config and Definition, wires adapters"]
-    generate["<b>generate</b><br/>[module]<br/>Builds, writes, and applies the Current migration; commits it"]
+    generate["<b>generate</b><br/>[module]<br/>Builds, writes, and applies the Current migration; commits it; resets the Dev database"]
     shadow["<b>shadow</b><br/>[module]<br/>Creates, sweeps, and drops the Shadow and Definition databases"]
     introspect["<b>introspect</b><br/>[module]<br/>Reads a catalog from a live Database"]
     diff["<b>diff</b><br/>[module]<br/>Compares two catalogs and emits Migration SQL"]
@@ -127,7 +127,7 @@ Which modules and ports each command touches. Each diagram restates the ADRs und
 
 ### generate
 
-Restates ADR-0003, ADR-0011, and ADR-0013.
+Restates ADR-0003, ADR-0011, ADR-0013, and ADR-0016.
 
 ```mermaid
 sequenceDiagram
@@ -170,7 +170,7 @@ sequenceDiagram
 
 ### migrate
 
-Restates ADR-0007.
+Restates ADR-0007 and ADR-0016.
 
 ```mermaid
 sequenceDiagram
@@ -181,6 +181,7 @@ sequenceDiagram
   CLI->>Mig: MigrationSource, Driver
   Mig->>DB: take advisory lock, read which Committed migrations ran
   Mig->>Mig: verify hash chain, plan the rest
+  Mig->>DB: refuse if smonn_db.current holds a row and any are pending
   Mig->>DB: run each remaining Committed migration
 ```
 
@@ -198,8 +199,9 @@ sequenceDiagram
   CLI->>Gen: reset, --erase if given
   Gen->>DB: require a marked or empty Database, unless --erase
   Gen->>DB: drop every non-system schema
+  Gen->>DB: create smonn_db.current, marking it a Dev database
   Gen->>FS: read Committed migrations and the Current migration
-  Gen->>DB: replay them as written, mark the Database with smonn_db.current
+  Gen->>DB: replay them as written
 ```
 
 ## CLI
