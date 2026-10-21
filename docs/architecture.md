@@ -87,7 +87,7 @@ flowchart TB
 flowchart TB
   subgraph dev["dev/ · @smonn/db/dev"]
     cli["<b>cli</b><br/>[Node composition root, bin]<br/>Parses commands, loads config and Definition, wires adapters"]
-    generate["<b>generate</b><br/>[module]<br/>Builds, writes, and applies the Current migration; commits it"]
+    generate["<b>generate</b><br/>[module]<br/>Builds, writes, and applies the Current migration; commits it; resets the Dev database"]
     shadow["<b>shadow</b><br/>[module]<br/>Creates, sweeps, and drops the Shadow and Definition databases"]
     introspect["<b>introspect</b><br/>[module]<br/>Reads a catalog from a live Database"]
     diff["<b>diff</b><br/>[module]<br/>Compares two catalogs and emits Migration SQL"]
@@ -123,7 +123,11 @@ All port types live in `runtime/ports` as type-only exports, so adapters depend 
 
 ## Migration flow
 
-Which modules and ports each command touches. The steps restate ADR-0003, ADR-0007, ADR-0008, ADR-0011, ADR-0013, and ADR-0016; [Diff engine](#diff-engine) covers the diff itself and [CLI](#cli) each command's rules.
+Which modules and ports each command touches. Each diagram restates the ADRs under its heading; [Diff engine](#diff-engine) covers the diff itself and [CLI](#cli) each command's rules.
+
+### generate
+
+Restates ADR-0003, ADR-0011, ADR-0013, and ADR-0016.
 
 ```mermaid
 sequenceDiagram
@@ -133,9 +137,7 @@ sequenceDiagram
   participant Diff as dev/diff
   participant FS as FileSystem port
   participant DB as Driver port
-  participant Mig as runtime/migrator
 
-  Note over CLI,Mig: generate (ADR-0003, ADR-0013)
   CLI->>Gen: Definition, config
   Gen->>FS: read Committed migrations
   Gen->>Shadow: build Shadow database from them
@@ -147,18 +149,59 @@ sequenceDiagram
   Gen->>DB: apply it to the Shadow, introspect, require no diff
   Gen->>FS: write Current migration
   Gen->>DB: if its hash or the Committed tip changed, reset the Dev database and replay all migrations
+```
 
-  Note over CLI,Mig: commit (ADR-0003, ADR-0008, ADR-0015)
+### commit
+
+Restates ADR-0003, ADR-0008, and ADR-0015.
+
+```mermaid
+sequenceDiagram
+  participant CLI as dev/cli
+  participant Gen as dev/generate
+  participant FS as FileSystem port
+  participant DB as Driver port
+
   CLI->>Gen: commit, accepted Hazard kinds
   Gen->>DB: require smonn_db.current to match the Current migration
   Gen->>FS: write next Committed migration with hash-chain header, delete the Current migration
   Gen->>DB: record it in smonn_db.migrations, clear smonn_db.current
+```
 
-  Note over CLI,Mig: migrate (ADR-0007)
+### migrate
+
+Restates ADR-0007 and ADR-0016.
+
+```mermaid
+sequenceDiagram
+  participant CLI as dev/cli
+  participant Mig as runtime/migrator
+  participant DB as Driver port
+
   CLI->>Mig: MigrationSource, Driver
   Mig->>DB: take advisory lock, read which Committed migrations ran
   Mig->>Mig: verify hash chain, plan the rest
+  Mig->>DB: refuse if smonn_db.current holds a row and any are pending
   Mig->>DB: run each remaining Committed migration
+```
+
+### reset
+
+Restates ADR-0016.
+
+```mermaid
+sequenceDiagram
+  participant CLI as dev/cli
+  participant Gen as dev/generate
+  participant FS as FileSystem port
+  participant DB as Driver port
+
+  CLI->>Gen: reset, --erase if given
+  Gen->>DB: require a marked or empty Database, unless --erase
+  Gen->>DB: drop every non-system schema
+  Gen->>DB: create smonn_db.current, marking it a Dev database
+  Gen->>FS: read Committed migrations and the Current migration
+  Gen->>DB: replay them as written
 ```
 
 ## CLI
