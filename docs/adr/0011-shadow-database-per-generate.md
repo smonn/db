@@ -4,7 +4,7 @@ status: accepted
 
 # A fresh Shadow database for every generate
 
-Each generate creates its own Shadow database with `CREATE DATABASE smonn_db_shadow_<unix seconds>_<8 hex> TEMPLATE template0` over the dev Database's connection, replays the Committed migrations into it, and drops it when done. A unique database per run means concurrent generates never share state and v0.1 needs no second connection string, which keeps the first version small; an override for hosts that deny `CREATEDB` can come later.
+Each generate creates its own Shadow database with `CREATE DATABASE smonn_db_shadow_<unix seconds>_<8 hex> TEMPLATE template0` over the Dev database's connection, replays the Committed migrations into it, and drops it when done. A unique database per run means concurrent generates never share state and v0.1 needs no second connection string, which keeps the first version small; an override for hosts that deny `CREATEDB` can come later.
 
 ## Considered Options
 
