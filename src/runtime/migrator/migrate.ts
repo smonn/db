@@ -28,7 +28,7 @@ create table if not exists smonn_db.migrations (
  * tracking row. A session advisory lock makes parallel runs wait, then find nothing left.
  */
 export async function migrate({ driver, source }: MigrateOptions): Promise<MigrateResult> {
-  const migrations = await verifiedChain(source);
+  const migrations = await loadVerifiedMigrations(source);
 
   return driver.session(async (session) => {
     await session.query(`select pg_advisory_lock(${LOCK_KEY})`);
@@ -52,7 +52,7 @@ export async function migrate({ driver, source }: MigrateOptions): Promise<Migra
   });
 }
 
-async function verifiedChain(source: MigrationSource): Promise<ParsedMigration[]> {
+async function loadVerifiedMigrations(source: MigrationSource): Promise<ParsedMigration[]> {
   const migrations = (await source.list())
     .map((file) => parseMigration(file))
     .toSorted((a, b) => a.sequence - b.sequence);
