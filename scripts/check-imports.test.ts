@@ -85,11 +85,16 @@ describe("checkImports", () => {
     expect(
       await rulesBroken({
         "src/adapters/node/index.ts":
-          'import type { D } from "../postgres-js/index.ts";\nimport type { S } from "../../runtime/sql/index.ts";\nexport type N = D | S;',
+          'import type { D } from "../postgres-js/index.ts";\nimport type { S } from "../../runtime/sql/index.ts";\nimport type { E } from "../../dev/diff/index.ts";\nexport type N = D | S | E;',
         "src/adapters/postgres-js/index.ts": "export type D = 1;",
         "src/runtime/sql/index.ts": "export type S = 1;",
+        "src/dev/diff/index.ts": "export type E = 1;",
       }),
-    ).toEqual(["adapter-imports-ports-only", "adapter-imports-ports-only"]);
+    ).toEqual([
+      "adapter-imports-ports-only",
+      "adapter-imports-ports-only",
+      "adapter-imports-ports-only",
+    ]);
   });
 
   test("adapters/postgres-js imports no npm package but postgres", async () => {

@@ -85,6 +85,7 @@ export const importRules: IForbiddenRuleType[] = [
   },
   {
     name: "no-cycles",
+    comment: "No import cycles.",
     severity: "error",
     from: {},
     to: { circular: true },
