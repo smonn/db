@@ -30,7 +30,7 @@ A Migration frozen into the project's ordered, forward-only history.
 _Avoid_: Applied migration
 
 **Current migration**:
-The single in-progress Migration, regenerated from the Definition and reapplied to the dev Database while you iterate, until it is committed.
+The single in-progress Migration, regenerated from the Definition and reapplied to the Dev database while you iterate, until it is committed.
 _Avoid_: Draft, pending migration
 
 **Shadow database**:
@@ -39,6 +39,13 @@ A throwaway Database built by replaying the Committed migrations, used as the "b
 **Definition database**:
 A throwaway Database built from the Definition alone, used as the "after" state when generating the Current migration.
 _Avoid_: Target database, template database, desired database
+
+**Dev database**:
+The Database a developer iterates against, which holds the Current migration and may be rebuilt at any time, losing its data.
+_Avoid_: Local database
+
+**Hazard**:
+A risk a generated change carries when it runs, such as data loss, a table rewrite, or a lock that blocks reads and writes.
 
 ### Data
 
