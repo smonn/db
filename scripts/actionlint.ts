@@ -35,13 +35,15 @@ export async function install(
   cacheDir: string,
   platform: string = process.platform,
   arch: string = process.arch,
-  sha256: string = assetFor(platform, arch).sha256,
+  pinned?: string,
 ): Promise<string> {
   const dir = join(cacheDir, version);
   const binary = join(dir, "actionlint");
   if (existsSync(binary)) return binary;
 
-  const { name } = assetFor(platform, arch);
+  const asset = assetFor(platform, arch);
+  const { name } = asset;
+  const sha256 = pinned ?? asset.sha256;
   const url = `https://github.com/rhysd/actionlint/releases/download/v${version}/${name}`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`GET ${url} returned ${response.status}`);
