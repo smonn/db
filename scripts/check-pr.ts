@@ -2,7 +2,7 @@
  * Checks that a pull request title is a Conventional Commit, since release-please builds releases
  * from squash-merged titles (ADR-0018), and that its head branch is a Conventional Branch.
  *
- * Reads PR_TITLE and PR_BRANCH; CI runs it in the PR job.
+ * Run with `PR_TITLE` and `PR_BRANCH` set, as `pnpm check:pr`; CI runs it in the PR job.
  */
 
 const types = [
