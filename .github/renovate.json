@@ -4,6 +4,7 @@
   "dependencyDashboard": true,
   "semanticCommits": "enabled",
   "minimumReleaseAge": "3 days",
+  "rebaseWhen": "behind-base-branch",
   "packageRules": [
     {
       "matchDepTypes": ["devDependencies"],
