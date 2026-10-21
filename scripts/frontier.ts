@@ -58,7 +58,7 @@ function hasOpenBlocker(ticket: number): boolean {
   return blockers.some((blocker) => blocker.state === "open");
 }
 
-export function main(arg = process.argv[2]): void {
+export function main(arg: string | undefined = process.argv[2]): void {
   const map = Number(arg);
   if (!Number.isInteger(map) || map <= 0) {
     console.error("Usage: node scripts/frontier.ts <map issue number>");

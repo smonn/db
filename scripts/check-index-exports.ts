@@ -29,7 +29,7 @@ export function checkIndexExports(text: string): string[] {
   });
 }
 
-export function main(cwd = process.cwd()): void {
+export function main(cwd: string = process.cwd()): void {
   let failed = false;
   for (const file of globSync("src/**/index.ts", { cwd }).toSorted()) {
     for (const problem of checkIndexExports(readFileSync(join(cwd, file), "utf8"))) {

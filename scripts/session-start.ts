@@ -61,7 +61,7 @@ function syncWithMain(cwd: string): void {
   }
 }
 
-export function main(cwd = process.cwd()): void {
+export function main(cwd: string = process.cwd()): void {
   syncWithMain(cwd);
   const install = run(cwd, "pnpm", ["install", "--frozen-lockfile"]);
   if (!install.ok)

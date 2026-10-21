@@ -121,7 +121,7 @@ export async function checkImports(baseDir: string): Promise<Problem[]> {
   return output.summary.violations.map(({ from, to, rule }) => ({ from, to, rule: rule.name }));
 }
 
-export async function main(baseDir = process.cwd()): Promise<void> {
+export async function main(baseDir: string = process.cwd()): Promise<void> {
   const problems = await checkImports(baseDir);
   for (const { from, to, rule } of problems) console.error(`${from} -> ${to}: ${rule}`);
   if (problems.length > 0) process.exitCode = 1;
