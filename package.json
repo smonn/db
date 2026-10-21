@@ -29,8 +29,12 @@
     "oxfmt": "^0.73.0",
     "oxlint": "^1.89.0",
     "oxlint-tsgolint": "^7.0.2004",
+    "postgres": "^3.4.9",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
+  },
+  "peerDependencies": {
+    "postgres": "^3.4.9"
   },
   "devEngines": {
     "packageManager": {

@@ -19,11 +19,15 @@ function repo(files: Record<string, string>): string {
     "package.json": JSON.stringify({
       type: "module",
       dependencies: { postgres: "*", "left-pad": "*" },
+      devDependencies: { vitest: "*" },
     }),
     "node_modules/postgres/package.json": JSON.stringify({ name: "postgres", main: "index.js" }),
     "node_modules/postgres/index.js": "export default 1;",
     "node_modules/left-pad/package.json": JSON.stringify({ name: "left-pad", main: "index.js" }),
     "node_modules/left-pad/index.js": "export default 1;",
+    "node_modules/vitest/package.json": JSON.stringify({ name: "vitest", main: "index.js" }),
+    // An unresolvable import inside a package shows whether the cruise follows into node_modules.
+    "node_modules/vitest/index.js": 'import "not-installed";\nexport const test = 1;',
     ...files,
   };
   for (const [path, text] of Object.entries(all)) {
@@ -57,8 +61,14 @@ describe("checkImports", () => {
           'import type { D } from "../../runtime/sql/index.ts";\nexport type E = D;',
         "src/dev/cli/index.ts":
           'import { readFile } from "node:fs";\nimport type { D } from "../../adapters/postgres-js/index.ts";\nexport type F = D;\nexport { readFile };',
-        "src/dev/diff/diff.test.ts": 'import { helper } from "./diff.test-helper.ts";\nhelper();',
-        "src/dev/diff/diff.test-helper.ts": "export function helper(): void {}",
+        "src/dev/diff/diff.test.ts":
+          'import { test } from "vitest";\nimport { helper } from "./diff.test-helper.ts";\nhelper(test);',
+        "src/dev/diff/diff.test-helper.ts":
+          'import { test } from "vitest";\nexport function helper(t: typeof test): void {}',
+        "src/runtime/sql/sql.test.ts": 'import { test } from "vitest";\nexport { test };',
+        "src/adapters/postgres-js/driver.test.ts":
+          'import { test } from "vitest";\nexport { test };',
+        "src/adapters/node/fs.test.ts": 'import { test } from "vitest";\nexport { test };',
       }),
     ).toEqual([]);
   });
@@ -160,6 +170,14 @@ describe("checkImports", () => {
         "src/runtime/sql/sql.test.ts": "export {};",
       }),
     ).toEqual(["no-test-imports", "no-test-imports"]);
+  });
+
+  test("only tests and test helpers import vitest", async () => {
+    expect(
+      await rulesBroken({
+        "src/dev/diff/index.ts": 'import { test } from "vitest";\nexport { test };',
+      }),
+    ).toEqual(["vitest-in-tests-only"]);
   });
 
   test("main prints each violation and sets exit code 1", async () => {
