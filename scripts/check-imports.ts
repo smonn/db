@@ -25,6 +25,8 @@ const NPM: DependencyType[] = [
 ];
 const TEST_ONLY = String.raw`\.test(-helper)?\.ts$`;
 const VITEST = "(^|/)node_modules/vitest/";
+// Integration tests in every group need a real database. no-test-imports keeps it out of non-test code.
+const TEST_DATABASE = String.raw`^src/adapters/postgres-js/test-database\.test-helper\.ts$`;
 
 export const importRules: IForbiddenRuleType[] = [
   {
@@ -32,7 +34,7 @@ export const importRules: IForbiddenRuleType[] = [
     comment: "runtime/ imports nothing outside runtime/.",
     severity: "error",
     from: { path: "^src/runtime/" },
-    to: { path: "^src/", pathNot: "^src/runtime/" },
+    to: { path: "^src/", pathNot: ["^src/runtime/", TEST_DATABASE] },
   },
   {
     name: "runtime-no-npm",
@@ -68,7 +70,7 @@ export const importRules: IForbiddenRuleType[] = [
     comment: "dev/ never imports adapters/, except dev/cli, the Node composition root.",
     severity: "error",
     from: { path: "^src/dev/", pathNot: "^src/dev/cli/" },
-    to: { path: "^src/adapters/" },
+    to: { path: "^src/adapters/", pathNot: TEST_DATABASE },
   },
   {
     name: "node-builtins-in-host-code",
@@ -82,7 +84,10 @@ export const importRules: IForbiddenRuleType[] = [
     comment: "An import from another module goes through that module's index.ts.",
     severity: "error",
     from: { path: "^src/([^/]+)/([^/]+)/" },
-    to: { path: "^src/[^/]+/[^/]+/", pathNot: ["^src/$1/$2/", "^src/[^/]+/[^/]+/index\\.ts$"] },
+    to: {
+      path: "^src/[^/]+/[^/]+/",
+      pathNot: ["^src/$1/$2/", "^src/[^/]+/[^/]+/index\\.ts$", TEST_DATABASE],
+    },
   },
   {
     name: "no-cycles",

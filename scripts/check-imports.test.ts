@@ -62,15 +62,41 @@ describe("checkImports", () => {
         "src/dev/cli/index.ts":
           'import { readFile } from "node:fs";\nimport type { D } from "../../adapters/postgres-js/index.ts";\nexport type F = D;\nexport { readFile };',
         "src/dev/diff/diff.test.ts":
-          'import { test } from "vitest";\nimport { helper } from "./diff.test-helper.ts";\nhelper(test);',
+          'import { test } from "vitest";\nimport { helper } from "./diff.test-helper.ts";\nimport { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";\nhelper(test);\nuseTestDatabase();',
         "src/dev/diff/diff.test-helper.ts":
           'import { test } from "vitest";\nexport function helper(t: typeof test): void {}',
-        "src/runtime/sql/sql.test.ts": 'import { test } from "vitest";\nexport { test };',
+        "src/runtime/sql/sql.test.ts":
+          'import { test } from "vitest";\nimport { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";\nexport { test, useTestDatabase };',
+        "src/adapters/postgres-js/test-database.test-helper.ts":
+          'import postgres from "postgres";\nexport function useTestDatabase(): unknown {\n  return postgres;\n}',
         "src/adapters/postgres-js/driver.test.ts":
           'import { test } from "vitest";\nexport { test };',
         "src/adapters/node/fs.test.ts": 'import { test } from "vitest";\nexport { test };',
       }),
     ).toEqual([]);
+  });
+
+  test("tests reach adapters/ and dev/ only through the test database helper", async () => {
+    expect(
+      await rulesBroken({
+        "src/runtime/sql/sql.test.ts":
+          'import { postgresJsDriver } from "../../adapters/postgres-js/driver.ts";\nexport { postgresJsDriver };',
+        "src/adapters/postgres-js/driver.ts": "export function postgresJsDriver(): void {}",
+        "src/dev/shadow/shadow.test.ts":
+          'import { diff } from "../diff/index.ts";\nimport { postgresJsDriver } from "../../adapters/postgres-js/driver.ts";\nexport { diff, postgresJsDriver };',
+        "src/dev/diff/index.ts": "export function diff(): void {}",
+        "src/runtime/sql/index.ts":
+          'import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";\nexport { useTestDatabase };',
+        "src/adapters/postgres-js/test-database.test-helper.ts":
+          "export function useTestDatabase(): void {}",
+      }),
+    ).toEqual([
+      "cross-module-through-index",
+      "cross-module-through-index",
+      "dev-no-adapters",
+      "no-test-imports",
+      "runtime-stays-in-runtime",
+    ]);
   });
 
   test("runtime/ imports nothing outside runtime/", async () => {

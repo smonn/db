@@ -292,7 +292,7 @@ v0.1 supports Postgres 18 and newer, and CI runs 18 and, once released, 19. `int
 
 CI enforces the module boundaries:
 
-- `scripts/check-imports.ts` holds the dependency-cruiser rules, each with a one-line comment: `runtime/` stays self-contained and free of npm packages, an adapter imports only `runtime/ports` and its host package, only `dev/cli` wires in adapters, `node:*` stays in host code, cross-module imports go through `index.ts`, no cycles, and only tests import `*.test.ts` files, `*.test-helper.ts` helpers, and `vitest`. It fails when it scans 0 modules.
+- `scripts/check-imports.ts` holds the dependency-cruiser rules, each with a one-line comment: `runtime/` stays self-contained and free of npm packages, an adapter imports only `runtime/ports` and its host package, only `dev/cli` wires in adapters, `node:*` stays in host code, cross-module imports go through `index.ts`, no cycles, and only tests import `*.test.ts` files, `*.test-helper.ts` helpers, and `vitest`. Tests in any group may import `adapters/postgres-js/test-database.test-helper.ts`, which the boundary and `index.ts` rules otherwise forbid. It fails when it scans 0 modules.
 - `.oxlintrc.json` bans the `process`, `Buffer`, and `__dirname` globals in `src/` outside `adapters/` and `dev/cli`.
 - `scripts/check-index-exports.ts` keeps each `index.ts` to named re-exports: no declarations, no `export *`.
 
