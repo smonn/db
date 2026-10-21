@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -13,11 +13,18 @@ import { dirname, isAbsolute, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { main } from "./check-mermaid.ts";
 
-vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }));
+vi.mock("node:child_process", () => ({ spawnSync: vi.fn<typeof spawnSync>() }));
 
 const spawn = vi.mocked(spawnSync);
-const ok = { status: 0 } as ReturnType<typeof spawnSync>;
-const failed = { status: 1 } as ReturnType<typeof spawnSync>;
+const ok: SpawnSyncReturns<string> = {
+  pid: 0,
+  output: [],
+  stdout: "",
+  stderr: "",
+  status: 0,
+  signal: null,
+};
+const failed: SpawnSyncReturns<string> = { ...ok, status: 1 };
 let root: string;
 
 function write(path: string, text: string): void {
@@ -25,8 +32,8 @@ function write(path: string, text: string): void {
   writeFileSync(join(root, path), text);
 }
 
-function argAfter(args: unknown, flag: string): string {
-  const list = args as string[];
+function argAfter(args: readonly string[] | undefined, flag: string): string {
+  const list = args ?? [];
   return list[list.indexOf(flag) + 1] ?? "";
 }
 
@@ -86,7 +93,8 @@ describe("main", () => {
     main();
     const inputs = spawn.mock.calls.map(([, args]) => argAfter(args, "-i"));
     expect(inputs.length).toBeGreaterThan(0);
-    expect(inputs.every((input) => !isAbsolute(input) && input.endsWith(".md"))).toBe(true);
+    expect(inputs.map((input) => isAbsolute(input))).not.toContain(true);
+    expect(inputs.map((input) => input.endsWith(".md"))).not.toContain(false);
   });
 
   test("does nothing when no file has a Mermaid block", () => {

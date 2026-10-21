@@ -32,7 +32,7 @@ export function parseGlossary(text: string): GlossaryEntry[] {
   let current: GlossaryEntry | undefined;
   text.split("\n").forEach((line, index) => {
     const lineNumber = index + 1;
-    const headword = /^\*\*(.+)\*\*:\s*$/.exec(line)?.[1];
+    const headword = /^\*\*(.+)\*\*:\s*$/u.exec(line)?.[1];
     if (headword !== undefined) {
       current = { headword, avoid: [], startLine: lineNumber, endLine: lineNumber };
       entries.push(current);
@@ -44,7 +44,7 @@ export function parseGlossary(text: string): GlossaryEntry[] {
       return;
     }
     current.endLine = lineNumber;
-    const avoid = /^_Avoid_:\s*(.+)$/.exec(line)?.[1];
+    const avoid = /^_Avoid_:\s*(.+)$/u.exec(line)?.[1];
     if (avoid !== undefined) current.avoid = avoid.split(",").map((term) => term.trim());
   });
   return entries;
@@ -64,7 +64,7 @@ export function checkGlossary(entries: GlossaryEntry[]): Problem[] {
 }
 
 function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 export function checkAvoidTerms(file: string, text: string, entries: GlossaryEntry[]): Problem[] {
@@ -72,7 +72,7 @@ export function checkAvoidTerms(file: string, text: string, entries: GlossaryEnt
     entry.avoid.map((term) => ({
       entry,
       term,
-      pattern: new RegExp(`\\b${escapeRegExp(term)}(?:s|es)?\\b`, "i"),
+      pattern: new RegExp(`\\b${escapeRegExp(term)}(?:s|es)?\\b`, "iu"),
     })),
   );
   return text.split("\n").flatMap((line, index) => {
@@ -95,9 +95,9 @@ export function checkAvoidTerms(file: string, text: string, entries: GlossaryEnt
 export function checkHeadwordCase(file: string, text: string, entries: GlossaryEntry[]): Problem[] {
   const headwords = entries.map((entry) => entry.headword).filter((word) => word.includes(" "));
   return text.split("\n").flatMap((line, index) => {
-    const prose = line.replace(/`[^`]*`/g, "code");
+    const prose = line.replaceAll(/`[^`]*`/gu, "code");
     return headwords.flatMap((headword) =>
-      [...prose.matchAll(new RegExp(`\\b(${escapeRegExp(headword)})(?:s|es)?\\b`, "gi"))]
+      [...prose.matchAll(new RegExp(`\\b(${escapeRegExp(headword)})(?:s|es)?\\b`, "giu"))]
         .map((match) => match[1] ?? "")
         .filter((variant) => variant !== headword)
         .map((variant) => ({
@@ -127,10 +127,10 @@ export function checkAdrBody(file: string, text: string): Problem[] {
   const body = lines
     .slice(titleIndex + 1, sectionIndex === -1 ? undefined : sectionIndex)
     .join("\n")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/`[^`]*`/g, "code");
+    .replaceAll(/<!--[\s\S]*?-->/gu, "")
+    .replaceAll(/`[^`]*`/gu, "code");
   // A sentence ends at terminal punctuation followed by whitespace, which skips dots in "v0.1".
-  const sentences = body.split(/(?<=[.!?])\s+/).filter((sentence) => sentence.trim() !== "");
+  const sentences = body.split(/(?<=[.!?])\s+/u).filter((sentence) => sentence.trim() !== "");
   if (sentences.length <= MAX_ADR_SENTENCES) return [];
   return [
     {
@@ -144,7 +144,7 @@ export function checkAdrBody(file: string, text: string): Problem[] {
 export function checkAdrNumbers(files: string[]): Problem[] {
   const firstByNumber = new Map<string, string>();
   return files.flatMap((file) => {
-    const number = /^docs\/adr\/(\d{4})-/.exec(file)?.[1];
+    const number = /^docs\/adr\/(\d{4})-/u.exec(file)?.[1];
     if (number === undefined) return [];
     const first = firstByNumber.get(number);
     if (first === undefined) {
@@ -163,15 +163,17 @@ export function main(cwd = "."): void {
     const text = readFileSync(join(cwd, file), "utf8");
     problems.push(...checkEmDashes(file, text));
     if (file === "README.md" || file === "GLOSSARY.md" || file.startsWith("docs/")) {
-      problems.push(...checkAvoidTerms(file, text, glossary));
-      problems.push(...checkHeadwordCase(file, text, glossary));
+      problems.push(
+        ...checkAvoidTerms(file, text, glossary),
+        ...checkHeadwordCase(file, text, glossary),
+      );
     }
-    if (/^docs\/adr\/\d{4}-[^/]+\.md$/.test(file)) {
+    if (/^docs\/adr\/\d{4}-[^/]+\.md$/u.test(file)) {
       problems.push(...checkAdrBody(file, text));
     }
   }
   // Editor tools can turn a typed `\u2014` escape into the literal character.
-  for (const file of globSync("{scripts,src}/**/*.ts", { cwd }).sort()) {
+  for (const file of globSync("{scripts,src}/**/*.ts", { cwd }).toSorted()) {
     problems.push(...checkEmDashes(file, readFileSync(join(cwd, file), "utf8")));
   }
   for (const { file, line, message } of problems) console.error(`${file}:${line}: ${message}`);

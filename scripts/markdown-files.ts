@@ -9,5 +9,5 @@ export function markdownFiles(cwd = "."): string[] {
   return globSync("**/*.md", {
     cwd,
     exclude: (path) => ["node_modules", ".git", ".claude"].includes(basename(path)),
-  }).sort();
+  }).toSorted();
 }

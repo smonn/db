@@ -290,22 +290,11 @@ v0.1 supports Postgres 18 and newer, and CI runs 18 and, once released, 19. `int
 
 ## Import rules
 
-Once tooling lands, dependency-cruiser will enforce these as CI errors, and its config will replace this list. They are a starting point and may change.
+CI enforces the module boundaries:
 
-1. `runtime/` imports nothing outside `runtime/`.
-2. `runtime/` imports no npm packages.
-3. `adapters/<x>` imports only `runtime/ports` plus its own host package (`postgres`, `node:*`).
-4. Adapters never import other adapters or `dev/`.
-5. `dev/` may import `runtime/` but never `adapters/`, except `dev/cli`, the Node composition root.
-6. `node:*` imports appear only in `adapters/` and `dev/cli`.
-7. Cross-module imports go through the module's `index.ts`.
-8. No cycles.
-9. Non-test code never imports `*.test.ts` files or test helpers.
-
-Oxlint will cover what dependency-cruiser can't:
-
-- `eslint/no-restricted-globals` bans `process`, `Buffer`, and `__dirname` outside `adapters/` and `dev/cli`. That exemption needs per-path overrides, which are not yet verified in Oxlint.
-- `index.ts` holds only named re-exports: no declarations, no `export *`. If no Oxlint rule can express this, a check under `scripts/` does.
+- `scripts/check-imports.ts` holds the dependency-cruiser rules, each with a one-line comment: `runtime/` stays self-contained and free of npm packages, an adapter imports only `runtime/ports` and its host package, only `dev/cli` wires in adapters, `node:*` stays in host code, cross-module imports go through `index.ts`, no cycles, and only tests import `*.test.ts` files and `*.test-helper.ts` helpers. It fails when it scans 0 modules.
+- `.oxlintrc.json` bans the `process`, `Buffer`, and `__dirname` globals in `src/` outside `adapters/` and `dev/cli`.
+- `scripts/check-index-exports.ts` keeps each `index.ts` to named re-exports: no declarations, no `export *`.
 
 oxfmt formats TypeScript and Markdown. knip reports unused files, exports, and dependencies.
 

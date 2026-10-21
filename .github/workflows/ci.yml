@@ -24,7 +24,6 @@ jobs:
         with:
           cache: true
       - run: pnpm format:check
-      - run: pnpm test
       - run: pnpm check:docs
 
   mermaid:
@@ -36,3 +35,55 @@ jobs:
         with:
           cache: true
       - run: pnpm check:mermaid
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-24.04
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          cache: true
+      - run: pnpm typecheck
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          cache: true
+      - run: pnpm lint
+      - run: pnpm check:imports
+      - run: pnpm check:index
+      - run: pnpm knip
+
+  test:
+    name: Test
+    runs-on: ubuntu-24.04
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          cache: true
+      - run: pnpm coverage
+
+  # The main ruleset requires only this job, so adding or renaming a job needs no ruleset change.
+  required:
+    name: Required
+    if: ${{ always() }}
+    needs: [docs, mermaid, typecheck, lint, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$NEEDS"
+          jq -e 'all(.[]; .result == "success")' <<< "$NEEDS"

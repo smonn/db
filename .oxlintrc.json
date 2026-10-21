@@ -1,0 +1,45 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "pedantic": "error",
+    "perf": "error"
+  },
+  "options": {
+    "typeAware": true,
+    "denyWarnings": true,
+    "reportUnusedDisableDirectives": "error"
+  },
+  "rules": {
+    "typescript/consistent-type-definitions": ["error", "type"],
+    "typescript/prefer-readonly-parameter-types": "off",
+    "unicorn/no-empty-file": "off"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts"],
+      "rules": {
+        "eslint/max-lines-per-function": "off"
+      }
+    },
+    {
+      "files": ["src/**"],
+      "rules": {
+        "eslint/no-restricted-globals": [
+          "error",
+          { "name": "process", "message": "Only adapters/ and dev/cli touch Node globals." },
+          { "name": "Buffer", "message": "Only adapters/ and dev/cli touch Node globals." },
+          { "name": "__dirname", "message": "Only adapters/ and dev/cli touch Node globals." }
+        ]
+      }
+    },
+    {
+      "files": ["src/adapters/**", "src/dev/cli/**"],
+      "rules": {
+        "eslint/no-restricted-globals": "off"
+      }
+    }
+  ]
+}

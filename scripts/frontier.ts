@@ -18,22 +18,13 @@ export function isTakeable(child: Child): boolean {
   return child.state === "open" && child.assignees.length === 0;
 }
 
-export function pickFrontier(
-  children: Child[],
-  hasOpenBlocker: (ticket: number) => boolean,
-): Child[] {
-  return children.filter(isTakeable).filter((child) => !hasOpenBlocker(child.number));
+export function pickFrontier(tickets: Child[], blocked: (ticket: number) => boolean): Child[] {
+  return tickets.filter((child) => isTakeable(child) && !blocked(child.number));
 }
 
 export function formatTicket(child: Child): string {
   const type = child.labels.find((label) => label.startsWith("wayfinder:"));
-  return `#${child.number} ${child.title}${type ? ` [${type}]` : ""}`;
-}
-
-function ghApi(path: string): unknown {
-  const result = spawnSync("gh", ["api", "--paginate", "--slurp", path], { encoding: "utf8" });
-  if (result.status !== 0) throw new Error(`gh api ${path} failed:\n${result.stderr.trim()}`);
-  return (JSON.parse(result.stdout) as unknown[][]).flat();
+  return `#${child.number} ${child.title}${type === undefined ? "" : ` [${type}]`}`;
 }
 
 type ApiIssue = {
@@ -44,8 +35,16 @@ type ApiIssue = {
   assignees: { login: string }[];
 };
 
+function ghApi(path: string): ApiIssue[] {
+  const result = spawnSync("gh", ["api", "--paginate", "--slurp", path], { encoding: "utf8" });
+  if (result.status !== 0) throw new Error(`gh api ${path} failed:\n${result.stderr.trim()}`);
+  // oxlint-disable-next-line typescript/no-unsafe-assignment -- gh returns GitHub's documented issue shape.
+  const pages: ApiIssue[][] = JSON.parse(result.stdout);
+  return pages.flat();
+}
+
 function children(map: number): Child[] {
-  return (ghApi(`repos/{owner}/{repo}/issues/${map}/sub_issues`) as ApiIssue[]).map((issue) => ({
+  return ghApi(`repos/{owner}/{repo}/issues/${map}/sub_issues`).map((issue) => ({
     number: issue.number,
     title: issue.title,
     state: issue.state,
@@ -56,10 +55,10 @@ function children(map: number): Child[] {
 
 function hasOpenBlocker(ticket: number): boolean {
   const blockers = ghApi(`repos/{owner}/{repo}/issues/${ticket}/dependencies/blocked_by`);
-  return (blockers as ApiIssue[]).some((blocker) => blocker.state === "open");
+  return blockers.some((blocker) => blocker.state === "open");
 }
 
-export function main(arg = process.argv[2]): void {
+export function main(arg: string | undefined = process.argv[2]): void {
   const map = Number(arg);
   if (!Number.isInteger(map) || map <= 0) {
     console.error("Usage: node scripts/frontier.ts <map issue number>");
@@ -67,7 +66,11 @@ export function main(arg = process.argv[2]): void {
   }
   try {
     const frontier = pickFrontier(children(map), hasOpenBlocker);
-    console.log(frontier.length ? frontier.map(formatTicket).join("\n") : "No frontier tickets.");
+    console.log(
+      frontier.length > 0
+        ? frontier.map((child) => formatTicket(child)).join("\n")
+        : "No frontier tickets.",
+    );
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);

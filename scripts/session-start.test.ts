@@ -1,31 +1,61 @@
-import * as childProcess from "node:child_process";
 import { execFileSync } from "node:child_process";
+import type { SpawnSyncOptionsWithStringEncoding } from "node:child_process";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { main, planSync } from "./session-start.ts";
 
-type Spawn = typeof childProcess.spawnSync;
+// A spawn that fails to start returns null output, which SpawnSyncReturns doesn't model.
+type Result = { status: number | null; stdout: string | null; stderr: string | null };
+type Spawn = (
+  command: string,
+  args: string[],
+  options: SpawnSyncOptionsWithStringEncoding,
+) => Result;
 
 const mocks = vi.hoisted(() => ({
-  pnpm: vi.fn(),
+  pnpm: vi.fn<Spawn>(),
   failMerge: { value: false },
 }));
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
-  return {
-    ...actual,
-    spawnSync: ((command, args, options) => {
-      if (command === "pnpm") return mocks.pnpm(command, args, options);
-      if (mocks.failMerge.value && (args as string[])[0] === "merge") {
-        return { status: 1, stdout: "", stderr: "merge blew up\n" };
-      }
-      return actual.spawnSync(command, args as string[], options as never);
-    }) as Spawn,
+  const spawnSync: Spawn = (command, args, options) => {
+    if (command === "pnpm") return mocks.pnpm(command, args, options);
+    if (mocks.failMerge.value && args[0] === "merge") {
+      return { status: 1, stdout: "", stderr: "merge blew up\n" };
+    }
+    return actual.spawnSync(command, args, options);
   };
+  return { ...actual, spawnSync };
 });
+
+function git(cwd: string, ...args: string[]): string {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@example.com",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@example.com",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_SYSTEM: "/dev/null",
+    },
+  }).trim();
+}
+
+function commit(cwd: string, file: string): void {
+  writeFileSync(join(cwd, file), file);
+  git(cwd, "add", file);
+  git(cwd, "commit", "--quiet", "-m", file);
+}
+
+function output(): string[] {
+  return vi.mocked(console.log).mock.calls.map(([line]) => String(line));
+}
 
 describe("planSync", () => {
   test("does nothing when the branch is not behind", () => {
@@ -61,34 +91,8 @@ describe("main", () => {
   let origin: string;
   let clone: string;
 
-  function git(cwd: string, ...args: string[]): string {
-    return execFileSync("git", args, {
-      cwd,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        GIT_AUTHOR_NAME: "t",
-        GIT_AUTHOR_EMAIL: "t@example.com",
-        GIT_COMMITTER_NAME: "t",
-        GIT_COMMITTER_EMAIL: "t@example.com",
-        GIT_CONFIG_GLOBAL: "/dev/null",
-        GIT_CONFIG_SYSTEM: "/dev/null",
-      },
-    }).trim();
-  }
-
-  function commit(cwd: string, file: string): void {
-    writeFileSync(join(cwd, file), file);
-    git(cwd, "add", file);
-    git(cwd, "commit", "--quiet", "-m", file);
-  }
-
   function pushFromOrigin(file: string): void {
     commit(origin, file);
-  }
-
-  function output(): string[] {
-    return vi.mocked(console.log).mock.calls.map(([line]) => String(line));
   }
 
   beforeEach(() => {
