@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # release-please builds releases from PR titles

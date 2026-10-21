@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Relative `.ts` imports, with tsdown as the only emitter
