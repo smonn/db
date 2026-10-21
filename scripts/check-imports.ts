@@ -25,14 +25,16 @@ const NPM: DependencyType[] = [
 ];
 const TEST_ONLY = String.raw`\.test(-helper)?\.ts$`;
 const VITEST = "(^|/)node_modules/vitest/";
+// Integration tests in every group need a real database. no-test-imports keeps it out of non-test code.
+const TEST_DATABASE = String.raw`^src/adapters/postgres-js/test-database\.test-helper\.ts$`;
 
 export const importRules: IForbiddenRuleType[] = [
   {
     name: "runtime-stays-in-runtime",
-    comment: "runtime/ imports nothing outside runtime/.",
+    comment: "runtime/ imports nothing outside runtime/ but the test database helper.",
     severity: "error",
     from: { path: "^src/runtime/" },
-    to: { path: "^src/", pathNot: "^src/runtime/" },
+    to: { path: "^src/", pathNot: ["^src/runtime/", TEST_DATABASE] },
   },
   {
     name: "runtime-no-npm",
@@ -44,10 +46,10 @@ export const importRules: IForbiddenRuleType[] = [
   {
     name: "adapter-imports-ports-only",
     comment:
-      "An adapter imports only runtime/ports and its own files, never another adapter or dev/.",
+      "An adapter imports only runtime/ports, its own files, and the test database helper, never another adapter or dev/.",
     severity: "error",
     from: { path: "^src/adapters/([^/]+)/" },
-    to: { path: "^src/", pathNot: ["^src/runtime/ports/", "^src/adapters/$1/"] },
+    to: { path: "^src/", pathNot: ["^src/runtime/ports/", "^src/adapters/$1/", TEST_DATABASE] },
   },
   {
     name: "postgres-js-adapter-host-package",
@@ -65,10 +67,11 @@ export const importRules: IForbiddenRuleType[] = [
   },
   {
     name: "dev-no-adapters",
-    comment: "dev/ never imports adapters/, except dev/cli, the Node composition root.",
+    comment:
+      "dev/ never imports adapters/, except dev/cli, the Node composition root, and the test database helper.",
     severity: "error",
     from: { path: "^src/dev/", pathNot: "^src/dev/cli/" },
-    to: { path: "^src/adapters/" },
+    to: { path: "^src/adapters/", pathNot: TEST_DATABASE },
   },
   {
     name: "node-builtins-in-host-code",
@@ -79,10 +82,14 @@ export const importRules: IForbiddenRuleType[] = [
   },
   {
     name: "cross-module-through-index",
-    comment: "An import from another module goes through that module's index.ts.",
+    comment:
+      "An import from another module goes through that module's index.ts, except the test database helper.",
     severity: "error",
     from: { path: "^src/([^/]+)/([^/]+)/" },
-    to: { path: "^src/[^/]+/[^/]+/", pathNot: ["^src/$1/$2/", "^src/[^/]+/[^/]+/index\\.ts$"] },
+    to: {
+      path: "^src/[^/]+/[^/]+/",
+      pathNot: ["^src/$1/$2/", "^src/[^/]+/[^/]+/index\\.ts$", TEST_DATABASE],
+    },
   },
   {
     name: "no-cycles",
