@@ -1,5 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/runtime/ports/index.ts", "src/adapters/postgres-js/index.ts"],
+  "entry": [
+    "src/runtime/definition/index.ts",
+    "src/runtime/ports/index.ts",
+    "src/runtime/query/index.ts",
+    "src/runtime/sql/index.ts",
+    "src/adapters/postgres-js/index.ts"
+  ],
   "project": ["src/**/*.ts", "scripts/**/*.ts"]
 }
