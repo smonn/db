@@ -24,6 +24,7 @@ const NPM: DependencyType[] = [
   "npm-unknown",
 ];
 const TEST_ONLY = String.raw`\.test(-helper)?\.ts$`;
+const VITEST = "(^|/)node_modules/vitest/";
 
 export const importRules: IForbiddenRuleType[] = [
   {
@@ -38,7 +39,7 @@ export const importRules: IForbiddenRuleType[] = [
     comment: "runtime/ imports no npm packages.",
     severity: "error",
     from: { path: "^src/runtime/" },
-    to: { dependencyTypes: NPM },
+    to: { dependencyTypes: NPM, pathNot: VITEST },
   },
   {
     name: "adapter-imports-ports-only",
@@ -53,14 +54,14 @@ export const importRules: IForbiddenRuleType[] = [
     comment: "adapters/postgres-js imports no npm package but postgres.",
     severity: "error",
     from: { path: "^src/adapters/postgres-js/" },
-    to: { dependencyTypes: NPM, pathNot: "(^|/)node_modules/postgres/" },
+    to: { dependencyTypes: NPM, pathNot: ["(^|/)node_modules/postgres/", VITEST] },
   },
   {
     name: "adapter-no-npm",
     comment: "Other adapters import no npm packages.",
     severity: "error",
     from: { path: "^src/adapters/", pathNot: "^src/adapters/postgres-js/" },
-    to: { dependencyTypes: NPM },
+    to: { dependencyTypes: NPM, pathNot: VITEST },
   },
   {
     name: "dev-no-adapters",
@@ -98,6 +99,13 @@ export const importRules: IForbiddenRuleType[] = [
     to: { path: TEST_ONLY },
   },
   {
+    name: "vitest-in-tests-only",
+    comment: "Only tests and test helpers import vitest, which the npm rules above let through.",
+    severity: "error",
+    from: { pathNot: TEST_ONLY },
+    to: { path: VITEST },
+  },
+  {
     name: "no-unresolvable",
     comment: "Every import resolves, so a typo can't slip past the rules above.",
     severity: "error",
@@ -111,6 +119,8 @@ export async function checkImports(baseDir: string): Promise<Problem[]> {
     // Through a symlinked baseDir, such as macOS's /var, resolved paths leave src/ and match no rule.
     baseDir: realpathSync(baseDir),
     parser: "swc",
+    // Rules judge only src/'s own imports, so the cruise stops at a package's entry.
+    doNotFollow: { path: "node_modules" },
     validate: true,
     ruleSet: { forbidden: importRules },
   });

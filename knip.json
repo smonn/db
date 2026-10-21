@@ -1,5 +1,5 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/runtime/ports/index.ts"],
+  "entry": ["src/runtime/ports/index.ts", "src/adapters/postgres-js/index.ts"],
   "project": ["src/**/*.ts", "scripts/**/*.ts"]
 }
