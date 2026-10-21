@@ -31,28 +31,28 @@ export function planSync({ behind, ahead, dirty }: BranchState): SyncPlan {
   };
 }
 
-function run(command: string, args: string[]): { ok: boolean; out: string } {
-  const result = spawnSync(command, args, { encoding: "utf8" });
+function run(cwd: string, command: string, args: string[]): { ok: boolean; out: string } {
+  const result = spawnSync(command, args, { encoding: "utf8", cwd });
   return { ok: result.status === 0, out: `${result.stdout ?? ""}${result.stderr ?? ""}`.trim() };
 }
 
-function count(range: string): number {
-  return Number(run("git", ["rev-list", "--count", range]).out);
+function count(cwd: string, range: string): number {
+  return Number(run(cwd, "git", ["rev-list", "--count", range]).out);
 }
 
-function syncWithMain(): void {
-  if (!run("git", ["fetch", "--quiet", "origin", "main"]).ok) {
+function syncWithMain(cwd: string): void {
+  if (!run(cwd, "git", ["fetch", "--quiet", "origin", "main"]).ok) {
     console.log("Could not fetch origin/main; the branch may be behind it.");
     return;
   }
   const plan = planSync({
-    behind: count("HEAD..origin/main"),
-    ahead: count("origin/main..HEAD"),
-    dirty: run("git", ["status", "--porcelain"]).out !== "",
+    behind: count(cwd, "HEAD..origin/main"),
+    ahead: count(cwd, "origin/main..HEAD"),
+    dirty: run(cwd, "git", ["status", "--porcelain"]).out !== "",
   });
   if (plan.kind === "report") console.log(plan.message);
   if (plan.kind === "fast-forward") {
-    const merge = run("git", ["merge", "--ff-only", "--quiet", "origin/main"]);
+    const merge = run(cwd, "git", ["merge", "--ff-only", "--quiet", "origin/main"]);
     console.log(
       merge.ok
         ? `Fast-forwarded this branch by ${commits(plan.behind)} to origin/main.`
@@ -61,9 +61,9 @@ function syncWithMain(): void {
   }
 }
 
-function main(): void {
-  syncWithMain();
-  const install = run("pnpm", ["install", "--frozen-lockfile"]);
+export function main(cwd = process.cwd()): void {
+  syncWithMain(cwd);
+  const install = run(cwd, "pnpm", ["install", "--frozen-lockfile"]);
   if (!install.ok)
     console.log(`pnpm install failed:\n${install.out.split("\n").slice(-10).join("\n")}`);
 }
