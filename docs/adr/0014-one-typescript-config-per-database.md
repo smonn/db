@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # One TypeScript config per Database, loaded by plain import

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Reset only a marked Dev database

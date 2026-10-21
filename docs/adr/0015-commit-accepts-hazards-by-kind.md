@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Commit accepts Hazards by kind
