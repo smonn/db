@@ -6,6 +6,17 @@
  * Run it with `node scripts/frontier.ts [map issue number]` from a clone with `gh` signed in.
  */
 import { spawnSync } from "node:child_process";
+import {
+  array,
+  field,
+  literal,
+  number,
+  optionalField,
+  parseJson,
+  record,
+  string,
+  type Reader,
+} from "./github-json.ts";
 
 export type Child = {
   number: number;
@@ -35,16 +46,44 @@ type ApiIssue = {
   labels: { name: string }[];
   assignees: { login: string }[];
   user: { login: string };
-  pull_request?: object;
-  sub_issues_summary?: { total: number };
+  pull_request?: object | undefined;
+  sub_issues_summary?: { total: number } | undefined;
 };
+
+const readName: Reader<{ name: string }> = (value, path) => ({
+  name: field(record(value, path), "name", string, path),
+});
+
+const readLogin: Reader<{ login: string }> = (value, path) => ({
+  login: field(record(value, path), "login", string, path),
+});
+
+const readSummary: Reader<{ total: number }> = (value, path) => ({
+  total: field(record(value, path), "total", number, path),
+});
+
+const readIssue: Reader<ApiIssue> = (value, path) => {
+  const issue = record(value, path);
+  return {
+    number: field(issue, "number", number, path),
+    title: field(issue, "title", string, path),
+    state: field(issue, "state", literal("open", "closed"), path),
+    labels: field(issue, "labels", array(readName), path),
+    assignees: field(issue, "assignees", array(readLogin), path),
+    user: field(issue, "user", readLogin, path),
+    pull_request: optionalField(issue, "pull_request", record, path),
+    sub_issues_summary: optionalField(issue, "sub_issues_summary", readSummary, path),
+  };
+};
+
+export function parseIssuePages(text: string, source: string): ApiIssue[] {
+  return array(array(readIssue))(parseJson(text, source), "$").flat();
+}
 
 function ghApi(path: string): ApiIssue[] {
   const result = spawnSync("gh", ["api", "--paginate", "--slurp", path], { encoding: "utf8" });
   if (result.status !== 0) throw new Error(`gh api ${path} failed:\n${result.stderr.trim()}`);
-  // oxlint-disable-next-line typescript/no-unsafe-assignment -- gh returns GitHub's documented issue shape.
-  const pages: ApiIssue[][] = JSON.parse(result.stdout);
-  return pages.flat();
+  return parseIssuePages(result.stdout, `gh api ${path}`);
 }
 
 function toChild(issue: ApiIssue): Child {
