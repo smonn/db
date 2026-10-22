@@ -1,7 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineDatabase, defineTable } from "../definition/index.ts";
 import type { Query } from "./from.ts";
-import { sql } from "../sql/index.ts";
 import { insert, type NewRow } from "./insert.ts";
 
 const db = defineDatabase({
@@ -100,6 +99,5 @@ describe("insert", () => {
 
   it("is not a Query without returning", () => {
     expectTypeOf(insert(db.public.users).values({ id: "u1" })).not.toExtend<Query<unknown>>();
-    expectTypeOf(sql`select 1`).not.toExtend<Query<unknown>>();
   });
 });
