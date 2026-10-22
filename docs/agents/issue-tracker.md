@@ -4,7 +4,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 ## Conventions
 
-- **Create an issue**: write the body to a file, then `gh issue create --title "..." --body-file <file>`.
+- **Create an issue**: write the body to a file, then `gh issue create --title "..." --milestone "<title>" --body-file <file>`.
 - **Write an issue body**: link the spec the work follows in Problem: an ADR, an issue comment, or a prototype file as `<branch>:<path>`. When issues split an ADR's consequences, give each consequence an owning issue, so none falls between them.
 - **Read an issue**: `gh issue view <number> --json number,title,body,labels,comments`.
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
