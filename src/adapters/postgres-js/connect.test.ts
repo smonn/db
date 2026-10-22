@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { postgresJsConnect } from "./connect.ts";
 import { useTestDatabase } from "./test-database.test-helper.ts";
 
 const db = useTestDatabase();
@@ -27,6 +28,22 @@ describe("postgresJsConnect", () => {
       }
     } finally {
       await db.driver.execute(`drop database "${name}" with (force)`);
+    }
+  });
+
+  it("keeps a caller's DateStyle order", async () => {
+    const connect = postgresJsConnect(String(process.env["DATABASE_URL"]), {
+      onnotice: () => {},
+      connection: { DateStyle: "ISO, DMY" },
+    });
+    const connection = await connect(db.name);
+    try {
+      const { rows } = await connection.driver.query(
+        "select current_setting('datestyle') as style",
+      );
+      expect(rows).toStrictEqual([{ style: "ISO, DMY" }]);
+    } finally {
+      await connection.close();
     }
   });
 

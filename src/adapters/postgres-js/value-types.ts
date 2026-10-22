@@ -51,24 +51,22 @@ function parseTimestamp(text: string): Date {
     Number(month) - 1,
     Number(day),
   );
+  // Subtracting the offset here, not from a finished Date, keeps a local time past a Date's range
+  // readable when its instant is inside it.
+  const direction = sign === "-" ? -1 : 1;
   value.setUTCHours(
-    Number(hours),
-    Number(minutes),
-    Number(seconds),
+    Number(hours) - direction * Number(offsetHours ?? 0),
+    Number(minutes) - direction * Number(offsetMinutes ?? 0),
+    Number(seconds) - direction * Number(offsetSeconds ?? 0),
     Number(fraction.padEnd(3, "0").slice(0, 3)),
   );
-  const offset =
-    (Number(offsetHours ?? 0) * 3600 +
-      Number(offsetMinutes ?? 0) * 60 +
-      Number(offsetSeconds ?? 0)) *
-    1000;
-  const parsed = new Date(value.getTime() - (sign === "-" ? -offset : offset));
-  if (Number.isNaN(parsed.getTime())) throw new Error(`Can't read timestamp "${text}" as a Date`);
-  return parsed;
+  if (Number.isNaN(value.getTime())) throw new Error(`Can't read timestamp "${text}" as a Date`);
+  return value;
 }
 
 // toISOString writes BC and five-digit years as `-000043` and `+010000`, which Postgres refuses.
-// A timestamp ignores the `+00`, and a timestamptz reads the instant in UTC.
+// The text names a UTC instant. A Date param reaches a timestamp column as a timestamptz, cast
+// in the session zone (#114).
 function formatTimestamp(value: Date): string {
   const iso = value.toISOString();
   const time = iso.indexOf("T");
@@ -94,14 +92,12 @@ const timestamptz: postgres.PostgresType<Date> = {
   parse: parseTimestamp,
 };
 
-const hexBytea = /^\\x(?:[\da-f]{2})*$/u;
-
 const bytea: postgres.PostgresType<Uint8Array> = {
   to: 17,
   from: [17],
   serialize: (value) => `\\x${Buffer.from(value).toString("hex")}`,
   parse: (text: string) => {
-    if (!hexBytea.test(text)) throw new Error(`Can't read bytea "${text}" as hex`);
+    if (!text.startsWith("\\x")) throw new Error(`Can't read bytea "${text}" as hex`);
     return Uint8Array.from(Buffer.from(text.slice(2), "hex"));
   },
 };
@@ -123,7 +119,10 @@ export const postgresJsTypes: {
 
 /**
  * The postgres.js `connection` option that `postgresJsTypes` reads by. It sends the output
- * settings at startup, which override the database's and role's defaults.
+ * settings at startup, which override the database's and role's defaults. `DateStyle: "ISO"`
+ * names no date order, so a database-level `DMY` falls back to the server default (`MDY`). That
+ * changes only how raw SQL reads an ambiguous date such as `'04/03/2024'`; spread this and set
+ * `DateStyle: "ISO, DMY"` to keep the order.
  */
 export const postgresJsConnection: { readonly DateStyle: "ISO"; readonly bytea_output: "hex" } = {
   DateStyle: "ISO",
