@@ -65,8 +65,7 @@ function parseTimestamp(text: string): Date {
 }
 
 // toISOString writes BC and five-digit years as `-000043` and `+010000`, which Postgres refuses.
-// The text names a UTC instant. A Date param reaches a timestamp column as a timestamptz, cast
-// in the session zone (#114).
+// The text names a UTC instant, and a timestamp column ignores the `+00`.
 function formatTimestamp(value: Date): string {
   const iso = value.toISOString();
   const time = iso.indexOf("T");
