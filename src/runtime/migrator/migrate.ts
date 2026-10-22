@@ -54,7 +54,7 @@ export async function migrate({
     );
     const pending = migrations.slice(rows.length);
     if (pending.length > 0) {
-      await refuseDevDatabase(session, schema, trackingSchema);
+      await refuseDevDatabase(session, trackingSchema);
     }
 
     const applied: string[] = [];
@@ -73,7 +73,8 @@ export async function migrate({
   });
 }
 
-async function refuseDevDatabase(session: Queryable, schema: string, name: string): Promise<void> {
+async function refuseDevDatabase(session: Queryable, name: string): Promise<void> {
+  const schema = quoteTrackingSchema(name);
   const {
     rows: [table],
   } = await session.query("select to_regclass($1) is not null as present", [`${schema}.current`]);

@@ -1,3 +1,4 @@
+import { quoteIdentifier } from "../../runtime/internal/index.ts";
 import type { Connect, Driver } from "../../runtime/ports/index.ts";
 
 export type ShadowDatabases = {
@@ -28,7 +29,7 @@ async function withThrowawayDatabase<T>(
   fn: (database: Driver) => Promise<T>,
 ): Promise<T> {
   const name = `${prefix}${Math.floor(Date.now() / 1000)}_${randomHex(4)}`;
-  await driver.execute(`create database ${name} template template0`);
+  await driver.execute(`create database ${quoteIdentifier(name)} template template0`);
   try {
     const connection = await connect(name);
     try {
@@ -37,7 +38,7 @@ async function withThrowawayDatabase<T>(
       await connection.close();
     }
   } finally {
-    await driver.execute(`drop database if exists ${name} with (force)`);
+    await driver.execute(`drop database if exists ${quoteIdentifier(name)} with (force)`);
   }
 }
 
