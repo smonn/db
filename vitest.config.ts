@@ -12,7 +12,7 @@ const env =
 
 // A test file that imports useTestDatabase runs against Postgres, which slows down when several
 // worktrees run their own test databases at once (#191).
-const usesDatabase = /^import .* from ".*\/test-database\.test-helper\.ts";$/mu;
+const usesDatabase = /^(?:import .*|\}) from ".*\/test-database\.test-helper\.ts";$/mu;
 const testFiles = globSync("{src,scripts}/**/*.test.ts", { cwd: import.meta.dirname });
 const databaseTests = testFiles.filter((file) =>
   usesDatabase.test(readFileSync(new URL(file, import.meta.url), "utf8")),
