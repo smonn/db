@@ -1,22 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { migrationHash } from "../internal/index.ts";
 import type { MigrationFile, MigrationSource } from "../ports/index.ts";
+import { chain } from "./migration-files.test-helper.ts";
 import { verify } from "./verify.ts";
-
-async function chain(...files: [filename: string, body: string][]): Promise<MigrationFile[]> {
-  const result: MigrationFile[] = [];
-  let previous: string | undefined;
-  for (const [filename, body] of files) {
-    // oxlint-disable-next-line eslint/no-await-in-loop -- each hash covers the one before it.
-    const hash = await migrationHash(previous, body);
-    result.push({
-      filename,
-      content: `--! Previous: ${previous ?? "-"}\n--! Hash: ${hash}\n\n${body}`,
-    });
-    previous = hash;
-  }
-  return result;
-}
 
 function source(files: readonly MigrationFile[]): MigrationSource {
   return { list: () => Promise.resolve(files) };
