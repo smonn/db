@@ -1,0 +1,129 @@
+/**
+ * Oxlint JS plugin with the repo's own rules, loaded through `jsPlugins` in `.oxlintrc.json`, so
+ * `pnpm lint` runs them in CI.
+ *
+ * - `smonn/sql-interpolation`: a `${...}` in a template literal passed straight to `query`,
+ *   `unsafe`, or `execute` must be quoted with `quoteIdentifier` or be a module-level constant.
+ * - `smonn/required-brand`: an exported type has no optional property whose key starts with `~`.
+ */
+import type { RuleTester } from "oxlint/plugins-dev";
+
+type Rule = Parameters<RuleTester["run"]>[1];
+type Context = Parameters<Extract<Rule, { create: unknown }>["create"]>[0];
+type Node = Parameters<Context["sourceCode"]["getScope"]>[0];
+
+const SQL_METHODS = new Set(["query", "unsafe", "execute"]);
+// quoteTrackingSchema validates the name, then quotes it with quoteIdentifier.
+const QUOTERS = new Set(["quoteIdentifier", "quoteTrackingSchema"]);
+
+function calleeName(node: Node): string | undefined {
+  if (node.type === "Identifier") return node.name;
+  if (node.type === "MemberExpression" && !node.computed && node.property.type === "Identifier") {
+    return node.property.name;
+  }
+  return undefined;
+}
+
+function isQuoted(node: Node, context: Context, seen: Set<Node>): boolean {
+  if (node.type === "CallExpression") {
+    const name = calleeName(node.callee);
+    return name !== undefined && QUOTERS.has(name);
+  }
+  if (node.type !== "Identifier" || seen.has(node)) return false;
+  seen.add(node);
+  for (let scope = context.sourceCode.getScope(node); scope !== null; scope = scope.upper) {
+    const variable = scope.set.get(node.name);
+    if (variable === undefined) continue;
+    const [definition] = variable.defs;
+    if (
+      variable.defs.length !== 1 ||
+      definition?.type !== "Variable" ||
+      definition.parent?.type !== "VariableDeclaration" ||
+      definition.parent.kind !== "const" ||
+      definition.node.type !== "VariableDeclarator"
+    ) {
+      return false;
+    }
+    if (variable.scope.type === "module") return true;
+    const init = definition.node.init;
+    return init !== null && isQuoted(init, context, seen);
+  }
+  return false;
+}
+
+const sqlInterpolation: Rule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Quote identifiers and bind values in SQL passed as a template literal" },
+  },
+  create(context) {
+    return {
+      CallExpression(node) {
+        const name = calleeName(node.callee);
+        const [text] = node.arguments;
+        if (name === undefined || !SQL_METHODS.has(name) || text?.type !== "TemplateLiteral") {
+          return;
+        }
+        for (const expression of text.expressions) {
+          if (isQuoted(expression, context, new Set())) continue;
+          context.report({
+            node: expression,
+            message: `Quote this identifier with quoteIdentifier, or bind the value as a parameter of ${name}`,
+          });
+        }
+      },
+    };
+  },
+};
+
+function isExported(declaration: Node, name: string, program: Node): boolean {
+  if (declaration.parent.type === "ExportNamedDeclaration") return true;
+  if (program.type !== "Program") return false;
+  return program.body.some(
+    (statement) =>
+      statement.type === "ExportNamedDeclaration" &&
+      statement.source === null &&
+      statement.specifiers.some(
+        (specifier) => specifier.local.type === "Identifier" && specifier.local.name === name,
+      ),
+  );
+}
+
+function keyName(key: Node): string | undefined {
+  if (key.type === "Identifier") return key.name;
+  if (key.type === "Literal" && typeof key.value === "string") return key.value;
+  return undefined;
+}
+
+const requiredBrand: Rule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Require brand properties, whose keys start with ~, on exported types" },
+  },
+  create(context) {
+    return {
+      TSPropertySignature(node) {
+        const name = keyName(node.key);
+        if (!node.optional || name?.startsWith("~") !== true) return;
+        let declaration: Node = node;
+        while (
+          declaration.type !== "TSTypeAliasDeclaration" &&
+          declaration.type !== "TSInterfaceDeclaration"
+        ) {
+          if (declaration.parent === null) return;
+          declaration = declaration.parent;
+        }
+        if (!isExported(declaration, declaration.id.name, context.sourceCode.ast)) return;
+        context.report({
+          node,
+          message: `Make "${name}" required: an optional brand lets a wider type stand in for ${declaration.id.name}`,
+        });
+      },
+    };
+  },
+};
+
+export default {
+  meta: { name: "smonn" },
+  rules: { "sql-interpolation": sqlInterpolation, "required-brand": requiredBrand },
+};
