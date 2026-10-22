@@ -3,7 +3,7 @@ import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-h
 import { defineDatabase, defineTable } from "../definition/index.ts";
 import { createClient } from "./client.ts";
 import { sql } from "../sql/index.ts";
-import { from, type Statement } from "./from.ts";
+import { and, from, not, or, type Statement } from "./from.ts";
 import { insert } from "./insert.ts";
 
 const testDatabase = useTestDatabase();
@@ -43,6 +43,32 @@ describe("client.all", () => {
       return createClient(tx).all(from(notes.public.notes));
     });
     expect(rows).toStrictEqual([{ body: "draft" }]);
+  });
+
+  it("filters with where, and, or, and not", async () => {
+    await testDatabase.driver.execute(`
+      create table public.filtered (id text not null, email text);
+      insert into public.filtered values ('u1', 'a@example.com'), ('u2', null), ('u3', 'c@example.com');
+    `);
+    const filtered = defineDatabase({
+      public: { filtered: defineTable((c) => ({ id: c.text().notNull(), email: c.text() })) },
+    });
+    const users = from(filtered.public.filtered);
+    const ids = async (query: typeof users) => (await client.all(query)).map((row) => row.id);
+
+    expect(await ids(users.where((u) => u.id.eq("u2")))).toStrictEqual(["u2"]);
+    expect(await ids(users.where((u) => u.email.isNull()))).toStrictEqual(["u2"]);
+    expect(await ids(users.where((u) => and(u.id.gt("u1"), u.email.isNotNull())))).toStrictEqual([
+      "u3",
+    ]);
+    expect(await ids(users.where((u) => or(u.id.eq("u1"), u.id.eq("u3"))))).toStrictEqual([
+      "u1",
+      "u3",
+    ]);
+    expect(await ids(users.where((u) => not(u.id.eq("u1"))))).toStrictEqual(["u2", "u3"]);
+    expect(
+      await ids(users.where((u) => u.id.gt("u1")).where((u) => u.email.isNotNull())),
+    ).toStrictEqual(["u3"]);
   });
 });
 
