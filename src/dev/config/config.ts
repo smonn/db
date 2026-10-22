@@ -21,6 +21,23 @@ const KEYS = new Set(["definition", "migrations", "url", "trackingSchema"]);
 
 /** Checks a config file's default export, naming the file and what is wrong with it. */
 export function parseConfig(value: unknown, file: string): LoadedConfig {
+  const { url, ...rest } = readFields(value, file);
+  if (url === undefined || url === "") {
+    throw new Error(
+      `${file}: url is ${url === "" ? "empty" : "undefined"}; set the environment variable it reads, such as DATABASE_URL`,
+    );
+  }
+  if (typeof url !== "string") throw new Error(`${file}: url must be a string`);
+  return { ...rest, url };
+}
+
+/** Like `parseConfig`, but ignores `url`, for commands that never connect. */
+export function parseOfflineConfig(value: unknown, file: string): Omit<Config, "url"> {
+  const { url: _url, ...rest } = readFields(value, file);
+  return rest;
+}
+
+function readFields(value: unknown, file: string): Omit<Config, "url"> & { readonly url: unknown } {
   if (typeof value !== "object" || value === null) {
     throw new Error(`${file} must export defineConfig({ ... }) as its default export`);
   }
@@ -30,12 +47,6 @@ export function parseConfig(value: unknown, file: string): LoadedConfig {
   const definition = requiredString(file, fields, "definition");
   const migrations = requiredString(file, fields, "migrations");
   const { url, trackingSchema } = fields;
-  if (url === undefined || url === "") {
-    throw new Error(
-      `${file}: url is ${url === "" ? "empty" : "undefined"}; set the environment variable it reads, such as DATABASE_URL`,
-    );
-  }
-  if (typeof url !== "string") throw new Error(`${file}: url must be a string`);
   if (trackingSchema === undefined) return { definition, migrations, url };
   if (typeof trackingSchema !== "string")
     throw new Error(`${file}: trackingSchema must be a string`);

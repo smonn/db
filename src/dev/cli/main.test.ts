@@ -1,8 +1,9 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { writeMigration } from "../../runtime/internal/index.ts";
 import { main } from "./main.ts";
 
 const defineConfigUrl = pathToFileURL(join(import.meta.dirname, "../config/index.ts")).href;
@@ -78,5 +79,54 @@ describe("main", () => {
     expect(stderr).toBe(
       `${relative(process.cwd(), join(project, "definition.ts"))} must export defineDatabase({ ... }) as its default export\n`,
     );
+  });
+});
+
+function writeVerifyConfig(): Promise<string> {
+  return writeConfig(
+    `export default defineConfig({ definition: "./definition.ts", migrations: "./migrations", url: undefined });\n`,
+  );
+}
+
+async function commitChain(): Promise<void> {
+  const a = await writeMigration("000001-a.sql", undefined, "create table a (n int);\n");
+  const b = await writeMigration("000002-b.sql", a.hash, "create table b (n int);\n");
+  await writeFile(join(project, "migrations", a.filename), a.content);
+  await writeFile(join(project, "migrations", b.filename), b.content);
+}
+
+describe("main verify", () => {
+  let stdout: string;
+
+  beforeEach(async () => {
+    stdout = "";
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdout += String(chunk);
+      return true;
+    });
+    await mkdir(join(project, "migrations"));
+  });
+
+  it("verifies an intact chain without a url or a database", async () => {
+    const file = await writeVerifyConfig();
+    await commitChain();
+
+    expect(await main(["verify", "--config", file])).toBe(0);
+    expect(stdout).toBe("verified 2 migrations\n");
+  });
+
+  it("exits 1 naming the first bad file", async () => {
+    const file = await writeVerifyConfig();
+    await commitChain();
+    const path = join(project, "migrations", "000002-b.sql");
+    await writeFile(path, (await readFile(path, "utf8")).replace("table b", "table bb"));
+
+    expect(await main(["verify", "--config", file])).toBe(1);
+    expect(stderr).toMatch(/^000002-b\.sql: --! Hash says /u);
+  });
+
+  it("exits 2 given an argument", async () => {
+    expect(await main(["verify", "now"])).toBe(2);
+    expect(stderr).toContain("verify takes no arguments: now");
   });
 });
