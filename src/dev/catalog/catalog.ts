@@ -44,7 +44,7 @@ export type CatalogBuilder = {
   build(): Catalog;
 };
 
-/** Adds facts parents first, and throws when a table or column names a parent it hasn't added. */
+/** Throws when a table or column names a parent not added yet. */
 export function catalogBuilder(): CatalogBuilder {
   const catalog = new Map<Key, Fact>();
   const added = (kind: Fact["kind"], ...names: string[]): Key => {
@@ -75,7 +75,7 @@ export function parentOf(catalog: Catalog, fact: Fact): Fact {
   return parent;
 }
 
-/** The facts directly under `fact`, in catalog order. */
+/** Keeps catalog order, which sets the column order of a created table. */
 export function childrenOf(catalog: Catalog, fact: Fact): readonly Fact[] {
   const path = keyOf(fact);
   return [...catalog.values()].filter((child) => child.parent === path);
