@@ -33,7 +33,7 @@ export async function requireDevDatabase(driver: Driver, tracking: TrackingSchem
     rows: [row],
   } = await driver.query("select current_database() as name");
   throw new Error(
-    `${String(row?.["name"])} isn't a Dev database: it has no ${tracking.name}.current table and isn't empty, so generate won't reset it`,
+    `${String(row?.["name"])} isn't a Dev database: it has no ${tracking.currentTable} table and isn't empty, so generate won't reset it`,
   );
 }
 
