@@ -13,6 +13,7 @@ import type { Driver } from "../../runtime/ports/index.ts";
 import { commit, generate, reset } from "../generate/index.ts";
 import { generateReport, resetReport } from "./report.ts";
 import { loadMigrationsFolder, loadProject, type Project } from "./project.ts";
+import { onProcessInterrupt } from "./signals.ts";
 
 const USAGE = `usage: smonndb <command> [--config <path>]
 
@@ -126,6 +127,10 @@ async function runOn(driver: Driver, command: DatabaseCommand, project: Project)
         definition: await project.loadDefinition(),
         migrations,
         ...tracking,
+        log: (line) => {
+          process.stderr.write(`${line}\n`);
+        },
+        onInterrupt: onProcessInterrupt(),
       });
       for (const line of generateReport(result, relative(process.cwd(), result.path))) print(line);
       return;

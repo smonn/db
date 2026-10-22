@@ -42,6 +42,10 @@ function urlOf(name: string): string {
   return url.href;
 }
 
+function signalListeners(): number[] {
+  return [process.listenerCount("SIGINT"), process.listenerCount("SIGTERM")];
+}
+
 let project: string;
 function stdoutOf(): string {
   return written.mock.calls.map(([chunk]) => String(chunk)).join("");
@@ -146,8 +150,10 @@ describe("smonndb", () => {
 
   it("generates, commits, and migrates a Definition into a second database", async () => {
     const devConfig = join(project, "dev.config.ts");
+    const before = signalListeners();
 
     expect(await main(["generate", "--config", devConfig])).toBe(0);
+    expect(signalListeners()).toStrictEqual(before);
     expect(await main(["commit", "create-users", "--config", devConfig])).toBe(0);
     expect(await main(["migrate", "--config", join(project, "production.config.ts")])).toBe(0);
 

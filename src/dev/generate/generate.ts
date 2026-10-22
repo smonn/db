@@ -21,12 +21,13 @@ import type {
 import { definitionCatalog, type Catalog, type DefinitionTables } from "../catalog/index.ts";
 import { diff } from "../diff/index.ts";
 import { introspect, skippedSchemaReason } from "../introspect/index.ts";
-import { withShadowDatabases } from "../shadow/index.ts";
+import { withShadowDatabases, type ShadowOptions } from "../shadow/index.ts";
 import { withDevLock } from "./dev-lock.ts";
 import { lineDiff } from "./line-diff.ts";
 import { requireDevDatabase, resetDevDatabase } from "./reset.ts";
+import { verifyInShadow } from "./verify.ts";
 
-export type GenerateOptions = {
+export type GenerateOptions = ShadowOptions & {
   /** The Dev database, which also creates and drops the Shadow and Definition databases. */
   readonly driver: Driver;
   readonly connect: Connect;
@@ -53,10 +54,10 @@ export type GenerateResult = {
 };
 
 /**
- * Diffs the Definition against the Committed migrations, writes the result to `current.sql`, then
- * resets the Dev database and replays the Committed migrations and the Current migration when it
- * has fallen behind them. A hand-edited `current.sql` is replayed as written and left alone. Holds
- * the Dev lock, so a second run fails at once.
+ * Diffs the Definition against the Committed migrations, verifies the result in the Shadow
+ * database, writes it to `current.sql`, then resets the Dev database and replays the Committed
+ * migrations and the Current migration when it has fallen behind them. A hand-edited `current.sql`
+ * is replayed as written and left alone. Holds the Dev lock, so a second run fails at once.
  */
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
@@ -75,6 +76,7 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     definition,
     migrations,
     trackingSchema: trackingName = DEFAULT_TRACKING_SCHEMA,
+    ...shadowOptions
   } = options;
   const tracking = trackingSchema(trackingName);
   await requireDevDatabase(driver, tracking);
@@ -84,16 +86,21 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
   const committed = await readCommitted(fileSystem, migrations);
   const source: MigrationSource = { list: () => Promise.resolve(committed) };
 
-  const sql = await withShadowDatabases(driver, connect, async (databases) => {
-    await migrate({ driver: databases.shadow, source, trackingSchema: tracking.name });
-    await databases.definition.execute(
-      await definitionSql(databases.definition, definitionCatalog(definition)),
-    );
-    return diff(
-      await introspect(databases.shadow, tracking),
-      await introspect(databases.definition, tracking),
-    );
-  });
+  const sql = await withShadowDatabases(
+    driver,
+    connect,
+    async (databases) => {
+      await migrate({ driver: databases.shadow, source, trackingSchema: tracking.name });
+      await databases.definition.execute(
+        await definitionSql(databases.definition, definitionCatalog(definition)),
+      );
+      const target = await introspect(databases.definition, tracking);
+      const body = diff(await introspect(databases.shadow, tracking), target);
+      if (body !== "") await verifyInShadow(databases.shadow, body, target, tracking);
+      return body;
+    },
+    shadowOptions,
+  );
 
   if (edited !== undefined) {
     const current = { body: edited, hash: await currentHash(edited) };
