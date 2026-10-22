@@ -1,11 +1,122 @@
+import type { ParsedMigration } from "./migration-file.ts";
+import type { Queryable } from "../ports/index.ts";
 import { quoteIdentifier } from "./quote-identifier.ts";
 
 export const DEFAULT_TRACKING_SCHEMA = "smonn_db";
 
 const MAX_IDENTIFIER_BYTES = 63;
 
-/** Validates a tracking schema name and quotes it as an identifier. */
-export function quoteTrackingSchema(name: string): string {
+export type RecordedMigration = {
+  readonly filename: string;
+  readonly hash: string;
+};
+
+/** The tracking schema's `migrations` and `current` tables (ADR-0008, ADR-0016). */
+export type TrackingSchema = {
+  /** The name as configured, unquoted, for messages and catalog lookups. */
+  readonly name: string;
+  ensureMigrationsTable(session: Queryable): Promise<void>;
+  /** The recorded rows, in sequence order. */
+  readRecorded(session: Queryable): Promise<RecordedMigration[]>;
+  /** Records an applied migration. Run it in the transaction that applied the body. */
+  recordMigration(tx: Queryable, migration: ParsedMigration): Promise<void>;
+  /** Whether `current` holds a row, which marks a Dev database with an applied Current migration. */
+  holdsCurrentMigration(session: Queryable): Promise<boolean>;
+  /** Whether reset may drop everything: `current` exists, or nothing outside an empty public does. */
+  isResettable(session: Queryable): Promise<boolean>;
+  /** Creates the schema and its `current` table. Only Dev code calls it (ADR-0016). */
+  createCurrentTable(tx: Queryable): Promise<void>;
+  recordCurrent(tx: Queryable, hash: string): Promise<void>;
+};
+
+// A Dev database holds the tracking schema's current table, or nothing outside an empty public.
+const RESETTABLE = `
+select to_regclass($1) is not null
+  or (
+    not exists (
+      select from pg_namespace
+      where nspname !~ '^pg_' and nspname not in ('information_schema', 'public')
+    )
+    -- Every object created in a schema, of any kind, records a dependency on it.
+    and not exists (
+      select from pg_depend
+      where refclassid = 'pg_namespace'::regclass and refobjid = to_regnamespace('public')
+    )
+  ) as resettable`;
+
+// Each builder takes the quoted schema name.
+const MIGRATIONS_TABLE = (schema: string): string => `
+create schema if not exists ${schema};
+create table if not exists ${schema}.migrations (
+  sequence integer primary key,
+  filename text not null,
+  hash text not null unique,
+  previous_hash text references ${schema}.migrations (hash),
+  applied_at timestamptz not null default now()
+);`;
+
+const CURRENT_TABLE = (schema: string): string => `
+create schema ${schema};
+create table ${schema}.current (hash text not null, applied_at timestamptz not null default now());`;
+
+/** Validates a tracking schema name and holds its quoted form for the tracking tables' SQL. */
+export function trackingSchema(name: string): TrackingSchema {
+  const schema = quoteTrackingSchema(name);
+  const current = `${schema}.current`;
+
+  return {
+    name,
+
+    async ensureMigrationsTable(session) {
+      await session.execute(MIGRATIONS_TABLE(schema));
+    },
+
+    async readRecorded(session) {
+      const { rows } = await session.query(
+        `select filename, hash from ${schema}.migrations order by sequence`,
+      );
+      return rows.map((row) => ({ filename: String(row["filename"]), hash: String(row["hash"]) }));
+    },
+
+    async recordMigration(tx, migration) {
+      await tx.query(
+        `insert into ${schema}.migrations (sequence, filename, hash, previous_hash) values ($1, $2, $3, $4)`,
+        [migration.sequence, migration.filename, migration.hash, migration.previous ?? null],
+      );
+    },
+
+    async holdsCurrentMigration(session) {
+      const {
+        rows: [table],
+      } = await session.query("select to_regclass($1) is not null as present", [current]);
+      if (table?.["present"] !== true) return false;
+      const {
+        rows: [marker],
+      } = await session.query(`select exists (select 1 from ${schema}.current) as marked`);
+      return marker?.["marked"] === true;
+    },
+
+    isResettable: (session) => isResettable(session, current),
+
+    async createCurrentTable(tx) {
+      await tx.execute(CURRENT_TABLE(schema));
+    },
+
+    async recordCurrent(tx, hash) {
+      await tx.query(`insert into ${schema}.current (hash) values ($1)`, [hash]);
+    },
+  };
+}
+
+/** `current` is the quoted, qualified name of the `current` table, bound as a value. */
+async function isResettable(session: Queryable, current: string): Promise<boolean> {
+  const {
+    rows: [row],
+  } = await session.query(RESETTABLE, [current]);
+  return row?.["resettable"] === true;
+}
+
+function quoteTrackingSchema(name: string): string {
   if (name === "") {
     throw new Error("trackingSchema must not be empty");
   }

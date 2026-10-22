@@ -1,4 +1,9 @@
-import { migrationHash, parseMigration, type ParsedMigration } from "../internal/index.ts";
+import {
+  migrationHash,
+  parseMigration,
+  type ParsedMigration,
+  type RecordedMigration,
+} from "../internal/index.ts";
 import type { MigrationSource } from "../ports/index.ts";
 
 export type VerifyResult = {
@@ -13,11 +18,6 @@ export async function verify(source: MigrationSource): Promise<VerifyResult> {
   const migrations = await loadVerifiedMigrations(source);
   return { verified: migrations.map(({ filename }) => filename) };
 }
-
-export type RecordedMigration = {
-  readonly filename: string;
-  readonly hash: string;
-};
 
 /**
  * Requires the recorded rows, in sequence order, to be a prefix of the file chain. Hashes alone
