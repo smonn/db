@@ -14,6 +14,16 @@ where n.nspname !~ '^pg_' and n.nspname not in ('information_schema', $1)
   and ${NOT_EXTENSION_MEMBER("pg_namespace", "n")}
 order by n.nspname`;
 
+/** Why `SCHEMAS` skips `schema`, or `undefined` when introspect reads it. */
+export function skippedSchemaReason(
+  schema: string,
+  trackingSchema: string,
+): "the tracking schema" | "a system schema" | undefined {
+  if (schema === trackingSchema) return "the tracking schema";
+  if (schema.startsWith("pg_") || schema === "information_schema") return "a system schema";
+  return undefined;
+}
+
 const TABLES = `
 select n.nspname as schema, c.relname as name
 from pg_class c join pg_namespace n on n.oid = c.relnamespace

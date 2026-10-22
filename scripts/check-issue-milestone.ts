@@ -9,6 +9,16 @@
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import {
+  array,
+  field,
+  nullable,
+  number,
+  parseJson,
+  record,
+  string,
+  type Reader,
+} from "./github-json.ts";
 
 export type IssueEvent = {
   issue: {
@@ -19,6 +29,37 @@ export type IssueEvent = {
     user: { type: string };
   };
   repository: { full_name: string; html_url: string };
+};
+
+const readIssueEvent: Reader<IssueEvent> = (value, path) => {
+  const event = record(value, path);
+  const issuePath = `${path}.issue`;
+  const issue = field(event, "issue", record, path);
+  const repoPath = `${path}.repository`;
+  const repository = field(event, "repository", record, path);
+  return {
+    issue: {
+      number: field(issue, "number", number, issuePath),
+      state: field(issue, "state", string, issuePath),
+      milestone: field(issue, "milestone", nullable(record), issuePath),
+      labels: field(
+        issue,
+        "labels",
+        array((label, p) => ({ name: field(record(label, p), "name", string, p) })),
+        issuePath,
+      ),
+      user: field(
+        issue,
+        "user",
+        (user, p) => ({ type: field(record(user, p), "type", string, p) }),
+        issuePath,
+      ),
+    },
+    repository: {
+      full_name: field(repository, "full_name", string, repoPath),
+      html_url: field(repository, "html_url", string, repoPath),
+    },
+  };
 };
 
 type Gh = (args: string[]) => void;
@@ -38,8 +79,10 @@ export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void
     process.exitCode = 1;
     return;
   }
-  // oxlint-disable-next-line typescript/no-unsafe-assignment -- Actions writes GitHub's documented issues event payload.
-  const { issue, repository }: IssueEvent = JSON.parse(readFileSync(eventPath, "utf8"));
+  const { issue, repository } = readIssueEvent(
+    parseJson(readFileSync(eventPath, "utf8"), eventPath),
+    "$",
+  );
   if (!needsMilestone(issue)) return;
   const target = [String(issue.number), "--repo", repository.full_name];
   const body = `This issue has no milestone. Every issue needs one: pick it by the milestone descriptions at ${repository.html_url}/milestones.`;
