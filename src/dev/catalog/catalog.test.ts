@@ -82,6 +82,6 @@ describe("lookups", () => {
   });
 
   it("refuses the parent of a schema", () => {
-    expect(() => parentOf(catalog, fact("public"))).toThrow("schema public has no parent");
+    expect(() => parentOf(catalog, fact("public"))).toThrow(`schema "public" has no parent`);
   });
 });

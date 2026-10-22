@@ -6,7 +6,7 @@ import { introspect } from "./introspect.ts";
 
 const db = useTestDatabase();
 
-function paths(catalog: Catalog): string[] {
+function dottedNames(catalog: Catalog): string[] {
   return [...catalog.values()].map((fact) => namesOf(catalog, fact).join("."));
 }
 
@@ -49,7 +49,7 @@ describe("introspect", () => {
 
   it("lists columns in table order", async () => {
     await db.driver.execute("create table t (b text, a text, c text); alter table t drop column a");
-    expect(paths(await introspect(db.driver))).toStrictEqual([
+    expect(dottedNames(await introspect(db.driver))).toStrictEqual([
       "public",
       "public.t",
       "public.t.b",
@@ -70,7 +70,7 @@ describe("introspect", () => {
       create view public.v as select 1 as one;
     `);
 
-    expect(paths(await introspect(db.driver))).toStrictEqual([
+    expect(dottedNames(await introspect(db.driver))).toStrictEqual([
       "public",
       "public.kept",
       "public.kept.a",
@@ -85,6 +85,9 @@ describe("introspect", () => {
       create schema smonn_db;
     `);
 
-    expect(paths(await introspect(db.driver, "AppTracking"))).toStrictEqual(["public", "smonn_db"]);
+    expect(dottedNames(await introspect(db.driver, "AppTracking"))).toStrictEqual([
+      "public",
+      "smonn_db",
+    ]);
   });
 });

@@ -48,9 +48,9 @@ export type CatalogBuilder = {
 export function catalogBuilder(): CatalogBuilder {
   const catalog = new Map<Key, Fact>();
   const added = (kind: Fact["kind"], ...names: string[]): Key => {
-    const path = key(...names);
-    if (!catalog.has(path)) throw new Error(`${kind} ${quoted(names)} isn't in the catalog`);
-    return path;
+    const existing = key(...names);
+    if (!catalog.has(existing)) throw new Error(`${kind} ${quoted(names)} isn't in the catalog`);
+    return existing;
   };
   return {
     schema(name) {
@@ -71,14 +71,14 @@ export function catalogBuilder(): CatalogBuilder {
 export function parentOf(catalog: Catalog, fact: Fact): Fact {
   const parent = fact.parent === undefined ? undefined : catalog.get(fact.parent);
   if (parent === undefined)
-    throw new Error(`${fact.kind} ${fact.name} has no parent in the catalog`);
+    throw new Error(`${fact.kind} ${quoted([fact.name])} has no parent in the catalog`);
   return parent;
 }
 
 /** Keeps catalog order, which sets the column order of a created table. */
 export function childrenOf(catalog: Catalog, fact: Fact): readonly Fact[] {
-  const path = keyOf(fact);
-  return [...catalog.values()].filter((child) => child.parent === path);
+  const parent = keyOf(fact);
+  return [...catalog.values()].filter((child) => child.parent === parent);
 }
 
 export function namesOf(catalog: Catalog, fact: Fact): readonly string[] {

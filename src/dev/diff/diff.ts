@@ -9,13 +9,13 @@ const PHASES: readonly Action["kind"][] = ["create schema", "create table", "add
 
 /** The SQL that turns a database with catalog `from` into one with catalog `to`. */
 export function diff(from: Catalog, to: Catalog): string {
-  for (const [path, fact] of from) {
-    if (!to.has(path)) throw new Error(`Can't drop ${fact.kind} ${qualified(fact, from)} yet`);
+  for (const [key, fact] of from) {
+    if (!to.has(key)) throw new Error(`Can't drop ${fact.kind} ${qualified(fact, from)} yet`);
   }
 
   const actions: Action[] = [];
-  for (const [path, fact] of to) {
-    const before = from.get(path);
+  for (const [key, fact] of to) {
+    const before = from.get(key);
     if (before !== undefined) {
       if (!equal(before.payload, fact.payload)) {
         throw new Error(`Can't alter ${fact.kind} ${qualified(fact, to)} yet`);
