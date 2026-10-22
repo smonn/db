@@ -9,13 +9,15 @@
 - File every issue with a milestone. Pick it by the milestone descriptions (`gh api repos/smonn/db/milestones`). Repo tooling goes in the earliest open milestone.
 - Keep each PR to one self-contained change.
 - Link every PR to its issue in the template's Issue section. Use `Closes #<n>` so merging closes the issue, and don't close it by hand. Closing keywords only fire on PRs into `main`.
-- Agents may commit, push, and open a draft PR without asking. Mark it ready for review once CI passes, or right away while the repo has no CI. Only the maintainer merges, unless they approve an agent merging that PR.
+- Agents may commit, push, and open a draft PR without asking. Mark it ready for review once CI passes, or right away while the repo has no CI, and add `review:needed`. Only the maintainer merges, unless they approve an agent merging that PR.
+- The maintainer sets the `review:*` labels; agents only add `review:needed`. `review:approved` approves an agent merging that PR. On `review:blocked`, address the PR's review comments, then swap the label back to `review:needed`.
 
 ## Repo tooling
 
 - Enforce a rule with a static check in CI whenever one can express it: a lint rule, a semantic-grep rule, a `scripts/` check, a type test, or mutation testing. Document only what no tool can check.
 - Write repo scripts in TypeScript under `scripts/`, run directly by Node. A shell file may only invoke one. Scripts get the same tests, lint, and formatting as `src/`.
 - Tests need Postgres: run `node scripts/test-db.ts` once per worktree, then plain `pnpm test`; `node scripts/test-db.ts stop` removes it.
+- Verify with `pnpm check`: it runs every check CI runs, continues past failures, and exits non-zero if any failed. Don't loop over the scripts by hand or pipe their output through `tail`.
 
 ## Coding standards
 
