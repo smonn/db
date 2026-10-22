@@ -76,7 +76,7 @@ export async function resetDevDatabase(
     const drops = schemas.map(
       ({ name }) => `drop schema if exists ${quoteIdentifier(String(name))} cascade;`,
     );
-    await tx.execute(`${drops.join("\n")}\n${RECREATE(schema)}`);
+    await tx.execute([...drops, RECREATE(schema)].join("\n"));
   });
   await migrate({ driver, source: committed, trackingSchema });
   if (current === undefined) return;
