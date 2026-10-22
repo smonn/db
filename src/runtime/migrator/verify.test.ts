@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { migrationHash } from "../internal/index.ts";
 import type { MigrationFile, MigrationSource } from "../ports/index.ts";
-import { migrationHash } from "./migration-file.ts";
 import { verify } from "./verify.ts";
 
 async function chain(...files: [filename: string, body: string][]): Promise<MigrationFile[]> {
