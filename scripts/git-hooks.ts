@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process";
 
 type Check = { name: string; args: string[]; fix: string };
 
-export function preCommitChecks(staged: string[]): Check[] {
+function preCommitChecks(staged: string[]): Check[] {
   if (staged.length === 0) return [];
   return [
     {
@@ -26,7 +26,7 @@ export function preCommitChecks(staged: string[]): Check[] {
   ];
 }
 
-export const prePushChecks: Check[] = [
+const prePushChecks: Check[] = [
   { name: "typecheck", args: ["run", "typecheck"], fix: "Fix the errors it lists." },
   { name: "knip", args: ["run", "knip"], fix: "Remove or use what it lists." },
 ];

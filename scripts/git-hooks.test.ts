@@ -4,7 +4,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { main, prePushChecks, preCommitChecks } from "./git-hooks.ts";
+import { main } from "./git-hooks.ts";
 
 type Spawn = (command: string, args: string[], options: SpawnSyncOptions) => { status: number };
 
@@ -83,7 +83,9 @@ describe("pre-commit", () => {
   });
 
   test("runs nothing when nothing is staged", () => {
-    expect(preCommitChecks([])).toEqual([]);
+    main("pre-commit", root);
+    expect(mocks.pnpm).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
   });
 
   test("runs lint after a formatting failure and names the fix for each", () => {
@@ -102,7 +104,6 @@ describe("pre-commit", () => {
 describe("pre-push", () => {
   test("runs typecheck and knip", () => {
     main("pre-push", root);
-    expect(ranArgs()).toEqual(prePushChecks.map((check) => check.args));
     expect(ranArgs()).toEqual([
       ["run", "typecheck"],
       ["run", "knip"],
