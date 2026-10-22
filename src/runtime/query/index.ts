@@ -13,3 +13,4 @@ export type {
 } from "./from.ts";
 export { insert } from "./insert.ts";
 export type { InsertStatement, NewRow } from "./insert.ts";
+export { sql } from "./sql.ts";

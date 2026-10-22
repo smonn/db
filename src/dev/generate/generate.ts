@@ -2,6 +2,7 @@ import {
   CURRENT_FILENAME,
   DEFAULT_TRACKING_SCHEMA,
   parseCurrent,
+  quoteIdentifier,
   readCommitted,
   trackingSchema,
   writeCurrent,
@@ -10,7 +11,7 @@ import { migrate } from "../../runtime/migrator/index.ts";
 import type { Connect, Driver, FileSystem, MigrationSource } from "../../runtime/ports/index.ts";
 import { definitionCatalog, type Catalog, type DefinitionTables } from "../catalog/index.ts";
 import { diff } from "../diff/index.ts";
-import { introspect } from "../introspect/index.ts";
+import { introspect, skippedSchemaReason } from "../introspect/index.ts";
 import { withShadowDatabases } from "../shadow/index.ts";
 import { requireDevDatabase, resetDevDatabase } from "./reset.ts";
 
@@ -46,6 +47,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
     trackingSchema: trackingName = DEFAULT_TRACKING_SCHEMA,
   } = options;
   const tracking = trackingSchema(trackingName);
+  requireModeledSchemas(definition, tracking.name);
   await requireDevDatabase(driver, tracking);
   const path = `${migrations}/${CURRENT_FILENAME}`;
   await requireGenerated(fileSystem, path);
@@ -73,6 +75,18 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
   await fileSystem.writeFile(path, current.content);
   await resetDevDatabase(driver, source, tracking, current);
   return { path, sql: current.body };
+}
+
+/** Refuses a schema `introspect` skips, whose tables would otherwise vanish from `current.sql`. */
+function requireModeledSchemas(definition: DefinitionTables, trackingName: string): void {
+  for (const schema of Object.keys(definition)) {
+    const reason = skippedSchemaReason(schema, trackingName);
+    if (reason !== undefined) {
+      throw new Error(
+        `the Definition names schema ${quoteIdentifier(schema)}, which generate skips as ${reason}`,
+      );
+    }
+  }
 }
 
 /**

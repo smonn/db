@@ -2,7 +2,7 @@ name: Issue milestone
 
 on:
   issues:
-    types: [opened, demilestoned]
+    types: [opened, edited, demilestoned]
 
 permissions:
   contents: read
