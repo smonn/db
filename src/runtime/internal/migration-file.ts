@@ -143,5 +143,5 @@ function checkedHash(filename: string, name: string, value: string): string {
 }
 
 function normalizeBody(body: string): string {
-  return `${body.trim()}\n`;
+  return `${body.replaceAll("\r\n", "\n").trim()}\n`;
 }
