@@ -60,6 +60,8 @@ describe("formatTicket", () => {
 
 describe("main", () => {
   const spawn = vi.mocked(spawnSync);
+  const openIssues =
+    "repos/{owner}/{repo}/issues?state=open&sort=created&direction=asc&per_page=100";
 
   type Issue = {
     number: number;
@@ -67,6 +69,9 @@ describe("main", () => {
     state: "open" | "closed";
     labels: { name: string }[];
     assignees: { login: string }[];
+    user: { login: string };
+    pull_request?: object;
+    sub_issues_summary?: { total: number };
   };
 
   function issue(number: number, overrides: Partial<Issue> = {}): Issue {
@@ -76,6 +81,7 @@ describe("main", () => {
       state: "open",
       labels: [{ name: "wayfinder:grilling" }],
       assignees: [],
+      user: { login: "smonn" },
       ...overrides,
     };
   }
@@ -99,7 +105,10 @@ describe("main", () => {
     });
   });
 
+  const argv = process.argv;
+
   afterEach(() => {
+    process.argv = argv;
     vi.restoreAllMocks();
   });
 
@@ -130,14 +139,55 @@ describe("main", () => {
     expect(console.log).toHaveBeenCalledWith("No frontier tickets.");
   });
 
+  test("with no map, prints every open ticket that has no open blocker", () => {
+    const renovate = { login: "renovate[bot]" };
+    ghReturns({
+      [openIssues]: [
+        issue(8, { labels: [] }),
+        issue(9, { assignees: [{ login: "smonn" }] }),
+        issue(10),
+        issue(30, { pull_request: {} }),
+        issue(44, { sub_issues_summary: { total: 6 } }),
+        issue(45, { sub_issues_summary: { total: 0 } }),
+        issue(50, { labels: [{ name: "wayfinder:map" }] }),
+        issue(89, { title: "Dependency Dashboard", user: renovate }),
+        issue(90, { title: "Dependency Dashboard" }),
+        issue(91, { title: "Action Required: Fix Renovate Configuration", user: renovate }),
+      ],
+      "repos/{owner}/{repo}/issues/8/dependencies/blocked_by": [issue(1, { state: "closed" })],
+      "repos/{owner}/{repo}/issues/10/dependencies/blocked_by": [issue(2)],
+      "repos/{owner}/{repo}/issues/45/dependencies/blocked_by": [],
+      "repos/{owner}/{repo}/issues/90/dependencies/blocked_by": [],
+      "repos/{owner}/{repo}/issues/91/dependencies/blocked_by": [],
+    });
+    process.argv = ["node", "scripts/frontier.ts"];
+    main();
+    expect(console.log).toHaveBeenCalledWith(
+      [
+        "#8 Ticket 8",
+        "#45 Ticket 45 [wayfinder:grilling]",
+        "#90 Dependency Dashboard [wayfinder:grilling]",
+        "#91 Action Required: Fix Renovate Configuration [wayfinder:grilling]",
+      ].join("\n"),
+    );
+  });
+
+  test("with no map, lists open issues oldest first", () => {
+    ghReturns({ [openIssues]: [] });
+    process.argv = ["node", "scripts/frontier.ts"];
+    main();
+    expect(console.log).toHaveBeenCalledWith("No frontier tickets.");
+    expect(spawn.mock.calls[0]?.[1]).toEqual(["api", "--paginate", "--slurp", openIssues]);
+  });
+
   test("prints usage and exits 2 for a map number that is not a positive integer", () => {
-    for (const arg of [undefined, "abc", "0", "-3", "1.5"]) {
+    for (const arg of ["", "abc", "0", "-3", "1.5"]) {
       expect(() => {
         main(arg);
       }).toThrow("exit 2");
     }
     expect(console.error).toHaveBeenCalledWith(
-      "Usage: node scripts/frontier.ts <map issue number>",
+      "Usage: node scripts/frontier.ts [map issue number]",
     );
     expect(spawn).not.toHaveBeenCalled();
   });
