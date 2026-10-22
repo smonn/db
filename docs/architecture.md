@@ -89,6 +89,7 @@ flowchart TB
 flowchart TB
   subgraph dev["dev/ · @smonn/db/dev"]
     cli["<b>cli</b><br/>[Node composition root, bin]<br/>Parses commands, loads config and Definition, wires adapters"]
+    config["<b>config</b><br/>[module]<br/>defineConfig, and checks a loaded config"]
     generate["<b>generate</b><br/>[module]<br/>Builds, writes, and applies the Current migration; commits it; resets the Dev database"]
     shadow["<b>shadow</b><br/>[module]<br/>Creates, sweeps, and drops the Shadow and Definition databases"]
     introspect["<b>introspect</b><br/>[module]<br/>Reads a catalog from a live Database"]
@@ -99,6 +100,7 @@ flowchart TB
   runtime["<b>runtime/</b><br/>[container]"]
   adapters["<b>adapters/</b><br/>[container]"]
 
+  cli -- "checks the config with" --> config
   cli -- "runs" --> generate
   generate -- "builds Shadow and Definition databases with" --> shadow
   generate -- "reads both databases with" --> introspect
@@ -213,7 +215,7 @@ The `smonndb` binary (a working name) and its config for v0.1. ADR-0014, ADR-001
 
 ### Config
 
-`smonndb.config.ts` in the working directory describes one Database, and `--config <path>` picks another. The CLI loads it with a plain `import()`, so it and the Definition use erasable TypeScript only (ADR-0014).
+`smonndb.config.ts` in the working directory describes one Database, and `--config <path>` picks another. The CLI loads it with a plain `import()`, so it and the Definition use erasable TypeScript only (ADR-0014). `definition` and `migrations` resolve against the config file's folder, and the Definition file's default export is `defineDatabase(...)` (ADR-0010).
 
 ```ts
 export default defineConfig({
@@ -308,7 +310,7 @@ oxfmt formats TypeScript and Markdown. knip reports unused files, exports, and d
 | `@smonn/db`             | runtime: sql, definition, query, migrator, port types |
 | `@smonn/db/postgres-js` | Driver adapter                                        |
 | `@smonn/db/node`        | Node MigrationSource and FileSystem adapters          |
-| `@smonn/db/dev`         | catalog, introspect, diff, shadow, generate           |
+| `@smonn/db/dev`         | config, catalog, introspect, diff, shadow, generate   |
 | CLI binary              | `dev/cli`, shipped as the package's `bin`             |
 
 Each subpath maps to one future package, so a split renames imports one-to-one.
