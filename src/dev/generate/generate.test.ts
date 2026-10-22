@@ -132,7 +132,7 @@ alter table "public"."users" add column "email" text;
         definition,
         migrations: "db/migrations",
       }),
-    ).rejects.toThrow(`${db.name} isn't a Dev database`);
+    ).rejects.toThrow(`"${db.name}" isn't a Dev database`);
     expect(
       (await db.driver.query("select typname from pg_type where typname = 'mood'")).rows,
     ).toStrictEqual([{ typname: "mood" }]);
@@ -185,7 +185,7 @@ alter table "public"."users" add column "email" text;
         definition: defineDatabase({ public: {} }),
         migrations: "db/migrations",
       }),
-    ).rejects.toThrow(`${db.name} isn't a Dev database`);
+    ).rejects.toThrow(`"${db.name}" isn't a Dev database`);
   });
 
   it("resets a Dev database where an extension owns a schema", async () => {
@@ -288,7 +288,7 @@ alter table "public"."users" add column "email" text;
         definition,
         migrations: "db/migrations",
       }),
-    ).rejects.toThrow(`${db.name} isn't a Dev database`);
+    ).rejects.toThrow(`"${db.name}" isn't a Dev database`);
     expect(fileSystem.files.size).toBe(0);
     expect(await tables()).toStrictEqual([
       { table_schema: "public", table_name: "precious", column_name: "a" },
