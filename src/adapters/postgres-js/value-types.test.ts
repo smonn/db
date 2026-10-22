@@ -29,6 +29,18 @@ describe("postgresJsTypes timestamps", () => {
     expect(rows).toStrictEqual([{ lmt: new Date("1850-01-01T00:00:00Z") }]);
   });
 
+  it.each([
+    ["-03:30", "2024-01-01 00:00:00+00", new Date("2024-01-01T00:00:00Z")],
+    // The local time is past a Date's range; the instant is 30 minutes inside it.
+    ["+01:00", "275760-09-12 23:30:00+00", new Date(8.64e15 - 30 * 60 * 1000)],
+  ])("reads a timestamptz in zone %s", async (zone, literal, expected) => {
+    const rows = await db.driver.transaction(async (tx) => {
+      await tx.execute(`set local time zone interval '${zone}'`);
+      return (await tx.query(`select '${literal}'::timestamptz as tz`)).rows;
+    });
+    expect(rows).toStrictEqual([{ tz: expected }]);
+  });
+
   it("writes BC and five-digit-year Dates back unchanged", async () => {
     await db.driver.execute("create table extremes (n int, ts timestamp, tz timestamptz)");
     const bc = new Date("-000043-03-15T12:00:00.500Z");
