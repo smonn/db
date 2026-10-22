@@ -18,7 +18,7 @@
 
 ## Coding standards
 
-- Read `CODING_STANDARDS.md` before writing code. It holds the judgement rules `review` checks.
+- Read `CODING_STANDARDS.md` before writing or reviewing code.
 
 ## Design decisions
 
