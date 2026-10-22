@@ -19,8 +19,10 @@ export type Session = Queryable & {
 
 export type Driver = Session & {
   /**
-   * Holds one connection for the whole of `fn`, as session advisory locks need. The locks are
-   * released when `fn` settles, whether it resolves or rejects.
+   * Holds one connection for the whole of `fn`, as session advisory locks need. When `fn`
+   * settles, the session rolls back any transaction `fn` left and resets its settings, temp
+   * tables, and locks, so the next user of the connection starts clean. A rejecting `fn` rejects
+   * the session with its own error, even if that reset fails.
    */
   session<T>(fn: (session: Session) => Promise<T>): Promise<T>;
 };
