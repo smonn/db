@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
-import { definitionCatalog } from "../catalog/index.ts";
+import { definitionCatalog, namesOf, type Catalog } from "../catalog/index.ts";
 import { introspect } from "./introspect.ts";
 
 const db = useTestDatabase();
+
+function paths(catalog: Catalog): string[] {
+  return [...catalog.values()].map((fact) => namesOf(catalog, fact).join("."));
+}
 
 beforeEach(async () => {
   await db.driver.execute(`
@@ -39,10 +43,12 @@ describe("introspect", () => {
 
   it("lists columns in table order", async () => {
     await db.driver.execute("create table t (b text, a text, c text); alter table t drop column a");
-    const columns = [...(await introspect(db.driver)).keys()].filter((path) =>
-      path.startsWith("public.t."),
-    );
-    expect(columns).toStrictEqual(["public.t.b", "public.t.c"]);
+    expect(paths(await introspect(db.driver))).toStrictEqual([
+      "public",
+      "public.t",
+      "public.t.b",
+      "public.t.c",
+    ]);
   });
 
   it("skips the tracking schema, extension members, and views", async () => {
@@ -58,7 +64,7 @@ describe("introspect", () => {
       create view public.v as select 1 as one;
     `);
 
-    expect([...(await introspect(db.driver)).keys()]).toStrictEqual([
+    expect(paths(await introspect(db.driver))).toStrictEqual([
       "public",
       "public.kept",
       "public.kept.a",
@@ -73,9 +79,6 @@ describe("introspect", () => {
       create schema smonn_db;
     `);
 
-    expect([...(await introspect(db.driver, "AppTracking")).keys()]).toStrictEqual([
-      "public",
-      "smonn_db",
-    ]);
+    expect(paths(await introspect(db.driver, "AppTracking"))).toStrictEqual(["public", "smonn_db"]);
   });
 });

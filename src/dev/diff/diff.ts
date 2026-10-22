@@ -1,9 +1,9 @@
-import type { Catalog, Fact } from "../catalog/index.ts";
+import { childrenOf, namesOf, parentOf, type Catalog, type Fact } from "../catalog/index.ts";
 
-type Action =
-  | { readonly kind: "create schema"; readonly path: string; readonly fact: Fact }
-  | { readonly kind: "create table"; readonly path: string; readonly fact: Fact }
-  | { readonly kind: "add column"; readonly path: string; readonly fact: Fact };
+type Action = {
+  readonly kind: "create schema" | "create table" | "add column";
+  readonly fact: Fact;
+};
 
 const PHASES: readonly Action["kind"][] = ["create schema", "create table", "add column"];
 
@@ -21,11 +21,11 @@ export function diff(from: Catalog, to: Catalog): string {
         throw new Error(`Can't alter ${fact.kind} ${path} yet`);
       }
     } else if (fact.kind === "schema") {
-      actions.push({ kind: "create schema", path, fact });
+      actions.push({ kind: "create schema", fact });
     } else if (fact.kind === "table") {
-      actions.push({ kind: "create table", path, fact });
+      actions.push({ kind: "create table", fact });
     } else if (from.has(fact.parent)) {
-      actions.push({ kind: "add column", path, fact });
+      actions.push({ kind: "add column", fact });
     }
   }
 
@@ -39,16 +39,16 @@ function order(actions: readonly Action[]): Action[] {
   return actions.toSorted((a, b) => PHASES.indexOf(a.kind) - PHASES.indexOf(b.kind));
 }
 
-function render({ kind, path, fact }: Action, to: Catalog): string {
+function render({ kind, fact }: Action, to: Catalog): string {
   if (kind === "create schema") return `create schema ${quote(fact.name)};`;
   if (kind === "create table") {
-    const columns = [...to.values()]
-      .filter((child) => child.kind === "column" && child.parent === path)
+    const columns = childrenOf(to, fact)
+      .filter((child) => child.kind === "column")
       .map((child) => `  ${columnDefinition(child)}`);
     const body = columns.length === 0 ? "()" : `(\n${columns.join(",\n")}\n)`;
     return `create table ${qualified(fact, to)} ${body};`;
   }
-  return `alter table ${qualified(parentOf(fact, to), to)} add column ${columnDefinition(fact)};`;
+  return `alter table ${qualified(parentOf(to, fact), to)} add column ${columnDefinition(fact)};`;
 }
 
 function columnDefinition(fact: Fact): string {
@@ -57,15 +57,10 @@ function columnDefinition(fact: Fact): string {
   return `${quote(fact.name)} ${type}${notNull ? " not null" : ""}`;
 }
 
-function qualified(table: Fact, catalog: Catalog): string {
-  return `${quote(parentOf(table, catalog).name)}.${quote(table.name)}`;
-}
-
-function parentOf(fact: Fact, catalog: Catalog): Fact {
-  const parent = fact.parent === undefined ? undefined : catalog.get(fact.parent);
-  if (parent === undefined)
-    throw new Error(`${fact.kind} ${fact.name} has no parent in the catalog`);
-  return parent;
+function qualified(fact: Fact, catalog: Catalog): string {
+  return namesOf(catalog, fact)
+    .map((name) => quote(name))
+    .join(".");
 }
 
 function quote(name: string): string {

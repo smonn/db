@@ -1,6 +1,6 @@
 import { DEFAULT_TRACKING_SCHEMA } from "../../runtime/internal/index.ts";
 import type { Queryable, Session } from "../../runtime/ports/index.ts";
-import type { Catalog, Fact } from "../catalog/index.ts";
+import { catalogBuilder, type Catalog } from "../catalog/index.ts";
 
 const NOT_EXTENSION_MEMBER = (catalog: string, alias: string): string => `not exists (
   select from pg_depend d
@@ -51,25 +51,21 @@ async function read(tx: Queryable, trackingSchema: string): Promise<Catalog> {
   const { rows: tables } = await tx.query(TABLES);
   const { rows: columns } = await tx.query(COLUMNS);
 
-  const catalog = new Map<string, Fact>();
+  const builder = catalogBuilder();
   for (const { name } of schemas) {
     const schema = String(name);
-    catalog.set(schema, { kind: "schema", name: schema, parent: undefined, payload: {} });
+    builder.schema(schema);
     for (const table of tables.filter((row) => row["schema"] === schema)) {
       const tableName = String(table["name"]);
-      const tablePath = `${schema}.${tableName}`;
-      catalog.set(tablePath, { kind: "table", name: tableName, parent: schema, payload: {} });
+      builder.table(schema, tableName);
       for (const column of columns) {
         if (column["schema"] !== schema || column["table"] !== tableName) continue;
-        const columnName = String(column["name"]);
-        catalog.set(`${tablePath}.${columnName}`, {
-          kind: "column",
-          name: columnName,
-          parent: tablePath,
-          payload: { type: String(column["type"]), notNull: column["not_null"] === true },
+        builder.column(schema, tableName, String(column["name"]), {
+          type: String(column["type"]),
+          notNull: column["not_null"] === true,
         });
       }
     }
   }
-  return catalog;
+  return builder.build();
 }
