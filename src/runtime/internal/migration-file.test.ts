@@ -133,6 +133,14 @@ describe("writeMigration", () => {
     expect(written.hash).toBe(await migrationHash(undefined, "select 1;\n"));
   });
 
+  it("turns CRLF inside the body into LF, so the file it writes parses to the same hash", async () => {
+    const written = await writeMigration("000001-a.sql", undefined, "select 1;\r\nselect 2;\r\n");
+    const parsed = parseMigration(written);
+
+    expect(parsed.body).toBe("select 1;\nselect 2;\n");
+    expect(await migrationHash(parsed.previous, parsed.body)).toBe(written.hash);
+  });
+
   it("refuses a filename without a sequence and slug", async () => {
     await expect(writeMigration("create-a.sql", undefined, "select 1;\n")).rejects.toThrow(
       "create-a.sql: name it like 000001-create-users.sql",
@@ -165,6 +173,16 @@ describe("writeCurrent", () => {
     expect(written.body).toBe("select 1;\n");
     expect(await parseCurrent(written.content)).toStrictEqual({
       body: "select 1;\n",
+      edited: false,
+    });
+  });
+
+  it("turns CRLF inside the body into LF, so the file it writes parses as unedited", async () => {
+    const written = await writeCurrent("select 1;\r\nselect 2;\r\n");
+
+    expect(written.body).toBe("select 1;\nselect 2;\n");
+    expect(await parseCurrent(written.content)).toStrictEqual({
+      body: "select 1;\nselect 2;\n",
       edited: false,
     });
   });
