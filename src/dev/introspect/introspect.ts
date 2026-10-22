@@ -1,4 +1,8 @@
-import { DEFAULT_TRACKING_SCHEMA } from "../../runtime/internal/index.ts";
+import {
+  DEFAULT_TRACKING_SCHEMA,
+  trackingSchema,
+  type TrackingSchema,
+} from "../../runtime/internal/index.ts";
 import type { Queryable, Session } from "../../runtime/ports/index.ts";
 import { catalogBuilder, type Catalog } from "../catalog/index.ts";
 
@@ -17,9 +21,9 @@ order by n.nspname`;
 /** Why `SCHEMAS` skips `schema`, or `undefined` when introspect reads it. */
 export function skippedSchemaReason(
   schema: string,
-  trackingSchema: string,
+  trackingName: string,
 ): "the tracking schema" | "a system schema" | undefined {
-  if (schema === trackingSchema) return "the tracking schema";
+  if (schema === trackingName) return "the tracking schema";
   if (schema.startsWith("pg_") || schema === "information_schema") return "a system schema";
   return undefined;
 }
@@ -46,18 +50,18 @@ order by a.attnum`;
  */
 export function introspect(
   session: Session,
-  trackingSchema: string = DEFAULT_TRACKING_SCHEMA,
+  tracking: TrackingSchema = trackingSchema(DEFAULT_TRACKING_SCHEMA),
 ): Promise<Catalog> {
   return session.transaction(async (tx) => {
     await tx.execute(
       "set transaction isolation level repeatable read read only; set local search_path = pg_catalog",
     );
-    return read(tx, trackingSchema);
+    return read(tx, tracking.name);
   });
 }
 
-async function read(tx: Queryable, trackingSchema: string): Promise<Catalog> {
-  const { rows: schemas } = await tx.query(SCHEMAS, [trackingSchema]);
+async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
+  const { rows: schemas } = await tx.query(SCHEMAS, [trackingName]);
   const { rows: tables } = await tx.query(TABLES);
   const { rows: columns } = await tx.query(COLUMNS);
 

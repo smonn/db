@@ -4,6 +4,7 @@ import {
   parseCurrent,
   quoteIdentifier,
   readCommitted,
+  trackingSchema,
   writeCurrent,
 } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
@@ -43,10 +44,11 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
     fileSystem,
     definition,
     migrations,
-    trackingSchema = DEFAULT_TRACKING_SCHEMA,
+    trackingSchema: trackingName = DEFAULT_TRACKING_SCHEMA,
   } = options;
-  requireModeledSchemas(definition, trackingSchema);
-  await requireDevDatabase(driver, trackingSchema);
+  const tracking = trackingSchema(trackingName);
+  requireModeledSchemas(definition, tracking.name);
+  await requireDevDatabase(driver, tracking);
   const path = `${migrations}/${CURRENT_FILENAME}`;
   await requireGenerated(fileSystem, path);
   await fileSystem.mkdir(migrations);
@@ -54,31 +56,31 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
   const source: MigrationSource = { list: () => Promise.resolve(committed) };
 
   const sql = await withShadowDatabases(driver, connect, async (databases) => {
-    await migrate({ driver: databases.shadow, source, trackingSchema });
+    await migrate({ driver: databases.shadow, source, trackingSchema: tracking.name });
     await databases.definition.execute(
       await definitionSql(databases.definition, definitionCatalog(definition)),
     );
     return diff(
-      await introspect(databases.shadow, trackingSchema),
-      await introspect(databases.definition, trackingSchema),
+      await introspect(databases.shadow, tracking),
+      await introspect(databases.definition, tracking),
     );
   });
 
   if (sql === "") {
     await fileSystem.remove(path);
-    await resetDevDatabase(driver, source, trackingSchema);
+    await resetDevDatabase(driver, source, tracking);
     return { path, sql: undefined };
   }
   const current = await writeCurrent(sql);
   await fileSystem.writeFile(path, current.content);
-  await resetDevDatabase(driver, source, trackingSchema, current);
+  await resetDevDatabase(driver, source, tracking, current);
   return { path, sql: current.body };
 }
 
 /** Refuses a schema `introspect` skips, whose tables would otherwise vanish from `current.sql`. */
-function requireModeledSchemas(definition: DefinitionTables, trackingSchema: string): void {
+function requireModeledSchemas(definition: DefinitionTables, trackingName: string): void {
   for (const schema of Object.keys(definition)) {
-    const reason = skippedSchemaReason(schema, trackingSchema);
+    const reason = skippedSchemaReason(schema, trackingName);
     if (reason !== undefined) {
       throw new Error(
         `the Definition names schema ${quoteIdentifier(schema)}, which generate skips as ${reason}`,

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
+import { trackingSchema } from "../../runtime/internal/index.ts";
 import { definitionCatalog, namesOf, type Catalog } from "../catalog/index.ts";
 import { introspect } from "./introspect.ts";
 
@@ -85,7 +86,7 @@ describe("introspect", () => {
       create schema smonn_db;
     `);
 
-    expect(dottedNames(await introspect(db.driver, "AppTracking"))).toStrictEqual([
+    expect(dottedNames(await introspect(db.driver, trackingSchema("AppTracking")))).toStrictEqual([
       "public",
       "smonn_db",
     ]);

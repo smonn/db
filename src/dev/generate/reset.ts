@@ -1,26 +1,10 @@
 import {
   quoteIdentifier,
-  quoteTrackingSchema,
   type CurrentMigration,
+  type TrackingSchema,
 } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type { Driver, MigrationSource } from "../../runtime/ports/index.ts";
-
-// A Dev database holds the tracking schema's current table, or nothing outside an empty public.
-const DEV_DATABASE = `
-select current_database() as name,
-  to_regclass($1) is not null
-  or (
-    not exists (
-      select from pg_namespace
-      where nspname !~ '^pg_' and nspname not in ('information_schema', 'public')
-    )
-    -- Every object created in a schema, of any kind, records a dependency on it.
-    and not exists (
-      select from pg_depend
-      where refclassid = 'pg_namespace'::regclass and refobjid = to_regnamespace('public')
-    )
-  ) as resettable`;
 
 // Extensions go first: one can own a schema, which then refuses a plain drop or vanishes with it.
 const EXTENSIONS = `
@@ -37,33 +21,29 @@ select nspname as name from pg_namespace
 where nspname !~ '^pg_' and nspname <> 'information_schema'`;
 
 // public is recreated as template0 ships it, so the Dev database starts where the Shadow does.
-const RECREATE = (schema: string): string => `
+const RECREATE_PUBLIC = `
 create schema public authorization pg_database_owner;
 grant usage on schema public to public;
-comment on schema public is 'standard public schema';
-create schema ${schema};
-create table ${schema}.current (hash text not null, applied_at timestamptz not null default now());`;
+comment on schema public is 'standard public schema';`;
 
 /** Refuses unless the Database is marked as a Dev database or holds nothing yet (ADR-0016). */
-export async function requireDevDatabase(driver: Driver, trackingSchema: string): Promise<void> {
+export async function requireDevDatabase(driver: Driver, tracking: TrackingSchema): Promise<void> {
+  if (await tracking.isResettable(driver)) return;
   const {
     rows: [row],
-  } = await driver.query(DEV_DATABASE, [`${quoteTrackingSchema(trackingSchema)}.current`]);
-  if (row?.["resettable"] !== true) {
-    throw new Error(
-      `${String(row?.["name"])} isn't a Dev database: it has no ${trackingSchema}.current table and isn't empty, so generate won't reset it`,
-    );
-  }
+  } = await driver.query("select current_database() as name");
+  throw new Error(
+    `${String(row?.["name"])} isn't a Dev database: it has no ${tracking.name}.current table and isn't empty, so generate won't reset it`,
+  );
 }
 
 /** Drops every non-system schema, then replays the Committed migrations and the Current migration. */
 export async function resetDevDatabase(
   driver: Driver,
   committed: MigrationSource,
-  trackingSchema: string,
+  tracking: TrackingSchema,
   current?: CurrentMigration,
 ): Promise<void> {
-  const schema = quoteTrackingSchema(trackingSchema);
   await driver.transaction(async (tx) => {
     const { rows: extensions } = await tx.query(EXTENSIONS);
     await tx.execute(
@@ -75,12 +55,13 @@ export async function resetDevDatabase(
     const drops = schemas.map(
       ({ name }) => `drop schema if exists ${quoteIdentifier(String(name))} cascade;`,
     );
-    await tx.execute([...drops, RECREATE(schema)].join("\n"));
+    await tx.execute([...drops, RECREATE_PUBLIC].join("\n"));
+    await tracking.createCurrentTable(tx);
   });
-  await migrate({ driver, source: committed, trackingSchema });
+  await migrate({ driver, source: committed, trackingSchema: tracking.name });
   if (current === undefined) return;
   await driver.transaction(async (tx) => {
     await tx.execute(current.body);
-    await tx.query(`insert into ${schema}.current (hash) values ($1)`, [current.hash]);
+    await tracking.recordCurrent(tx, current.hash);
   });
 }
