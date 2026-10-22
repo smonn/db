@@ -98,13 +98,22 @@ describe("withShadowDatabases", () => {
     }
   });
 
-  it("sweeps stale Shadow databases before it creates its own", async () => {
-    const stale = `smonn_db_shadow_${Math.floor(Date.now() / 1000) - 7200}_deadbeef`;
-    await db.driver.execute(`create database ${stale} template template0`);
+  it("sweeps stale Shadow and Definition databases before it creates its own", async () => {
+    const hoursAgo = Math.floor(Date.now() / 1000) - 7200;
+    const stale = [
+      `smonn_db_shadow_${hoursAgo}_deadbeef`,
+      `smonn_db_definition_${hoursAgo}_deadbeef`,
+    ];
+    await Promise.all(
+      stale.map((name) => db.driver.execute(`create database ${name} template template0`)),
+    );
 
     await withShadowDatabases(db.driver, db.connect, async () => {});
 
-    expect(await databaseExists(stale)).toBe(false);
+    expect(await Promise.all(stale.map((name) => databaseExists(name)))).toStrictEqual([
+      false,
+      false,
+    ]);
   });
 });
 
@@ -144,6 +153,28 @@ describe("sweepStaleDatabases", () => {
           db.driver.execute(`drop database if exists ${name} with (force)`),
         ),
       );
+    }
+  });
+
+  it("leaves a stale database the role can't drop", async () => {
+    const suffix = crypto.randomUUID().replaceAll("-", "");
+    const sweeper = `smonn_db_sweeper_${suffix}`;
+    const owner = `smonn_db_owner_${suffix}`;
+    const theirs = `${prefix}${now - 3601}_33333333`;
+    await db.driver.execute(`create role ${sweeper} createdb; create role ${owner};`);
+    await db.driver.execute(`create database ${theirs} owner ${owner} template template0`);
+    try {
+      await db.driver.session(async (session) => {
+        await session.execute(`set role ${sweeper}`);
+        const driver: Driver = { ...session, session: (fn) => fn(session) };
+
+        await sweepStaleDatabases(driver, [prefix], () => {});
+      });
+
+      expect(await databaseExists(theirs)).toBe(true);
+    } finally {
+      await db.driver.execute(`drop database if exists ${theirs} with (force)`);
+      await db.driver.execute(`drop role ${sweeper}; drop role ${owner};`);
     }
   });
 });
