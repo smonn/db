@@ -99,9 +99,18 @@ async function withThrowawayDatabase<T>(
   fn: (database: Driver) => Promise<T>,
 ): Promise<T> {
   const name = `${prefix}${Math.floor(Date.now() / 1000)}_${randomHex(4)}`;
-  await driver.execute(`create database ${quoteIdentifier(name)} template template0`);
-  const unregister = onInterrupt(() => dropDatabase(driver, name));
+  // Registered before the create, so an interrupt during it waits for the create, then drops.
+  const created = Promise.withResolvers<void>();
+  const unregister = onInterrupt(async () => {
+    await created.promise;
+    await dropDatabase(driver, name);
+  });
   try {
+    await driver
+      .execute(`create database ${quoteIdentifier(name)} template template0`)
+      .finally(() => {
+        created.resolve();
+      });
     const connection = await connect(name);
     try {
       return await fn(connection.driver);

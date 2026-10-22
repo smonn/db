@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
 import { onProcessInterrupt } from "./signals.ts";
 
@@ -48,6 +49,29 @@ describe("onProcessInterrupt", () => {
       expect(target.counts()).toStrictEqual([0, 0]);
     },
   );
+
+  it("runs a cleanup registered after the interrupt straight away, and re-raises once it settles", async () => {
+    const target = fakeProcess();
+    const onInterrupt = onProcessInterrupt(target);
+    const shadow = Promise.withResolvers<void>();
+    onInterrupt(() => shadow.promise);
+    target.emit("SIGINT");
+
+    const definition = Promise.withResolvers<void>();
+    const cleanup = vi.fn<() => Promise<void>>(() => definition.promise);
+    onInterrupt(cleanup);
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(target.counts()).toStrictEqual([0, 0]);
+
+    shadow.resolve();
+    await delay(10);
+    expect(target.kill).not.toHaveBeenCalled();
+    definition.resolve();
+    await vi.waitFor(() => {
+      expect(target.kill).toHaveBeenCalledWith(42, "SIGINT");
+    });
+    expect(target.kill).toHaveBeenCalledOnce();
+  });
 
   it("listens once however many cleanups are registered, and stops when all are unregistered", () => {
     const target = fakeProcess();

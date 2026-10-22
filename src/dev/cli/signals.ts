@@ -12,12 +12,14 @@ type SignalTarget = {
 const SIGNALS: readonly NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
 
 /**
- * Listens for SIGINT and SIGTERM only while a cleanup is registered. On either, it runs every
- * registered cleanup, then removes its listeners and raises the signal again, so the process
- * still dies of it with the usual exit status.
+ * Listens for SIGINT and SIGTERM only while a cleanup is registered. On either, it removes its
+ * listeners, runs every registered cleanup, and runs straight away any cleanup registered later.
+ * Once all have settled it raises the signal again, so the process still dies of it with the
+ * usual exit status.
  */
 export function onProcessInterrupt(target: SignalTarget = process): OnInterrupt {
   const cleanups = new Set<() => Promise<void>>();
+  let running: Promise<void>[] | undefined;
   const listen = (): void => {
     for (const signal of SIGNALS) target.on(signal, interrupted);
   };
@@ -26,11 +28,15 @@ export function onProcessInterrupt(target: SignalTarget = process): OnInterrupt 
   };
   function interrupted(signal: NodeJS.Signals): void {
     stopListening();
-    void Promise.allSettled([...cleanups].map((cleanup) => cleanup())).then(() =>
-      target.kill(target.pid, signal),
-    );
+    const started = [...cleanups].map((cleanup) => cleanup());
+    running = started;
+    void settleAll(started).then(() => target.kill(target.pid, signal));
   }
   return (cleanup) => {
+    if (running !== undefined) {
+      running.push(cleanup());
+      return () => {};
+    }
     if (cleanups.size === 0) listen();
     cleanups.add(cleanup);
     return () => {
@@ -38,4 +44,11 @@ export function onProcessInterrupt(target: SignalTarget = process): OnInterrupt 
       if (cleanups.size === 0) stopListening();
     };
   };
+}
+
+/** Settles every promise in `running`, including those pushed onto it while it waits. */
+async function settleAll(running: readonly Promise<void>[]): Promise<void> {
+  const count = running.length;
+  await Promise.allSettled(running);
+  if (running.length > count) await settleAll(running);
 }
