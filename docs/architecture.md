@@ -240,7 +240,7 @@ Every command takes `--config`. Arguments are parsed with `util.parseArgs`. Ther
 
 ### Hand edits
 
-Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body that no longer matches counts as hand-edited, and generate stops overwriting it (ADR-0003). Deleting `current.sql` resumes generation. Commit replaces the header with ADR-0008's Previous and Hash headers.
+Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body that no longer matches counts as hand-edited, and generate stops overwriting it (ADR-0003): it keeps the file, replays it as written, and prints the lines that differ from what it would have generated. Deleting `current.sql` resumes generation. Commit replaces the header with ADR-0008's Previous and Hash headers.
 
 ### Concurrency
 

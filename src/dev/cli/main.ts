@@ -8,17 +8,18 @@ import {
   postgresJsDriver,
   postgresJsTypes,
 } from "../../adapters/postgres-js/index.ts";
-import { migrate } from "../../runtime/migrator/index.ts";
+import { migrate, verify } from "../../runtime/migrator/index.ts";
 import type { Driver } from "../../runtime/ports/index.ts";
 import { commit, generate } from "../generate/index.ts";
-import { loadProject, type Project } from "./project.ts";
+import { loadMigrationsFolder, loadProject, type Project } from "./project.ts";
 
 const USAGE = `usage: smonndb <command> [--config <path>]
 
 commands:
   generate        write current.sql and replay it into the Dev database
   commit <slug>   freeze current.sql into the next Committed migration
-  migrate         apply the pending Committed migrations`;
+  migrate         apply the pending Committed migrations
+  verify          check the Committed migrations' hash chain, with no database`;
 
 const DEFAULT_CONFIG = "smonndb.config.ts";
 
@@ -26,13 +27,23 @@ class UsageError extends Error {}
 
 type Command = { readonly config: string } & (
   | { readonly name: "generate" | "migrate" }
+  | { readonly name: "verify" }
   | { readonly name: "commit"; readonly slug: string }
 );
+
+type DatabaseCommand = Exclude<Command, { readonly name: "verify" }>;
 
 /** Runs one `smonndb` command and resolves to its exit code: 0, 1 on failure, 2 on misuse. */
 export async function main(argv: readonly string[]): Promise<number> {
   try {
     const command = parseCommand(argv);
+    if (command.name === "verify") {
+      const { verified } = await verify(
+        nodeMigrationSource(await loadMigrationsFolder(command.config)),
+      );
+      print(`verified ${verified.length} ${verified.length === 1 ? "migration" : "migrations"}`);
+      return 0;
+    }
     const project = await loadProject(command.config);
     await run(command, project);
     return 0;
@@ -62,6 +73,7 @@ function parseCommand(argv: readonly string[]): Command {
   switch (name) {
     case "generate":
     case "migrate":
+    case "verify":
       if (args.length > 0) throw new UsageError(`${name} takes no arguments: ${args.join(" ")}`);
       return { name, config };
     case "commit": {
@@ -78,7 +90,7 @@ function parseCommand(argv: readonly string[]): Command {
   }
 }
 
-async function run(command: Command, project: Project): Promise<void> {
+async function run(command: DatabaseCommand, project: Project): Promise<void> {
   const sql = postgres(project.url, {
     onnotice: ignoreNotice,
     types: postgresJsTypes,
@@ -91,7 +103,7 @@ async function run(command: Command, project: Project): Promise<void> {
   }
 }
 
-async function runOn(driver: Driver, command: Command, project: Project): Promise<void> {
+async function runOn(driver: Driver, command: DatabaseCommand, project: Project): Promise<void> {
   const { migrationsFolder: migrations, trackingSchema } = project;
   const tracking = trackingSchema === undefined ? {} : { trackingSchema };
   const fileSystem = nodeFileSystem();
@@ -106,6 +118,12 @@ async function runOn(driver: Driver, command: Command, project: Project): Promis
         ...tracking,
       });
       const path = relative(process.cwd(), result.path);
+      if (result.diff !== undefined) {
+        const differs = result.diff === "" ? "matches what generate would write" : result.diff;
+        print(`kept hand-edited ${path}, replayed as written; diff to what generate would write:`);
+        print(differs.trimEnd());
+        return;
+      }
       print(result.sql === undefined ? `no diff, removed ${path}` : `wrote ${path}`);
       return;
     }

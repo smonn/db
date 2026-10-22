@@ -1,7 +1,7 @@
 import { dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { DefinitionTables } from "../catalog/index.ts";
-import { parseConfig, type LoadedConfig } from "../config/index.ts";
+import { parseConfig, parseOfflineConfig, type LoadedConfig } from "../config/index.ts";
 
 export type Project = LoadedConfig & {
   /** `migrations`, resolved against the config file's folder. */
@@ -19,6 +19,13 @@ export async function loadProject(config: string): Promise<Project> {
     migrationsFolder: resolve(dirname(file), loaded.migrations),
     loadDefinition: () => loadDefinition(resolve(dirname(file), loaded.definition)),
   };
+}
+
+/** Resolves the migrations folder of the config file at `config`, which needs no `url`. */
+export async function loadMigrationsFolder(config: string): Promise<string> {
+  const file = resolve(config);
+  const loaded = parseOfflineConfig(await importDefault(file), relative(process.cwd(), file));
+  return resolve(dirname(file), loaded.migrations);
 }
 
 async function loadDefinition(file: string): Promise<DefinitionTables> {
