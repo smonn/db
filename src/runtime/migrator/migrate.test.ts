@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
+import { writeMigration } from "../internal/index.ts";
 import type { MigrationFile, MigrationSource } from "../ports/index.ts";
 import { migrate } from "./migrate.ts";
-import { migrationFile } from "./migration-files.test-helper.ts";
 
 const db = useTestDatabase();
 
@@ -93,7 +93,7 @@ describe("migrate", () => {
   it("rolls back a failing file with its record and keeps the files before it", async () => {
     const body =
       "insert into users (id, name) values (1, 'Ada');\nalter table users add column name text;\n";
-    const failing = await migrationFile("000002-add-name.sql", HASH_1, body);
+    const failing = await writeMigration("000002-add-name.sql", HASH_1, body);
 
     await expect(
       migrate({ driver: db.driver, source: source(CREATE_USERS, failing) }),
@@ -133,7 +133,7 @@ describe("migrate", () => {
   });
 
   it("refuses a missing file, before running anything", async () => {
-    const third = await migrationFile(
+    const third = await writeMigration(
       "000003-add-age.sql",
       HASH_2,
       "alter table users add column age int;\n",
@@ -167,7 +167,7 @@ describe("migrate", () => {
 
   it("refuses a recorded file whose body changed and was rehashed", async () => {
     await migrate({ driver: db.driver, source: source(CREATE_USERS) });
-    const rehashed = await migrationFile(
+    const rehashed = await writeMigration(
       CREATE_USERS.filename,
       undefined,
       "create table users (id integer primary key, name text);\n",
@@ -183,14 +183,14 @@ describe("migrate", () => {
 
   it("refuses a file inserted before a recorded one, without running it", async () => {
     await migrate({ driver: db.driver, source: source(CREATE_USERS, ADD_EMAIL) });
-    const inserted = await migrationFile(
+    const inserted = await writeMigration(
       "000002-add-phone.sql",
       HASH_1,
       "alter table users add column phone text;\n",
     );
-    const moved = await migrationFile(
+    const moved = await writeMigration(
       "000003-add-email.sql",
-      parseHash(inserted),
+      inserted.hash,
       "alter table users add column email text;\n",
     );
 
@@ -214,10 +214,6 @@ describe("migrate", () => {
     expect(result).toStrictEqual({ applied: ["000002-add-email.sql"] });
   });
 });
-
-function parseHash(file: MigrationFile): string {
-  return /--! Hash: (.*)/u.exec(file.content)?.[1] ?? "";
-}
 
 function withPrevious(file: MigrationFile, previous: string): MigrationFile {
   return {

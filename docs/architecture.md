@@ -46,7 +46,7 @@ flowchart TB
     sql["<b>sql</b><br/>[module]<br/>SQL fragments, the sql template, rendering to text and params"]
     migrator["<b>migrator</b><br/>[module]<br/>Verifies the hash chain and applies Committed migrations under an advisory lock"]
     ports["<b>ports</b><br/>[types only]<br/>Driver, Connect, MigrationSource, FileSystem"]
-    internal["<b>internal</b><br/>[module, never exported]<br/>Shared helpers such as sha256"]
+    internal["<b>internal</b><br/>[module, never exported]<br/>Shared helpers: sha256 and the migration file format"]
   end
 
   adapters["<b>adapters/</b><br/>[container]"]
@@ -54,7 +54,7 @@ flowchart TB
   query -- "reads column types" --> definition
   query -- "renders with" --> sql
   migrator -- "reads migrations and runs SQL through" --> ports
-  migrator -- "hashes with" --> internal
+  migrator -- "parses and hashes migration files with" --> internal
   adapters -- "implement" --> ports
 
   classDef external stroke-dasharray: 5 5

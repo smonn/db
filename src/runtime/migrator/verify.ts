@@ -1,6 +1,5 @@
-import { migrationHash } from "../internal/index.ts";
+import { migrationHash, parseMigration, type ParsedMigration } from "../internal/index.ts";
 import type { MigrationSource } from "../ports/index.ts";
-import { parseMigration, type ParsedMigration } from "./migration-file.ts";
 
 export type VerifyResult = {
   readonly verified: readonly string[];

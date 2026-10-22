@@ -1,4 +1,4 @@
-import type { FileSystem } from "../../runtime/ports/index.ts";
+import type { FileSystem, MigrationFile } from "../../runtime/ports/index.ts";
 
 export type MemoryFileSystem = FileSystem & {
   readonly files: Map<string, string>;
@@ -27,4 +27,12 @@ export function memoryFileSystem(initial: Record<string, string> = {}): MemoryFi
       return Promise.resolve();
     },
   };
+}
+
+/** Keys each file by its path under `directory`, the shape `memoryFileSystem` takes. */
+export function filesIn(
+  directory: string,
+  files: readonly MigrationFile[],
+): Record<string, string> {
+  return Object.fromEntries(files.map((file) => [`${directory}/${file.filename}`, file.content]));
 }

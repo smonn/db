@@ -1,11 +1,10 @@
-import { quoteIdentifier, quoteTrackingSchema } from "../../runtime/internal/index.ts";
+import {
+  quoteIdentifier,
+  quoteTrackingSchema,
+  type CurrentMigration,
+} from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type { Driver, MigrationSource } from "../../runtime/ports/index.ts";
-
-export type CurrentMigration = {
-  readonly body: string;
-  readonly hash: string;
-};
 
 // A Dev database holds the tracking schema's current table, or nothing outside an empty public.
 const DEV_DATABASE = `

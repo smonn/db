@@ -1,11 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
-import { sha256 } from "../../runtime/internal/index.ts";
+import { sha256, writeMigration } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
-import { chain, filesIn } from "./committed-migrations.test-helper.ts";
 import { generate } from "./generate.ts";
-import { memoryFileSystem } from "./memory-file-system.test-helper.ts";
+import { filesIn, memoryFileSystem } from "./memory-file-system.test-helper.ts";
 
 const db = useTestDatabase();
 
@@ -19,11 +18,17 @@ beforeEach(async () => {
 
 describe("generate with a configured tracking schema", () => {
   it("keeps the marker and history where migrate reads them", async () => {
-    const committed = await chain(
-      ["000001-create-users.sql", "create table public.users (id text not null);\n"],
-      ["000002-create-posts.sql", "create table public.posts (id text);\n"],
+    const users = await writeMigration(
+      "000001-create-users.sql",
+      undefined,
+      "create table public.users (id text not null);\n",
     );
-    const fileSystem = memoryFileSystem(filesIn("db/migrations", committed.slice(0, 1)));
+    const posts = await writeMigration(
+      "000002-create-posts.sql",
+      users.hash,
+      "create table public.posts (id text);\n",
+    );
+    const fileSystem = memoryFileSystem(filesIn("db/migrations", [users]));
     const options = {
       driver: db.driver,
       connect: db.connect,
@@ -52,7 +57,7 @@ describe("generate with a configured tracking schema", () => {
     await expect(
       migrate({
         driver: db.driver,
-        source: { list: () => Promise.resolve(committed) },
+        source: { list: () => Promise.resolve([users, posts]) },
         trackingSchema: TRACKING_SCHEMA,
       }),
     ).rejects.toThrow(`${TRACKING_SCHEMA}.current holds a row, so this is a Dev database`);
