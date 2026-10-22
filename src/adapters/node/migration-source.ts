@@ -7,7 +7,15 @@ const nodeFolder: MigrationFolder = {
     const entries = await readdir(directory, { withFileTypes: true });
     return entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
   },
-  readFile: (path) => readFile(path, "utf8"),
+  async readFile(path) {
+    let content: string | undefined;
+    try {
+      content = await readFile(path, "utf8");
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    }
+    return content;
+  },
 };
 
 /**
