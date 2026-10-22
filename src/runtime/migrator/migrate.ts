@@ -1,5 +1,5 @@
 import type { Driver, MigrationSource } from "../ports/index.ts";
-import { migrationHash, parseMigration, type ParsedMigration } from "./migration-file.ts";
+import { checkRecorded, loadVerifiedMigrations } from "./verify.ts";
 
 export type MigrateOptions = {
   readonly driver: Driver;
@@ -26,6 +26,8 @@ create table if not exists smonn_db.migrations (
 /**
  * Applies every Committed migration not yet recorded, each in its own transaction with its
  * tracking row. A session advisory lock makes parallel runs wait, then find nothing left.
+ * Before applying anything, it refuses a broken file chain and recorded rows that aren't a prefix
+ * of that chain.
  */
 export async function migrate({ driver, source }: MigrateOptions): Promise<MigrateResult> {
   const migrations = await loadVerifiedMigrations(source);
@@ -33,11 +35,16 @@ export async function migrate({ driver, source }: MigrateOptions): Promise<Migra
   return driver.session(async (session) => {
     await session.query(`select pg_advisory_lock(${LOCK_KEY})`);
     await session.execute(TRACKING_TABLE);
-    const { rows } = await session.query("select hash from smonn_db.migrations");
-    const recorded = new Set(rows.map((row) => row["hash"]));
+    const { rows } = await session.query(
+      "select filename, hash from smonn_db.migrations order by sequence",
+    );
+    checkRecorded(
+      migrations,
+      rows.map((row) => ({ filename: String(row["filename"]), hash: String(row["hash"]) })),
+    );
 
     const applied: string[] = [];
-    for (const migration of migrations.filter(({ hash }) => !recorded.has(hash))) {
+    for (const migration of migrations.slice(rows.length)) {
       // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
       await session.transaction(async (tx) => {
         await tx.execute(migration.body);
@@ -50,29 +57,4 @@ export async function migrate({ driver, source }: MigrateOptions): Promise<Migra
     }
     return { applied };
   });
-}
-
-async function loadVerifiedMigrations(source: MigrationSource): Promise<ParsedMigration[]> {
-  const migrations = (await source.list())
-    .map((file) => parseMigration(file))
-    .toSorted((a, b) => a.sequence - b.sequence);
-
-  const actualHashes = await Promise.all(
-    migrations.map((migration) => migrationHash(migration.previous, migration.body)),
-  );
-  migrations.forEach((migration, index) => {
-    const previous = migrations[index - 1]?.hash;
-    if (migration.previous !== previous) {
-      throw new Error(
-        `${migration.filename}: --! Previous should be ${previous ?? "-"}, not ${migration.previous ?? "-"}`,
-      );
-    }
-    const actual = actualHashes[index];
-    if (actual !== migration.hash) {
-      throw new Error(
-        `${migration.filename}: --! Hash says ${migration.hash} but the body hashes to ${actual}`,
-      );
-    }
-  });
-  return migrations;
 }
