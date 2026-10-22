@@ -118,6 +118,12 @@ async function runOn(driver: Driver, command: DatabaseCommand, project: Project)
         ...tracking,
       });
       const path = relative(process.cwd(), result.path);
+      if (result.diff !== undefined) {
+        const differs = result.diff === "" ? "matches what generate would write" : result.diff;
+        print(`kept hand-edited ${path}, replayed as written; diff to what generate would write:`);
+        print(differs.trimEnd());
+        return;
+      }
       print(result.sql === undefined ? `no diff, removed ${path}` : `wrote ${path}`);
       return;
     }
