@@ -144,7 +144,9 @@ describe("withShadowDatabases", () => {
         { onInterrupt },
       );
 
-      await expect(run).rejects.toThrow(/^database "smonn_db_\w+" does not exist$/u);
+      await expect(run).rejects.toThrow(
+        /^database (?:"smonn_db_\w+" does not exist|\d+ was concurrently dropped)$/u,
+      );
       expect(leftAtExit).toStrictEqual([]);
     },
   );

@@ -47,12 +47,26 @@ export async function withShadowDatabases<T>(
   const { log = () => {}, onInterrupt = () => () => {} } = options;
   await requireCreateDb(driver);
   await sweepStaleDatabases(driver, [SHADOW_PREFIX, DEFINITION_PREFIX], log);
-  return withThrowawayDatabase(driver, connect, onInterrupt, SHADOW_PREFIX, (shadow) =>
-    withThrowawayDatabase(driver, connect, onInterrupt, DEFINITION_PREFIX, (definition) =>
+  return withThrowawayDatabase(driver, connect, onInterrupt, SHADOW, (shadow) =>
+    withThrowawayDatabase(driver, connect, onInterrupt, DEFINITION, (definition) =>
       fn({ shadow, definition }),
     ),
   );
 }
+
+type Throwaway = {
+  readonly prefix: string;
+  /**
+   * Turns `check_function_bodies` on for the current role in the database, which outranks the
+   * role's and the database's own setting. It holds for `connect` when that logs in as the same
+   * role.
+   */
+  readonly checkFunctionBodies: boolean;
+};
+
+// The Shadow replay checks function bodies whatever the role or database sets (#67).
+const SHADOW: Throwaway = { prefix: SHADOW_PREFIX, checkFunctionBodies: true };
+const DEFINITION: Throwaway = { prefix: DEFINITION_PREFIX, checkFunctionBodies: false };
 
 async function requireCreateDb(driver: Driver): Promise<void> {
   const {
@@ -95,7 +109,7 @@ async function withThrowawayDatabase<T>(
   driver: Driver,
   connect: Connect,
   onInterrupt: OnInterrupt,
-  prefix: string,
+  { prefix, checkFunctionBodies }: Throwaway,
   fn: (database: Driver) => Promise<T>,
 ): Promise<T> {
   const name = `${prefix}${Math.floor(Date.now() / 1000)}_${randomHex(4)}`;
@@ -111,6 +125,11 @@ async function withThrowawayDatabase<T>(
       .finally(() => {
         created.resolve();
       });
+    if (checkFunctionBodies) {
+      await driver.execute(
+        `alter role current_user in database ${quoteIdentifier(name)} set check_function_bodies = on`,
+      );
+    }
     const connection = await connect(name);
     try {
       return await fn(connection.driver);
