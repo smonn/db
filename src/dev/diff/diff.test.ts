@@ -113,11 +113,11 @@ create table "public"."users.archive" (
     expect(() => diff(from, to)).toThrow(`Can't drop table "public"."users" yet`);
   });
 
-  it("refuses a changed fact, which v0.1 can't alter yet", () => {
+  it("refuses a changed type, which v0.1 can't alter yet", () => {
     const to = catalog((b) => {
       b.schema("public");
       b.table("public", "users");
-      b.column("public", "users", "id", textNotNull);
+      b.column("public", "users", "id", { type: "integer", notNull: false });
     });
     expect(() => diff(catalog(users), to)).toThrow(`Can't alter column "public"."users"."id" yet`);
   });
