@@ -79,7 +79,7 @@ describe("generate with a configured tracking schema", () => {
         trackingSchema: TRACKING_SCHEMA,
       }),
     ).rejects.toThrow(
-      `${db.name} isn't a Dev database: it has no "${TRACKING_SCHEMA}"."current" table`,
+      `"${db.name}" isn't a Dev database: it has no "${TRACKING_SCHEMA}"."current" table`,
     );
   });
 
