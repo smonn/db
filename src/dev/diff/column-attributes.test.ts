@@ -129,21 +129,54 @@ alter table "public"."t" alter column "b" set default ('y'::text);
     expect(() => diff(from, to)).toThrow(`Can't alter identity of column "public"."t"."id" yet`);
   });
 
-  it("refuses a type change, which #65 owns", () => {
-    expect(() => diff(table({ a: { type: "text" } }), table({ a: { type: "integer" } }))).toThrow(
-      `Can't alter column "public"."t"."a" yet`,
-    );
+  it("changes a type with a plain ALTER COLUMN ... TYPE, before NOT NULL", () => {
+    expect(diff(table({ a: { type: "text" } }), table({ a: { type: "integer", notNull: true } })))
+      .toBe(`alter table "public"."t" alter column "a" type integer;
+
+alter table "public"."t" alter column "a" set not null;
+`);
   });
 
-  it("refuses a type change even when NOT NULL changes with it", () => {
-    expect(() =>
-      diff(table({ a: { type: "text" } }), table({ a: { type: "integer", notNull: true } })),
-    ).toThrow(`Can't alter column "public"."t"."a" yet`);
+  it("drops a default before a type change and sets it again afterward", () => {
+    const from = table({ a: { type: "integer", default: { expression: "1" } } });
+    const to = table({ a: { type: "bigint", default: { expression: "1" } } });
+
+    expect(diff(from, to).split("\n\n")).toStrictEqual([
+      `alter table "public"."t" alter column "a" drop default;`,
+      `alter table "public"."t" alter column "a" type bigint;`,
+      `alter table "public"."t" alter column "a" set default (1);\n`,
+    ]);
   });
 
-  it("still refuses to drop a column, and names it rather than its default", () => {
+  it("drops the old default and sets the new one around a type change", () => {
+    const from = table({ a: { type: "integer", default: { expression: "1" } } });
+    const to = table({ a: { type: "text", default: { expression: "'one'::text" } } });
+
+    expect(diff(from, to).split("\n\n")).toStrictEqual([
+      `alter table "public"."t" alter column "a" drop default;`,
+      `alter table "public"."t" alter column "a" type text;`,
+      `alter table "public"."t" alter column "a" set default ('one'::text);\n`,
+    ]);
+  });
+
+  it("drops a default, or sets one, only once around a type change", () => {
+    const from = table({ a: { type: "integer", default: { expression: "1" } }, b: {} });
+    const to = table({
+      a: { type: "bigint" },
+      b: { type: "character varying(20)", default: { expression: "'b'::character varying" } },
+    });
+
+    expect(diff(from, to).split("\n\n")).toStrictEqual([
+      `alter table "public"."t" alter column "a" drop default;`,
+      `alter table "public"."t" alter column "a" type bigint;`,
+      `alter table "public"."t" alter column "b" type character varying(20);`,
+      `alter table "public"."t" alter column "b" set default ('b'::character varying);\n`,
+    ]);
+  });
+
+  it("drops a column alone, without its default first", () => {
     const from = table({ a: { default: { expression: "'x'::text" } } });
-    expect(() => diff(from, table({}))).toThrow(`Can't drop column "public"."t"."a" yet`);
+    expect(diff(from, table({}))).toBe(`alter table "public"."t" drop column "a";\n`);
   });
 
   it("orders drops of defaults and identity before NOT NULL, and sets after", () => {
@@ -233,6 +266,25 @@ describe("against Postgres", () => {
 
     expect(await introspect(db.driver)).toStrictEqual(wanted);
     expect(diff(await introspect(db.driver), wanted)).toBe("");
+  });
+
+  it("changes types of columns with defaults and identities, leaving no remaining diff", async () => {
+    await db.driver.execute(`
+      create table t (
+        a character varying(5) default 'ab',
+        b integer generated always as identity,
+        c integer not null default 1
+      )`);
+    // Retyped in place, `a` would keep its default as `'ab'::character varying`.
+    const wanted = table({
+      a: { default: { expression: "'ab'::text" } },
+      b: { type: "bigint", notNull: true, identity: always },
+      c: { type: "bigint", notNull: true, default: { expression: "2" } },
+    });
+
+    await db.driver.execute(diff(await introspect(db.driver), wanted));
+
+    expect(await introspect(db.driver)).toStrictEqual(wanted);
   });
 
   it("reads a NOT NULL constraint named by the user the same as an unnamed one", async () => {
