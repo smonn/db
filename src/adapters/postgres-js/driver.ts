@@ -16,7 +16,14 @@ const connectionGone = new Set(["CONNECTION_CLOSED", "CONNECTION_DESTROYED"]);
 // server reaches the statement as CONNECTION_CLOSED once the socket closes. Not !backendAlive,
 // which also holds for an error `fn` throws itself.
 function backendEnded(error: unknown): boolean {
-  return error instanceof Error && "code" in error && connectionGone.has(String(error.code));
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  // A failed rollback wraps the dead connection's error as the cause of an AggregateError.
+  return (
+    ("code" in error && connectionGone.has(String(error.code))) ||
+    (error.cause !== undefined && backendEnded(error.cause))
+  );
 }
 
 function queryable(connection: ReservedSql | Sql): Queryable {

@@ -24,3 +24,19 @@ describe("postgresJsDriver when the backend ends mid-statement", () => {
     ]);
   });
 });
+
+describe("postgresJsDriver when the backend ends during a rollback", () => {
+  const doomed = "select pg_sleep(30)";
+
+  it("rejects a transaction without resetting the dead connection", async () => {
+    // The statement left running holds the connection, so the rollback waits behind it.
+    const failed = db.ownPool().transaction((tx) => {
+      tx.execute(doomed).catch(() => null);
+      return Promise.reject(new Error("boom"));
+    });
+    await Promise.all([
+      expect(failed).rejects.toMatchObject({ cause: { code: "CONNECTION_CLOSED" } }),
+      terminateBackendRunning(db.driver, doomed),
+    ]);
+  });
+});
