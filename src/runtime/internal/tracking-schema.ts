@@ -27,6 +27,9 @@ export type TrackingSchema = {
   /** Creates the schema and its `current` table. Only Dev code calls it (ADR-0016). */
   createCurrentTable(tx: Queryable): Promise<void>;
   recordCurrent(tx: Queryable, hash: string): Promise<void>;
+  /** The hash `current` holds, or `undefined` when the table is missing or empty. */
+  readCurrent(session: Queryable): Promise<string | undefined>;
+  clearCurrent(tx: Queryable): Promise<void>;
 };
 
 // A Dev database holds the tracking schema's current table, or nothing outside an empty public.
@@ -104,6 +107,10 @@ export function trackingSchema(name: string): TrackingSchema {
     async recordCurrent(tx, hash) {
       await tx.query(`insert into ${schema}.current (hash) values ($1)`, [hash]);
     },
+
+    readCurrent,
+
+    clearCurrent: (tx) => tx.execute(`delete from ${schema}.current`),
   };
 }
 

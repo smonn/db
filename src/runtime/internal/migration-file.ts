@@ -111,7 +111,8 @@ export async function parseCurrent(content: string): Promise<ParsedCurrent> {
   return { body, edited: generated !== (await currentHash(body)) };
 }
 
-async function currentHash(body: string): Promise<string> {
+/** The hash `--! Generated` and the tracking schema's `current` table record for a Current migration body. */
+export async function currentHash(body: string): Promise<string> {
   return `sha256:${await sha256(body)}`;
 }
 

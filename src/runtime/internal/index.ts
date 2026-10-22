@@ -1,6 +1,7 @@
 export {
   committedFilenames,
   CURRENT_FILENAME,
+  currentHash,
   migrationHash,
   parseCurrent,
   parseMigration,
