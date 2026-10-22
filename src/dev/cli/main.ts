@@ -10,7 +10,7 @@ import {
 } from "../../adapters/postgres-js/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type { Driver } from "../../runtime/ports/index.ts";
-import { commit, generate } from "../generate/index.ts";
+import { commit, generate, reset } from "../generate/index.ts";
 import { loadProject, type Project } from "./project.ts";
 
 const USAGE = `usage: smonndb <command> [--config <path>]
@@ -18,6 +18,7 @@ const USAGE = `usage: smonndb <command> [--config <path>]
 commands:
   generate        write current.sql and replay it into the Dev database
   commit <slug>   freeze current.sql into the next Committed migration
+  reset [--erase] rebuild the Dev database from the migration files
   migrate         apply the pending Committed migrations`;
 
 const DEFAULT_CONFIG = "smonndb.config.ts";
@@ -27,6 +28,7 @@ class UsageError extends Error {}
 type Command = { readonly config: string } & (
   | { readonly name: "generate" | "migrate" }
   | { readonly name: "commit"; readonly slug: string }
+  | { readonly name: "reset"; readonly erase: boolean }
 );
 
 /** Runs one `smonndb` command and resolves to its exit code: 0, 1 on failure, 2 on misuse. */
@@ -52,14 +54,19 @@ function parseCommand(argv: readonly string[]): Command {
     parsed = parseArgs({
       args: [...argv],
       allowPositionals: true,
-      options: { config: { type: "string" } },
+      options: { config: { type: "string" }, erase: { type: "boolean" } },
     });
   } catch (error) {
     throw new UsageError(error instanceof Error ? error.message : String(error), { cause: error });
   }
   const [name, ...args] = parsed.positionals;
   const config = parsed.values.config ?? DEFAULT_CONFIG;
+  const erase = parsed.values.erase === true;
+  if (erase && name !== "reset") throw new UsageError("--erase applies only to reset");
   switch (name) {
+    case "reset":
+      if (args.length > 0) throw new UsageError(`reset takes no arguments: ${args.join(" ")}`);
+      return { name, erase, config };
     case "generate":
     case "migrate":
       if (args.length > 0) throw new UsageError(`${name} takes no arguments: ${args.join(" ")}`);
@@ -113,6 +120,11 @@ async function runOn(driver: Driver, command: Command, project: Project): Promis
       const { slug } = command;
       const result = await commit({ driver, fileSystem, migrations, slug, ...tracking });
       print(`wrote ${relative(process.cwd(), result.path)}`);
+      return;
+    }
+    case "reset": {
+      await reset({ driver, fileSystem, migrations, erase: command.erase, ...tracking });
+      print("reset the Dev database");
       return;
     }
     case "migrate": {

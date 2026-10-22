@@ -79,6 +79,24 @@ describe("smonndb", () => {
     ]);
   });
 
+  it("resets a Dev database, and a migrated one only with --erase", async () => {
+    const devConfig = join(project, "dev.config.ts");
+    const productionConfig = join(project, "production.config.ts");
+    expect(await main(["generate", "--config", devConfig])).toBe(0);
+    expect(await main(["commit", "create-users", "--config", devConfig])).toBe(0);
+    expect(await main(["migrate", "--config", productionConfig])).toBe(0);
+    await dev.driver.execute("create table public.stray (id int)");
+
+    expect(await main(["reset", "--config", devConfig])).toBe(0);
+
+    const strays = await dev.driver.query("select to_regclass('public.stray') as name");
+    expect(strays.rows).toStrictEqual([{ name: null }]);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    expect(await main(["reset", "--config", productionConfig])).toBe(1);
+    expect(String(stderr.mock.calls[0]?.[0])).toContain("isn't a Dev database");
+    expect(await main(["reset", "--erase", "--config", productionConfig])).toBe(0);
+  });
+
   it("runs from its bin under plain node, resolving the config's paths against its folder", async () => {
     const stdout = execFileSync(
       process.execPath,

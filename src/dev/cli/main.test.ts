@@ -39,6 +39,8 @@ describe("main", () => {
     [["commit"], "commit takes one argument, the slug"],
     [["commit", "a", "b"], "commit takes one argument, the slug"],
     [["migrate", "--url", "postgres://"], "Unknown option '--url'"],
+    [["reset", "now"], "reset takes no arguments: now"],
+    [["generate", "--erase"], "--erase applies only to reset"],
   ])("exits 2 with the usage for %j", async (argv, message) => {
     expect(await main(argv)).toBe(2);
     expect(stderr).toContain(message);
