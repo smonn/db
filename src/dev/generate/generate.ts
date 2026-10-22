@@ -15,7 +15,7 @@ import type {
 } from "../../runtime/ports/index.ts";
 import { definitionCatalog, type Catalog, type DefinitionTables } from "../catalog/index.ts";
 import { diff } from "../diff/index.ts";
-import { introspect } from "../introspect/index.ts";
+import { introspect, skippedSchemaReason } from "../introspect/index.ts";
 import { withShadowDatabases } from "../shadow/index.ts";
 import { requireDevDatabase, resetDevDatabase } from "./reset.ts";
 
@@ -85,12 +85,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
 /** Refuses a schema `introspect` skips, whose tables would otherwise vanish from `current.sql`. */
 function requireModeledSchemas(definition: DefinitionTables, trackingSchema: string): void {
   for (const schema of Object.keys(definition)) {
-    const reason =
-      schema === trackingSchema
-        ? "the tracking schema"
-        : schema.startsWith("pg_") || schema === "information_schema"
-          ? "a system schema"
-          : undefined;
+    const reason = skippedSchemaReason(schema, trackingSchema);
     if (reason !== undefined) {
       throw new Error(
         `the Definition names schema ${quoteIdentifier(schema)}, which generate skips as ${reason}`,
