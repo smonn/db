@@ -55,3 +55,10 @@ A `SELECT` statement that retrieves rows.
 **Data modification**:
 An `INSERT`, `UPDATE`, or `DELETE` statement that changes rows.
 _Avoid_: Mutation
+
+**Row**:
+A row of a table as the Definition types it: each column maps to its value type, nullable where the column allows NULL. Not the Driver row.
+
+**Driver row**:
+A row exactly as a driver returns it, with unknown values. Not the Row, which the Definition types.
+_Avoid_: Raw row
