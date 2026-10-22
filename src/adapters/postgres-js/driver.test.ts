@@ -239,7 +239,18 @@ describe("postgresJsDriver when a session's reset fails", () => {
     swaps = ["select 1 / 0", "select 1 / 0"];
     const inside = driver.session((session) => backend(session));
     await expect(inside).rejects.toThrow("division by zero");
+    expect(swaps).toStrictEqual([]);
     expect(await backend(driver)).toMatchObject({ path: '"$user", public' });
+  });
+
+  it("rejects with fn's and the reset's errors when fn rejects and the connection can't close", async () => {
+    swaps = ["select 1 / 0", "select 1 / 0"];
+    const failed = driver.session(() => Promise.reject(new Error("boom")));
+    await expect(failed).rejects.toBeInstanceOf(AggregateError);
+    await expect(failed).rejects.toMatchObject({
+      errors: [{ message: "boom" }, { message: "division by zero" }],
+    });
+    expect(swaps).toStrictEqual([]);
   });
 });
 

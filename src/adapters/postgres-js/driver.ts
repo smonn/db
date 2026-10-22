@@ -144,7 +144,15 @@ export function postgresJsDriver(sql: Sql): Driver {
       try {
         result = await fn(reservedSession(reserved));
       } catch (error) {
-        await returnToPool(reserved).catch(() => {});
+        try {
+          await returnToPool(reserved);
+        } catch (resetError) {
+          throw new AggregateError(
+            [error, resetError],
+            "session rejected, and its reset failed, so its connection went back to the pool without one",
+            { cause: resetError },
+          );
+        }
         throw error;
       }
       await returnToPool(reserved);

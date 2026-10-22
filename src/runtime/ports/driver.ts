@@ -23,7 +23,9 @@ export type Driver = Session & {
    * Holds one connection for the whole of `fn`, as session advisory locks need. When `fn`
    * settles, the session rolls back any transaction `fn` left and resets its settings, temp
    * tables, and locks, so the next user of the connection starts clean. If the reset fails, the
-   * connection closes instead. A rejecting `fn` rejects the session with its own error.
+   * connection closes instead. If it can't close either, it goes back to the pool unreset and the
+   * session rejects with the reset's error. A rejecting `fn` rejects the session with its own
+   * error, or with an AggregateError of both when the connection went back unreset.
    */
   session<T>(fn: (session: Session) => Promise<T>): Promise<T>;
 };
