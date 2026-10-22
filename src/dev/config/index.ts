@@ -1,1 +1,7 @@
-export { defineConfig, parseConfig, type Config, type LoadedConfig } from "./config.ts";
+export {
+  defineConfig,
+  parseConfig,
+  parseOfflineConfig,
+  type Config,
+  type LoadedConfig,
+} from "./config.ts";
