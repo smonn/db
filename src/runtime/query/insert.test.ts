@@ -50,14 +50,14 @@ describe("insert", () => {
     });
   });
 
-  it("names a key that is no column of the table", () => {
+  it("names a key that is not a column of the table", () => {
     const row = { id: "u1", nickname: "x" };
     expect(() => insert(db.public.users).values(row)).toThrow(
-      '"nickname" is no column of "public"."users"',
+      '"nickname" is not a column of "public"."users"',
     );
     const onlyUnknown = { nickname: "x" };
     expect(() => insert(db.public.flags).values(onlyUnknown)).toThrow(
-      '"nickname" is no column of "public"."flags"',
+      '"nickname" is not a column of "public"."flags"',
     );
   });
 
@@ -92,7 +92,7 @@ describe("insert", () => {
     expect(() => insert(db.public.users).values({ email: "a@example.com" })).not.toThrow();
     // @ts-expect-error no such column
     expect(() => insert(db.public.users).values({ id: "u1", nickname: "x" })).toThrow(
-      '"nickname" is no column',
+      '"nickname" is not a column',
     );
     // @ts-expect-error id is NOT NULL, so null is no value
     expect(() => insert(db.public.users).values({ id: null })).not.toThrow();

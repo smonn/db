@@ -80,7 +80,7 @@ function check(table: Table, rows: readonly Record<string, unknown>[]): void {
   for (const row of rows) {
     for (const key of Object.keys(row)) {
       if (!Object.hasOwn(table.columns, key)) {
-        throw new Error(`"${key}" is no column of "${table.schema}"."${table.name}"`);
+        throw new Error(`"${key}" is not a column of "${table.schema}"."${table.name}"`);
       }
     }
   }
