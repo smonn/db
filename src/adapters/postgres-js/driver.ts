@@ -1,5 +1,6 @@
 import type { ParameterOrJSON, ReservedSql, Sql } from "postgres";
 import type { Driver, Queryable, Row, Session } from "../../runtime/ports/index.ts";
+import { useDefinitionValueTypes } from "./value-types.ts";
 
 // Without params, postgres.js switches to the simple protocol unless `simple` is false, which its
 // types leave out of UnsafeQueryOptions.
@@ -38,8 +39,12 @@ function reservedSession(reserved: ReservedSql): Session {
   };
 }
 
-/** The caller owns `sql` and ends it. */
+/**
+ * The caller owns `sql` and ends it. Sets `sql`'s type parsers to the Definition's value types, so
+ * other queries on `sql` read bigint, date, timestamp, and bytea the same way.
+ */
 export function postgresJsDriver(sql: Sql): Driver {
+  useDefinitionValueTypes(sql);
   const driver: Driver = {
     ...queryable(sql),
     transaction(fn) {
