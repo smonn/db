@@ -58,8 +58,8 @@ export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void
   const { issue, repository } = event;
   const target = [String(issue.number), "--repo", repository.full_name];
   if (needsCapitalTitle(event)) {
-    const title = `This title starts with a lowercase letter. Titles are sentence case: start with a capitalised plain word and keep identifiers verbatim, so reorder instead of recasing (\`generate drops tables\` becomes \`Command generate drops tables\`).`;
-    gh(["issue", "comment", ...target, "--body", title]);
+    const titleBody = `This title starts with a lowercase letter. Titles are sentence case: start with a capitalised plain word and keep identifiers verbatim, so reorder instead of recasing (\`generate drops tables\` becomes \`Command generate drops tables\`).`;
+    gh(["issue", "comment", ...target, "--body", titleBody]);
   }
   if (event.action === "edited" || !needsMilestone(issue)) return;
   const body = `This issue has no milestone. Every issue needs one: pick it by the milestone descriptions at ${repository.html_url}/milestones.`;

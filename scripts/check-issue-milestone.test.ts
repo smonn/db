@@ -156,6 +156,16 @@ describe("main", () => {
     expect(gh).not.toHaveBeenCalled();
   });
 
+  test("posts only the title comment on a retitle without a milestone", () => {
+    const gh = vi.fn<(args: string[]) => void>();
+    const retitle = event(
+      { title: "generate drops tables" },
+      { action: "edited", changes: { title: {} } },
+    );
+    main({ GITHUB_EVENT_PATH: write(retitle) }, gh);
+    expect(gh.mock.calls).toEqual([[titleComment]]);
+  });
+
   test("skips a bot issue with a lowercase title and no milestone", () => {
     const gh = vi.fn<(args: string[]) => void>();
     main({ GITHUB_EVENT_PATH: write(event({ title: "dashboard", user: { type: "Bot" } })) }, gh);
