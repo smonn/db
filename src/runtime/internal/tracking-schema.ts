@@ -13,7 +13,7 @@ export type RecordedMigration = {
 
 /** The tracking schema's `migrations` and `current` tables (ADR-0008, ADR-0016). */
 export type TrackingSchema = {
-  /** The name as configured, unquoted, for messages and catalog lookups. */
+  /** The name as configured, unquoted, for catalog lookups. */
   readonly name: string;
   /** The `current` table's quoted, qualified name, for messages. */
   readonly currentTable: string;
