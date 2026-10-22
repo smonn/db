@@ -64,10 +64,14 @@ export function main(
   root: string = fileURLToPath(new URL("..", import.meta.url)),
 ): void {
   const name = projectName(root);
-  const [command = "start"] = args;
-  if (command === "start") start(root, name);
-  else if (command === "stop") stop(root, name);
-  else throw new Error("Usage: node scripts/test-db.ts [start|stop]");
+  const [command = "start", ...rest] = args;
+  if (rest.length === 0 && command === "start") start(root, name);
+  else if (rest.length === 0 && command === "stop") stop(root, name);
+  else {
+    throw new Error(
+      `Unknown arguments "${args.join(" ")}". Usage: node scripts/test-db.ts [start|stop]`,
+    );
+  }
 }
 
 if (import.meta.main) main(process.argv.slice(2));

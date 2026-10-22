@@ -143,10 +143,17 @@ describe("main", () => {
     }).toThrow(/down failed:\nno daemon/u);
   });
 
-  test("rejects an unknown command", () => {
+  test("rejects an unknown command by name", () => {
     expect(() => {
       main(["restart"], root);
-    }).toThrow("Usage: node scripts/test-db.ts [start|stop]");
+    }).toThrow('Unknown arguments "restart". Usage: node scripts/test-db.ts [start|stop]');
+    expect(docker).not.toHaveBeenCalled();
+  });
+
+  test("rejects arguments after the command", () => {
+    expect(() => {
+      main(["stop", "--volumes"], root);
+    }).toThrow('Unknown arguments "stop --volumes". Usage: node scripts/test-db.ts [start|stop]');
     expect(docker).not.toHaveBeenCalled();
   });
 });
