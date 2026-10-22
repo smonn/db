@@ -6,7 +6,14 @@ import { type IssueEvent, main, needsMilestone } from "./check-issue-milestone.t
 
 function event(issue: Partial<IssueEvent["issue"]> = {}): IssueEvent {
   return {
-    issue: { number: 7, state: "open", milestone: null, user: { type: "User" }, ...issue },
+    issue: {
+      number: 7,
+      state: "open",
+      milestone: null,
+      labels: [],
+      user: { type: "User" },
+      ...issue,
+    },
     repository: { full_name: "smonn/db", html_url: "https://github.com/smonn/db" },
   };
 }
@@ -64,6 +71,14 @@ describe("main", () => {
           "This issue has no milestone. Every issue needs one: pick it by the milestone descriptions at https://github.com/smonn/db/milestones.",
         ],
       ],
+      [["issue", "edit", "7", "--repo", "smonn/db", "--add-label", "needs-triage"]],
+    ]);
+  });
+
+  test("only ensures the label when the issue already carries it", () => {
+    const gh = vi.fn<(args: string[]) => void>();
+    main({ GITHUB_EVENT_PATH: write(event({ labels: [{ name: "needs-triage" }] })) }, gh);
+    expect(gh.mock.calls).toEqual([
       [["issue", "edit", "7", "--repo", "smonn/db", "--add-label", "needs-triage"]],
     ]);
   });

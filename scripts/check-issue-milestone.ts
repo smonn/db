@@ -9,7 +9,13 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 export type IssueEvent = {
-  issue: { number: number; state: string; milestone: unknown; user: { type: string } };
+  issue: {
+    number: number;
+    state: string;
+    milestone: unknown;
+    labels: { name: string }[];
+    user: { type: string };
+  };
   repository: { full_name: string; html_url: string };
 };
 
@@ -35,7 +41,9 @@ export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void
   if (!needsMilestone(issue)) return;
   const target = [String(issue.number), "--repo", repository.full_name];
   const body = `This issue has no milestone. Every issue needs one: pick it by the milestone descriptions at ${repository.html_url}/milestones.`;
-  gh(["issue", "comment", ...target, "--body", body]);
+  if (!issue.labels.some((label) => label.name === "needs-triage")) {
+    gh(["issue", "comment", ...target, "--body", body]);
+  }
   gh(["issue", "edit", ...target, "--add-label", "needs-triage"]);
 }
 
