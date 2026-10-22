@@ -1,7 +1,10 @@
 import postgres from "postgres";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { Driver } from "../../runtime/ports/index.ts";
+import { postgresJsConnect } from "./connect.ts";
 import { postgresJsDriver } from "./driver.ts";
 import { useTestDatabase } from "./test-database.test-helper.ts";
+import { postgresJsConnection, postgresJsTypes } from "./value-types.ts";
 
 const db = useTestDatabase();
 
@@ -112,9 +115,106 @@ describe("postgresJsDriver", () => {
   });
 });
 
+describe("postgresJsDriver releasing a session to a one-connection pool", () => {
+  const notices: unknown[] = [];
+  let pool: { readonly driver: Driver; readonly close: () => Promise<void> };
+
+  beforeAll(async () => {
+    pool = await postgresJsConnect(String(process.env["DATABASE_URL"]), {
+      max: 1,
+      onnotice: (notice) => {
+        notices.push(notice["message"]);
+      },
+    })(db.name);
+  });
+  afterAll(() => pool.close());
+  beforeEach(() => {
+    notices.length = 0;
+  });
+
+  it("resets settings, the role, and temp tables", async () => {
+    await pool.driver.session((session) =>
+      session.execute(
+        "create temp table leaked (n int); set search_path = nowhere; set datestyle = 'SQL'; set role pg_monitor; set statement_timeout = '1ms'",
+      ),
+    );
+    const { rows } = await pool.driver.query(
+      "select current_user = session_user as own_role, current_setting('statement_timeout') as timeout, current_setting('search_path') as path, current_setting('DateStyle') like 'ISO,%' as iso, to_regclass('pg_temp.leaked') as temp",
+    );
+    expect(rows).toStrictEqual([
+      { own_role: true, timeout: "0", path: '"$user", public', iso: true, temp: null },
+    ]);
+  });
+
+  it("rejects with fn's error and rolls back a transaction fn leaves aborted", async () => {
+    await pool.driver.execute("create table left_aborted (n int)");
+    const failed = pool.driver.session(async (session) => {
+      await session.execute("begin; insert into left_aborted values (1)");
+      await session.query("select 1 / 0");
+    });
+    await expect(failed).rejects.toThrow("division by zero");
+    expect((await pool.driver.query("select n from left_aborted")).rows).toStrictEqual([]);
+  });
+
+  it("rolls back a transaction fn leaves open", async () => {
+    await pool.driver.execute("create table left_open (n int)");
+    await pool.driver.session((session) =>
+      session.execute("begin; insert into left_open values (1)"),
+    );
+    expect((await pool.driver.query("select n from left_open")).rows).toStrictEqual([]);
+  });
+
+  it("raises no notice when no transaction is open", async () => {
+    await pool.driver.session((session) => session.query("select 1"));
+    expect(notices).toStrictEqual([]);
+  });
+
+  it("keeps postgres.js's cached statements usable in the next transaction", async () => {
+    const statement = "select $1::int as n";
+    await pool.driver.session((session) => session.query(statement, [1]));
+    const { rows } = await pool.driver.transaction((tx) => tx.query(statement, [2]));
+    expect(rows).toStrictEqual([{ n: 2 }]);
+  });
+});
+
 describe("postgresJsDriver without postgresJsTypes", () => {
   it("refuses a client created without them, naming the export", () => {
     const sql = postgres("postgres://localhost:1/none");
     expect(() => postgresJsDriver(sql)).toThrow("postgresJsTypes");
+  });
+});
+
+describe("postgresJsDriver without postgresJsConnection", () => {
+  const url = "postgres://localhost:1/none";
+  const message =
+    "postgresJsDriver needs a client created with postgres(url, { connection: postgresJsConnection }), which sets DateStyle=ISO and bytea_output=hex";
+
+  it("refuses a client created without it, naming the export", () => {
+    const sql = postgres(url, { types: postgresJsTypes });
+    expect(() => postgresJsDriver(sql)).toThrow(message);
+  });
+
+  it("refuses a client whose URL sets another DateStyle", () => {
+    const sql = postgres(`${url}?datestyle=SQL`, {
+      types: postgresJsTypes,
+      connection: postgresJsConnection,
+    });
+    expect(() => postgresJsDriver(sql)).toThrow(message);
+  });
+
+  it("refuses a client that sets another bytea_output", () => {
+    const sql = postgres(url, {
+      types: postgresJsTypes,
+      connection: { ...postgresJsConnection, BYTEA_OUTPUT: "escape" },
+    });
+    expect(() => postgresJsDriver(sql)).toThrow(message);
+  });
+
+  it("accepts the settings in any case and with a date order", () => {
+    const sql = postgres(url, {
+      types: postgresJsTypes,
+      connection: { datestyle: "iso, dmy", bytea_output: "HEX" },
+    });
+    expect(() => postgresJsDriver(sql)).not.toThrow();
   });
 });
