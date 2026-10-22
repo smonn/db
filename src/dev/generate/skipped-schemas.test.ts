@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
+import type { Connect, Driver } from "../../runtime/ports/index.ts";
 import { generate } from "./generate.ts";
 import { memoryFileSystem } from "./memory-file-system.test-helper.ts";
 
-const db = useTestDatabase();
+const unreachable = (): Promise<never> => Promise.reject(new Error("touched the database"));
+const driver: Driver = {
+  query: unreachable,
+  execute: unreachable,
+  transaction: unreachable,
+  session: unreachable,
+};
+const connect: Connect = unreachable;
 
 describe("generate with a Definition schema that introspect skips", () => {
   it.each([
@@ -16,8 +23,8 @@ describe("generate with a Definition schema that introspect skips", () => {
 
     await expect(
       generate({
-        driver: db.driver,
-        connect: db.connect,
+        driver,
+        connect,
         fileSystem,
         definition: defineDatabase({
           [schema]: { audit: defineTable((c) => ({ id: c.text() })) },
@@ -31,8 +38,8 @@ describe("generate with a Definition schema that introspect skips", () => {
   it("refuses the configured tracking schema", async () => {
     await expect(
       generate({
-        driver: db.driver,
-        connect: db.connect,
+        driver,
+        connect,
         fileSystem: memoryFileSystem(),
         definition: defineDatabase({ AppTracking: {} }),
         migrations: "db/migrations",
