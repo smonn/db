@@ -23,6 +23,8 @@ A Postgres-first TypeScript toolkit: define your database in TypeScript, migrate
 
 Tests need a Postgres 18 server. `docker compose up -d --wait` starts one on port 54318, or on `POSTGRES_PORT` when set. Then run `DATABASE_URL=postgres://postgres:postgres@localhost:54318/postgres pnpm test`. Or run `node scripts/test-db.ts`, which starts a server for this checkout on a free port and saves its URL in `.env.test`, so plain `pnpm test` finds it. Each test file gets its own fresh database, dropped afterward.
 
+`pnpm install` sets git's `core.hooksPath` to `.githooks/`, in a fresh clone and in a worktree. The pre-commit hook checks the staged files with `oxfmt --check` and `oxlint`, and the pre-push hook runs `pnpm typecheck` and `pnpm knip`. Neither hook runs the tests. When pre-commit reports formatting, run `pnpm format` and stage the result.
+
 ## Learn more
 
 - [Glossary](GLOSSARY.md): the project's vocabulary.
