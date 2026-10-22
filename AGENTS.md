@@ -14,6 +14,7 @@
 
 - Enforce a rule with a static check in CI whenever one can express it. Document only what no tool can check.
 - Write repo scripts in TypeScript under `scripts/`, run directly by Node. A shell file may only invoke one. Scripts get the same tests, lint, and formatting as `src/`.
+- Tests need the Postgres from README's Development section. Parallel agents each run their own with `POSTGRES_PORT=<port> docker compose -p <name> up -d --wait`, point `DATABASE_URL` at that port, and stop it with `docker compose -p <name> down`.
 
 ## Design decisions
 

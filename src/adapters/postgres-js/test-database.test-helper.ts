@@ -22,7 +22,10 @@ export function explainConnectionError(error: unknown, serverUrl: string): unkno
   );
 }
 
-/** Creates a fresh database on `DATABASE_URL`'s server before the test file and drops it after. */
+/**
+ * Creates a fresh database on `DATABASE_URL`'s server before the test file and drops it after.
+ * Every test in the file shares it, so give each test its own table names.
+ */
 export function useTestDatabase(): TestDatabase {
   const serverUrl = process.env["DATABASE_URL"];
   if (serverUrl === undefined || serverUrl === "") {
