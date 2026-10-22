@@ -9,6 +9,16 @@ const prepared = { prepare: true, simple: false };
 const inFailedTransaction = "25P02";
 const queryCanceled = "57014";
 
+const connectionGone = new Set(["CONNECTION_CLOSED", "CONNECTION_DESTROYED"]);
+
+// postgres.js throws an uncaught TypeError on any statement sent to a connection whose backend has
+// ended (#154), so after one of these errors the session sends nothing more. A FATAL from the
+// server reaches the statement as CONNECTION_CLOSED once the socket closes. Not !backendAlive,
+// which also holds for an error `fn` throws itself.
+function backendEnded(error: unknown): boolean {
+  return error instanceof Error && "code" in error && connectionGone.has(String(error.code));
+}
+
 function queryable(connection: ReservedSql | Sql): Queryable {
   return {
     async query(text, params = []) {
@@ -39,7 +49,18 @@ function reservedSession(reserved: ReservedSql): Session {
         await session.execute("commit");
         return result;
       } catch (error) {
-        await session.execute("rollback");
+        if (backendEnded(error)) {
+          throw error;
+        }
+        try {
+          await session.execute("rollback");
+        } catch (rollbackError) {
+          throw new AggregateError(
+            [error, rollbackError],
+            "transaction rejected, and its rollback failed",
+            { cause: rollbackError },
+          );
+        }
         throw error;
       }
     },
@@ -144,6 +165,11 @@ export function postgresJsDriver(sql: Sql): Driver {
       try {
         result = await fn(reservedSession(reserved));
       } catch (error) {
+        // postgres.js already moved the connection to its closed queue, and releasing it would
+        // hand the dead connection to the next query.
+        if (backendEnded(error)) {
+          throw error;
+        }
         try {
           await returnToPool(reserved);
         } catch (resetError) {

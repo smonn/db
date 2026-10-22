@@ -14,7 +14,10 @@ export type Queryable = {
 };
 
 export type Session = Queryable & {
-  /** Rolls back when `fn` rejects. Transactions don't nest. */
+  /**
+   * Rolls back when `fn` rejects. If the rollback fails too, rejects with an AggregateError of
+   * both. Transactions don't nest.
+   */
   transaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T>;
 };
 
@@ -25,7 +28,10 @@ export type Driver = Session & {
    * tables, and locks, so the next user of the connection starts clean. If the reset fails, the
    * connection closes instead. If it can't close either, it goes back to the pool unreset and the
    * session rejects with the reset's error. A rejecting `fn` rejects the session with its own
-   * error, or with an AggregateError of both when the connection went back unreset.
+   * error, or with an AggregateError of both when the connection went back unreset. When `fn`
+   * rejects because the connection was lost, the session sends nothing more and rejects with
+   * that error. The reset keeps statements made with SQL `prepare`, since dropping them would
+   * drop the driver's cached statements too.
    */
   session<T>(fn: (session: Session) => Promise<T>): Promise<T>;
 };

@@ -252,4 +252,14 @@ describe("postgresJsDriver when a session's reset fails", () => {
     });
     expect(swaps).toStrictEqual([]);
   });
+
+  it("rejects a transaction with fn's and the rollback's errors when the rollback fails", async () => {
+    swaps = ["select 1 / 0"];
+    const failed = driver.transaction(() => Promise.reject(new Error("boom")));
+    await expect(failed).rejects.toBeInstanceOf(AggregateError);
+    await expect(failed).rejects.toMatchObject({
+      errors: [{ message: "boom" }, { message: "division by zero" }],
+    });
+    expect(await backend(driver)).toMatchObject({ path: '"$user", public' });
+  });
 });

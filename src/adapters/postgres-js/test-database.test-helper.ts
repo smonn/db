@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import postgres from "postgres";
+import { setTimeout } from "node:timers/promises";
+import postgres, { type Sql } from "postgres";
 import { afterAll, beforeAll } from "vitest";
 import type { Connect, Driver } from "../../runtime/ports/index.ts";
 import { postgresJsConnect } from "./connect.ts";
@@ -9,6 +10,11 @@ import { postgresJsConnection, postgresJsTypes } from "./value-types.ts";
 export type TestDatabase = {
   readonly name: string;
   readonly driver: Driver;
+  /**
+   * Opens a pool of its own on this database, for a test that breaks a connection. postgres.js
+   * hands a connection whose backend ended mid-statement a stale error and never ends it (#154).
+   */
+  readonly ownPool: () => Driver;
   /** Opens another database on the same server; the caller closes it. */
   readonly connect: Connect;
 };
@@ -41,11 +47,14 @@ export function useTestDatabase(): TestDatabase {
   url.pathname = `/${name}`;
 
   const admin = postgres(serverUrl, { max: 1, onnotice: ignoreNotice });
-  const sql = postgres(url.href, {
-    onnotice: ignoreNotice,
-    types: postgresJsTypes,
-    connection: postgresJsConnection,
-  });
+  const client = (): Sql =>
+    postgres(url.href, {
+      onnotice: ignoreNotice,
+      types: postgresJsTypes,
+      connection: postgresJsConnection,
+    });
+  const sql = client();
+  const ownPools: Sql[] = [];
 
   beforeAll(async () => {
     await admin.unsafe(`create database ${name}`).catch((error: unknown) => {
@@ -53,7 +62,7 @@ export function useTestDatabase(): TestDatabase {
     });
   });
   afterAll(async () => {
-    await sql.end();
+    await Promise.all([sql.end(), ...ownPools.map((pool) => pool.end({ timeout: 0 }))]);
     await admin.unsafe(`drop database ${name} with (force)`).catch((error: unknown) => {
       throw explainConnectionError(error, serverUrl);
     });
@@ -63,6 +72,23 @@ export function useTestDatabase(): TestDatabase {
   return {
     name,
     driver: postgresJsDriver(sql),
+    ownPool: () => {
+      const pool = client();
+      ownPools.push(pool);
+      return postgresJsDriver(pool);
+    },
     connect: postgresJsConnect(serverUrl, { onnotice: ignoreNotice }),
   };
+}
+
+/** Waits until another backend runs a statement containing `fragment`, then terminates it. */
+export async function terminateBackendRunning(driver: Driver, fragment: string): Promise<void> {
+  const { rows } = await driver.query(
+    "select pg_terminate_backend(pid) from pg_stat_activity where pid <> pg_backend_pid() and state = 'active' and strpos(query, $1) > 0",
+    [fragment],
+  );
+  if (rows.length === 0) {
+    await setTimeout(10);
+    await terminateBackendRunning(driver, fragment);
+  }
 }
