@@ -1,19 +1,13 @@
 import {
-  COMMITTED_FILENAME,
   CURRENT_FILENAME,
   DEFAULT_TRACKING_SCHEMA,
   parseCurrent,
   quoteIdentifier,
+  readCommitted,
   writeCurrent,
 } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
-import type {
-  Connect,
-  Driver,
-  FileSystem,
-  MigrationFile,
-  MigrationSource,
-} from "../../runtime/ports/index.ts";
+import type { Connect, Driver, FileSystem, MigrationSource } from "../../runtime/ports/index.ts";
 import { definitionCatalog, type Catalog, type DefinitionTables } from "../catalog/index.ts";
 import { diff } from "../diff/index.ts";
 import { introspect, skippedSchemaReason } from "../introspect/index.ts";
@@ -114,16 +108,4 @@ async function requireGenerated(fileSystem: FileSystem, path: string): Promise<v
 async function definitionSql(database: Driver, wanted: Catalog): Promise<string> {
   const existing = [...(await introspect(database))].filter(([path]) => wanted.has(path));
   return diff(new Map(existing), wanted);
-}
-
-async function readCommitted(fileSystem: FileSystem, directory: string): Promise<MigrationFile[]> {
-  const filenames = (await fileSystem.list(directory)).filter((name) =>
-    COMMITTED_FILENAME.test(name),
-  );
-  return Promise.all(
-    filenames.map(async (filename) => ({
-      filename,
-      content: (await fileSystem.readFile(`${directory}/${filename}`)) ?? "",
-    })),
-  );
 }
