@@ -3,6 +3,7 @@ import postgres from "postgres";
 import { afterAll, beforeAll } from "vitest";
 import type { Driver } from "../../runtime/ports/index.ts";
 import { postgresJsDriver } from "./driver.ts";
+import { postgresJsTypes } from "./value-types.ts";
 
 export type TestDatabase = {
   readonly driver: Driver;
@@ -36,7 +37,7 @@ export function useTestDatabase(): TestDatabase {
   url.pathname = `/${name}`;
 
   const admin = postgres(serverUrl, { max: 1, onnotice: ignoreNotice });
-  const sql = postgres(url.href, { onnotice: ignoreNotice });
+  const sql = postgres(url.href, { onnotice: ignoreNotice, types: postgresJsTypes });
 
   beforeAll(async () => {
     await admin.unsafe(`create database ${name}`).catch((error: unknown) => {
