@@ -17,6 +17,7 @@
     "knip": "knip",
     "lint": "oxlint",
     "lint:actions": "node scripts/actionlint.ts",
+    "prepare": "node scripts/install-hooks.ts",
     "test": "vitest run",
     "typecheck": "tsc"
   },

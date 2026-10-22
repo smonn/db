@@ -1,6 +1,8 @@
 /**
  * Comments on and labels `needs-triage` an open issue without a milestone, since AGENTS.md asks
- * for one on every issue. Skips issues a bot opened, such as Renovate's Dependency Dashboard.
+ * for one on every issue. Skips the comment when the issue already has `needs-triage`, so a
+ * repeated demilestone doesn't stack comments. Skips issues a bot opened, such as Renovate's
+ * Dependency Dashboard.
  *
  * Run with `GITHUB_EVENT_PATH` set to an `issues` event payload and `gh` authenticated, as
  * `pnpm check:issue`; the Issue milestone workflow runs it on `opened` and `demilestoned`.
@@ -9,7 +11,13 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 export type IssueEvent = {
-  issue: { number: number; state: string; milestone: unknown; user: { type: string } };
+  issue: {
+    number: number;
+    state: string;
+    milestone: unknown;
+    labels: { name: string }[];
+    user: { type: string };
+  };
   repository: { full_name: string; html_url: string };
 };
 
@@ -35,7 +43,9 @@ export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void
   if (!needsMilestone(issue)) return;
   const target = [String(issue.number), "--repo", repository.full_name];
   const body = `This issue has no milestone. Every issue needs one: pick it by the milestone descriptions at ${repository.html_url}/milestones.`;
-  gh(["issue", "comment", ...target, "--body", body]);
+  if (!issue.labels.some((label) => label.name === "needs-triage")) {
+    gh(["issue", "comment", ...target, "--body", body]);
+  }
   gh(["issue", "edit", ...target, "--add-label", "needs-triage"]);
 }
 
