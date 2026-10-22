@@ -10,6 +10,7 @@ import {
 } from "../../runtime/internal/index.ts";
 import { verify } from "../../runtime/migrator/index.ts";
 import type { Driver, FileSystem } from "../../runtime/ports/index.ts";
+import { withDevLock } from "./dev-lock.ts";
 
 export type CommitOptions = {
   /** The Dev database, which `generate` last replayed `current.sql` into. */
@@ -36,7 +37,11 @@ const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
  * deletes `current.sql`. Refuses unless the Dev database holds `current.sql` as it reads now and
  * every Committed migration before it.
  */
-export async function commit(options: CommitOptions): Promise<CommitResult> {
+export function commit(options: CommitOptions): Promise<CommitResult> {
+  return withDevLock(options.driver, "commit", () => commitLocked(options));
+}
+
+async function commitLocked(options: CommitOptions): Promise<CommitResult> {
   const { driver, fileSystem, migrations, slug } = options;
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
   if (!KEBAB_CASE.test(slug)) {

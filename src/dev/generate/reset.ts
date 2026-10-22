@@ -11,6 +11,7 @@ import {
 } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type { Driver, FileSystem, MigrationSource } from "../../runtime/ports/index.ts";
+import { withDevLock } from "./dev-lock.ts";
 
 // Extensions go first: one can own a schema, which then refuses a plain drop or vanishes with it.
 const EXTENSIONS = `
@@ -93,7 +94,11 @@ export type ResetOptions = {
  * Committed migrations and `current.sql` as written, without regenerating it. Refuses an unmarked,
  * non-empty Database unless `erase` is set.
  */
-export async function reset(options: ResetOptions): Promise<void> {
+export function reset(options: ResetOptions): Promise<void> {
+  return withDevLock(options.driver, "reset", () => resetLocked(options));
+}
+
+async function resetLocked(options: ResetOptions): Promise<void> {
   const { driver, fileSystem, migrations, erase = false } = options;
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
   if (!erase) await requireDevDatabase(driver, tracking, "reset");
