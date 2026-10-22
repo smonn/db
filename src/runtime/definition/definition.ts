@@ -6,12 +6,14 @@ export type ColumnState = {
 export type Column<V, N extends boolean = false> = {
   readonly state: ColumnState;
   /** Type-only: the value a row holds and whether the column is NOT NULL. */
-  readonly "~types"?: { readonly value: V; readonly notNull: N };
+  readonly "~types": { readonly value: V; readonly notNull: N };
   notNull(): Column<V, true>;
 };
 
 function column<V, N extends boolean>(state: ColumnState): Column<V, N> {
-  return { state, notNull: () => column<V, true>({ ...state, notNull: true }) };
+  const parts = { state, notNull: () => column<V, true>({ ...state, notNull: true }) };
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- "~types" exists only in types.
+  return parts as Column<V, N>;
 }
 
 export type ColumnFactories = {
@@ -100,7 +102,7 @@ export function defineDatabase<S extends Schemas>(schemas: S): Database<S> {
 }
 
 type TypesOf<Col> = Col extends {
-  readonly "~types"?: { readonly value: infer V; readonly notNull: infer N };
+  readonly "~types": { readonly value: infer V; readonly notNull: infer N };
 }
   ? { value: V; notNull: N }
   : never;

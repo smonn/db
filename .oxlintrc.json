@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "vitest"],
+  "jsPlugins": ["./scripts/lint-plugin.ts"],
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -15,13 +16,21 @@
   "rules": {
     "typescript/consistent-type-definitions": ["error", "type"],
     "typescript/prefer-readonly-parameter-types": "off",
-    "unicorn/no-empty-file": "off"
+    "unicorn/no-empty-file": "off",
+    "smonn/sql-interpolation": "error",
+    "smonn/required-brand": "error"
   },
   "overrides": [
     {
       "files": ["**/*.test.ts"],
       "rules": {
         "eslint/max-lines-per-function": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/*.test-helper.ts"],
+      "rules": {
+        "smonn/sql-interpolation": "off"
       }
     },
     {
