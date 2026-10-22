@@ -9,7 +9,8 @@
 - File every issue with a milestone. Pick it by the milestone descriptions (`gh api repos/smonn/db/milestones`). Repo tooling goes in the earliest open milestone.
 - Keep each PR to one self-contained change.
 - Link every PR to its issue in the template's Issue section. Use `Closes #<n>` so merging closes the issue, and don't close it by hand. Closing keywords only fire on PRs into `main`.
-- Agents may commit, push, and open a draft PR without asking. Mark it ready for review once CI passes, or right away while the repo has no CI. Only the maintainer merges, unless they approve an agent merging that PR.
+- Agents may commit, push, and open a draft PR without asking. Mark it ready for review once CI passes, or right away while the repo has no CI, and add `review:needed`. Only the maintainer merges, unless they approve an agent merging that PR.
+- The maintainer sets the `review:*` labels; agents only add `review:needed`. `review:approved` approves an agent merging that PR. On `review:blocked`, address the PR's review comments, then swap the label back to `review:needed`.
 
 ## Repo tooling
 
