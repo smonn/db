@@ -91,7 +91,7 @@ export async function terminateBackendRunning(driver: Driver, fragment: string):
     "select pg_terminate_backend(pid) as terminated from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and state = 'active' and strpos(query, $1) > 0",
     [fragment],
   );
-  if (!rows.some((row) => row.terminated === true)) {
+  if (!rows.some((row) => row["terminated"] === true)) {
     await setTimeout(10);
     await terminateBackendRunning(driver, fragment);
   }
