@@ -89,8 +89,22 @@ export function introspect(
     await tx.execute(
       "set transaction isolation level repeatable read read only; set local search_path = pg_catalog",
     );
+    await requireSupportedServer(tx);
     return read(tx, tracking.name);
   });
+}
+
+const MINIMUM_MAJOR_VERSION = 18;
+
+async function requireSupportedServer(tx: Queryable): Promise<void> {
+  const {
+    rows: [row],
+  } = await tx.query("select current_setting('server_version_num') as server_version_num");
+  const major = Math.floor(Number(row?.["server_version_num"]) / 10_000);
+  if (major >= MINIMUM_MAJOR_VERSION) return;
+  throw new Error(
+    `smonn/db needs Postgres ${MINIMUM_MAJOR_VERSION} or newer, and this server runs Postgres ${major}`,
+  );
 }
 
 async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
