@@ -4,7 +4,7 @@
  * Tests stay in CI. Every check runs before the hook fails, so one run lists every violation.
  * The checks read the working tree, so a partly staged file is checked as it is on disk.
  *
- * Git runs it as `node scripts/git-hooks.ts <hook>`; `git commit --no-verify` skips it.
+ * Git runs it as `node scripts/git-hooks.ts <hook>`.
  */
 import { spawnSync } from "node:child_process";
 
