@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
-import { trackingSchema } from "../../runtime/internal/index.ts";
+import { DEFAULT_TRACKING_SCHEMA, trackingSchema } from "../../runtime/internal/index.ts";
 import type { Session } from "../../runtime/ports/index.ts";
 import { definitionCatalog, namesOf, type Catalog } from "../catalog/index.ts";
 import { introspect } from "./introspect.ts";
@@ -84,7 +84,11 @@ describe("introspect", () => {
   });
 
   it("fetches no table or column of a skipped schema", async () => {
-    await db.driver.execute("create table kept (a text)");
+    await db.driver.execute(`
+      create table kept (a text);
+      create schema ${DEFAULT_TRACKING_SCHEMA};
+      create table ${DEFAULT_TRACKING_SCHEMA}.current (hash text not null);
+    `);
     const fetched: unknown[] = [];
     const watching: Session = {
       ...db.driver,
@@ -106,6 +110,7 @@ describe("introspect", () => {
     expect(fetched).toContain("public");
     expect(fetched).not.toContain("pg_catalog");
     expect(fetched).not.toContain("information_schema");
+    expect(fetched).not.toContain(DEFAULT_TRACKING_SCHEMA);
   });
 
   it("lists columns in table order", async () => {
