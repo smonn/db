@@ -6,6 +6,7 @@
 - Keep every section and replace its comment. Write one line or `n/a` when a section has little to say.
 - Write tight: each sentence is a fact the reader needs.
 - Title PRs as Conventional Commits (`type(scope): summary`) in the imperative. Title issues by the problem.
+- File every issue with a milestone. Pick it by the milestone descriptions (`gh api repos/smonn/db/milestones`). Repo tooling goes in the earliest open milestone.
 - Keep each PR to one self-contained change.
 - Link every PR to its issue in the template's Issue section. Use `Closes #<n>` so merging closes the issue, and don't close it by hand. Closing keywords only fire on PRs into `main`.
 - Agents may commit, push, and open a draft PR without asking. Mark it ready for review once CI passes, or right away while the repo has no CI. Only the maintainer merges, unless they approve an agent merging that PR.
