@@ -109,6 +109,7 @@ type ValueOf<Col> = TypesOf<Col>["notNull"] extends true
   ? TypesOf<Col>["value"]
   : TypesOf<Col>["value"] | null;
 
+/** The row type of table `T`, inferred from its columns. A driver's untyped result row is `DriverRow` in the ports module. */
 export type Row<T extends TableDefinition> = {
   -readonly [K in keyof T["columns"]]: ValueOf<T["columns"][K]>;
 };

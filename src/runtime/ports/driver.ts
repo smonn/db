@@ -1,6 +1,7 @@
-export type Row = Record<string, unknown>;
+/** A result row as the driver returns it, untyped. A table's typed row is `Row<T>` in the definition module. */
+export type DriverRow = Record<string, unknown>;
 
-export type QueryResult = { rows: Row[]; count: number };
+export type QueryResult = { rows: DriverRow[]; count: number };
 
 export type Queryable = {
   /**
