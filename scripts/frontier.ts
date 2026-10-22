@@ -1,8 +1,9 @@
 /**
- * Prints a wayfinder map's frontier: its open, unassigned child tickets whose blockers are all
- * closed, in map order, one per line. See "Wayfinding operations" in docs/agents/issue-tracker.md.
+ * Prints the frontier: open, unassigned tickets whose blockers are all closed, one per line. With a
+ * wayfinder map number it lists the map's children in map order; without one, every open issue
+ * oldest first. See "Wayfinding operations" in docs/agents/issue-tracker.md.
  *
- * Run it with `node scripts/frontier.ts <map issue number>` from a clone with `gh` signed in.
+ * Run it with `node scripts/frontier.ts [map issue number]` from a clone with `gh` signed in.
  */
 import { spawnSync } from "node:child_process";
 
@@ -33,6 +34,9 @@ type ApiIssue = {
   state: "open" | "closed";
   labels: { name: string }[];
   assignees: { login: string }[];
+  user: { login: string };
+  pull_request?: object;
+  sub_issues_summary?: { total: number };
 };
 
 function ghApi(path: string): ApiIssue[] {
@@ -43,14 +47,35 @@ function ghApi(path: string): ApiIssue[] {
   return pages.flat();
 }
 
-function children(map: number): Child[] {
-  return ghApi(`repos/{owner}/{repo}/issues/${map}/sub_issues`).map((issue) => ({
+function toChild(issue: ApiIssue): Child {
+  return {
     number: issue.number,
     title: issue.title,
     state: issue.state,
     labels: issue.labels.map((label) => label.name),
     assignees: issue.assignees.map((assignee) => assignee.login),
-  }));
+  };
+}
+
+function children(map: number): Child[] {
+  return ghApi(`repos/{owner}/{repo}/issues/${map}/sub_issues`).map((issue) => toChild(issue));
+}
+
+// The issues endpoint also returns pull requests. Maps and other parents group tickets rather
+// than being one. The dashboard title is Renovate's default; .github/renovate.json keeps it.
+function isTicket(issue: ApiIssue): boolean {
+  return (
+    issue.pull_request === undefined &&
+    (issue.sub_issues_summary?.total ?? 0) === 0 &&
+    !issue.labels.some((label) => label.name === "wayfinder:map") &&
+    !(issue.user.login === "renovate[bot]" && issue.title === "Dependency Dashboard")
+  );
+}
+
+function openTickets(): Child[] {
+  return ghApi("repos/{owner}/{repo}/issues?state=open&sort=created&direction=asc&per_page=100")
+    .filter((issue) => isTicket(issue))
+    .map((issue) => toChild(issue));
 }
 
 function hasOpenBlocker(ticket: number): boolean {
@@ -60,12 +85,15 @@ function hasOpenBlocker(ticket: number): boolean {
 
 export function main(arg: string | undefined = process.argv[2]): void {
   const map = Number(arg);
-  if (!Number.isInteger(map) || map <= 0) {
-    console.error("Usage: node scripts/frontier.ts <map issue number>");
+  if (arg !== undefined && (!Number.isInteger(map) || map <= 0)) {
+    console.error("Usage: node scripts/frontier.ts [map issue number]");
     process.exit(2);
   }
   try {
-    const frontier = pickFrontier(children(map), hasOpenBlocker);
+    const frontier = pickFrontier(
+      arg === undefined ? openTickets() : children(map),
+      hasOpenBlocker,
+    );
     console.log(
       frontier.length > 0
         ? frontier.map((child) => formatTicket(child)).join("\n")
