@@ -1,6 +1,8 @@
 /**
  * Comments on and labels `needs-triage` an open issue without a milestone, since AGENTS.md asks
- * for one on every issue. Skips issues a bot opened, such as Renovate's Dependency Dashboard.
+ * for one on every issue. Skips the comment when the issue already has `needs-triage`, so a
+ * repeated demilestone doesn't stack comments. Skips issues a bot opened, such as Renovate's
+ * Dependency Dashboard.
  *
  * Run with `GITHUB_EVENT_PATH` set to an `issues` event payload and `gh` authenticated, as
  * `pnpm check:issue`; the Issue milestone workflow runs it on `opened` and `demilestoned`.
