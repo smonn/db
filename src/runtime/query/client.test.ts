@@ -2,9 +2,9 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../definition/index.ts";
 import { createClient } from "./client.ts";
-import { sql } from "../sql/index.ts";
 import { and, from, not, or, type Statement } from "./from.ts";
 import { insert } from "./insert.ts";
+import { sql } from "./sql.ts";
 
 const testDatabase = useTestDatabase();
 const client = createClient(testDatabase.driver);
@@ -70,6 +70,18 @@ describe("client.all", () => {
       await ids(users.where((u) => u.id.gt("u1")).where((u) => u.email.isNotNull())),
     ).toStrictEqual(["u3"]);
   });
+
+  it("reads typed rows from a hand-written select", async () => {
+    await testDatabase.driver.execute(`
+      create table public.scores (name text not null, points int not null);
+      insert into public.scores values ('a', 3), ('b', 5), ('c', 8);
+    `);
+    const rows = await client.all(
+      sql<{ name: string }>`select name from public.scores where points > ${4} order by name`,
+    );
+    expect(rows).toStrictEqual([{ name: "b" }, { name: "c" }]);
+    expectTypeOf(rows).toEqualTypeOf<{ name: string }[]>();
+  });
 });
 
 describe("client.one", () => {
@@ -83,6 +95,12 @@ describe("client.one", () => {
     const row = await client.one(from(people.public.people));
     expect(row).toStrictEqual({ id: "p1" });
     expectTypeOf(row).toEqualTypeOf<{ id: string }>();
+  });
+
+  it("returns the only row of a hand-written select", async () => {
+    const row = await client.one(sql<{ total: number }>`select ${2}::int + ${3}::int as total`);
+    expect(row).toStrictEqual({ total: 5 });
+    expectTypeOf(row).toEqualTypeOf<{ total: number }>();
   });
 
   it("rejects when no row comes back", async () => {
@@ -145,6 +163,15 @@ describe("client.run", () => {
     expectTypeOf(row).toEqualTypeOf<{ id: string; email: string | null }>();
   });
 
+  it("runs a hand-written statement and reports the count", async () => {
+    await testDatabase.driver.execute(
+      "create table public.tags (name text not null); insert into public.tags values ('a'), ('b'), ('c');",
+    );
+    expect(await client.run(sql`delete from public.tags where name <> ${"b"}`)).toStrictEqual({
+      count: 2,
+    });
+  });
+
   it("rejects an insert without returning from client.all and client.one", () => {
     const statement = insert(accounts.public.accounts).values({ id: "a4" });
     // Never called: these only have to fail type-checking.
@@ -158,8 +185,10 @@ describe("client.run", () => {
       void client.one(widened);
       // @ts-expect-error a bare Statement is not known to return rows
       void client.all(widened);
-      // @ts-expect-error a SQL fragment is not a Query
+      // @ts-expect-error sql without a row type is not a Query
       void client.all(sql`select 1`);
+      // @ts-expect-error sql without a row type is not known to return one row
+      void client.one(sql`select 1`);
       const several = insert(accounts.public.accounts)
         .values([{ id: "a5" }])
         .returning((a) => ({ id: a.id }));
