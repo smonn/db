@@ -156,25 +156,37 @@ describe("sweepStaleDatabases", () => {
     }
   });
 
-  it("leaves a stale database the role can't drop", async () => {
-    const suffix = crypto.randomUUID().replaceAll("-", "");
-    const sweeper = `smonn_db_sweeper_${suffix}`;
-    const owner = `smonn_db_owner_${suffix}`;
-    const theirs = `${prefix}${now - 3601}_33333333`;
-    await db.driver.execute(`create role ${sweeper} createdb; create role ${owner};`);
-    await db.driver.execute(`create database ${theirs} owner ${owner} template template0`);
-    try {
-      await db.driver.session(async (session) => {
-        await session.execute(`set role ${sweeper}`);
-        const driver: Driver = { ...session, session: (fn) => fn(session) };
+  it.each([
+    { membership: "no membership", grant: () => "", hex: "33333333" },
+    {
+      membership: "a NOINHERIT membership",
+      grant: (owner: string, sweeper: string) => `grant ${owner} to ${sweeper} with inherit false;`,
+      hex: "44444444",
+    },
+  ])(
+    "leaves a stale database the role can't drop, with $membership in its owner",
+    async ({ grant, hex }) => {
+      const suffix = crypto.randomUUID().replaceAll("-", "");
+      const sweeper = `smonn_db_sweeper_${suffix}`;
+      const owner = `smonn_db_owner_${suffix}`;
+      const theirs = `${prefix}${now - 3601}_${hex}`;
+      await db.driver.execute(
+        `create role ${sweeper} createdb; create role ${owner}; ${grant(owner, sweeper)}`,
+      );
+      await db.driver.execute(`create database ${theirs} owner ${owner} template template0`);
+      try {
+        await db.driver.session(async (session) => {
+          await session.execute(`set role ${sweeper}`);
+          const driver: Driver = { ...session, session: (fn) => fn(session) };
 
-        await sweepStaleDatabases(driver, [prefix], () => {});
-      });
+          await sweepStaleDatabases(driver, [prefix], () => {});
+        });
 
-      expect(await databaseExists(theirs)).toBe(true);
-    } finally {
-      await db.driver.execute(`drop database if exists ${theirs} with (force)`);
-      await db.driver.execute(`drop role ${sweeper}; drop role ${owner};`);
-    }
-  });
+        expect(await databaseExists(theirs)).toBe(true);
+      } finally {
+        await db.driver.execute(`drop database if exists ${theirs} with (force)`);
+        await db.driver.execute(`drop role ${sweeper}; drop role ${owner};`);
+      }
+    },
+  );
 });

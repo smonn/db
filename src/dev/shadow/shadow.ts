@@ -27,9 +27,10 @@ select current_user as role, rolcreatedb or rolsuper as allowed
 from pg_roles where rolname = current_user`;
 
 // Only databases the role could drop, so another role's leftovers don't fail every generate.
+// USAGE, not MEMBER: a NOINHERIT member of the owner can't drop its database.
 const IDLE_DROPPABLE_DATABASES = `
 select d.datname as name from pg_database d
-where pg_has_role(d.datdba, 'MEMBER')
+where pg_has_role(d.datdba, 'USAGE')
   and not exists (select from pg_stat_activity a where a.datid = d.oid)`;
 
 /**
