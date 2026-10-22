@@ -1,0 +1,23 @@
+# Coding standards
+
+Judgement rules that no check can enforce. Implementation agents follow them while writing code, and `review` checks every change against them. A rule a linter, type check, or script can express belongs in that check instead (see AGENTS.md, Repo tooling). Each rule cites the change that earned it; add a rule when a review catches a judgement mistake, and drop one that stops earning its place.
+
+## Design
+
+- **Code follows accepted ADRs.** When code and an accepted ADR disagree, change the code, or stop and flag the conflict to the maintainer. An ADR changes only through the process in `docs/adr/TEMPLATE.md`. (#106 rewrote ADR-0004 to match its code.)
+
+## Types
+
+- **Make misuse a compile error when the type can express it.** A method that is never valid on a value is absent from its type, such as `isNull()` on a NOT NULL column. A brand that guards an API is required, so a wider type can't stand in for it. (#106; #105's optional `"~returns"` let a plain insert reach `client.one`.)
+
+## Input
+
+- **Reject unknown input by name.** An unknown key, an empty selection, or a misnamed file throws an error naming it, rather than being dropped or skipped. (#105 dropped unknown row keys; #109 kept a misnamed migration file throwing.)
+
+## Destructive paths
+
+- **A destructive path proves ownership, then acts.** Code that drops, resets, or overwrites the user's data first proves it owns the target, refuses otherwise with the reason, and has a test for each refusal. (#109's reset guard and its handling of a hand-edited `current.sql`.)
+
+## SQL
+
+- **Quote identifiers, bind values.** Every identifier that reaches SQL is double-quoted with embedded `"` doubled, and every value is a bound parameter. (#104, #109)

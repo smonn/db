@@ -16,6 +16,10 @@
 - Write repo scripts in TypeScript under `scripts/`, run directly by Node. A shell file may only invoke one. Scripts get the same tests, lint, and formatting as `src/`.
 - Tests need the Postgres from README's Development section. Parallel agents each run their own with `POSTGRES_PORT=<port> docker compose -p <name> up -d --wait`, point `DATABASE_URL` at that port, and stop it with `docker compose -p <name> down`.
 
+## Coding standards
+
+- Read `CODING_STANDARDS.md` before writing code. It holds the judgement rules `review` checks.
+
 ## Design decisions
 
 - Write every ADR from `docs/adr/TEMPLATE.md`, which also holds the numbering and when-to-write rules.
