@@ -16,6 +16,7 @@
 - Enforce a rule with a static check in CI whenever one can express it: a lint rule, a semantic-grep rule, a `scripts/` check, a type test, or mutation testing. Document only what no tool can check.
 - Write repo scripts in TypeScript under `scripts/`, run directly by Node. A shell file may only invoke one. Scripts get the same tests, lint, and formatting as `src/`.
 - Tests need Postgres: run `node scripts/test-db.ts` once per worktree, then plain `pnpm test`; `node scripts/test-db.ts stop` removes it.
+- Verify with `pnpm check`: it runs every check CI runs, continues past failures, and exits non-zero if any failed. Don't loop over the scripts by hand or pipe their output through `tail`.
 
 ## Coding standards
 
