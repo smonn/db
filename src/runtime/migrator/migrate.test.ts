@@ -145,9 +145,8 @@ describe("migrate", () => {
     await expect(
       migrate({ driver: db.driver, source: source(CREATE_USERS, third) }),
     ).rejects.toThrow("000003-add-age.sql: sequence 2 is missing before it");
-    expect(
-      (await db.driver.query("select 1 from pg_namespace where nspname = 'smonn_db'")).rows,
-    ).toStrictEqual([]);
+    const { rows } = await db.driver.query("select 1 from pg_namespace where nspname = 'smonn_db'");
+    expect(rows).toStrictEqual([]);
   });
 
   it("refuses reordered files", async () => {
@@ -203,13 +202,10 @@ describe("migrate", () => {
     ).rejects.toThrow(
       `000002-add-phone.sql: stands where the recorded 000002-add-email.sql (${HASH_2}) was`,
     );
-    expect(
-      (
-        await db.driver.query(
-          "select column_name from information_schema.columns where column_name = 'phone'",
-        )
-      ).rows,
-    ).toStrictEqual([]);
+    const { rows } = await db.driver.query(
+      "select column_name from information_schema.columns where column_name = 'phone'",
+    );
+    expect(rows).toStrictEqual([]);
   });
 
   it("accepts a recorded file renamed to a new slug", async () => {
