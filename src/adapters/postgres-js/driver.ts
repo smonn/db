@@ -12,7 +12,7 @@ function queryable(connection: ReservedSql | Sql): Queryable {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- postgres.js serializes any param value.
       const values = params as ParameterOrJSON<never>[];
       const result = await connection.unsafe(text, values, prepared);
-      return { rows: [...result], count: result.count };
+      return { rows: [...result], count: result.count ?? 0 };
     },
     async execute(script) {
       await connection.unsafe(script).simple();

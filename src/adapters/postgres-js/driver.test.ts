@@ -29,6 +29,13 @@ describe("postgresJsDriver", () => {
     expect(selected.count).toBe(2);
   });
 
+  it("counts zero rows for a statement that has no row count", async () => {
+    const created = await db.driver.query("create table ddl_count (n int)");
+    expect(created).toStrictEqual({ rows: [], count: 0 });
+    expect((await db.driver.query("truncate ddl_count")).count).toBe(0);
+    expect((await db.driver.query("drop table ddl_count")).count).toBe(0);
+  });
+
   it("prepares a query without params, so it refuses several statements", async () => {
     await expect(db.driver.query("select 1; select 2")).rejects.toThrow(
       "cannot insert multiple commands into a prepared statement",
