@@ -14,10 +14,21 @@
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import {
+  array,
+  field,
+  nullable,
+  number,
+  optionalField,
+  parseJson,
+  record,
+  string,
+  type Reader,
+} from "./github-json.ts";
 
 export type IssueEvent = {
   action: string;
-  changes?: { title?: unknown; body?: unknown };
+  changes?: Record<string, unknown>;
   issue: {
     number: number;
     title: string;
@@ -29,6 +40,41 @@ export type IssueEvent = {
   repository: { full_name: string; html_url: string };
 };
 
+const readIssueEvent: Reader<IssueEvent> = (value, path) => {
+  const event = record(value, path);
+  const issuePath = `${path}.issue`;
+  const issue = field(event, "issue", record, path);
+  const repoPath = `${path}.repository`;
+  const repository = field(event, "repository", record, path);
+  const changes = optionalField(event, "changes", record, path);
+  return {
+    ...(changes === undefined ? {} : { changes }),
+    issue: {
+      number: field(issue, "number", number, issuePath),
+      title: field(issue, "title", string, issuePath),
+      state: field(issue, "state", string, issuePath),
+      milestone: field(issue, "milestone", nullable(record), issuePath),
+      labels: field(
+        issue,
+        "labels",
+        array((label, p) => ({ name: field(record(label, p), "name", string, p) })),
+        issuePath,
+      ),
+      user: field(
+        issue,
+        "user",
+        (user, p) => ({ type: field(record(user, p), "type", string, p) }),
+        issuePath,
+      ),
+    },
+    repository: {
+      full_name: field(repository, "full_name", string, repoPath),
+      html_url: field(repository, "html_url", string, repoPath),
+    },
+    action: field(event, "action", string, path),
+  };
+};
+
 type Gh = (args: string[]) => void;
 
 export function needsMilestone(issue: IssueEvent["issue"]): boolean {
@@ -36,7 +82,7 @@ export function needsMilestone(issue: IssueEvent["issue"]): boolean {
 }
 
 export function needsCapitalTitle({ action, changes, issue }: IssueEvent): boolean {
-  const checked = action === "opened" || (action === "edited" && changes?.title !== undefined);
+  const checked = action === "opened" || (action === "edited" && changes?.["title"] !== undefined);
   return (
     checked && issue.state === "open" && issue.user.type !== "Bot" && /^\p{Ll}/u.test(issue.title)
   );
@@ -53,8 +99,7 @@ export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void
     process.exitCode = 1;
     return;
   }
-  // oxlint-disable-next-line typescript/no-unsafe-assignment -- Actions writes GitHub's documented issues event payload.
-  const event: IssueEvent = JSON.parse(readFileSync(eventPath, "utf8"));
+  const event = readIssueEvent(parseJson(readFileSync(eventPath, "utf8"), eventPath), "$");
   const { issue, repository } = event;
   const target = [String(issue.number), "--repo", repository.full_name];
   if (needsCapitalTitle(event)) {

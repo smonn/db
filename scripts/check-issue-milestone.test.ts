@@ -129,6 +129,47 @@ describe("main", () => {
     ]);
   });
 
+  test("fails naming the field when the payload is malformed", () => {
+    const gh = vi.fn<(args: string[]) => void>();
+    const path = join(dir, "bad.json");
+    writeFileSync(path, JSON.stringify({ issue: { number: "7" }, repository: {} }));
+    expect(() => {
+      main({ GITHUB_EVENT_PATH: path }, gh);
+    }).toThrow("$.issue.number: expected number");
+    writeFileSync(path, "not json");
+    expect(() => {
+      main({ GITHUB_EVENT_PATH: path }, gh);
+    }).toThrow("invalid JSON");
+    expect(gh).not.toHaveBeenCalled();
+  });
+
+  test("fails naming the field when the payload has no title or action", () => {
+    const gh = vi.fn<(args: string[]) => void>();
+    const path = join(dir, "no-title.json");
+    const { title: _title, ...issue } = event().issue;
+    writeFileSync(path, JSON.stringify({ ...event(), issue }));
+    expect(() => {
+      main({ GITHUB_EVENT_PATH: path }, gh);
+    }).toThrow("$.issue.title: expected string");
+    const { action: _action, ...rest } = event();
+    writeFileSync(path, JSON.stringify(rest));
+    expect(() => {
+      main({ GITHUB_EVENT_PATH: path }, gh);
+    }).toThrow("$.action: expected string");
+    expect(gh).not.toHaveBeenCalled();
+  });
+
+  test("fails instead of skipping when the payload has no milestone key", () => {
+    const gh = vi.fn<(args: string[]) => void>();
+    const path = join(dir, "no-milestone.json");
+    const { milestone: _milestone, ...issue } = event().issue;
+    writeFileSync(path, JSON.stringify({ ...event(), issue }));
+    expect(() => {
+      main({ GITHUB_EVENT_PATH: path }, gh);
+    }).toThrow("$.issue.milestone: expected object, got undefined");
+    expect(gh).not.toHaveBeenCalled();
+  });
+
   test("only ensures the label when the issue already carries it", () => {
     const gh = vi.fn<(args: string[]) => void>();
     main({ GITHUB_EVENT_PATH: write(event({ labels: [{ name: "needs-triage" }] })) }, gh);
