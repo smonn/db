@@ -3,19 +3,13 @@ import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-h
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { sha256 } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
+import { chain, filesIn } from "./committed-migrations.test-helper.ts";
 import { generate } from "./generate.ts";
 import { memoryFileSystem } from "./memory-file-system.test-helper.ts";
 
 const db = useTestDatabase();
 
 const TRACKING_SCHEMA = "AppTracking";
-const USERS = "create table public.users (id text not null);\n";
-const POSTS = "create table public.posts (id text);\n";
-
-async function committed(previous: string | undefined, body: string): Promise<string> {
-  const hash = `sha256:${await sha256(`${previous ?? ""}\n${body}`)}`;
-  return `--! Previous: ${previous ?? "-"}\n--! Hash: ${hash}\n\n${body}`;
-}
 
 beforeEach(async () => {
   await db.driver.execute(
@@ -25,8 +19,11 @@ beforeEach(async () => {
 
 describe("generate with a configured tracking schema", () => {
   it("keeps the marker and history where migrate reads them", async () => {
-    const users = await committed(undefined, USERS);
-    const fileSystem = memoryFileSystem({ "db/migrations/000001-create-users.sql": users });
+    const committed = await chain(
+      ["000001-create-users.sql", "create table public.users (id text not null);\n"],
+      ["000002-create-posts.sql", "create table public.posts (id text);\n"],
+    );
+    const fileSystem = memoryFileSystem(filesIn("db/migrations", committed.slice(0, 1)));
     const options = {
       driver: db.driver,
       connect: db.connect,
@@ -52,17 +49,10 @@ describe("generate with a configured tracking schema", () => {
       (await db.driver.query("select 1 from pg_namespace where nspname = 'smonn_db'")).rows,
     ).toStrictEqual([]);
 
-    const pending = [
-      { filename: "000001-create-users.sql", content: users },
-      {
-        filename: "000002-create-posts.sql",
-        content: await committed(`sha256:${await sha256(`\n${USERS}`)}`, POSTS),
-      },
-    ];
     await expect(
       migrate({
         driver: db.driver,
-        source: { list: () => Promise.resolve(pending) },
+        source: { list: () => Promise.resolve(committed) },
         trackingSchema: TRACKING_SCHEMA,
       }),
     ).rejects.toThrow(`${TRACKING_SCHEMA}.current holds a row, so this is a Dev database`);

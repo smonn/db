@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
+import { migrationHash } from "../internal/index.ts";
 import type { MigrationFile, MigrationSource } from "../ports/index.ts";
 import { migrate } from "./migrate.ts";
-import { migrationHash } from "./migration-file.ts";
 
 const db = useTestDatabase();
 

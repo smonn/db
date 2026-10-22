@@ -1,5 +1,5 @@
 import type { MigrationFile } from "../ports/index.ts";
-import { COMMITTED_FILENAME, sha256 } from "../internal/index.ts";
+import { COMMITTED_FILENAME } from "../internal/index.ts";
 
 export type ParsedMigration = {
   readonly filename: string;
@@ -39,10 +39,6 @@ export function parseMigration({ filename, content }: MigrationFile): ParsedMigr
     hash: checkedHash(filename, "Hash", requiredHeader(filename, headers, "Hash")),
     body: normalizeBody(lines.slice(line).join("\n")),
   };
-}
-
-export async function migrationHash(previous: string | undefined, body: string): Promise<string> {
-  return `sha256:${await sha256(`${previous ?? ""}\n${body}`)}`;
 }
 
 function requiredHeader(
