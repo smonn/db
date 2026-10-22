@@ -1,5 +1,5 @@
 import { sql as fragment } from "../sql/index.ts";
-import type { Query, Statement } from "./from.ts";
+import { brand, type Query, type Statement } from "./from.ts";
 
 /**
  * A whole hand-written statement, for what the builder can't express. Give the row type,
@@ -8,13 +8,13 @@ import type { Query, Statement } from "./from.ts";
  */
 export function sql(strings: TemplateStringsArray, ...values: unknown[]): Statement;
 export function sql<R>(strings: TemplateStringsArray, ...values: unknown[]): Query<R>;
-export function sql(strings: TemplateStringsArray, ...values: unknown[]): Statement {
+export function sql<R>(strings: TemplateStringsArray, ...values: unknown[]): Query<R> {
   for (const [index, value] of values.entries()) {
     if (isStatement(value)) {
       throw new TypeError(`sql takes values, not statements: value ${index + 1} is a statement`);
     }
   }
-  return fragment(strings, ...values);
+  return brand<Query<R>>(fragment(strings, ...values));
 }
 
 function isStatement(value: unknown): boolean {
