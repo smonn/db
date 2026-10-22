@@ -22,11 +22,7 @@ const HASH = /^sha256:[0-9a-f]{64}$/u;
 
 /** Parses ADR-0008's format. Throws, naming the file, on anything it can't read. */
 export function parseMigration({ filename, content }: MigrationFile): ParsedMigration {
-  const sequence = COMMITTED_FILENAME.exec(filename)?.[1];
-  if (sequence === undefined) {
-    throw new Error(`${filename}: name it like 000001-create-users.sql`);
-  }
-
+  const sequence = committedSequence(filename);
   const lines = content.replaceAll("\r\n", "\n").split("\n");
   const headers = new Map<string, string>();
   let line = 0;
@@ -42,7 +38,7 @@ export function parseMigration({ filename, content }: MigrationFile): ParsedMigr
   const previous = requiredHeader(filename, headers, "Previous");
   return {
     filename,
-    sequence: Number(sequence),
+    sequence,
     previous: previous === "-" ? undefined : checkedHash(filename, "Previous", previous),
     hash: checkedHash(filename, "Hash", requiredHeader(filename, headers, "Hash")),
     body: normalizeBody(lines.slice(line).join("\n")),
@@ -65,9 +61,7 @@ export async function writeMigration(
   previous: string | undefined,
   body: string,
 ): Promise<WrittenMigration> {
-  if (!COMMITTED_FILENAME.test(filename)) {
-    throw new Error(`${filename}: name it like 000001-create-users.sql`);
-  }
+  committedSequence(filename);
   const normalized = normalizeBody(body);
   const hash = await migrationHash(previous, normalized);
   return {
@@ -87,7 +81,6 @@ export function committedFilenames(names: readonly string[]): string[] {
 
 export type CurrentMigration = {
   readonly body: string;
-  /** The `--! Generated` header: `sha256:` and the body's SHA-256. */
   readonly hash: string;
 };
 
@@ -120,6 +113,14 @@ export async function parseCurrent(content: string): Promise<ParsedCurrent> {
 
 async function currentHash(body: string): Promise<string> {
   return `sha256:${await sha256(body)}`;
+}
+
+function committedSequence(filename: string): number {
+  const sequence = COMMITTED_FILENAME.exec(filename)?.[1];
+  if (sequence === undefined) {
+    throw new Error(`${filename}: name it like 000001-create-users.sql`);
+  }
+  return Number(sequence);
 }
 
 function requiredHeader(

@@ -7,6 +7,7 @@ export {
   parseMigration,
   writeCurrent,
   writeMigration,
+  type CurrentMigration,
   type ParsedMigration,
 } from "./migration-file.ts";
 export { quoteIdentifier } from "./quote-identifier.ts";
