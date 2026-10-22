@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { afterAll, beforeAll } from "vitest";
-import type { Driver } from "../../runtime/ports/index.ts";
+import type { Connect, Driver } from "../../runtime/ports/index.ts";
+import { postgresJsConnect } from "./connect.ts";
 import { postgresJsDriver } from "./driver.ts";
 import { postgresJsTypes } from "./value-types.ts";
 
 export type TestDatabase = {
+  readonly name: string;
   readonly driver: Driver;
+  /** Opens another database on the same server; the caller closes it. */
+  readonly connect: Connect;
 };
 
 const ignoreNotice = (): void => {};
@@ -52,5 +56,9 @@ export function useTestDatabase(): TestDatabase {
     await admin.end();
   });
 
-  return { driver: postgresJsDriver(sql) };
+  return {
+    name,
+    driver: postgresJsDriver(sql),
+    connect: postgresJsConnect(serverUrl, { onnotice: ignoreNotice }),
+  };
 }

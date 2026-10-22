@@ -44,12 +44,15 @@ export const importRules: IForbiddenRuleType[] = [
     to: { dependencyTypes: NPM, pathNot: VITEST },
   },
   {
-    name: "adapter-imports-ports-only",
+    name: "adapter-imports-ports-or-internal",
     comment:
-      "An adapter imports only runtime/ports, its own files, and the test database helper, never another adapter or dev/.",
+      "An adapter imports only runtime/ports, runtime/internal, its own files, and the test database helper, never another adapter or dev/.",
     severity: "error",
     from: { path: "^src/adapters/([^/]+)/" },
-    to: { path: "^src/", pathNot: ["^src/runtime/ports/", "^src/adapters/$1/", TEST_DATABASE] },
+    to: {
+      path: "^src/",
+      pathNot: ["^src/runtime/(ports|internal)/", "^src/adapters/$1/", TEST_DATABASE],
+    },
   },
   {
     name: "postgres-js-adapter-host-package",
@@ -90,6 +93,14 @@ export const importRules: IForbiddenRuleType[] = [
       path: "^src/[^/]+/[^/]+/",
       pathNot: ["^src/$1/$2/", "^src/[^/]+/[^/]+/index\\.ts$", TEST_DATABASE],
     },
+  },
+  {
+    name: "internal-not-reexported",
+    comment:
+      "runtime/internal holds shared helpers, never public API, so no other module's index.ts imports it.",
+    severity: "error",
+    from: { path: String.raw`(^|/)index\.ts$`, pathNot: "^src/runtime/internal/" },
+    to: { path: "^src/runtime/internal/" },
   },
   {
     name: "no-cycles",

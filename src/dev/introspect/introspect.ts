@@ -1,0 +1,73 @@
+import type { Queryable, Session } from "../../runtime/ports/index.ts";
+import type { Catalog, Fact } from "../catalog/index.ts";
+
+const TRACKING_SCHEMA = "smonn_db";
+
+const NOT_EXTENSION_MEMBER = (catalog: string, alias: string): string => `not exists (
+  select from pg_depend d
+  where d.classid = '${catalog}'::regclass and d.objid = ${alias}.oid and d.deptype = 'e'
+)`;
+
+const SCHEMAS = `
+select n.nspname as name
+from pg_namespace n
+where n.nspname !~ '^pg_' and n.nspname not in ('information_schema', $1)
+  and ${NOT_EXTENSION_MEMBER("pg_namespace", "n")}
+order by n.nspname`;
+
+const TABLES = `
+select n.nspname as schema, c.relname as name
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where c.relkind = 'r' and not c.relispartition
+  and ${NOT_EXTENSION_MEMBER("pg_class", "c")}
+order by c.relname`;
+
+const COLUMNS = `
+select n.nspname as schema, c.relname as table, a.attname as name,
+  format_type(a.atttypid, a.atttypmod) as type, a.attnotnull as not_null
+from pg_attribute a
+  join pg_class c on c.oid = a.attrelid
+  join pg_namespace n on n.oid = c.relnamespace
+where c.relkind = 'r' and a.attnum > 0 and not a.attisdropped
+order by a.attnum`;
+
+/**
+ * Reads the modeled objects of a live database in one snapshot, keyed by name. Skips system
+ * schemas, the tracking schema, extension members, and every kind v0.1 doesn't model.
+ */
+export function introspect(session: Session): Promise<Catalog> {
+  return session.transaction(async (tx) => {
+    await tx.execute(
+      "set transaction isolation level repeatable read read only; set local search_path = pg_catalog",
+    );
+    return read(tx);
+  });
+}
+
+async function read(tx: Queryable): Promise<Catalog> {
+  const { rows: schemas } = await tx.query(SCHEMAS, [TRACKING_SCHEMA]);
+  const { rows: tables } = await tx.query(TABLES);
+  const { rows: columns } = await tx.query(COLUMNS);
+
+  const catalog = new Map<string, Fact>();
+  for (const { name } of schemas) {
+    const schema = String(name);
+    catalog.set(schema, { kind: "schema", name: schema, parent: undefined, payload: {} });
+    for (const table of tables.filter((row) => row["schema"] === schema)) {
+      const tableName = String(table["name"]);
+      const tablePath = `${schema}.${tableName}`;
+      catalog.set(tablePath, { kind: "table", name: tableName, parent: schema, payload: {} });
+      for (const column of columns) {
+        if (column["schema"] !== schema || column["table"] !== tableName) continue;
+        const columnName = String(column["name"]);
+        catalog.set(`${tablePath}.${columnName}`, {
+          kind: "column",
+          name: columnName,
+          parent: tablePath,
+          payload: { type: String(column["type"]), notNull: column["not_null"] === true },
+        });
+      }
+    }
+  }
+  return catalog;
+}

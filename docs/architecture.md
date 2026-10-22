@@ -45,7 +45,8 @@ flowchart TB
     query["<b>query</b><br/>[module]<br/>from, where, select, insert, one call per SQL clause"]
     sql["<b>sql</b><br/>[module]<br/>SQL fragments, the sql template, rendering to text and params"]
     migrator["<b>migrator</b><br/>[module]<br/>Verifies the hash chain and applies Committed migrations under an advisory lock"]
-    ports["<b>ports</b><br/>[types only]<br/>Driver, MigrationSource, FileSystem"]
+    ports["<b>ports</b><br/>[types only]<br/>Driver, Connect, MigrationSource, FileSystem"]
+    internal["<b>internal</b><br/>[module, never exported]<br/>Shared helpers such as sha256"]
   end
 
   adapters["<b>adapters/</b><br/>[container]"]
@@ -53,6 +54,7 @@ flowchart TB
   query -- "reads column types" --> definition
   query -- "renders with" --> sql
   migrator -- "reads migrations and runs SQL through" --> ports
+  migrator -- "hashes with" --> internal
   adapters -- "implement" --> ports
 
   classDef external stroke-dasharray: 5 5
@@ -64,7 +66,7 @@ flowchart TB
 ```mermaid
 flowchart TB
   subgraph adapters["adapters/"]
-    pgjs["<b>postgres-js</b><br/>[adapter: @smonn/db/postgres-js]<br/>Driver on postgres.js; pg comes later"]
+    pgjs["<b>postgres-js</b><br/>[adapter: @smonn/db/postgres-js]<br/>Driver and Connect on postgres.js; pg comes later"]
     node["<b>node</b><br/>[adapter: @smonn/db/node]<br/>MigrationSource and FileSystem on node:fs"]
   end
 
@@ -116,10 +118,11 @@ flowchart TB
 | Port            | Used by                                                                           | v0.1 adapter                                        |
 | --------------- | --------------------------------------------------------------------------------- | --------------------------------------------------- |
 | Driver          | migrator, introspect, shadow, generate, and running statements built with `query` | `postgres-js` (wraps postgres.js; `pg` comes later) |
+| Connect         | shadow, to open the Shadow and Definition databases on the Dev database's server  | `postgres-js`                                       |
 | MigrationSource | migrator (read-only, so migrations can be bundled or in memory)                   | `node`                                              |
-| FileSystem      | generate and commit (read, write, list, mkdir)                                    | `node`                                              |
+| FileSystem      | generate and commit (read, write, list, mkdir, remove)                            | `node`                                              |
 
-All port types live in `runtime/ports` as type-only exports, so adapters depend on `runtime/` alone. Logger, Codec, Clock, and randomness will become ports after v0.1. Hashing uses a small `sha256` helper over the Web Crypto global rather than a port; ADR-0009 says why.
+All port types live in `runtime/ports` as type-only exports, so adapters depend on `runtime/` alone. Logger, Codec, Clock, and randomness will become ports after v0.1. Hashing uses a small `sha256` helper over the Web Crypto global rather than a port; ADR-0009 says why. It lives in `runtime/internal`, which holds shared helpers that are never public API.
 
 ## Migration flow
 
@@ -255,7 +258,7 @@ Schemas, tables, columns (type, NOT NULL, default, identity), single and composi
 
 ### Pipeline
 
-1. The Definition converts to a catalog as written, and the diff renders it against an empty catalog. That SQL builds the Definition database.
+1. The Definition converts to a catalog as written, and the diff renders it against the catalog of the freshly created Definition database, which holds only template0's `public` schema. That SQL builds the Definition database.
 2. `introspect` reads each database in one `REPEATABLE READ READ ONLY` transaction with `search_path` pinned to `pg_catalog`, keyed by name, never by OID.
 3. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL.
 4. Generate verifies the SQL in the Shadow (ADR-0013), then writes the Current migration.
@@ -266,7 +269,7 @@ A flat `Map<path, fact>`. A path is the dotted chain of names from the schema do
 
 ### Ordering
 
-Each action is one statement-sized change, such as create table, add column, or set default. One `order(actions)` function sorts them in fixed phases: drops of unique constraints, primary keys, columns, tables, and schemas; then creates of schemas, tables, and columns; then column alters (drop default, type, NOT NULL, set default, identity); then adds of primary keys and unique constraints. Ties are broken by path. Dropping a table or schema drops what it contains, so no separate drop is emitted for its children. A type change drops the old default first, because Postgres refuses to retype a column whose default can't be cast, and sets it again afterward. No v0.1 kind references another table, so phases are always correct. When foreign keys land, `order` becomes a topological sort over dependency edges, and nothing else changes.
+Each action is one statement-sized change, such as create table, add column, or set default. One `order(actions)` function sorts them in fixed phases: drops of unique constraints, primary keys, columns, tables, and schemas; then creates of schemas, tables, and columns; then column alters (drop default, type, NOT NULL, set default, identity); then adds of primary keys and unique constraints. Within a phase, actions keep the target catalog's order, so new columns follow the Definition, since Postgres can't reorder columns later. Dropping a table or schema drops what it contains, so no separate drop is emitted for its children. A type change drops the old default first, because Postgres refuses to retype a column whose default can't be cast, and sets it again afterward. No v0.1 kind references another table, so phases are always correct. When foreign keys land, `order` becomes a topological sort over dependency edges, and nothing else changes.
 
 ### SQL rules
 
@@ -282,7 +285,7 @@ Each action kind declares its Hazards (`data_loss`, `rewrite`, `access_exclusive
 
 ### Dev database catch-up
 
-Generate resets the Dev database whenever the Current migration's hash differs from `smonn_db.current`, or the last hash in `smonn_db.migrations` differs from the tip of the Committed migration files. A reset drops every non-system schema, then replays the Committed migrations and the Current migration, and runs only in a marked or empty Database (ADR-0016). The tip check covers a pulled Committed migration that leaves the regenerated Current migration byte-identical. Resetting is exact after hand edits and branch switches, at the cost of dev data. Keeping that data is a v0.4 dev loop question.
+Generate resets the Dev database whenever the Current migration's hash differs from `smonn_db.current`, or the last hash in `smonn_db.migrations` differs from the tip of the Committed migration files. A reset drops every non-system schema, recreates `public` as template0 ships it so the Dev database starts where the Shadow does, then replays the Committed migrations and the Current migration, and runs only in a marked or empty Database (ADR-0016). The tip check covers a pulled Committed migration that leaves the regenerated Current migration byte-identical. Resetting is exact after hand edits and branch switches, at the cost of dev data. Keeping that data is a v0.4 dev loop question.
 
 ### Postgres versions
 
@@ -292,7 +295,7 @@ v0.1 supports Postgres 18 and newer, and CI runs 18 and, once released, 19. `int
 
 CI enforces the module boundaries:
 
-- `scripts/check-imports.ts` holds the dependency-cruiser rules, each with a one-line comment: `runtime/` stays self-contained and free of npm packages, an adapter imports only `runtime/ports` and its host package, only `dev/cli` wires in adapters, `node:*` stays in host code, cross-module imports go through `index.ts`, no cycles, and only tests import `*.test.ts` files, `*.test-helper.ts` helpers, and `vitest`. Tests in any group may import `adapters/postgres-js/test-database.test-helper.ts`, which the group, adapter, and `index.ts` rules otherwise forbid. It fails when it scans 0 modules.
+- `scripts/check-imports.ts` holds the dependency-cruiser rules, each with a one-line comment: `runtime/` stays self-contained and free of npm packages, an adapter imports only `runtime/ports`, `runtime/internal`, and its host package, only `dev/cli` wires in adapters, `node:*` stays in host code, cross-module imports go through `index.ts`, no other module's `index.ts` re-exports `runtime/internal`, no cycles, and only tests import `*.test.ts` files, `*.test-helper.ts` helpers, and `vitest`. Tests in any group may import `adapters/postgres-js/test-database.test-helper.ts`, which the group, adapter, and `index.ts` rules otherwise forbid. It fails when it scans 0 modules.
 - `.oxlintrc.json` bans the `process`, `Buffer`, and `__dirname` globals in `src/` outside `adapters/` and `dev/cli`.
 - `scripts/check-index-exports.ts` keeps each `index.ts` to named re-exports: no declarations, no `export *`.
 

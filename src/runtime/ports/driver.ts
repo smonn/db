@@ -24,3 +24,11 @@ export type Driver = Session & {
    */
   session<T>(fn: (session: Session) => Promise<T>): Promise<T>;
 };
+
+export type Connection = {
+  readonly driver: Driver;
+  close(): Promise<void>;
+};
+
+/** Opens a Driver on another database of the same server, such as a Shadow database. */
+export type Connect = (database: string) => Promise<Connection>;

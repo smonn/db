@@ -1,5 +1,5 @@
 import type { MigrationFile } from "../ports/index.ts";
-import { sha256 } from "./sha256.ts";
+import { COMMITTED_FILENAME, sha256 } from "../internal/index.ts";
 
 export type ParsedMigration = {
   readonly filename: string;
@@ -11,13 +11,12 @@ export type ParsedMigration = {
   readonly body: string;
 };
 
-const FILENAME = /^(\d+)-[^/]+\.sql$/u;
 const HEADER = /^--! (Previous|Hash): (.*)$/u;
 const HASH = /^sha256:[0-9a-f]{64}$/u;
 
 /** Parses ADR-0008's format. Throws, naming the file, on anything it can't read. */
 export function parseMigration({ filename, content }: MigrationFile): ParsedMigration {
-  const sequence = FILENAME.exec(filename)?.[1];
+  const sequence = COMMITTED_FILENAME.exec(filename)?.[1];
   if (sequence === undefined) {
     throw new Error(`${filename}: name it like 000001-create-users.sql`);
   }
