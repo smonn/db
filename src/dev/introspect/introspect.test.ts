@@ -134,6 +134,34 @@ describe("introspect", () => {
     expect([...catalog.values()].map((fact) => fact.kind)).not.toContain("constraint");
   });
 
+  it("reads primary keys in key order and single-column unique constraints, and no others", async () => {
+    await db.driver.execute(`
+      create table t (
+        a text not null, b text not null, c text, d text, e text, f text
+      );
+      alter table t add constraint pk primary key (b, a);
+      alter table t add constraint c_uq unique (c);
+      alter table t add constraint d_uq unique (d);
+      alter table t add constraint ef_uq unique (e, f);
+      alter table t add constraint f_check check (f <> '');
+      create unique index d_index on t (d);
+      create table keyless (a text);
+      create table parted (a text not null, primary key (a)) partition by list (a);
+      create table parted_1 partition of parted for values in ('x');
+    `);
+
+    const catalog = await introspect(db.driver);
+
+    const keys = [...catalog.values()]
+      .filter((fact) => ["primary key", "unique"].includes(fact.kind))
+      .map((fact) => [fact.kind, namesOf(catalog, fact).join("."), fact.payload]);
+    expect(keys).toStrictEqual([
+      ["unique", "public.t.c_uq", { column: "c" }],
+      ["unique", "public.t.d_uq", { column: "d" }],
+      ["primary key", "public.t.pk", { columns: ["b", "a"] }],
+    ]);
+  });
+
   it("fetches no table or column of a skipped schema", async () => {
     await db.driver.execute(`
       create table kept (a text);

@@ -17,6 +17,15 @@ export type IdentityPayload = {
   readonly generated: "always" | "by default";
 };
 
+export type PrimaryKeyPayload = {
+  /** In key order, which is the order the index sorts by. */
+  readonly columns: readonly string[];
+};
+
+export type UniquePayload = {
+  readonly column: string;
+};
+
 /** Schemas and tables carry nothing beyond their name in v0.1. */
 type NoPayload = Readonly<Record<string, never>>;
 
@@ -53,6 +62,19 @@ export type Fact =
       readonly name: typeof IDENTITY_NAME;
       readonly parent: Key;
       readonly payload: IdentityPayload;
+    }
+  | {
+      /** Named by its constraint, since a drop must say which one. */
+      readonly kind: "primary key";
+      readonly name: string;
+      readonly parent: Key;
+      readonly payload: PrimaryKeyPayload;
+    }
+  | {
+      readonly kind: "unique";
+      readonly name: string;
+      readonly parent: Key;
+      readonly payload: UniquePayload;
     };
 
 /** A column has at most one default and one identity, so their names are fixed. */
@@ -71,10 +93,12 @@ export type CatalogBuilder = {
   column(schema: string, table: string, name: string, payload: ColumnPayload): void;
   columnDefault(schema: string, table: string, column: string, payload: DefaultPayload): void;
   columnIdentity(schema: string, table: string, column: string, payload: IdentityPayload): void;
+  primaryKey(schema: string, table: string, name: string, payload: PrimaryKeyPayload): void;
+  unique(schema: string, table: string, name: string, payload: UniquePayload): void;
   build(): Catalog;
 };
 
-/** Throws when a table, column, default, or identity names a parent not added yet. */
+/** Throws when a fact names a parent, or a key names a column, not added yet. */
 export function catalogBuilder(): CatalogBuilder {
   const catalog = new Map<Key, Fact>();
   const added = (kind: Fact["kind"], ...names: string[]): Key => {
@@ -111,6 +135,16 @@ export function catalogBuilder(): CatalogBuilder {
         parent,
         payload,
       });
+    },
+    primaryKey(schema, table, name, payload) {
+      const parent = added("table", schema, table);
+      for (const column of payload.columns) added("column", schema, table, column);
+      catalog.set(constraintKey(parent, name), { kind: "primary key", name, parent, payload });
+    },
+    unique(schema, table, name, payload) {
+      const parent = added("table", schema, table);
+      added("column", schema, table, payload.column);
+      catalog.set(constraintKey(parent, name), { kind: "unique", name, parent, payload });
     },
     build: () => new Map(catalog),
   };
@@ -182,8 +216,19 @@ function key(...names: string[]): Key {
   return names.join(SEPARATOR) as Key;
 }
 
+/**
+ * An empty segment can't be a Postgres name, so a constraint never keys like a column of the
+ * same name on its table.
+ */
+function constraintKey(table: Key, name: string): Key {
+  return key(table, "", name);
+}
+
 function keyOf(fact: Fact): Key {
-  return fact.parent === undefined ? key(fact.name) : key(fact.parent, fact.name);
+  if (fact.parent === undefined) return key(fact.name);
+  return fact.kind === "primary key" || fact.kind === "unique"
+    ? constraintKey(fact.parent, fact.name)
+    : key(fact.parent, fact.name);
 }
 
 function quoted(names: readonly string[]): string {

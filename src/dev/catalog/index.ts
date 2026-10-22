@@ -8,4 +8,6 @@ export type {
   Fact,
   IdentityPayload,
   Key,
+  PrimaryKeyPayload,
+  UniquePayload,
 } from "./catalog.ts";
