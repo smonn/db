@@ -1,5 +1,6 @@
 import type { ParameterOrJSON, ReservedSql, Sql } from "postgres";
 import type { Driver, Queryable, Row, Session } from "../../runtime/ports/index.ts";
+import { hasPostgresJsTypes } from "./value-types.ts";
 
 // Without params, postgres.js switches to the simple protocol unless `simple` is false, which its
 // types leave out of UnsafeQueryOptions.
@@ -38,8 +39,16 @@ function reservedSession(reserved: ReservedSql): Session {
   };
 }
 
-/** The caller owns `sql` and ends it. */
+/**
+ * The caller owns `sql` and ends it. Create it with `postgres(url, { types: postgresJsTypes })`,
+ * or rows hold postgres.js's default values for bigint, date, timestamp, and bytea.
+ */
 export function postgresJsDriver(sql: Sql): Driver {
+  if (!hasPostgresJsTypes(sql.options.parsers)) {
+    throw new Error(
+      "postgresJsDriver needs a client created with postgres(url, { types: postgresJsTypes })",
+    );
+  }
   const driver: Driver = {
     ...queryable(sql),
     transaction(fn) {

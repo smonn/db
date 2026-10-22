@@ -1,4 +1,6 @@
+import postgres from "postgres";
 import { describe, expect, it } from "vitest";
+import { postgresJsDriver } from "./driver.ts";
 import { useTestDatabase } from "./test-database.test-helper.ts";
 
 const db = useTestDatabase();
@@ -90,5 +92,12 @@ describe("postgresJsDriver", () => {
       await expect(failed).rejects.toThrow("boom");
     });
     expect(await db.driver.query("select n from in_session")).toStrictEqual([{ n: 1 }]);
+  });
+});
+
+describe("postgresJsDriver without postgresJsTypes", () => {
+  it("refuses a client created without them, naming the export", () => {
+    const sql = postgres("postgres://localhost:1/none");
+    expect(() => postgresJsDriver(sql)).toThrow("postgresJsTypes");
   });
 });
