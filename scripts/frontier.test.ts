@@ -1,6 +1,13 @@
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { type Child, formatTicket, isTakeable, main, pickFrontier } from "./frontier.ts";
+import {
+  type Child,
+  formatTicket,
+  isTakeable,
+  main,
+  parseIssuePages,
+  pickFrontier,
+} from "./frontier.ts";
 
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn<typeof spawnSync>() }));
 
@@ -45,6 +52,38 @@ describe("pickFrontier", () => {
       return false;
     });
     expect(checked).toEqual([11]);
+  });
+});
+
+describe("parseIssuePages", () => {
+  const valid = {
+    number: 3,
+    title: "T",
+    state: "open",
+    labels: [{ name: "a" }],
+    assignees: [],
+    user: { login: "smonn" },
+  };
+
+  test("flattens pages and keeps optional fields when present", () => {
+    const extra = { ...valid, number: 4, pull_request: {}, sub_issues_summary: { total: 2 } };
+    const issues = parseIssuePages(JSON.stringify([[valid], [extra]]), "gh");
+    expect(issues.map((issue) => issue.number)).toEqual([3, 4]);
+    expect(issues[1]?.sub_issues_summary).toEqual({ total: 2 });
+  });
+
+  test("names the path of a malformed issue", () => {
+    const bad = JSON.stringify([[valid, { ...valid, state: "merged" }]]);
+    expect(() => parseIssuePages(bad, "gh")).toThrow('$[0][1].state: expected "open" | "closed"');
+    const noUser = JSON.stringify([[{ ...valid, user: null }]]);
+    expect(() => parseIssuePages(noUser, "gh")).toThrow("$[0][0].user: expected object, got null");
+  });
+
+  test("rejects an unpaginated array and non-JSON output", () => {
+    expect(() => parseIssuePages(JSON.stringify([valid]), "gh")).toThrow(
+      "$[0]: expected array, got object",
+    );
+    expect(() => parseIssuePages("oops", "gh api x")).toThrow("gh api x: invalid JSON");
   });
 });
 

@@ -2,9 +2,9 @@ export type {
   Connect,
   Connection,
   Driver,
+  DriverRow,
   Queryable,
   QueryResult,
-  Row,
   Session,
 } from "./driver.ts";
 export type { FileSystem } from "./file-system.ts";

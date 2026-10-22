@@ -43,6 +43,12 @@ describe("select", () => {
     expect(query.toSql().text).toBe('select "email" from "public"."users"');
   });
 
+  it("refuses a selection with no columns", () => {
+    expect(() => from(db.public.users).select(() => ({}))).toThrow(
+      "select needs at least one column",
+    );
+  });
+
   it("quotes names that need it", () => {
     const odd = defineDatabase({
       'my"schema': { "Odd Table": defineTable((c) => ({ "a b": c.text() })) },
