@@ -43,6 +43,57 @@ describe("definitionCatalog", () => {
     ]);
   });
 
+  it("names every column type the way Postgres reports it", () => {
+    const catalog = definitionCatalog(
+      defineDatabase({
+        public: {
+          all: defineTable((c) => ({
+            text: c.text(),
+            varchar: c.varchar(20),
+            smallint: c.smallint(),
+            integer: c.integer(),
+            bigint: c.bigint(),
+            numeric: c.numeric(),
+            numericP: c.numeric(10),
+            numericPS: c.numeric(10, 2),
+            real: c.real(),
+            doublePrecision: c.doublePrecision(),
+            boolean: c.boolean(),
+            uuid: c.uuid(),
+            date: c.date(),
+            timestamp: c.timestamp(),
+            timestamptz: c.timestamptz(),
+            jsonb: c.jsonb(),
+            bytea: c.bytea(),
+          })),
+        },
+      }),
+    );
+
+    const types = [...catalog.values()]
+      .filter((fact) => fact.kind === "column")
+      .map((fact) => [fact.name, fact.payload.type]);
+    expect(Object.fromEntries(types)).toStrictEqual({
+      text: "text",
+      varchar: "character varying(20)",
+      smallint: "smallint",
+      integer: "integer",
+      bigint: "bigint",
+      numeric: "numeric",
+      numericP: "numeric(10,0)",
+      numericPS: "numeric(10,2)",
+      real: "real",
+      doublePrecision: "double precision",
+      boolean: "boolean",
+      uuid: "uuid",
+      date: "date",
+      timestamp: "timestamp without time zone",
+      timestamptz: "timestamp with time zone",
+      jsonb: "jsonb",
+      bytea: "bytea",
+    });
+  });
+
   it("keeps a schema with no tables", () => {
     expect([...definitionCatalog(defineDatabase({ empty: {} }))]).toStrictEqual([
       ["empty", { kind: "schema", name: "empty", parent: undefined, payload: {} }],

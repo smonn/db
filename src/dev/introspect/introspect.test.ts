@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { trackingSchema } from "../../runtime/internal/index.ts";
+import type { Session } from "../../runtime/ports/index.ts";
 import { definitionCatalog, namesOf, type Catalog } from "../catalog/index.ts";
 import { introspect } from "./introspect.ts";
 
@@ -46,6 +47,65 @@ describe("introspect", () => {
     expect(named).toEqual(
       expect.arrayContaining(["column auth.users.email", "table auth.users.email"]),
     );
+  });
+
+  it("reads every v0.1 column type as the Definition names it", async () => {
+    await db.driver.execute(`
+      create table everything (
+        a text, b varchar(20), c smallint, d integer, e bigint, f numeric, g numeric(10),
+        h numeric(10,2), i real, j double precision, k boolean, l uuid, m date, n timestamp,
+        o timestamptz, p jsonb, q bytea not null
+      )`);
+    const definition = defineDatabase({
+      public: {
+        everything: defineTable((c) => ({
+          a: c.text(),
+          b: c.varchar(20),
+          c: c.smallint(),
+          d: c.integer(),
+          e: c.bigint(),
+          f: c.numeric(),
+          g: c.numeric(10),
+          h: c.numeric(10, 2),
+          i: c.real(),
+          j: c.doublePrecision(),
+          k: c.boolean(),
+          l: c.uuid(),
+          m: c.date(),
+          n: c.timestamp(),
+          o: c.timestamptz(),
+          p: c.jsonb(),
+          q: c.bytea().notNull(),
+        })),
+      },
+    });
+
+    expect(await introspect(db.driver)).toStrictEqual(definitionCatalog(definition));
+  });
+
+  it("fetches no table or column of a skipped schema", async () => {
+    await db.driver.execute("create table kept (a text)");
+    const fetched: unknown[] = [];
+    const watching: Session = {
+      ...db.driver,
+      transaction: (fn) =>
+        db.driver.transaction((tx) =>
+          fn({
+            execute: (script) => tx.execute(script),
+            query: async (text, params) => {
+              const result = await tx.query(text, params);
+              fetched.push(...result.rows.map((row) => row["schema"]));
+              return result;
+            },
+          }),
+        ),
+    };
+
+    await introspect(watching);
+
+    expect(fetched).toContain("public");
+    expect(fetched).not.toContain("pg_catalog");
+    expect(fetched).not.toContain("information_schema");
   });
 
   it("lists columns in table order", async () => {

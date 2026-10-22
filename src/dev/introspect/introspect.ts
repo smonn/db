@@ -11,10 +11,12 @@ const NOT_EXTENSION_MEMBER = (catalog: string, alias: string): string => `not ex
   where d.classid = '${catalog}'::regclass and d.objid = ${alias}.oid and d.deptype = 'e'
 )`;
 
+const KEPT_SCHEMA = `n.nspname !~ '^pg_' and n.nspname not in ('information_schema', $1)`;
+
 const SCHEMAS = `
 select n.nspname as name
 from pg_namespace n
-where n.nspname !~ '^pg_' and n.nspname not in ('information_schema', $1)
+where ${KEPT_SCHEMA}
   and ${NOT_EXTENSION_MEMBER("pg_namespace", "n")}
 order by n.nspname`;
 
@@ -31,7 +33,7 @@ export function skippedSchemaReason(
 const TABLES = `
 select n.nspname as schema, c.relname as name
 from pg_class c join pg_namespace n on n.oid = c.relnamespace
-where c.relkind = 'r' and not c.relispartition
+where c.relkind = 'r' and not c.relispartition and ${KEPT_SCHEMA}
   and ${NOT_EXTENSION_MEMBER("pg_class", "c")}
 order by c.relname`;
 
@@ -41,7 +43,7 @@ select n.nspname as schema, c.relname as table, a.attname as name,
 from pg_attribute a
   join pg_class c on c.oid = a.attrelid
   join pg_namespace n on n.oid = c.relnamespace
-where c.relkind = 'r' and a.attnum > 0 and not a.attisdropped
+where c.relkind = 'r' and a.attnum > 0 and not a.attisdropped and ${KEPT_SCHEMA}
 order by a.attnum`;
 
 /**
@@ -62,8 +64,8 @@ export function introspect(
 
 async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
   const { rows: schemas } = await tx.query(SCHEMAS, [trackingName]);
-  const { rows: tables } = await tx.query(TABLES);
-  const { rows: columns } = await tx.query(COLUMNS);
+  const { rows: tables } = await tx.query(TABLES, [trackingName]);
+  const { rows: columns } = await tx.query(COLUMNS, [trackingName]);
 
   const builder = catalogBuilder();
   for (const { name } of schemas) {
