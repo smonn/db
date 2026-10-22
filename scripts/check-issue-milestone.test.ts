@@ -75,6 +75,20 @@ describe("main", () => {
     ]);
   });
 
+  test("fails naming the field when the payload is malformed", () => {
+    const gh = vi.fn<(args: string[]) => void>();
+    const path = join(dir, "bad.json");
+    writeFileSync(path, JSON.stringify({ issue: { number: "7" }, repository: {} }));
+    expect(() => {
+      main({ GITHUB_EVENT_PATH: path }, gh);
+    }).toThrow("$.issue.number: expected number");
+    writeFileSync(path, "not json");
+    expect(() => {
+      main({ GITHUB_EVENT_PATH: path }, gh);
+    }).toThrow("invalid JSON");
+    expect(gh).not.toHaveBeenCalled();
+  });
+
   test("only ensures the label when the issue already carries it", () => {
     const gh = vi.fn<(args: string[]) => void>();
     main({ GITHUB_EVENT_PATH: write(event({ labels: [{ name: "needs-triage" }] })) }, gh);
