@@ -117,10 +117,9 @@ export function renderOutput([alias, name]: Output): Fragment {
 function selectQuery<T extends Table, R>(table: T, state: State): SelectQuery<T, R> {
   return brand<SelectQuery<T, R>>({
     select(pick) {
-      const outputs = Object.entries(pick(refsOf(table))).map(([alias, ref]): Output => [
-        alias,
-        ref.name,
-      ]);
+      const picked = Object.entries(pick(refsOf(table)));
+      if (picked.length === 0) throw new Error("select needs at least one column");
+      const outputs = picked.map(([alias, ref]): Output => [alias, ref.name]);
       return selectQuery(table, { ...state, outputs });
     },
     where(pick) {

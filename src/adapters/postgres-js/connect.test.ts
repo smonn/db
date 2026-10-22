@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { postgresJsConnect } from "./connect.ts";
 import { useTestDatabase } from "./test-database.test-helper.ts";
 
 const db = useTestDatabase();
@@ -22,6 +23,50 @@ describe("postgresJsConnect", () => {
       try {
         const { rows } = await connection.driver.query("select current_database() as name");
         expect(rows).toStrictEqual([{ name }]);
+      } finally {
+        await connection.close();
+      }
+    } finally {
+      await db.driver.execute(`drop database "${name}" with (force)`);
+    }
+  });
+
+  it("keeps a caller's DateStyle order", async () => {
+    const connect = postgresJsConnect(String(process.env["DATABASE_URL"]), {
+      onnotice: () => {},
+      connection: { DateStyle: "ISO, DMY" },
+    });
+    const connection = await connect(db.name);
+    try {
+      const { rows } = await connection.driver.query(
+        "select current_setting('datestyle') as style",
+      );
+      expect(rows).toStrictEqual([{ style: "ISO, DMY" }]);
+    } finally {
+      await connection.close();
+    }
+  });
+
+  it("reads ISO dates and hex bytea whatever the database's DateStyle and bytea_output", async () => {
+    const name = `${db.name}_styles`;
+    await db.driver.execute(`create database "${name}"`);
+    await db.driver.execute(`
+      alter database "${name}" set datestyle = 'SQL, DMY';
+      alter database "${name}" set bytea_output = 'escape';
+    `);
+    try {
+      const connection = await db.connect(name);
+      try {
+        const { rows } = await connection.driver.query(
+          "select '2024-03-04'::date as date, '2024-03-04 05:06:07'::timestamp as timestamp, '\\x0102ff'::bytea as bytes",
+        );
+        expect(rows).toStrictEqual([
+          {
+            date: "2024-03-04",
+            timestamp: new Date("2024-03-04T05:06:07Z"),
+            bytes: new Uint8Array([1, 2, 255]),
+          },
+        ]);
       } finally {
         await connection.close();
       }
