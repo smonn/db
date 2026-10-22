@@ -15,6 +15,8 @@ export type RecordedMigration = {
 export type TrackingSchema = {
   /** The name as configured, unquoted, for messages and catalog lookups. */
   readonly name: string;
+  /** The `current` table's quoted, qualified name, for messages. */
+  readonly currentTable: string;
   ensureMigrationsTable(session: Queryable): Promise<void>;
   /** The recorded rows, in sequence order. */
   readRecorded(session: Queryable): Promise<RecordedMigration[]>;
@@ -65,7 +67,7 @@ create table ${schema}.current (hash text not null, applied_at timestamptz not n
 /** Validates a tracking schema name and holds its quoted form for the tracking tables' SQL. */
 export function trackingSchema(name: string): TrackingSchema {
   const schema = quoteTrackingSchema(name);
-  const current = `${schema}.current`;
+  const current = `${schema}.${quoteIdentifier("current")}`;
 
   async function readCurrent(session: Queryable): Promise<string | undefined> {
     const { rows } = (await tableExists(session, current))
@@ -77,10 +79,9 @@ export function trackingSchema(name: string): TrackingSchema {
 
   return {
     name,
+    currentTable: current,
 
-    async ensureMigrationsTable(session) {
-      await session.execute(MIGRATIONS_TABLE(schema));
-    },
+    ensureMigrationsTable: (session) => session.execute(MIGRATIONS_TABLE(schema)),
 
     async readRecorded(session) {
       const { rows } = await session.query(

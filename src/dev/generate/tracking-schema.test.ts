@@ -60,7 +60,7 @@ describe("generate with a configured tracking schema", () => {
         source: { list: () => Promise.resolve([users, posts]) },
         trackingSchema: TRACKING_SCHEMA,
       }),
-    ).rejects.toThrow(`${TRACKING_SCHEMA}.current holds a row, so this is a Dev database`);
+    ).rejects.toThrow(`"${TRACKING_SCHEMA}"."current" holds a row, so this is a Dev database`);
   });
 
   it("refuses a Database marked only in the default tracking schema", async () => {
@@ -79,7 +79,7 @@ describe("generate with a configured tracking schema", () => {
         trackingSchema: TRACKING_SCHEMA,
       }),
     ).rejects.toThrow(
-      `${db.name} isn't a Dev database: it has no ${TRACKING_SCHEMA}.current table`,
+      `${db.name} isn't a Dev database: it has no "${TRACKING_SCHEMA}"."current" table`,
     );
   });
 
