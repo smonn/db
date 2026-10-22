@@ -49,6 +49,15 @@ describe("parseMigration", () => {
     ).toThrow("create-a.sql: name it like 000001-create-users.sql");
   });
 
+  it("refuses a sequence of 0, saying sequences start at 1", () => {
+    expect(() =>
+      parseMigration({
+        filename: "000000-a.sql",
+        content: `--! Previous: -\n--! Hash: ${HASH_A}\nselect 1;`,
+      }),
+    ).toThrow("000000-a.sql: sequences start at 1, not 0");
+  });
+
   it("refuses a missing header", () => {
     expect(() =>
       parseMigration({ filename: "000001-a.sql", content: "--! Previous: -\nselect 1;" }),
@@ -144,6 +153,12 @@ describe("writeMigration", () => {
   it("refuses a filename without a sequence and slug", async () => {
     await expect(writeMigration("create-a.sql", undefined, "select 1;\n")).rejects.toThrow(
       "create-a.sql: name it like 000001-create-users.sql",
+    );
+  });
+
+  it("refuses a sequence of 0, saying sequences start at 1", async () => {
+    await expect(writeMigration("000000-a.sql", undefined, "select 1;\n")).rejects.toThrow(
+      "000000-a.sql: sequences start at 1, not 0",
     );
   });
 });

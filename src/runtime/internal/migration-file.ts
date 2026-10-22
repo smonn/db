@@ -120,7 +120,9 @@ function committedSequence(filename: string): number {
   if (sequence === undefined) {
     throw new Error(`${filename}: name it like 000001-create-users.sql`);
   }
-  return Number(sequence);
+  const number = Number(sequence);
+  if (number < 1) throw new Error(`${filename}: sequences start at 1, not ${number}`);
+  return number;
 }
 
 function requiredHeader(

@@ -65,6 +65,12 @@ describe("verify", () => {
     );
   });
 
+  it("refuses a file numbered 0, saying sequences start at 1", async () => {
+    await expect(verify(source([renamed(A, "000000-zero.sql"), B]))).rejects.toThrow(
+      "000000-zero.sql: sequences start at 1, not 0",
+    );
+  });
+
   it("refuses a file inserted into the chain, naming the file it displaced", async () => {
     const inserted = await writeMigration(
       "000002-inserted.sql",
