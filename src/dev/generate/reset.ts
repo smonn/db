@@ -1,4 +1,4 @@
-import { quoteTrackingSchema } from "../../runtime/internal/index.ts";
+import { quoteIdentifier, quoteTrackingSchema } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type { Driver, MigrationSource } from "../../runtime/ports/index.ts";
 
@@ -68,10 +68,14 @@ export async function resetDevDatabase(
   await driver.transaction(async (tx) => {
     const { rows: extensions } = await tx.query(EXTENSIONS);
     await tx.execute(
-      extensions.map(({ name }) => `drop extension if exists ${quote(name)} cascade;`).join("\n"),
+      extensions
+        .map(({ name }) => `drop extension if exists ${quoteIdentifier(String(name))} cascade;`)
+        .join("\n"),
     );
     const { rows: schemas } = await tx.query(NON_SYSTEM_SCHEMAS);
-    const drops = schemas.map(({ name }) => `drop schema if exists ${quote(name)} cascade;`);
+    const drops = schemas.map(
+      ({ name }) => `drop schema if exists ${quoteIdentifier(String(name))} cascade;`,
+    );
     await tx.execute(`${drops.join("\n")}\n${RECREATE(schema)}`);
   });
   await migrate({ driver, source: committed, trackingSchema });
@@ -80,8 +84,4 @@ export async function resetDevDatabase(
     await tx.execute(current.body);
     await tx.query(`insert into ${schema}.current (hash) values ($1)`, [current.hash]);
   });
-}
-
-function quote(name: unknown): string {
-  return `"${String(name).replaceAll('"', '""')}"`;
 }

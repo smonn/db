@@ -1,3 +1,5 @@
+import { quoteIdentifier } from "./quote-identifier.ts";
+
 export const DEFAULT_TRACKING_SCHEMA = "smonn_db";
 
 const MAX_IDENTIFIER_BYTES = 63;
@@ -16,5 +18,5 @@ export function quoteTrackingSchema(name: string): string {
   if (name.startsWith("pg_")) {
     throw new Error('trackingSchema must not start with "pg_", which Postgres reserves');
   }
-  return `"${name.replaceAll('"', '""')}"`;
+  return quoteIdentifier(name);
 }

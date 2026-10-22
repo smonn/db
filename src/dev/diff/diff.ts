@@ -1,3 +1,4 @@
+import { quoteIdentifier } from "../../runtime/internal/index.ts";
 import type { Catalog, Fact } from "../catalog/index.ts";
 
 type Action =
@@ -40,7 +41,7 @@ function order(actions: readonly Action[]): Action[] {
 }
 
 function render({ kind, path, fact }: Action, to: Catalog): string {
-  if (kind === "create schema") return `create schema ${quote(fact.name)};`;
+  if (kind === "create schema") return `create schema ${quoteIdentifier(fact.name)};`;
   if (kind === "create table") {
     const columns = [...to.values()]
       .filter((child) => child.kind === "column" && child.parent === path)
@@ -54,11 +55,11 @@ function render({ kind, path, fact }: Action, to: Catalog): string {
 function columnDefinition(fact: Fact): string {
   if (fact.kind !== "column") throw new Error(`${fact.kind} ${fact.name} isn't a column`);
   const { type, notNull } = fact.payload;
-  return `${quote(fact.name)} ${type}${notNull ? " not null" : ""}`;
+  return `${quoteIdentifier(fact.name)} ${type}${notNull ? " not null" : ""}`;
 }
 
 function qualified(table: Fact, catalog: Catalog): string {
-  return `${quote(parentOf(table, catalog).name)}.${quote(table.name)}`;
+  return `${quoteIdentifier(parentOf(table, catalog).name)}.${quoteIdentifier(table.name)}`;
 }
 
 function parentOf(fact: Fact, catalog: Catalog): Fact {
@@ -66,10 +67,6 @@ function parentOf(fact: Fact, catalog: Catalog): Fact {
   if (parent === undefined)
     throw new Error(`${fact.kind} ${fact.name} has no parent in the catalog`);
   return parent;
-}
-
-function quote(name: string): string {
-  return `"${name.replaceAll('"', '""')}"`;
 }
 
 function equal(a: unknown, b: unknown): boolean {
