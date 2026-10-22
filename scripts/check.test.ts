@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { checks, main, runChecks } from "./check.ts";
+
+const byName = (a: string, b: string) => a.localeCompare(b);
 
 beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => {});
@@ -35,4 +38,12 @@ test("main leaves the exit code alone when every check passes", () => {
   });
   expect(process.exitCode).toBeUndefined();
   expect(ran).toEqual([...checks]);
+});
+
+test("checks cover every pnpm script a CI job runs, except the PR-only check", () => {
+  const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+  const inCi = Array.from(ci.matchAll(/run: pnpm (\S+)/gu), (match) => String(match[1]));
+  expect(inCi.filter((script) => script !== "check:pr").toSorted(byName)).toEqual(
+    [...checks].toSorted(byName),
+  );
 });
