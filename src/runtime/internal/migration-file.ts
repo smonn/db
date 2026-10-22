@@ -34,7 +34,9 @@ export function parseMigration({ filename, content }: MigrationFile): ParsedMigr
     const header = lines[line] ?? "";
     const match = HEADER.exec(header);
     if (match === null) throw new Error(`${filename}: unknown header ${header}`);
-    headers.set(match[1] ?? "", match[2] ?? "");
+    const name = match[1] ?? "";
+    if (headers.has(name)) throw new Error(`${filename}: repeats the --! ${name} header`);
+    headers.set(name, match[2] ?? "");
   }
 
   const previous = requiredHeader(filename, headers, "Previous");

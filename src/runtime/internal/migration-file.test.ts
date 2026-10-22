@@ -62,6 +62,23 @@ describe("parseMigration", () => {
     );
   });
 
+  it("refuses a repeated header, even with the same value", () => {
+    const content = `--! Previous: -\n--! Previous: -\n--! Hash: ${HASH_A}\nselect 1;`;
+
+    expect(() => parseMigration({ filename: "000001-a.sql", content })).toThrow(
+      "000001-a.sql: repeats the --! Previous header",
+    );
+  });
+
+  it("refuses a bogus Hash followed by a valid one", async () => {
+    const hash = await migrationHash(undefined, "select 1;\n");
+    const content = `--! Previous: -\n--! Hash: ${HASH_B}\n--! Hash: ${hash}\n\nselect 1;\n`;
+
+    expect(() => parseMigration({ filename: "000001-a.sql", content })).toThrow(
+      "000001-a.sql: repeats the --! Hash header",
+    );
+  });
+
   it("refuses a malformed hash", () => {
     expect(() =>
       parseMigration({ filename: "000001-a.sql", content: "--! Previous: -\n--! Hash: abc\n" }),

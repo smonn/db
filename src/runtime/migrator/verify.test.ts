@@ -34,6 +34,17 @@ describe("verify", () => {
     );
   });
 
+  it("refuses a bogus Hash header above a valid one", async () => {
+    const doubled = {
+      ...A,
+      content: A.content.replace("--! Hash:", `--! Hash: sha256:${"0".repeat(64)}\n--! Hash:`),
+    };
+
+    await expect(verify(source([doubled, B, C]))).rejects.toThrow(
+      "000001-a.sql: repeats the --! Hash header",
+    );
+  });
+
   it("refuses a missing file, naming the file after the gap", async () => {
     await expect(verify(source([A, C]))).rejects.toThrow(
       "000003-c.sql: sequence 2 is missing before it",
