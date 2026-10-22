@@ -44,7 +44,12 @@ tester.run("sql-interpolation", plugin.rules["sql-interpolation"], {
     },
     {
       code: "async function f(LOCK_KEY) { await tx.query(`select pg_advisory_lock(${LOCK_KEY})`); }",
-      errors: 1,
+      errors: [
+        {
+          message:
+            /it accepts a quoteIdentifier call, a const set from one in scope, or a module-level const, not a parameter or a template/u,
+        },
+      ],
     },
     {
       code: "await tx.execute(`${drops.join(';')}\n${recreate(schema)}`);",

@@ -3,7 +3,8 @@
  * `pnpm lint` runs them in CI.
  *
  * - `smonn/sql-interpolation`: a `${...}` in a template literal passed straight to `query`,
- *   `unsafe`, or `execute` must be quoted with `quoteIdentifier` or be a module-level constant.
+ *   `unsafe`, or `execute` must be a `quoteIdentifier` call, a `const` set from one, or a
+ *   module-level constant.
  * - `smonn/required-brand`: an exported type has no optional property whose key starts with `~`.
  */
 import type { RuleTester } from "oxlint/plugins-dev";
@@ -77,7 +78,7 @@ const sqlInterpolation: Rule = {
           if (isQuoted(expression, context, new Set())) continue;
           context.report({
             node: expression,
-            message: `Quote this identifier with quoteIdentifier, or bind the value as a parameter of ${name}`,
+            message: `Quote this identifier with quoteIdentifier, or bind the value as a parameter of ${name}; it accepts a quoteIdentifier call, a const set from one in scope, or a module-level const, not a parameter or a template built from quoted parts`,
           });
         }
       },
