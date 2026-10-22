@@ -1,4 +1,4 @@
-import { sql as fragment } from "../sql/index.ts";
+import { fragment } from "../sql/index.ts";
 import { brand, type Query, type Statement } from "./from.ts";
 
 /**

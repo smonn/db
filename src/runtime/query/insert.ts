@@ -1,5 +1,5 @@
 import type { Row, Table } from "../definition/index.ts";
-import { identifier, join, sql, type Fragment } from "../sql/index.ts";
+import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import {
   brand,
   refsOf,
@@ -37,19 +37,21 @@ function has(row: Record<string, unknown>, name: string): boolean {
 
 /** A column no row gives a value for is left out; a row that skips a column gets its default. */
 function insertInto(table: Table, rows: readonly Record<string, unknown>[]): Fragment {
-  const target = sql`insert into ${identifier(table.schema)}.${identifier(table.name)}`;
+  const target = fragment`insert into ${identifier(table.schema)}.${identifier(table.name)}`;
   const given = Object.keys(table.columns).filter((name) => rows.some((row) => has(row, name)));
   // Postgres takes `values (default)` for a row with nothing to set.
   const names = given.length > 0 ? given : Object.keys(table.columns).slice(0, 1);
   const tuples = rows.map((row) => {
-    const cells = names.map((name) => (has(row, name) ? sql`${row[name]}` : sql`default`));
-    return sql`(${join(cells, sql`, `)})`;
+    const cells = names.map((name) =>
+      has(row, name) ? fragment`${row[name]}` : fragment`default`,
+    );
+    return fragment`(${join(cells, fragment`, `)})`;
   });
   const columns = join(
     names.map((name) => identifier(name)),
-    sql`, `,
+    fragment`, `,
   );
-  return sql`${target} (${columns}) values ${join(tuples, sql`, `)}`;
+  return fragment`${target} (${columns}) values ${join(tuples, fragment`, `)}`;
 }
 
 function insertStatement<T extends Table>(
@@ -63,7 +65,7 @@ function insertStatement<T extends Table>(
       const outputs = picked.map(([alias, ref]) => renderOutput([alias, ref.name]));
       return brand({
         toSql() {
-          return sql`${insertInto(table, rows)} returning ${join(outputs, sql`, `)}`.toSql();
+          return fragment`${insertInto(table, rows)} returning ${join(outputs, fragment`, `)}`.toSql();
         },
       });
     },
