@@ -1,5 +1,5 @@
 import type { ParameterOrJSON, ReservedSql, Sql } from "postgres";
-import type { Driver, Queryable, Row, Session } from "../../runtime/ports/index.ts";
+import type { Driver, Queryable, Session } from "../../runtime/ports/index.ts";
 import { hasPostgresJsTypes } from "./value-types.ts";
 
 // Without params, postgres.js switches to the simple protocol unless `simple` is false, which its
@@ -11,14 +11,8 @@ function queryable(connection: ReservedSql | Sql): Queryable {
     async query(text, params = []) {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- postgres.js serializes any param value.
       const values = params as ParameterOrJSON<never>[];
-      const rows: readonly Row[] = await connection.unsafe(text, values, prepared);
-      return [...rows];
-    },
-    async run(text, params = []) {
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- postgres.js serializes any param value.
-      const values = params as ParameterOrJSON<never>[];
-      const { count } = await connection.unsafe(text, values, prepared);
-      return { count };
+      const result = await connection.unsafe(text, values, prepared);
+      return { rows: [...result], count: result.count };
     },
     async execute(script) {
       await connection.unsafe(script).simple();

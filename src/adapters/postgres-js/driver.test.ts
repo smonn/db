@@ -6,7 +6,9 @@ import { useTestDatabase } from "./test-database.test-helper.ts";
 const db = useTestDatabase();
 
 async function advisoryLocksHeld(key: number): Promise<unknown> {
-  const [row] = await db.driver.query(
+  const {
+    rows: [row],
+  } = await db.driver.query(
     "select count(*)::int as held from pg_locks where locktype = 'advisory' and objid = $1",
     [key],
   );
@@ -15,16 +17,16 @@ async function advisoryLocksHeld(key: number): Promise<unknown> {
 
 describe("postgresJsDriver", () => {
   it("binds params in a query", async () => {
-    const rows = await db.driver.query("select $1::int + $2::int as sum", [2, 3]);
+    const { rows } = await db.driver.query("select $1::int + $2::int as sum", [2, 3]);
     expect(rows).toStrictEqual([{ sum: 5 }]);
   });
 
   it("reports how many rows a statement changed or returned", async () => {
     await db.driver.execute("create table counted (n int)");
-    expect(await db.driver.run("insert into counted values ($1), ($2)", [1, 2])).toStrictEqual({
-      count: 2,
-    });
-    expect(await db.driver.run("select n from counted")).toStrictEqual({ count: 2 });
+    const inserted = await db.driver.query("insert into counted values ($1), ($2)", [1, 2]);
+    expect(inserted).toStrictEqual({ rows: [], count: 2 });
+    const selected = await db.driver.query("select n from counted");
+    expect(selected.count).toBe(2);
   });
 
   it("prepares a query without params, so it refuses several statements", async () => {
@@ -35,7 +37,7 @@ describe("postgresJsDriver", () => {
 
   it("runs a script of several statements", async () => {
     await db.driver.execute("create table script (n int); insert into script values (1), (2);");
-    const rows = await db.driver.query("select n from script order by n");
+    const { rows } = await db.driver.query("select n from script order by n");
     expect(rows).toStrictEqual([{ n: 1 }, { n: 2 }]);
   });
 
@@ -46,7 +48,7 @@ describe("postgresJsDriver", () => {
       return "done";
     });
     expect(result).toBe("done");
-    expect(await db.driver.query("select n from committed")).toStrictEqual([{ n: 1 }]);
+    expect((await db.driver.query("select n from committed")).rows).toStrictEqual([{ n: 1 }]);
   });
 
   it("rolls back a transaction that rejects", async () => {
@@ -56,15 +58,15 @@ describe("postgresJsDriver", () => {
       throw new Error("boom");
     });
     await expect(failed).rejects.toThrow("boom");
-    expect(await db.driver.query("select n from rolled_back")).toStrictEqual([]);
+    expect((await db.driver.query("select n from rolled_back")).rows).toStrictEqual([]);
   });
 
   it("holds one connection for a session", async () => {
     const pids = await db.driver.session(async (session) => {
-      const [first] = await session.query("select pg_backend_pid() as pid");
+      const first = await session.query("select pg_backend_pid() as pid");
       await session.execute("select 1");
-      const [second] = await session.query("select pg_backend_pid() as pid");
-      return [first, second];
+      const second = await session.query("select pg_backend_pid() as pid");
+      return [first.rows, second.rows];
     });
     expect(pids[0]).toStrictEqual(pids[1]);
   });
@@ -74,7 +76,7 @@ describe("postgresJsDriver", () => {
       await session.query("select pg_advisory_lock(56)");
       return db.driver.query("select pg_try_advisory_lock(56) as got");
     });
-    expect(lockedInside).toStrictEqual([{ got: false }]);
+    expect(lockedInside.rows).toStrictEqual([{ got: false }]);
     expect(await advisoryLocksHeld(56)).toBe(0);
   });
 
@@ -99,7 +101,7 @@ describe("postgresJsDriver", () => {
       });
       await expect(failed).rejects.toThrow("boom");
     });
-    expect(await db.driver.query("select n from in_session")).toStrictEqual([{ n: 1 }]);
+    expect((await db.driver.query("select n from in_session")).rows).toStrictEqual([{ n: 1 }]);
   });
 });
 

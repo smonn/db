@@ -13,7 +13,7 @@ export type Client = {
 export function createClient(queryable: Queryable): Client {
   async function all<R>(query: Query<R>): Promise<R[]> {
     const { text, params } = query.toSql();
-    const rows = await queryable.query(text, params);
+    const { rows } = await queryable.query(text, params);
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The query's row type describes what Postgres returns.
     return rows as R[];
   }
@@ -28,9 +28,10 @@ export function createClient(queryable: Queryable): Client {
       }
       return row;
     },
-    run(statement) {
+    async run(statement) {
       const { text, params } = statement.toSql();
-      return queryable.run(text, params);
+      const { count } = await queryable.query(text, params);
+      return { count };
     },
   };
 }

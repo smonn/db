@@ -32,10 +32,11 @@ function source(...files: MigrationFile[]): MigrationSource {
   return { list: () => Promise.resolve(files) };
 }
 
-function recorded(): Promise<unknown> {
-  return db.driver.query(
+async function recorded(): Promise<unknown> {
+  const { rows } = await db.driver.query(
     "select sequence, filename, hash, previous_hash from smonn_db.migrations order by sequence",
   );
+  return rows;
 }
 
 beforeEach(async () => {
@@ -51,7 +52,7 @@ describe("migrate", () => {
     expect(result).toStrictEqual({
       applied: ["000001-create-users.sql", "000002-add-email.sql"],
     });
-    expect(await db.driver.query("select id, name, email from users")).toStrictEqual([
+    expect((await db.driver.query("select id, name, email from users")).rows).toStrictEqual([
       { id: 1, name: "Ada", email: null },
     ]);
     expect(await recorded()).toStrictEqual([
@@ -116,9 +117,8 @@ describe("migrate", () => {
     ).rejects.toThrow(
       /^000002-add-email\.sql: --! Hash says sha256:02d58be4\w+ but the body hashes to sha256:\w+$/u,
     );
-    expect(
-      await db.driver.query("select 1 from pg_namespace where nspname = 'smonn_db'"),
-    ).toStrictEqual([]);
+    const { rows } = await db.driver.query("select 1 from pg_namespace where nspname = 'smonn_db'");
+    expect(rows).toStrictEqual([]);
   });
 
   it("refuses a file whose Previous isn't the prior file's Hash", async () => {

@@ -33,7 +33,7 @@ export async function migrate({ driver, source }: MigrateOptions): Promise<Migra
   return driver.session(async (session) => {
     await session.query(`select pg_advisory_lock(${LOCK_KEY})`);
     await session.execute(TRACKING_TABLE);
-    const rows = await session.query("select hash from smonn_db.migrations");
+    const { rows } = await session.query("select hash from smonn_db.migrations");
     const recorded = new Set(rows.map((row) => row["hash"]));
 
     const applied: string[] = [];
