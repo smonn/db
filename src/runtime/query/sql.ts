@@ -13,10 +13,19 @@ export function sql<R>(strings: TemplateStringsArray, ...values: unknown[]): Que
     if (isStatement(value)) {
       throw new TypeError(`sql takes values, not statements: value ${index + 1} is a statement`);
     }
+    if (containsStatement(value)) {
+      throw new TypeError(
+        `sql takes values, not statements: value ${index + 1} contains a statement`,
+      );
+    }
   }
   return brand<Query<R>>(fragment(strings, ...values));
 }
 
 function isStatement(value: unknown): boolean {
   return typeof value === "object" && value !== null && "toSql" in value;
+}
+
+function containsStatement(value: unknown): boolean {
+  return Array.isArray(value) && value.some((item) => isStatement(item) || containsStatement(item));
 }

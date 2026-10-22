@@ -31,4 +31,14 @@ describe("sql", () => {
       "sql takes values, not statements: value 2 is a statement",
     );
   });
+
+  it("rejects a statement inside an array value", () => {
+    expect(() => sql`select ${[1, sql`select 2`]}`).toThrow(
+      "sql takes values, not statements: value 1 contains a statement",
+    );
+    expect(() => sql`select ${[[sql`select 3`]]}`).toThrow(
+      "sql takes values, not statements: value 1 contains a statement",
+    );
+    expect(sql`select ${[1, 2]}`.toSql()).toStrictEqual({ text: "select $1", params: [[1, 2]] });
+  });
 });
