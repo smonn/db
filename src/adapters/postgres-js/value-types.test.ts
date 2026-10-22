@@ -41,28 +41,48 @@ describe("postgresJsTypes timestamps", () => {
     expect(rows).toStrictEqual([{ tz: expected }]);
   });
 
-  it("writes BC and five-digit-year Dates back unchanged", async () => {
+  it("writes BC and five-digit-year Dates back unchanged in any session zone", async () => {
     await db.driver.execute("create table extremes (n int, ts timestamp, tz timestamptz)");
     const bc = new Date("-000043-03-15T12:00:00.500Z");
     const far = new Date("+010000-01-01T00:00:00Z");
-    await db.driver.query("insert into extremes values (1, $1, $2), (2, $3, $4)", [
-      bc,
-      bc,
-      far,
-      far,
-    ]);
-    const { rows } = await db.driver.query("select ts, tz from extremes order by n");
+    const rows = await db.driver.transaction(async (tx) => {
+      await tx.execute("set local time zone 'Asia/Tokyo'");
+      await tx.query("insert into extremes values (1, $1, $2), (2, $3, $4)", [bc, bc, far, far]);
+      return (await tx.query("select ts, tz from extremes order by n")).rows;
+    });
     expect(rows).toStrictEqual([
       { ts: bc, tz: bc },
       { ts: far, tz: far },
     ]);
   });
 
-  it("writes a string param to a timestamptz as postgres.js reads it into a Date", async () => {
-    const { rows } = await db.driver.query("select $1::timestamptz as tz", [
+  it("sends a Date as UTC text where Postgres infers no timestamp type", async () => {
+    const at = new Date("2026-01-01T00:00:00Z");
+    const bc = new Date("-000043-03-15T12:00:00.500Z");
+    const rows = await db.driver.transaction(async (tx) => {
+      await tx.execute("set local time zone 'Asia/Tokyo'");
+      const sql =
+        "select $1 as at, $1::text::timestamptz as atBack, $2 as bc, $2::text::timestamptz as bcBack";
+      return (await tx.query(sql, [at, bc])).rows;
+    });
+    expect(rows).toStrictEqual([
+      {
+        at: "2026-01-01 00:00:00.000+00",
+        atback: at,
+        bc: "0044-03-15 12:00:00.500+00 BC",
+        bcback: bc,
+      },
+    ]);
+  });
+
+  it("passes a string param to a timestamp or timestamptz through as Postgres text", async () => {
+    const { rows } = await db.driver.query("select $1::timestamp as ts, $2::timestamptz as tz", [
+      "2024-02-29 12:34:56.789",
       "2024-02-29T12:34:56.789Z",
     ]);
-    expect(rows).toStrictEqual([{ tz: new Date("2024-02-29T12:34:56.789Z") }]);
+    expect(rows).toStrictEqual([
+      { ts: new Date("2024-02-29T12:34:56.789Z"), tz: new Date("2024-02-29T12:34:56.789Z") },
+    ]);
   });
 
   it.each([
