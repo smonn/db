@@ -84,8 +84,8 @@ const timestamp: postgres.PostgresType<Date> = {
   parse: parseTimestamp,
 };
 
-// postgres.js sends every Date param as a timestamptz, so this serializer writes both columns.
-// It takes other values as postgres.js's own timestamptz serializer does.
+// postgres.js types a Date param as timestamptz unless postgresJsDriver sends it untyped. It takes
+// other values as postgres.js's own timestamptz serializer does.
 const timestamptz: postgres.PostgresType<Date> = {
   to: 1184,
   from: [1184],

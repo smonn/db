@@ -126,4 +126,44 @@ describe("every column type through the postgres-js driver", () => {
       date: "2024-03-01",
     });
   });
+
+  it("writes a Date to timestamps whatever the session time zone", async () => {
+    await testDatabase.driver.execute("delete from public.everything");
+    const at = new Date("2026-01-01T00:00:00Z");
+    const [row] = await testDatabase.driver.session(async (session) => {
+      await session.execute("set time zone 'Asia/Tokyo'");
+      await session.query(
+        "insert into public.everything (id, timestamp, timestamptz) values (4, $1, $2)",
+        [at, at],
+      );
+      return createClient(session).all(
+        from(db.public.everything).select((e) => ({
+          timestamp: e.timestamp,
+          timestamptz: e.timestamptz,
+        })),
+      );
+    });
+
+    expect(row).toStrictEqual({ timestamp: at, timestamptz: at });
+  });
+
+  it("filters timestamps by a Date whatever the session time zone", async () => {
+    await testDatabase.driver.execute("delete from public.everything");
+    const at = new Date("2026-01-01T00:00:00Z");
+    const rows = await testDatabase.driver.session(async (session) => {
+      await session.execute(`
+        set time zone 'Asia/Tokyo';
+        insert into public.everything (id, timestamp, timestamptz)
+        values (5, '2026-01-01 00:00:00', '2026-01-01 00:00:00+00');
+      `);
+      return createClient(session).all(
+        from(db.public.everything)
+          .select((e) => ({ id: e.id }))
+          .where((e) => e.timestamp.eq(at))
+          .where((e) => e.timestamptz.eq(at)),
+      );
+    });
+
+    expect(rows).toStrictEqual([{ id: 5 }]);
+  });
 });

@@ -33,7 +33,12 @@ describe("postgresJsTypes timestamps", () => {
     await db.driver.execute("create table extremes (n int, ts timestamp, tz timestamptz)");
     const bc = new Date("-000043-03-15T12:00:00.500Z");
     const far = new Date("+010000-01-01T00:00:00Z");
-    await db.driver.query("insert into extremes values (1, $1, $1), (2, $2, $2)", [bc, far]);
+    await db.driver.query("insert into extremes values (1, $1, $2), (2, $3, $4)", [
+      bc,
+      bc,
+      far,
+      far,
+    ]);
     const { rows } = await db.driver.query("select ts, tz from extremes order by n");
     expect(rows).toStrictEqual([
       { ts: bc, tz: bc },
