@@ -51,6 +51,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
     migrations,
     trackingSchema = DEFAULT_TRACKING_SCHEMA,
   } = options;
+  requireModeledSchemas(definition, trackingSchema);
   await requireDevDatabase(driver, trackingSchema);
   const path = `${migrations}/${CURRENT_FILENAME}`;
   await requireGenerated(fileSystem, path);
@@ -78,6 +79,23 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
   await fileSystem.writeFile(path, `--! Generated: ${hash}\n\n${sql}`);
   await resetDevDatabase(driver, source, trackingSchema, { body: sql, hash });
   return { path, sql };
+}
+
+/** Refuses a schema `introspect` skips, whose tables would otherwise vanish from `current.sql`. */
+function requireModeledSchemas(definition: DefinitionTables, trackingSchema: string): void {
+  for (const schema of Object.keys(definition)) {
+    const reason =
+      schema === trackingSchema
+        ? "the tracking schema"
+        : schema.startsWith("pg_") || schema === "information_schema"
+          ? "a system schema"
+          : undefined;
+    if (reason !== undefined) {
+      throw new Error(
+        `the Definition names schema "${schema.replaceAll('"', '""')}", which generate skips as ${reason}`,
+      );
+    }
+  }
 }
 
 /**
