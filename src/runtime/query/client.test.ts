@@ -2,7 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../definition/index.ts";
 import { createClient } from "./client.ts";
-import { from } from "./from.ts";
+import { sql } from "../sql/index.ts";
+import { from, type Statement } from "./from.ts";
 import { insert } from "./insert.ts";
 
 const testDatabase = useTestDatabase();
@@ -103,8 +104,14 @@ describe("client.run", () => {
   });
 
   it("returns the inserted row through client.one with returning", async () => {
+    await testDatabase.driver.execute(
+      "create table public.members (id text not null, email text default 'none')",
+    );
+    const members = defineDatabase({
+      public: { members: defineTable((c) => ({ id: c.text().notNull(), email: c.text() })) },
+    });
     const row = await client.one(
-      insert(accounts.public.accounts)
+      insert(members.public.members)
         .values({ id: "a3" })
         .returning((a) => ({ id: a.id, email: a.email })),
     );
@@ -120,6 +127,21 @@ describe("client.run", () => {
       void client.all(statement);
       // @ts-expect-error an insert without returning yields no rows; use run
       void client.one(statement);
+      const widened: Statement = statement;
+      // @ts-expect-error a bare Statement is not known to return one row
+      void client.one(widened);
+      // @ts-expect-error a bare Statement is not known to return rows
+      void client.all(widened);
+      // @ts-expect-error a SQL fragment is not a Query
+      void client.all(sql`select 1`);
+      const several = insert(accounts.public.accounts)
+        .values([{ id: "a5" }])
+        .returning((a) => ({ id: a.id }));
+      // @ts-expect-error one cannot take a multi-row insert, which commits every row first
+      void client.one(several);
+      // A select through one stays allowed, and so does all on a multi-row insert.
+      void client.one(from(accounts.public.accounts));
+      void client.all(several);
     };
     expect(rejected).toBeTypeOf("function");
   });

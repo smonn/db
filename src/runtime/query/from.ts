@@ -7,10 +7,16 @@ export type Statement = {
 
 export type Query<R> = Statement & {
   /** Type-only: separates a statement that returns rows from one that only reports a count. */
-  readonly "~returns"?: "rows";
+  readonly "~returns": "rows";
   /** Type-only: the row each result holds. */
   readonly "~row"?: R;
 };
+
+/** The type-only brands have no runtime value, so a statement is built from its parts and cast once. */
+export function brand<Q extends Statement>(parts: Omit<Q, "~returns" | "~row" | "~many">): Q {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The brands exist only in types.
+  return parts as Q;
+}
 
 export type ColumnRef<V> = {
   readonly name: string;
@@ -46,7 +52,7 @@ export function renderOutput([alias, name]: Output): Fragment {
 }
 
 function selectQuery<T extends Table, R>(table: T, outputs: readonly Output[]): SelectQuery<T, R> {
-  return {
+  return brand<SelectQuery<T, R>>({
     select(pick) {
       return selectQuery(
         table,
@@ -60,7 +66,7 @@ function selectQuery<T extends Table, R>(table: T, outputs: readonly Output[]): 
       );
       return sql`select ${columns} from ${identifier(table.schema)}.${identifier(table.name)}`.toSql();
     },
-  };
+  });
 }
 
 export function from<T extends Table>(table: T): SelectQuery<T, Row<T>> {

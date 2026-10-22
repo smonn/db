@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineDatabase, defineTable } from "../definition/index.ts";
 import type { Query } from "./from.ts";
+import { sql } from "../sql/index.ts";
 import { insert, type NewRow } from "./insert.ts";
 
 const db = defineDatabase({
@@ -30,17 +31,42 @@ describe("insert", () => {
     });
   });
 
-  it("inserts default values when no column has a value", () => {
+  it("defaults the first column of every row when no column has a value", () => {
     expect(insert(db.public.flags).values({}).toSql()).toStrictEqual({
-      text: 'insert into "public"."flags" default values',
+      text: 'insert into "public"."flags" ("note") values (default)',
+      params: [],
+    });
+    expect(insert(db.public.flags).values([{}, {}]).toSql()).toStrictEqual({
+      text: 'insert into "public"."flags" ("note") values (default), (default)',
       params: [],
     });
   });
 
-  it("refuses several rows with no values", () => {
-    expect(() => insert(db.public.flags).values([{}, {}]).toSql()).toThrow(
-      "insert needs a value in at least one column",
+  it("ignores inherited properties of a row", () => {
+    const row = { __proto__: { email: "inherited@example.com" }, id: "u1" };
+    expect(insert(db.public.users).values(row).toSql()).toStrictEqual({
+      text: 'insert into "public"."users" ("id") values ($1)',
+      params: ["u1"],
+    });
+  });
+
+  it("names a key that is no column of the table", () => {
+    const row = { id: "u1", nickname: "x" };
+    expect(() => insert(db.public.users).values(row)).toThrow(
+      '"nickname" is no column of "public"."users"',
     );
+    const onlyUnknown = { nickname: "x" };
+    expect(() => insert(db.public.flags).values(onlyUnknown)).toThrow(
+      '"nickname" is no column of "public"."flags"',
+    );
+  });
+
+  it("refuses returning with no column", () => {
+    expect(() =>
+      insert(db.public.users)
+        .values({ id: "u1" })
+        .returning(() => ({})),
+    ).toThrow("returning needs at least one column");
   });
 
   it("refuses an empty list of rows", () => {
@@ -65,12 +91,15 @@ describe("insert", () => {
     // @ts-expect-error id is NOT NULL
     expect(() => insert(db.public.users).values({ email: "a@example.com" })).not.toThrow();
     // @ts-expect-error no such column
-    expect(() => insert(db.public.users).values({ id: "u1", nickname: "x" })).not.toThrow();
+    expect(() => insert(db.public.users).values({ id: "u1", nickname: "x" })).toThrow(
+      '"nickname" is no column',
+    );
     // @ts-expect-error id is NOT NULL, so null is no value
     expect(() => insert(db.public.users).values({ id: null })).not.toThrow();
   });
 
   it("is not a Query without returning", () => {
     expectTypeOf(insert(db.public.users).values({ id: "u1" })).not.toExtend<Query<unknown>>();
+    expectTypeOf(sql`select 1`).not.toExtend<Query<unknown>>();
   });
 });
