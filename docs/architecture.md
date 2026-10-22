@@ -231,7 +231,7 @@ export default defineConfig({
 | `generate`      | Writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database, refusing to reset an unmarked Database (ADR-0016). A hand-edited file is kept and replayed as written, and generate prints the diff to what it would have generated.                                                                       |
 | `commit <slug>` | Freezes `current.sql` into `<next>-<slug>.sql`. The slug is kebab-case. Refuses with no `current.sql`, when dev hasn't replayed the file, or for any Hazard kind missing from `--accept <kind,...>`. It runs no shadow replay, since dev just replayed the same file, and records the new file and clears `smonn_db.current` in one dev transaction. |
 | `migrate`       | Runs the runtime migrator against `url`. The migrator refuses when `smonn_db.current` holds a row and Committed migrations are pending (ADR-0016).                                                                                                                                                                                                   |
-| `reset`         | Drops every non-system schema, then replays the Committed migrations and `current.sql` as written, without regenerating. `--erase` lets it run on an unmarked Database (ADR-0016).                                                                                                                                                                   |
+| `reset`         | Drops the extensions it finds outside `pg_catalog` and every non-system schema, then replays the Committed migrations and `current.sql` as written, without regenerating. `--erase` lets it run on an unmarked Database (ADR-0016).                                                                                                                  |
 | `verify`        | Checks the hash chain of the Committed migration files offline, with no database.                                                                                                                                                                                                                                                                    |
 
 Every command takes `--config`. Arguments are parsed with `util.parseArgs`. There is no `--url` flag: point a command at another Database through the environment the config reads. Watch mode waits for v0.4.
@@ -254,7 +254,7 @@ How generate turns the Definition into the Current migration. ADR-0005 and ADR-0
 
 ### What v0.1 models
 
-Schemas, tables, columns (type, NOT NULL, default, identity), single and composite primary keys, and single-column unique constraints: exactly what the Definition can express. Foreign keys, indexes, and multi-column unique wait for v0.2. Both introspections skip the migrator's tracking schema (`smonn_db` unless configured), `pg_catalog`, `information_schema`, `pg_toast*`, `pg_temp*`, extension members, and every kind outside this list (ADR-0005). Generate refuses a Definition that names one of these schemas, since its tables would vanish from the diff.
+Schemas, tables, columns (type, NOT NULL, default, identity), single and composite primary keys, and single-column unique constraints: exactly what the Definition can express. Foreign keys, indexes, and multi-column unique wait for v0.2. Both introspections skip the Tracking schema (`smonn_db` unless configured), `pg_catalog`, `information_schema`, `pg_toast*`, `pg_temp*`, extension members, and every kind outside this list (ADR-0005). Generate refuses a Definition that names one of these schemas, since its tables would vanish from the diff.
 
 ### Pipeline
 
@@ -285,7 +285,7 @@ Each action kind declares its Hazards (`data_loss`, `rewrite`, `access_exclusive
 
 ### Dev database catch-up
 
-Generate resets the Dev database whenever the Current migration's hash differs from `smonn_db.current`, or the last hash in `smonn_db.migrations` differs from the tip of the Committed migration files. A reset drops every non-system schema, recreates `public` as template0 ships it so the Dev database starts where the Shadow does, then replays the Committed migrations and the Current migration, and runs only in a marked or empty Database (ADR-0016). The tip check covers a pulled Committed migration that leaves the regenerated Current migration byte-identical. Resetting is exact after hand edits and branch switches, at the cost of dev data. Keeping that data is a v0.4 dev loop question.
+Generate resets the Dev database whenever the Current migration's hash differs from `smonn_db.current`, or the last hash in `smonn_db.migrations` differs from the tip of the Committed migration files. A reset drops the extensions it finds outside `pg_catalog`, then every non-system schema, recreates `public` as template0 ships it so the Dev database starts where the Shadow does, then replays the Committed migrations and the Current migration, and runs only in a marked or empty Database (ADR-0016). The tip check covers a pulled Committed migration that leaves the regenerated Current migration byte-identical. Resetting is exact after hand edits and branch switches, at the cost of dev data. Keeping that data is a v0.4 dev loop question.
 
 ### Postgres versions
 

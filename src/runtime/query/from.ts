@@ -18,7 +18,7 @@ export function brand<Q extends Statement>(parts: Omit<Q, "~returns" | "~row" | 
   return parts as Q;
 }
 
-/** A boolean SQL expression, built from column comparisons and `where`'s `and`, `or`, `not`. */
+/** A boolean SQL expression, built from column comparisons and the `and`, `or`, `not` exports. */
 export type Predicate = { readonly "~predicate": Fragment };
 
 type NullChecks = {
