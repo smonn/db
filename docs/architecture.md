@@ -42,7 +42,7 @@ flowchart TB
 flowchart TB
   subgraph runtime["runtime/ · @smonn/db"]
     definition["<b>definition</b><br/>[module]<br/>Declares tables and columns; infers row types"]
-    query["<b>query</b><br/>[module]<br/>from, where, select, insert, one call per SQL clause"]
+    query["<b>query</b><br/>[module]<br/>from, where, select, insert, one call per SQL clause; sql for whole hand-written statements"]
     sql["<b>sql</b><br/>[module]<br/>SQL fragments, the sql template, rendering to text and params"]
     migrator["<b>migrator</b><br/>[module]<br/>Verifies the hash chain and applies Committed migrations under an advisory lock"]
     ports["<b>ports</b><br/>[types only]<br/>Driver, Connect, MigrationSource, FileSystem"]
