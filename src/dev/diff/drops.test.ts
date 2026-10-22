@@ -59,6 +59,24 @@ describe("drops", () => {
     ]);
   });
 
+  it("drops in the source catalog's order, not by name", () => {
+    const from = catalog((b) => {
+      b.schema("public");
+      b.table("public", "t");
+      b.column("public", "t", "z", text);
+      b.column("public", "t", "a", text);
+    });
+    const to = catalog((b) => {
+      b.schema("public");
+      b.table("public", "t");
+    });
+
+    expect(diff(from, to).split("\n\n")).toStrictEqual([
+      `alter table "public"."t" drop column "z";`,
+      `alter table "public"."t" drop column "a";\n`,
+    ]);
+  });
+
   it("drops a table and nothing it holds", () => {
     const from = catalog((b) => {
       publicOnly(b);
