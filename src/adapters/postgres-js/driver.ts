@@ -1,10 +1,12 @@
-import type { ParameterOrJSON, ReservedSql, Sql } from "postgres";
+import postgres, { type ParameterOrJSON, type ReservedSql, type Sql } from "postgres";
 import type { Driver, Queryable, Session } from "../../runtime/ports/index.ts";
 import { formatTimestamp, hasPostgresJsConnection, hasPostgresJsTypes } from "./value-types.ts";
 
 // Without params, postgres.js switches to the simple protocol unless `simple` is false, which its
 // types leave out of UnsafeQueryOptions.
 const prepared = { prepare: true, simple: false };
+
+const inFailedTransaction = "25P02";
 
 function queryable(connection: ReservedSql | Sql): Queryable {
   return {
@@ -43,6 +45,27 @@ function reservedSession(reserved: ReservedSql): Session {
   };
 }
 
+// DISCARD ALL minus DEALLOCATE ALL, which would drop the statements postgres.js caches per
+// connection, so a cached statement would fail inside the next transaction on it. RESET ALL keeps
+// the startup settings, and comes first so a leaked statement_timeout can't cancel the rest.
+const discardAllButStatements =
+  "reset all; close all; set session authorization default; unlisten *; select pg_advisory_unlock_all(); discard plans; discard temp; discard sequences";
+
+// A rollback with no open transaction warns, so client_min_messages hides it, and the rollback
+// undoes that set. An aborted transaction refuses the set.
+async function resetSession(reserved: ReservedSql): Promise<void> {
+  try {
+    await reserved
+      .unsafe(`set client_min_messages = error; rollback; ${discardAllButStatements}`)
+      .simple();
+  } catch (error) {
+    if (!(error instanceof postgres.PostgresError) || error.code !== inFailedTransaction) {
+      throw error;
+    }
+    await reserved.unsafe(`rollback; ${discardAllButStatements}`).simple();
+  }
+}
+
 /**
  * The caller owns `sql` and ends it. Create it with
  * `postgres(url, { types: postgresJsTypes, connection: postgresJsConnection })`, or rows hold
@@ -67,14 +90,14 @@ export function postgresJsDriver(sql: Sql): Driver {
     async session(fn) {
       const reserved = await sql.reserve();
       try {
-        return await fn(reservedSession(reserved));
+        const result = await fn(reservedSession(reserved)).catch(async (error: unknown) => {
+          await resetSession(reserved).catch(() => {});
+          throw error;
+        });
+        await resetSession(reserved);
+        return result;
       } finally {
-        try {
-          // Released connections return to the pool still holding their session locks.
-          await reserved.unsafe("select pg_advisory_unlock_all()");
-        } finally {
-          reserved.release();
-        }
+        reserved.release();
       }
     },
   };
