@@ -8,6 +8,7 @@
     "check:docs": "node scripts/check-docs.ts",
     "check:imports": "node scripts/check-imports.ts",
     "check:index": "node scripts/check-index-exports.ts",
+    "check:issue": "node scripts/check-issue-milestone.ts",
     "check:mermaid": "node scripts/check-mermaid.ts",
     "check:pr": "node scripts/check-pr.ts",
     "coverage": "vitest run --coverage",
