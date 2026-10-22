@@ -2,6 +2,7 @@ import {
   COMMITTED_FILENAME,
   CURRENT_FILENAME,
   DEFAULT_TRACKING_SCHEMA,
+  quoteIdentifier,
   sha256,
 } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
@@ -92,7 +93,7 @@ function requireModeledSchemas(definition: DefinitionTables, trackingSchema: str
           : undefined;
     if (reason !== undefined) {
       throw new Error(
-        `the Definition names schema "${schema.replaceAll('"', '""')}", which generate skips as ${reason}`,
+        `the Definition names schema ${quoteIdentifier(schema)}, which generate skips as ${reason}`,
       );
     }
   }
