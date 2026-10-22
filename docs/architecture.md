@@ -260,7 +260,7 @@ Schemas, tables, columns (type, NOT NULL, default, identity), single and composi
 
 ### Pipeline
 
-1. The Definition converts to a catalog as written, and the diff renders it against the catalog of the freshly created Definition database, which holds only template0's `public` schema. That SQL builds the Definition database.
+1. The Definition converts to a catalog, spelling each type as `format_type` does, and the diff renders it against the catalog of the freshly created Definition database, which holds only template0's `public` schema. That SQL builds the Definition database.
 2. `introspect` reads each database in one `REPEATABLE READ READ ONLY` transaction with `search_path` pinned to `pg_catalog`, keyed by name, never by OID.
 3. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL.
 4. Generate verifies the SQL in the Shadow (ADR-0013), then writes the Current migration.
