@@ -59,7 +59,7 @@ One SQL statement that the query builder or `sql` produces, ready to run on a Da
 A Statement that returns rows, such as a `SELECT` or an `INSERT ... RETURNING`. Not a Data modification that only reports a count.
 
 **Data modification**:
-An `INSERT`, `UPDATE`, or `DELETE` statement that changes rows.
+An `INSERT`, `UPDATE`, or `DELETE` statement that changes rows and reports a count.
 _Avoid_: Mutation
 
 **Row**:
