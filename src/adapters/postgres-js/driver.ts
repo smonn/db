@@ -7,6 +7,7 @@ import { formatTimestamp, hasPostgresJsConnection, hasPostgresJsTypes } from "./
 const prepared = { prepare: true, simple: false };
 
 const inFailedTransaction = "25P02";
+const queryCanceled = "57014";
 
 function queryable(connection: ReservedSql | Sql): Queryable {
   return {
@@ -47,23 +48,73 @@ function reservedSession(reserved: ReservedSql): Session {
 
 // DISCARD ALL minus DEALLOCATE ALL, which would drop the statements postgres.js caches per
 // connection, so a cached statement would fail inside the next transaction on it. RESET ALL keeps
-// the startup settings, and comes first so a leaked statement_timeout can't cancel the rest.
+// the startup settings.
 const discardAllButStatements =
-  "reset all; close all; set session authorization default; unlisten *; select pg_advisory_unlock_all(); discard plans; discard temp; discard sequences";
+  "set statement_timeout = 0; reset all; close all; set session authorization default; unlisten *; select pg_advisory_unlock_all(); discard plans; discard temp; discard sequences";
+
+// The backend exits once idle, since postgres.js crashes when a backend ends mid-query (#154).
+const endBackendOnceIdle = "set idle_session_timeout = 1";
 
 // A rollback with no open transaction warns, so client_min_messages hides it, and the rollback
-// undoes that set. An aborted transaction refuses the set.
-async function resetSession(reserved: ReservedSql): Promise<void> {
+// undoes that set. An aborted transaction refuses the set, so it gets the plain rollback.
+type AfterRollback = { readonly quiet: string; readonly plain: string };
+const quietRollback = "set client_min_messages = error; rollback";
+const reset: AfterRollback = {
+  quiet: `${quietRollback}; ${discardAllButStatements}`,
+  plain: `rollback; ${discardAllButStatements}`,
+};
+const endBackend: AfterRollback = {
+  quiet: `${quietRollback}; ${endBackendOnceIdle}`,
+  plain: `rollback; ${endBackendOnceIdle}`,
+};
+
+const resetAttempts = 5;
+
+function sqlState(error: unknown): string | undefined {
+  return error instanceof postgres.PostgresError ? error.code : undefined;
+}
+
+// A FATAL error or a postgres.js connection error means the backend is gone.
+function backendAlive(error: unknown): boolean {
+  return error instanceof postgres.PostgresError && error.severity === "ERROR";
+}
+
+// A leaked statement_timeout governs every statement until the script clears it, so a busy server
+// can cancel one, and the run starts again from whatever state the cancel left.
+async function afterRollback(
+  reserved: ReservedSql,
+  scripts: AfterRollback,
+  script = scripts.quiet,
+  attempt = 1,
+): Promise<void> {
   try {
-    await reserved
-      .unsafe(`set client_min_messages = error; rollback; ${discardAllButStatements}`)
-      .simple();
+    await reserved.unsafe(script).simple();
   } catch (error) {
-    if (!(error instanceof postgres.PostgresError) || error.code !== inFailedTransaction) {
+    const code = sqlState(error);
+    if (attempt === resetAttempts || (code !== inFailedTransaction && code !== queryCanceled)) {
       throw error;
     }
-    await reserved.unsafe(`rollback; ${discardAllButStatements}`).simple();
+    const next = code === inFailedTransaction ? scripts.plain : scripts.quiet;
+    await afterRollback(reserved, scripts, next, attempt + 1);
   }
+}
+
+// Releases the connection once it's reset. If the reset fails, the connection never goes back:
+// postgres.js crashes on a released connection whose backend has ended. Only when the backend can't
+// be ended does it go back, and the reset's error surfaces.
+async function returnToPool(reserved: ReservedSql): Promise<void> {
+  try {
+    await afterRollback(reserved, reset);
+  } catch (error) {
+    if (backendAlive(error)) {
+      await afterRollback(reserved, endBackend).catch(() => {
+        reserved.release();
+        throw error;
+      });
+    }
+    return;
+  }
+  reserved.release();
 }
 
 /**
@@ -89,16 +140,23 @@ export function postgresJsDriver(sql: Sql): Driver {
     },
     async session(fn) {
       const reserved = await sql.reserve();
+      let result;
       try {
-        const result = await fn(reservedSession(reserved)).catch(async (error: unknown) => {
-          await resetSession(reserved).catch(() => {});
-          throw error;
-        });
-        await resetSession(reserved);
-        return result;
-      } finally {
-        reserved.release();
+        result = await fn(reservedSession(reserved));
+      } catch (error) {
+        try {
+          await returnToPool(reserved);
+        } catch (resetError) {
+          throw new AggregateError(
+            [error, resetError],
+            "session rejected, and its reset failed, so its connection went back to the pool without one",
+            { cause: resetError },
+          );
+        }
+        throw error;
       }
+      await returnToPool(reserved);
+      return result;
     },
   };
   return driver;

@@ -1,6 +1,6 @@
-import postgres from "postgres";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { Driver } from "../../runtime/ports/index.ts";
+import postgres, { type Sql } from "postgres";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Driver, DriverRow, Queryable } from "../../runtime/ports/index.ts";
 import { postgresJsConnect } from "./connect.ts";
 import { postgresJsDriver } from "./driver.ts";
 import { useTestDatabase } from "./test-database.test-helper.ts";
@@ -16,6 +16,13 @@ async function advisoryLocksHeld(key: number): Promise<unknown> {
     [key],
   );
   return row?.["held"];
+}
+
+async function backend(queryable: Queryable): Promise<DriverRow> {
+  const { rows } = await queryable.query(
+    "select pg_backend_pid() as pid, current_setting('search_path') as path",
+  );
+  return rows[0] ?? {};
 }
 
 describe("postgresJsDriver", () => {
@@ -174,6 +181,76 @@ describe("postgresJsDriver releasing a session to a one-connection pool", () => 
     await pool.driver.session((session) => session.query(statement, [1]));
     const { rows } = await pool.driver.transaction((tx) => tx.query(statement, [2]));
     expect(rows).toStrictEqual([{ n: 2 }]);
+  });
+});
+
+describe("postgresJsDriver when a session's reset fails", () => {
+  let sql: Sql;
+  let driver: Driver;
+  // The driver's reset and close scripts start with a rollback; each is swapped for the next of these.
+  let swaps: string[] = [];
+
+  beforeAll(() => {
+    const url = new URL(String(process.env["DATABASE_URL"]));
+    url.pathname = `/${db.name}`;
+    sql = postgres(url.href, {
+      max: 1,
+      onnotice: () => {},
+      types: postgresJsTypes,
+      connection: postgresJsConnection,
+    });
+    const reserve = sql.reserve.bind(sql);
+    vi.spyOn(sql, "reserve").mockImplementation(async () => {
+      const reserved = await reserve();
+      const unsafe = reserved.unsafe.bind(reserved);
+      vi.spyOn(reserved, "unsafe").mockImplementation((text, ...rest) =>
+        unsafe(text.includes("rollback") ? (swaps.shift() ?? text) : text, ...rest),
+      );
+      return reserved;
+    });
+    driver = postgresJsDriver(sql);
+  });
+  afterAll(() => sql.end());
+  beforeEach(() => {
+    swaps = [];
+  });
+
+  it("closes the connection instead of returning it to the pool", async () => {
+    swaps = ["select 1 / 0"];
+    const inside = await driver.session(async (session) => {
+      await session.execute("set search_path = nowhere");
+      return backend(session);
+    });
+    const after = await backend(driver);
+    expect(after).not.toStrictEqual(inside);
+    expect(after).toMatchObject({ path: '"$user", public' });
+  });
+
+  it("retries a reset that a statement timeout cancels", async () => {
+    swaps = ["set statement_timeout = 1; select pg_sleep(1)"];
+    const inside = await driver.session(async (session) => {
+      await session.execute("set search_path = nowhere");
+      return backend(session);
+    });
+    expect(await backend(driver)).toStrictEqual({ ...inside, path: '"$user", public' });
+  });
+
+  it("rejects with the reset's error when it can't close the connection either", async () => {
+    swaps = ["select 1 / 0", "select 1 / 0"];
+    const inside = driver.session((session) => backend(session));
+    await expect(inside).rejects.toThrow("division by zero");
+    expect(swaps).toStrictEqual([]);
+    expect(await backend(driver)).toMatchObject({ path: '"$user", public' });
+  });
+
+  it("rejects with fn's and the reset's errors when fn rejects and the connection can't close", async () => {
+    swaps = ["select 1 / 0", "select 1 / 0"];
+    const failed = driver.session(() => Promise.reject(new Error("boom")));
+    await expect(failed).rejects.toBeInstanceOf(AggregateError);
+    await expect(failed).rejects.toMatchObject({
+      errors: [{ message: "boom" }, { message: "division by zero" }],
+    });
+    expect(swaps).toStrictEqual([]);
   });
 });
 
