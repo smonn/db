@@ -11,6 +11,11 @@ import type { RuleTester } from "oxlint/plugins-dev";
 type Rule = Parameters<RuleTester["run"]>[1];
 type Context = Parameters<Extract<Rule, { create: unknown }>["create"]>[0];
 type Node = Parameters<Context["sourceCode"]["getScope"]>[0];
+type Scope = ReturnType<Context["sourceCode"]["getScope"]>;
+type Plugin = {
+  readonly meta: { readonly name: string };
+  readonly rules: Readonly<Record<"sql-interpolation" | "required-brand", Rule>>;
+};
 
 const SQL_METHODS = new Set(["query", "unsafe", "execute"]);
 // quoteTrackingSchema validates the name, then quotes it with quoteIdentifier.
@@ -31,7 +36,11 @@ function isQuoted(node: Node, context: Context, seen: Set<Node>): boolean {
   }
   if (node.type !== "Identifier" || seen.has(node)) return false;
   seen.add(node);
-  for (let scope = context.sourceCode.getScope(node); scope !== null; scope = scope.upper) {
+  for (
+    let scope: Scope | null = context.sourceCode.getScope(node);
+    scope !== null;
+    scope = scope.upper
+  ) {
     const variable = scope.set.get(node.name);
     if (variable === undefined) continue;
     const [definition] = variable.defs;
@@ -77,7 +86,7 @@ const sqlInterpolation: Rule = {
 };
 
 function isExported(declaration: Node, name: string, program: Node): boolean {
-  if (declaration.parent.type === "ExportNamedDeclaration") return true;
+  if (declaration.parent?.type === "ExportNamedDeclaration") return true;
   if (program.type !== "Program") return false;
   return program.body.some(
     (statement) =>
@@ -105,6 +114,8 @@ const requiredBrand: Rule = {
       TSPropertySignature(node) {
         const name = keyName(node.key);
         if (!node.optional || name?.startsWith("~") !== true) return;
+        // `?: never` forbids the key rather than branding the type.
+        if (node.typeAnnotation?.typeAnnotation.type === "TSNeverKeyword") return;
         let declaration: Node = node;
         while (
           declaration.type !== "TSTypeAliasDeclaration" &&
@@ -123,7 +134,8 @@ const requiredBrand: Rule = {
   },
 };
 
-export default {
+const plugin: Plugin = {
   meta: { name: "smonn" },
   rules: { "sql-interpolation": sqlInterpolation, "required-brand": requiredBrand },
 };
+export default plugin;

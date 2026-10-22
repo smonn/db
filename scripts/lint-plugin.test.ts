@@ -2,10 +2,13 @@ import { RuleTester } from "oxlint/plugins-dev";
 import { describe, it } from "vitest";
 import plugin from "./lint-plugin.ts";
 
+// oxlint-disable-next-line typescript/strict-void-return -- RuleTester ignores what describe returns.
 RuleTester.describe = describe;
 RuleTester.it = it;
 
-const tester = new RuleTester({ languageOptions: { sourceType: "module", parserOptions: { lang: "ts" } } });
+const tester = new RuleTester({
+  languageOptions: { sourceType: "module", parserOptions: { lang: "ts" } },
+});
 
 tester.run("sql-interpolation", plugin.rules["sql-interpolation"], {
   valid: [
@@ -21,7 +24,7 @@ tester.run("sql-interpolation", plugin.rules["sql-interpolation"], {
   invalid: [
     {
       code: "await driver.execute(`create database ${name}`);",
-      errors: [{ message: /quoteIdentifier, or bind the value as a parameter of execute/ }],
+      errors: [{ message: /quoteIdentifier, or bind the value as a parameter of execute/u }],
     },
     {
       code: "await query(`select ${value}`);",
@@ -56,11 +59,17 @@ tester.run("required-brand", plugin.rules["required-brand"], {
     'type Internal = { readonly "~row"?: number };',
     "export type Options = { readonly name?: string };",
     'export interface Query { readonly "~returns": "rows" }',
+    'export type Client = { one(query: { readonly "~many"?: never }): void };',
   ],
   invalid: [
     {
       code: 'export type Query<R> = { readonly "~returns"?: "rows"; readonly row: R };',
-      errors: [{ message: /Make "~returns" required: an optional brand lets a wider type stand in for Query/ }],
+      errors: [
+        {
+          message:
+            /Make "~returns" required: an optional brand lets a wider type stand in for Query/u,
+        },
+      ],
     },
     {
       code: 'export interface Query { readonly "~returns"?: "rows" }',
