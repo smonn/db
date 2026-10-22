@@ -265,7 +265,7 @@ Schemas, tables, columns (type, NOT NULL, default, identity), single and composi
 
 ### Catalog
 
-A flat `Map<path, fact>`. A path is the dotted chain of names from the schema down (`public.users.email`, `public.users.email.default`), and each fact carries its parent's path and a plain-data payload compared by deep equality. A default, a primary key, and a unique constraint are separate facts, so one changed default is one difference. Payloads leave out the fact's own name, so renames can be added later. NOT NULL is a column attribute; Postgres 18's `pg_constraint` NOT NULL rows are folded into it.
+A flat `Map<key, fact>`. A key is the chain of names from the schema down (`public`, `users`, `email`), joined with `\0`, which no Postgres name can hold, so a table named `users.email` keys apart from the column `email` on `users`. Only the catalog module builds keys: `definitionCatalog` and `introspect` add facts through its builder, and `diff` finds parents, children, and names through its lookups. Each fact carries its parent's key and a plain-data payload compared by deep equality. A default, a primary key, and a unique constraint are separate facts, so one changed default is one difference. Payloads leave out the fact's own name, so renames can be added later. NOT NULL is a column attribute; Postgres 18's `pg_constraint` NOT NULL rows are folded into it.
 
 ### Ordering
 
