@@ -12,9 +12,13 @@
 
 ## Repo tooling
 
-- Enforce a rule with a static check in CI whenever one can express it. Document only what no tool can check.
+- Enforce a rule with a static check in CI whenever one can express it: a lint rule, a semantic-grep rule, a `scripts/` check, a type test, or mutation testing. Document only what no tool can check.
 - Write repo scripts in TypeScript under `scripts/`, run directly by Node. A shell file may only invoke one. Scripts get the same tests, lint, and formatting as `src/`.
 - Tests need Postgres: run `node scripts/test-db.ts` once per worktree, then plain `pnpm test`; `node scripts/test-db.ts stop` removes it.
+
+## Coding standards
+
+- Read `CODING_STANDARDS.md` before writing or reviewing code.
 
 ## Design decisions
 
