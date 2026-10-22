@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defineConfig, parseConfig } from "./config.ts";
+import { defineConfig, parseConfig, parseOfflineConfig } from "./config.ts";
 
 const FILE = "smonndb.config.ts";
 const base = { definition: "./db/definition.ts", migrations: "./db/migrations" };
@@ -9,6 +9,15 @@ describe("defineConfig", () => {
     const config = { ...base, url: "postgres://localhost/app" };
 
     expect(defineConfig(config)).toBe(config);
+  });
+});
+
+describe("parseOfflineConfig", () => {
+  it("accepts an unset url and still checks the other keys", () => {
+    expect(parseOfflineConfig({ ...base, url: undefined }, FILE)).toStrictEqual(base);
+    expect(() => parseOfflineConfig({ ...base, migrations: "" }, FILE)).toThrow(
+      `${FILE}: migrations must be a non-empty path`,
+    );
   });
 });
 
