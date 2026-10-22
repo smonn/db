@@ -2,7 +2,9 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../definition/index.ts";
 import { createClient } from "./client.ts";
-import { from } from "./from.ts";
+import { sql } from "../sql/index.ts";
+import { from, type Statement } from "./from.ts";
+import { insert } from "./insert.ts";
 
 const testDatabase = useTestDatabase();
 const client = createClient(testDatabase.driver);
@@ -41,5 +43,106 @@ describe("client.all", () => {
       return createClient(tx).all(from(notes.public.notes));
     });
     expect(rows).toStrictEqual([{ body: "draft" }]);
+  });
+});
+
+describe("client.one", () => {
+  it("returns the only row", async () => {
+    await testDatabase.driver.execute(
+      "create table public.people (id text not null); insert into public.people values ('p1');",
+    );
+    const people = defineDatabase({
+      public: { people: defineTable((c) => ({ id: c.text().notNull() })) },
+    });
+    const row = await client.one(from(people.public.people));
+    expect(row).toStrictEqual({ id: "p1" });
+    expectTypeOf(row).toEqualTypeOf<{ id: string }>();
+  });
+
+  it("rejects when no row comes back", async () => {
+    await testDatabase.driver.execute("create table public.nobody (id text not null)");
+    const nobody = defineDatabase({
+      public: { nobody: defineTable((c) => ({ id: c.text().notNull() })) },
+    });
+    await expect(client.one(from(nobody.public.nobody))).rejects.toThrow(
+      "Expected one row but the query returned 0",
+    );
+  });
+
+  it("rejects when several rows come back", async () => {
+    await testDatabase.driver.execute(
+      "create table public.crowd (id text not null); insert into public.crowd values ('a'), ('b');",
+    );
+    const crowd = defineDatabase({
+      public: { crowd: defineTable((c) => ({ id: c.text().notNull() })) },
+    });
+    await expect(client.one(from(crowd.public.crowd))).rejects.toThrow(
+      "Expected one row but the query returned 2",
+    );
+  });
+});
+
+describe("client.run", () => {
+  const accounts = defineDatabase({
+    public: {
+      accounts: defineTable((c) => ({ id: c.text().notNull(), email: c.text() })),
+    },
+  });
+
+  it("inserts rows and reports the count, then reads them back", async () => {
+    await testDatabase.driver.execute(
+      "create table public.accounts (id text not null, email text default 'none')",
+    );
+    const result = await client.run(
+      insert(accounts.public.accounts).values([{ id: "a1", email: "a@example.com" }, { id: "a2" }]),
+    );
+    expect(result).toStrictEqual({ count: 2 });
+    expect(await client.all(from(accounts.public.accounts))).toStrictEqual([
+      { id: "a1", email: "a@example.com" },
+      { id: "a2", email: "none" },
+    ]);
+  });
+
+  it("returns the inserted row through client.one with returning", async () => {
+    await testDatabase.driver.execute(
+      "create table public.members (id text not null, email text default 'none')",
+    );
+    const members = defineDatabase({
+      public: { members: defineTable((c) => ({ id: c.text().notNull(), email: c.text() })) },
+    });
+    const row = await client.one(
+      insert(members.public.members)
+        .values({ id: "a3" })
+        .returning((a) => ({ id: a.id, email: a.email })),
+    );
+    expect(row).toStrictEqual({ id: "a3", email: "none" });
+    expectTypeOf(row).toEqualTypeOf<{ id: string; email: string | null }>();
+  });
+
+  it("rejects an insert without returning from client.all and client.one", () => {
+    const statement = insert(accounts.public.accounts).values({ id: "a4" });
+    // Never called: these only have to fail type-checking.
+    const rejected = () => {
+      // @ts-expect-error an insert without returning yields no rows; use run
+      void client.all(statement);
+      // @ts-expect-error an insert without returning yields no rows; use run
+      void client.one(statement);
+      const widened: Statement = statement;
+      // @ts-expect-error a bare Statement is not known to return one row
+      void client.one(widened);
+      // @ts-expect-error a bare Statement is not known to return rows
+      void client.all(widened);
+      // @ts-expect-error a SQL fragment is not a Query
+      void client.all(sql`select 1`);
+      const several = insert(accounts.public.accounts)
+        .values([{ id: "a5" }])
+        .returning((a) => ({ id: a.id }));
+      // @ts-expect-error one cannot take a multi-row insert, which commits every row first
+      void client.one(several);
+      // A select through one stays allowed, and so does all on a multi-row insert.
+      void client.one(from(accounts.public.accounts));
+      void client.all(several);
+    };
+    expect(rejected).toBeTypeOf("function");
   });
 });

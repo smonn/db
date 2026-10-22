@@ -1,11 +1,22 @@
 import type { Row, Table } from "../definition/index.ts";
 import { identifier, join, sql, type Fragment, type RenderedSql } from "../sql/index.ts";
 
-export type Query<R> = {
-  /** Type-only: the row each result holds. */
-  readonly "~row"?: R;
+export type Statement = {
   toSql(): RenderedSql;
 };
+
+export type Query<R> = Statement & {
+  /** Type-only: separates a statement that returns rows from one that only reports a count. */
+  readonly "~returns": "rows";
+  /** Type-only: the row each result holds. */
+  readonly "~row"?: R;
+};
+
+/** The type-only brands have no runtime value, so a statement is built from its parts and cast once. */
+export function brand<Q extends Statement>(parts: Omit<Q, "~returns" | "~row" | "~many">): Q {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The brands exist only in types.
+  return parts as Q;
+}
 
 export type ColumnRef<V> = {
   readonly name: string;
@@ -30,18 +41,18 @@ export type SelectQuery<T extends Table, R> = Query<R> & {
 
 type Output = readonly [alias: string, column: string];
 
-function refsOf<T extends Table>(table: T): Refs<T> {
+export function refsOf<T extends Table>(table: T): Refs<T> {
   const refs = Object.fromEntries(Object.keys(table.columns).map((name) => [name, { name }]));
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries loses the keys.
   return refs as Refs<T>;
 }
 
-function renderOutput([alias, name]: Output): Fragment {
+export function renderOutput([alias, name]: Output): Fragment {
   return alias === name ? identifier(name) : sql`${identifier(name)} as ${identifier(alias)}`;
 }
 
 function selectQuery<T extends Table, R>(table: T, outputs: readonly Output[]): SelectQuery<T, R> {
-  return {
+  return brand<SelectQuery<T, R>>({
     select(pick) {
       return selectQuery(
         table,
@@ -55,7 +66,7 @@ function selectQuery<T extends Table, R>(table: T, outputs: readonly Output[]): 
       );
       return sql`select ${columns} from ${identifier(table.schema)}.${identifier(table.name)}`.toSql();
     },
-  };
+  });
 }
 
 export function from<T extends Table>(table: T): SelectQuery<T, Row<T>> {

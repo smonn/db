@@ -1,8 +1,13 @@
 export type Row = Record<string, unknown>;
 
+export type QueryResult = { rows: Row[]; count: number };
+
 export type Queryable = {
-  /** Runs one statement as a prepared statement, binding `params` to `$1`, `$2`, and so on. */
-  query(text: string, params?: readonly unknown[]): Promise<Row[]>;
+  /**
+   * Runs one statement as a prepared statement, binding `params` to `$1`, `$2`, and so on.
+   * `count` is the rows the statement returned or changed.
+   */
+  query(text: string, params?: readonly unknown[]): Promise<QueryResult>;
   /** Runs a script of any number of statements without params, such as a Migration file. */
   execute(script: string): Promise<void>;
 };
