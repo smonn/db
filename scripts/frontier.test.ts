@@ -140,6 +140,7 @@ describe("main", () => {
   });
 
   test("with no map, prints every open ticket that has no open blocker", () => {
+    const renovate = { login: "renovate[bot]" };
     ghReturns({
       [openIssues]: [
         issue(8, { labels: [] }),
@@ -149,15 +150,26 @@ describe("main", () => {
         issue(44, { sub_issues_summary: { total: 6 } }),
         issue(45, { sub_issues_summary: { total: 0 } }),
         issue(50, { labels: [{ name: "wayfinder:map" }] }),
-        issue(89, { user: { login: "renovate[bot]" } }),
+        issue(89, { title: "Dependency Dashboard", user: renovate }),
+        issue(90, { title: "Dependency Dashboard" }),
+        issue(91, { title: "Action Required: Fix Renovate Configuration", user: renovate }),
       ],
       "repos/{owner}/{repo}/issues/8/dependencies/blocked_by": [issue(1, { state: "closed" })],
       "repos/{owner}/{repo}/issues/10/dependencies/blocked_by": [issue(2)],
       "repos/{owner}/{repo}/issues/45/dependencies/blocked_by": [],
+      "repos/{owner}/{repo}/issues/90/dependencies/blocked_by": [],
+      "repos/{owner}/{repo}/issues/91/dependencies/blocked_by": [],
     });
     process.argv = ["node", "scripts/frontier.ts"];
     main();
-    expect(console.log).toHaveBeenCalledWith("#8 Ticket 8\n#45 Ticket 45 [wayfinder:grilling]");
+    expect(console.log).toHaveBeenCalledWith(
+      [
+        "#8 Ticket 8",
+        "#45 Ticket 45 [wayfinder:grilling]",
+        "#90 Dependency Dashboard [wayfinder:grilling]",
+        "#91 Action Required: Fix Renovate Configuration [wayfinder:grilling]",
+      ].join("\n"),
+    );
   });
 
   test("with no map, lists open issues oldest first", () => {

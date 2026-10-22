@@ -62,13 +62,13 @@ function children(map: number): Child[] {
 }
 
 // The issues endpoint also returns pull requests. Maps and other parents group tickets rather
-// than being one, and Renovate files only its Dependency Dashboard as an issue.
+// than being one. The dashboard title is Renovate's default; .github/renovate.json keeps it.
 function isTicket(issue: ApiIssue): boolean {
   return (
     issue.pull_request === undefined &&
     (issue.sub_issues_summary?.total ?? 0) === 0 &&
     !issue.labels.some((label) => label.name === "wayfinder:map") &&
-    issue.user.login !== "renovate[bot]"
+    !(issue.user.login === "renovate[bot]" && issue.title === "Dependency Dashboard")
   );
 }
 
