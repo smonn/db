@@ -31,7 +31,9 @@ export type Driver = Session & {
    * error, or with an AggregateError of both when the connection went back unreset. When `fn`
    * rejects because the connection was lost, the session sends nothing more and rejects with
    * that error. The reset keeps statements made with SQL `prepare`, since dropping them would
-   * drop the driver's cached statements too.
+   * drop the driver's cached statements too. A pool kept open after such a failure may give that
+   * connection's next query a stale 57P01 until postgres.js fixes
+   * https://github.com/porsager/postgres/issues/1226.
    */
   session<T>(fn: (session: Session) => Promise<T>): Promise<T>;
 };
