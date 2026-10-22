@@ -95,7 +95,7 @@ export type ResetOptions = {
  * non-empty Database unless `erase` is set.
  */
 export function reset(options: ResetOptions): Promise<void> {
-  return withDevLock(options.driver, "reset", () => resetLocked(options));
+  return withDevLock(options.driver, "reset", (driver) => resetLocked({ ...options, driver }));
 }
 
 async function resetLocked(options: ResetOptions): Promise<void> {

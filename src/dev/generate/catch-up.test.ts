@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
+import type { Connection } from "../../runtime/ports/index.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { parseMigration, readCommitted, writeMigration } from "../../runtime/internal/index.ts";
 import { commit } from "./commit.ts";
@@ -107,12 +108,52 @@ describe("Dev lock", () => {
     },
   );
 
-  it("releases the lock when a run ends", async () => {
-    const fileSystem = memoryFileSystem();
-    await generateInto(fileSystem);
-    await generateInto(fileSystem);
+  // The lock is re-entrant on one backend, so only another connection can tell it was released.
+  async function lockedElsewhere(): Promise<boolean> {
+    const other = await db.connect(db.name);
+    try {
+      const { rows } = await other.driver.query(
+        `select pg_try_advisory_lock(${KEY}) as acquired, pg_advisory_unlock(${KEY})`,
+      );
+      return rows[0]?.["acquired"] !== true;
+    } finally {
+      await other.close();
+    }
+  }
+
+  it("releases the lock when a run finishes", async () => {
+    await generateInto(memoryFileSystem());
+
+    expect(await lockedElsewhere()).toBe(false);
+  });
+
+  it("releases the lock when a run fails", async () => {
+    await db.driver.execute("create table public.junk (id int)");
     await expect(
-      reset({ driver: db.driver, fileSystem, migrations: MIGRATIONS }),
-    ).resolves.toBeUndefined();
+      reset({ driver: db.driver, fileSystem: memoryFileSystem(), migrations: MIGRATIONS }),
+    ).rejects.toThrow("reset needs --erase");
+
+    expect(await lockedElsewhere()).toBe(false);
+  });
+});
+
+describe("dev commands on a one-connection pool", () => {
+  let pool: Connection;
+
+  beforeAll(async () => {
+    pool = await db.connectSingle(db.name);
+  });
+  afterAll(() => pool.close());
+
+  it("runs generate, commit, and reset without waiting on a second connection", async () => {
+    const fileSystem = memoryFileSystem();
+    const options = { driver: pool.driver, fileSystem, migrations: MIGRATIONS };
+
+    await generate({ ...options, connect: db.connect, definition: users });
+    await commit({ ...options, slug: "create-users" });
+    await reset(options);
+
+    const { rows } = await pool.driver.query("select filename from smonn_db.migrations");
+    expect(rows).toStrictEqual([{ filename: "000001-create-users.sql" }]);
   });
 });

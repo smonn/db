@@ -50,7 +50,9 @@ export type GenerateResult = {
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
   requireModeledSchemas(options.definition, tracking.name);
-  const result = await withDevLock(options.driver, "generate", () => generateLocked(options));
+  const result = await withDevLock(options.driver, "generate", (driver) =>
+    generateLocked({ ...options, driver }),
+  );
   return result;
 }
 

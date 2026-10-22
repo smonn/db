@@ -38,7 +38,7 @@ const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
  * every Committed migration before it.
  */
 export function commit(options: CommitOptions): Promise<CommitResult> {
-  return withDevLock(options.driver, "commit", () => commitLocked(options));
+  return withDevLock(options.driver, "commit", (driver) => commitLocked({ ...options, driver }));
 }
 
 async function commitLocked(options: CommitOptions): Promise<CommitResult> {
