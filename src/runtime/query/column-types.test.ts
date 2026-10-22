@@ -103,6 +103,60 @@ describe("every column type through the postgres-js driver", () => {
     ]);
   });
 
+  it("selects every column through the callback as the Definition's value types", async () => {
+    await testDatabase.driver.execute("delete from public.everything");
+    await insert(filled);
+    await insert({ id: 6 });
+
+    const rows = await client.all(
+      from(db.public.everything)
+        .select((e) => ({
+          id: e.id,
+          text: e.text,
+          varchar: e.varchar,
+          smallint: e.smallint,
+          integer: e.integer,
+          bigint: e.bigint,
+          numeric: e.numeric,
+          scaled: e.scaled,
+          real: e.real,
+          doublePrecision: e.doublePrecision,
+          boolean: e.boolean,
+          uuid: e.uuid,
+          date: e.date,
+          timestamp: e.timestamp,
+          timestamptz: e.timestamptz,
+          jsonb: e.jsonb,
+          bytea: e.bytea,
+        }))
+        .where((e) => e.id.gt(0)),
+    );
+
+    const nulls = { ...Object.fromEntries(columnNames.map((name) => [name, null])), id: 6 };
+    expect(rows).toStrictEqual([filled, nulls]);
+    expectTypeOf(rows).toEqualTypeOf<
+      {
+        id: number;
+        text: string | null;
+        varchar: string | null;
+        smallint: number | null;
+        integer: number | null;
+        bigint: bigint | null;
+        numeric: string | null;
+        scaled: string | null;
+        real: number | null;
+        doublePrecision: number | null;
+        boolean: boolean | null;
+        uuid: string | null;
+        date: string | null;
+        timestamp: Date | null;
+        timestamptz: Date | null;
+        jsonb: { tags: string[]; nested: { n: number } } | null;
+        bytea: Uint8Array | null;
+      }[]
+    >();
+  });
+
   it("reads timestamps as UTC whatever the session time zone", async () => {
     await testDatabase.driver.execute("delete from public.everything");
     const [row] = await testDatabase.driver.session(async (session) => {
