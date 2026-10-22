@@ -1,0 +1,30 @@
+import type { FileSystem } from "../../runtime/ports/index.ts";
+
+export type MemoryFileSystem = FileSystem & {
+  readonly files: Map<string, string>;
+};
+
+/** A FileSystem held in a Map, where a directory exists once anything is written under it. */
+export function memoryFileSystem(initial: Record<string, string> = {}): MemoryFileSystem {
+  const files = new Map(Object.entries(initial));
+  return {
+    files,
+    readFile: (path) => Promise.resolve(files.get(path)),
+    writeFile: (path, content) => {
+      files.set(path, content);
+      return Promise.resolve();
+    },
+    list: (directory) =>
+      Promise.resolve(
+        [...files.keys()]
+          .filter((path) => path.startsWith(`${directory}/`))
+          .map((path) => path.slice(directory.length + 1))
+          .filter((name) => !name.includes("/")),
+      ),
+    mkdir: () => Promise.resolve(),
+    remove: (path) => {
+      files.delete(path);
+      return Promise.resolve();
+    },
+  };
+}

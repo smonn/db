@@ -16,3 +16,4 @@ Source is grouped by the package each module would move to (`runtime/`, `adapter
 ## Consequences
 
 - Web Crypto digests are async, so verifying the hash chain is async.
+- Helpers that several modules share but no package should export, starting with `sha256`, live in `runtime/internal`, inside `runtime/` so every group can import them. No other module's `index.ts` may import it, so a shared helper never becomes public API by accident, and `check:imports` enforces that.

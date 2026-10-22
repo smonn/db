@@ -25,6 +25,23 @@ describe("nodeMigrationSource", () => {
     ]);
   });
 
+  it("skips the Current migration, which sits beside the Committed ones", async () => {
+    await writeFile(join(directory, "000001-a.sql"), "select 1;\n");
+    await writeFile(join(directory, "current.sql"), "select 2;\n");
+
+    expect(await nodeMigrationSource(directory).list()).toStrictEqual([
+      { filename: "000001-a.sql", content: "select 1;\n" },
+    ]);
+  });
+
+  it("keeps a misnamed .sql file, so the migrator refuses it instead of skipping it", async () => {
+    await writeFile(join(directory, "create-users.sql"), "select 1;\n");
+
+    expect(await nodeMigrationSource(directory).list()).toStrictEqual([
+      { filename: "create-users.sql", content: "select 1;\n" },
+    ]);
+  });
+
   it("skips other files and folders", async () => {
     await writeFile(join(directory, "README.md"), "notes");
     await mkdir(join(directory, "000003-folder.sql"));

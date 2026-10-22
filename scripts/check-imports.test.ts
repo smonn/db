@@ -94,7 +94,7 @@ describe("checkImports", () => {
           "export function useTestDatabase(): void {}",
       }),
     ).toEqual([
-      "adapter-imports-ports-only",
+      "adapter-imports-ports-or-internal",
       "cross-module-through-index",
       "cross-module-through-index",
       "cross-module-through-index",
@@ -114,6 +114,25 @@ describe("checkImports", () => {
     ).toEqual(["runtime-stays-in-runtime"]);
   });
 
+  test("modules import runtime/internal, but no index.ts re-exports it", async () => {
+    expect(
+      await rulesBroken({
+        "src/runtime/internal/index.ts": 'export { sha256 } from "./sha256.ts";',
+        "src/runtime/internal/sha256.ts": "export const sha256 = 1;",
+        "src/runtime/migrator/migrate.ts":
+          'import { sha256 } from "../internal/index.ts";\nexport const hash = sha256;',
+        "src/runtime/migrator/index.ts":
+          'export { hash } from "./migrate.ts";\nexport { sha256 } from "../internal/index.ts";',
+        "src/dev/generate/generate.ts":
+          'import { sha256 } from "../../runtime/internal/index.ts";\nexport const hash = sha256;',
+        "src/dev/generate/index.ts": 'export { hash } from "./generate.ts";',
+        "src/adapters/node/source.ts":
+          'import { sha256 } from "../../runtime/internal/index.ts";\nexport const hash = sha256;',
+        "src/index.ts": 'export { sha256 } from "./runtime/internal/index.ts";',
+      }),
+    ).toEqual(["internal-not-reexported", "internal-not-reexported"]);
+  });
+
   test("runtime/ imports no npm packages", async () => {
     expect(
       await rulesBroken({
@@ -122,7 +141,7 @@ describe("checkImports", () => {
     ).toEqual(["runtime-no-npm"]);
   });
 
-  test("an adapter imports only runtime/ports and its own files", async () => {
+  test("an adapter imports only runtime/ports, runtime/internal, and its own files", async () => {
     expect(
       await rulesBroken({
         "src/adapters/node/index.ts":
@@ -132,9 +151,9 @@ describe("checkImports", () => {
         "src/dev/diff/index.ts": "export type E = 1;",
       }),
     ).toEqual([
-      "adapter-imports-ports-only",
-      "adapter-imports-ports-only",
-      "adapter-imports-ports-only",
+      "adapter-imports-ports-or-internal",
+      "adapter-imports-ports-or-internal",
+      "adapter-imports-ports-or-internal",
     ]);
   });
 
