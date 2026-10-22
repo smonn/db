@@ -19,6 +19,14 @@ describe("postgresJsDriver", () => {
     expect(rows).toStrictEqual([{ sum: 5 }]);
   });
 
+  it("reports how many rows a statement changed or returned", async () => {
+    await db.driver.execute("create table counted (n int)");
+    expect(await db.driver.run("insert into counted values ($1), ($2)", [1, 2])).toStrictEqual({
+      count: 2,
+    });
+    expect(await db.driver.run("select n from counted")).toStrictEqual({ count: 2 });
+  });
+
   it("prepares a query without params, so it refuses several statements", async () => {
     await expect(db.driver.query("select 1; select 2")).rejects.toThrow(
       "cannot insert multiple commands into a prepared statement",

@@ -14,6 +14,12 @@ function queryable(connection: ReservedSql | Sql): Queryable {
       const rows: readonly Row[] = await connection.unsafe(text, values, prepared);
       return [...rows];
     },
+    async run(text, params = []) {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- postgres.js serializes any param value.
+      const values = params as ParameterOrJSON<never>[];
+      const { count } = await connection.unsafe(text, values, prepared);
+      return { count };
+    },
     async execute(script) {
       await connection.unsafe(script).simple();
     },
