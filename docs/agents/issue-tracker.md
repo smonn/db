@@ -4,12 +4,13 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 ## Conventions
 
-- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
+- **Create an issue**: write the body to a file, then `gh issue create --title "..." --body-file <file>`.
+- **Write an issue body**: link the spec the work follows in Problem: an ADR, an issue comment, or a prototype file as `<branch>:<path>`. When issues split an ADR's consequences, give each consequence an owning issue, so none falls between them.
 - **Read an issue**: `gh issue view <number> --json number,title,body,labels,comments`.
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
 - **Make an issue a sub-issue of a parent**: `gh issue create --parent <parent> ...`, or `gh issue edit <parent> --add-sub-issue <child>` afterwards (`gh` 2.94+). Older `gh`: `gh api --method POST repos/<owner>/<repo>/issues/<parent>/sub_issues -F sub_issue_id=<child-db-id>` (database id, as in **Blocking** below). Without sub-issues, put `Part of #<parent>` at the top of the child body.
 - **Claim an issue**: `gh issue edit <number> --add-assignee @me`, before starting work on it.
-- **Comment on an issue**: `gh issue comment <number> --body "..."`
+- **Comment on an issue**: `gh issue comment <number> --body-file <file>`
 - **Edit an issue body**: `gh issue edit <number> --body-file <file>`. Revise the affected section in place so the body reads as current, and delete lines that no longer hold. Put the history in a comment, not an "Update:" paragraph.
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
@@ -45,4 +46,4 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Blocking**: GitHub's **native issue dependencies**, the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub's `issue_dependencies_summary.blocked_by` count can stay stale after a blocker closes, so read blocker states instead. Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
 - **Frontier query**: `node scripts/frontier.ts <map>` prints the map's open, unassigned children with no open blocker, in map order; the first line wins. It reads native dependencies only, not `Blocked by` lines.
 - **Claim**: as in **Claim an issue** above, the session's first write.
-- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far. Closing by hand is the exception to AGENTS.md's `Closes #<n>` rule: the ticket closes at resolution, so a later PR that records its decision, such as an ADR, links it with `Related to #<n>`.
+- **Resolve**: `gh issue comment <n> --body-file <answer-file>`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far. Closing by hand is the exception to AGENTS.md's `Closes #<n>` rule: the ticket closes at resolution, so a later PR that records its decision, such as an ADR, links it with `Related to #<n>`.
