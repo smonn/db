@@ -42,7 +42,7 @@ flowchart TB
 flowchart TB
   subgraph runtime["runtime/ · @smonn/db"]
     definition["<b>definition</b><br/>[module]<br/>Declares tables and columns; infers row types"]
-    query["<b>query</b><br/>[module]<br/>from, where, select, insert, one call per SQL clause"]
+    query["<b>query</b><br/>[module]<br/>from, where, select, insert, one call per SQL clause; sql for whole hand-written statements"]
     sql["<b>sql</b><br/>[module]<br/>SQL fragments, the sql template, rendering to text and params"]
     migrator["<b>migrator</b><br/>[module]<br/>Verifies the hash chain and applies Committed migrations under an advisory lock"]
     ports["<b>ports</b><br/>[types only]<br/>Driver, Connect, MigrationSource, FileSystem"]
@@ -254,7 +254,7 @@ How generate turns the Definition into the Current migration. ADR-0005 and ADR-0
 
 ### What v0.1 models
 
-Schemas, tables, columns (type, NOT NULL, default, identity), single and composite primary keys, and single-column unique constraints: exactly what the Definition can express. Foreign keys, indexes, and multi-column unique wait for v0.2. Both introspections skip the migrator's tracking schema (`smonn_db` unless configured), `pg_catalog`, `information_schema`, `pg_toast*`, `pg_temp*`, extension members, and every kind outside this list (ADR-0005).
+Schemas, tables, columns (type, NOT NULL, default, identity), single and composite primary keys, and single-column unique constraints: exactly what the Definition can express. Foreign keys, indexes, and multi-column unique wait for v0.2. Both introspections skip the migrator's tracking schema (`smonn_db` unless configured), `pg_catalog`, `information_schema`, `pg_toast*`, `pg_temp*`, extension members, and every kind outside this list (ADR-0005). Generate refuses a Definition that names one of these schemas, since its tables would vanish from the diff.
 
 ### Pipeline
 

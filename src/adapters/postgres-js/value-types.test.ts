@@ -85,6 +85,14 @@ describe("postgresJsTypes timestamps", () => {
     ]);
   });
 
+  it("reads an offset-less string bound to a timestamptz in the session zone", async () => {
+    const rows = await db.driver.transaction(async (tx) => {
+      await tx.execute("set local time zone 'Asia/Tokyo'");
+      return (await tx.query("select $1::timestamptz as tz", ["2026-01-01"])).rows;
+    });
+    expect(rows).toStrictEqual([{ tz: new Date("2025-12-31T15:00:00Z") }]);
+  });
+
   it.each([
     ["'infinity'::timestamp", "infinity"],
     ["'-infinity'::timestamp", "-infinity"],

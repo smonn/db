@@ -5,6 +5,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
+    "check": "node scripts/check.ts",
     "check:docs": "node scripts/check-docs.ts",
     "check:imports": "node scripts/check-imports.ts",
     "check:index": "node scripts/check-index-exports.ts",

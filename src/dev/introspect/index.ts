@@ -1,1 +1,1 @@
-export { introspect } from "./introspect.ts";
+export { introspect, skippedSchemaReason } from "./introspect.ts";
