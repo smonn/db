@@ -33,6 +33,9 @@ _Avoid_: Applied migration
 The single in-progress Migration, regenerated from the Definition and reapplied to the Dev database while you iterate, until it is committed.
 _Avoid_: Draft, pending migration
 
+**Tracking schema**:
+The Schema where the migrator records Committed migrations in `migrations`, and where Dev code records the Current migration in `current`. It is `smonn_db` unless configured, and the Diff skips it.
+
 **Shadow database**:
 A throwaway Database built by replaying the Committed migrations, used as the "before" state when generating the Current migration.
 
@@ -49,11 +52,14 @@ A risk a generated change carries when it runs, such as data loss, a table rewri
 
 ### Data
 
+**Statement**:
+One SQL statement that the query builder or `sql` produces, ready to run on a Database. A Query and a Data modification are both Statements.
+
 **Query**:
-A `SELECT` statement that retrieves rows.
+A Statement that returns rows, such as a `SELECT` or an `INSERT ... RETURNING`. Not a Data modification that only reports a count.
 
 **Data modification**:
-An `INSERT`, `UPDATE`, or `DELETE` statement that changes rows.
+An `INSERT`, `UPDATE`, or `DELETE` statement that changes rows and reports a count.
 _Avoid_: Mutation
 
 **Row**:
