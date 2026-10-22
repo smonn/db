@@ -1,7 +1,7 @@
 import postgres, { type Options } from "postgres";
 import type { Connect } from "../../runtime/ports/index.ts";
 import { postgresJsDriver } from "./driver.ts";
-import { postgresJsTypes } from "./value-types.ts";
+import { postgresJsConnection, postgresJsTypes } from "./value-types.ts";
 
 /**
  * Connects to another database on `url`'s server. postgres.js takes the `database` option over
@@ -12,7 +12,12 @@ export function postgresJsConnect(
   options: Omit<Options<Record<string, never>>, "types"> = {},
 ): Connect {
   return (database) => {
-    const sql = postgres(url, { ...options, database, types: postgresJsTypes });
+    const sql = postgres(url, {
+      ...options,
+      database,
+      types: postgresJsTypes,
+      connection: { ...options.connection, ...postgresJsConnection },
+    });
     return Promise.resolve({ driver: postgresJsDriver(sql), close: () => sql.end() });
   };
 }

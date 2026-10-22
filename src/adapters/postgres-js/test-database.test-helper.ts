@@ -4,7 +4,7 @@ import { afterAll, beforeAll } from "vitest";
 import type { Connect, Driver } from "../../runtime/ports/index.ts";
 import { postgresJsConnect } from "./connect.ts";
 import { postgresJsDriver } from "./driver.ts";
-import { postgresJsTypes } from "./value-types.ts";
+import { postgresJsConnection, postgresJsTypes } from "./value-types.ts";
 
 export type TestDatabase = {
   readonly name: string;
@@ -41,7 +41,11 @@ export function useTestDatabase(): TestDatabase {
   url.pathname = `/${name}`;
 
   const admin = postgres(serverUrl, { max: 1, onnotice: ignoreNotice });
-  const sql = postgres(url.href, { onnotice: ignoreNotice, types: postgresJsTypes });
+  const sql = postgres(url.href, {
+    onnotice: ignoreNotice,
+    types: postgresJsTypes,
+    connection: postgresJsConnection,
+  });
 
   beforeAll(async () => {
     await admin.unsafe(`create database ${name}`).catch((error: unknown) => {
