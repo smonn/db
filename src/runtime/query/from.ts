@@ -9,7 +9,7 @@ export type Query<R> = Statement & {
   /** Type-only: separates a statement that returns rows from one that only reports a count. */
   readonly "~returns": "rows";
   /** Type-only: the row each result holds. */
-  readonly "~row"?: R;
+  readonly "~row": R;
 };
 
 /** The type-only brands have no runtime value, so a statement is built from its parts and cast once. */

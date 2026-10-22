@@ -1,3 +1,5 @@
+import { quoteIdentifier } from "../internal/index.ts";
+
 export type RenderedSql = {
   readonly text: string;
   readonly params: unknown[];
@@ -44,7 +46,7 @@ export function sql(strings: TemplateStringsArray, ...values: unknown[]): Fragme
 }
 
 export function identifier(name: string): Fragment {
-  return new Fragment([`"${name.replaceAll('"', '""')}"`], []);
+  return new Fragment([quoteIdentifier(name)], []);
 }
 
 export function join(fragments: readonly Fragment[], separator: Fragment): Fragment {
