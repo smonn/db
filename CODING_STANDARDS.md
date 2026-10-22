@@ -21,3 +21,4 @@ Judgement rules that no check can enforce. Implementation agents follow them whi
 ## SQL
 
 - **Quote identifiers, bind values.** Every identifier that reaches SQL is double-quoted with embedded `"` doubled, and every value is a bound parameter. (#104, #109)
+- **Messages name identifiers the way SQL does.** An error that names a database object quotes and qualifies it (`"public"."users.archive"`), because a dotted, unquoted name can spell two objects. (#116)
