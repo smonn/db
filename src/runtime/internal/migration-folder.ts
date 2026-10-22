@@ -12,9 +12,10 @@ export async function readCommitted(
   directory: string,
 ): Promise<MigrationFile[]> {
   const filenames = committedFilenames(await folder.list(directory)).toSorted();
+  const prefix = directory.replace(/\/+$/u, "");
   return Promise.all(
     filenames.map(async (filename) => {
-      const path = `${directory}/${filename}`;
+      const path = `${prefix}/${filename}`;
       const content = await folder.readFile(path);
       if (content === undefined) throw new Error(`${path} vanished between listing and reading`);
       return { filename, content };

@@ -1,8 +1,21 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nodeMigrationSource } from "./migration-source.ts";
+
+// Deletes a file named 000001-vanishing.sql right after listing its folder, to stage the race.
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...fs,
+    readdir: async (folder: string, options: { withFileTypes: true }) => {
+      const entries = await fs.readdir(folder, options);
+      await fs.rm(`${folder}/000001-vanishing.sql`, { force: true });
+      return entries;
+    },
+  };
+});
 
 let directory: string;
 
@@ -47,6 +60,20 @@ describe("nodeMigrationSource", () => {
     await mkdir(join(directory, "000003-folder.sql"));
 
     expect(await nodeMigrationSource(directory).list()).toStrictEqual([]);
+  });
+
+  it("refuses a file that vanishes between listing the folder and reading it", async () => {
+    await writeFile(join(directory, "000001-vanishing.sql"), "select 1;\n");
+
+    await expect(nodeMigrationSource(directory).list()).rejects.toThrow(
+      `${directory}/000001-vanishing.sql vanished between listing and reading`,
+    );
+  });
+
+  it("rejects with the read error when a file can't be read", async () => {
+    await writeFile(join(directory, "000001-a.sql"), "select 1;\n", { mode: 0o000 });
+
+    await expect(nodeMigrationSource(directory).list()).rejects.toThrow("EACCES");
   });
 
   it("rejects when the folder is missing", async () => {
