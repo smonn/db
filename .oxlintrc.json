@@ -45,6 +45,18 @@
       }
     },
     {
+      "files": ["src/runtime/**", "src/adapters/**"],
+      "rules": {
+        "eslint/no-restricted-properties": [
+          "error",
+          {
+            "property": "createCurrentTable",
+            "message": "Only dev/ creates the current table, per ADR-0016."
+          }
+        ]
+      }
+    },
+    {
       "files": ["src/adapters/**", "src/dev/cli/**"],
       "rules": {
         "eslint/no-restricted-globals": "off"
