@@ -3,6 +3,7 @@ import {
   array,
   field,
   literal,
+  nullable,
   number,
   optionalField,
   parseJson,
@@ -45,6 +46,14 @@ describe("readers", () => {
     expect(() => record(null, "$")).toThrow("$: expected object, got null");
     expect(() => record([], "$")).toThrow("$: expected object, got array");
     expect(() => record("x", "$")).toThrow("$: expected object, got string");
+  });
+});
+
+describe("nullable", () => {
+  test("passes null and reads anything else", () => {
+    expect(nullable(record)(null, "$")).toBeNull();
+    expect(nullable(record)({ a: 1 }, "$")).toEqual({ a: 1 });
+    expect(() => nullable(record)(undefined, "$.m")).toThrow("$.m: expected object, got undefined");
   });
 });
 

@@ -52,6 +52,10 @@ export function array<T>(item: Reader<T>): Reader<T[]> {
   };
 }
 
+export function nullable<T>(read: Reader<T>): Reader<T | null> {
+  return (value, path) => (value === null ? null : read(value, path));
+}
+
 export const record: Reader<Record<string, unknown>> = (value, path) => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw mismatch(path, "object", value);

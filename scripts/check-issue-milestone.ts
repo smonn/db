@@ -9,7 +9,16 @@
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { array, field, number, parseJson, record, string, type Reader } from "./github-json.ts";
+import {
+  array,
+  field,
+  nullable,
+  number,
+  parseJson,
+  record,
+  string,
+  type Reader,
+} from "./github-json.ts";
 
 export type IssueEvent = {
   issue: {
@@ -32,7 +41,7 @@ const readIssueEvent: Reader<IssueEvent> = (value, path) => {
     issue: {
       number: field(issue, "number", number, issuePath),
       state: field(issue, "state", string, issuePath),
-      milestone: issue["milestone"],
+      milestone: field(issue, "milestone", nullable(record), issuePath),
       labels: field(
         issue,
         "labels",

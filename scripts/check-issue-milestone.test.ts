@@ -89,6 +89,17 @@ describe("main", () => {
     expect(gh).not.toHaveBeenCalled();
   });
 
+  test("fails instead of skipping when the payload has no milestone key", () => {
+    const gh = vi.fn<(args: string[]) => void>();
+    const path = join(dir, "no-milestone.json");
+    const { milestone: _milestone, ...issue } = event().issue;
+    writeFileSync(path, JSON.stringify({ ...event(), issue }));
+    expect(() => {
+      main({ GITHUB_EVENT_PATH: path }, gh);
+    }).toThrow("$.issue.milestone: expected object, got undefined");
+    expect(gh).not.toHaveBeenCalled();
+  });
+
   test("only ensures the label when the issue already carries it", () => {
     const gh = vi.fn<(args: string[]) => void>();
     main({ GITHUB_EVENT_PATH: write(event({ labels: [{ name: "needs-triage" }] })) }, gh);
