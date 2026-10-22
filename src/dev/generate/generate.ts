@@ -1,4 +1,9 @@
-import { COMMITTED_FILENAME, CURRENT_FILENAME, sha256 } from "../../runtime/internal/index.ts";
+import {
+  COMMITTED_FILENAME,
+  CURRENT_FILENAME,
+  DEFAULT_TRACKING_SCHEMA,
+  sha256,
+} from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type {
   Connect,
@@ -21,6 +26,8 @@ export type GenerateOptions = {
   readonly definition: DefinitionTables;
   /** The directory holding the Committed migrations and `current.sql`. */
   readonly migrations: string;
+  /** The schema `migrate` tracks into. Defaults to `smonn_db`. */
+  readonly trackingSchema?: string;
 };
 
 export type GenerateResult = {
@@ -36,8 +43,15 @@ const GENERATED = /^--! Generated: (sha256:[0-9a-f]{64})$/u;
  * resets the Dev database and replays the Committed migrations and the Current migration.
  */
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
-  const { driver, connect, fileSystem, definition, migrations } = options;
-  await requireDevDatabase(driver);
+  const {
+    driver,
+    connect,
+    fileSystem,
+    definition,
+    migrations,
+    trackingSchema = DEFAULT_TRACKING_SCHEMA,
+  } = options;
+  await requireDevDatabase(driver, trackingSchema);
   const path = `${migrations}/${CURRENT_FILENAME}`;
   await requireGenerated(fileSystem, path);
   await fileSystem.mkdir(migrations);
@@ -45,21 +59,24 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
   const source: MigrationSource = { list: () => Promise.resolve(committed) };
 
   const sql = await withShadowDatabases(driver, connect, async (databases) => {
-    await migrate({ driver: databases.shadow, source });
+    await migrate({ driver: databases.shadow, source, trackingSchema });
     await databases.definition.execute(
       await definitionSql(databases.definition, definitionCatalog(definition)),
     );
-    return diff(await introspect(databases.shadow), await introspect(databases.definition));
+    return diff(
+      await introspect(databases.shadow, trackingSchema),
+      await introspect(databases.definition, trackingSchema),
+    );
   });
 
   if (sql === "") {
     await fileSystem.remove(path);
-    await resetDevDatabase(driver, source);
+    await resetDevDatabase(driver, source, trackingSchema);
     return { path, sql: undefined };
   }
   const hash = `sha256:${await sha256(sql)}`;
   await fileSystem.writeFile(path, `--! Generated: ${hash}\n\n${sql}`);
-  await resetDevDatabase(driver, source, { body: sql, hash });
+  await resetDevDatabase(driver, source, trackingSchema, { body: sql, hash });
   return { path, sql };
 }
 

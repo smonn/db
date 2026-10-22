@@ -64,4 +64,18 @@ describe("introspect", () => {
       "public.kept.a",
     ]);
   });
+
+  it("skips a configured tracking schema and keeps smonn_db", async () => {
+    await db.driver.execute(`
+      drop schema if exists "AppTracking" cascade;
+      create schema "AppTracking";
+      create table "AppTracking".current (hash text not null);
+      create schema smonn_db;
+    `);
+
+    expect([...(await introspect(db.driver, "AppTracking")).keys()]).toStrictEqual([
+      "public",
+      "smonn_db",
+    ]);
+  });
 });

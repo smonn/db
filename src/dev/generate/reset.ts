@@ -1,3 +1,4 @@
+import { quoteTrackingSchema } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type { Driver, MigrationSource } from "../../runtime/ports/index.ts";
 
@@ -9,7 +10,7 @@ export type CurrentMigration = {
 // A Dev database holds the tracking schema's current table, or nothing outside an empty public.
 const DEV_DATABASE = `
 select current_database() as name,
-  to_regclass('smonn_db.current') is not null
+  to_regclass($1) is not null
   or (
     not exists (
       select from pg_namespace
@@ -37,21 +38,21 @@ select nspname as name from pg_namespace
 where nspname !~ '^pg_' and nspname <> 'information_schema'`;
 
 // public is recreated as template0 ships it, so the Dev database starts where the Shadow does.
-const RECREATE = `
+const RECREATE = (schema: string): string => `
 create schema public authorization pg_database_owner;
 grant usage on schema public to public;
 comment on schema public is 'standard public schema';
-create schema smonn_db;
-create table smonn_db.current (hash text not null, applied_at timestamptz not null default now());`;
+create schema ${schema};
+create table ${schema}.current (hash text not null, applied_at timestamptz not null default now());`;
 
 /** Refuses unless the Database is marked as a Dev database or holds nothing yet (ADR-0016). */
-export async function requireDevDatabase(driver: Driver): Promise<void> {
+export async function requireDevDatabase(driver: Driver, trackingSchema: string): Promise<void> {
   const {
     rows: [row],
-  } = await driver.query(DEV_DATABASE);
+  } = await driver.query(DEV_DATABASE, [`${quoteTrackingSchema(trackingSchema)}.current`]);
   if (row?.["resettable"] !== true) {
     throw new Error(
-      `${String(row?.["name"])} isn't a Dev database: it has no smonn_db.current table and isn't empty, so generate won't reset it`,
+      `${String(row?.["name"])} isn't a Dev database: it has no ${trackingSchema}.current table and isn't empty, so generate won't reset it`,
     );
   }
 }
@@ -60,8 +61,10 @@ export async function requireDevDatabase(driver: Driver): Promise<void> {
 export async function resetDevDatabase(
   driver: Driver,
   committed: MigrationSource,
+  trackingSchema: string,
   current?: CurrentMigration,
 ): Promise<void> {
+  const schema = quoteTrackingSchema(trackingSchema);
   await driver.transaction(async (tx) => {
     const { rows: extensions } = await tx.query(EXTENSIONS);
     await tx.execute(
@@ -69,13 +72,13 @@ export async function resetDevDatabase(
     );
     const { rows: schemas } = await tx.query(NON_SYSTEM_SCHEMAS);
     const drops = schemas.map(({ name }) => `drop schema if exists ${quote(name)} cascade;`);
-    await tx.execute(`${drops.join("\n")}\n${RECREATE}`);
+    await tx.execute(`${drops.join("\n")}\n${RECREATE(schema)}`);
   });
-  await migrate({ driver, source: committed });
+  await migrate({ driver, source: committed, trackingSchema });
   if (current === undefined) return;
   await driver.transaction(async (tx) => {
     await tx.execute(current.body);
-    await tx.query("insert into smonn_db.current (hash) values ($1)", [current.hash]);
+    await tx.query(`insert into ${schema}.current (hash) values ($1)`, [current.hash]);
   });
 }
 

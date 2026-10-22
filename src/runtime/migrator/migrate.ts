@@ -1,3 +1,4 @@
+import { DEFAULT_TRACKING_SCHEMA, quoteTrackingSchema } from "../internal/index.ts";
 import type { Driver, MigrationSource, Queryable } from "../ports/index.ts";
 import { checkRecorded, loadVerifiedMigrations } from "./verify.ts";
 
@@ -14,24 +15,6 @@ export type MigrateResult = {
 
 // "SMONNDBMIGRATE" on a phone keypad, per ADR-0008.
 const LOCK_KEY = "76666326447283";
-
-const MAX_IDENTIFIER_BYTES = 63;
-
-function quoteSchema(name: string): string {
-  if (name === "") {
-    throw new Error("trackingSchema must not be empty");
-  }
-  if (name.includes("\0")) {
-    throw new Error("trackingSchema must not contain a NUL byte");
-  }
-  if (new TextEncoder().encode(name).length > MAX_IDENTIFIER_BYTES) {
-    throw new Error(`trackingSchema must be at most ${MAX_IDENTIFIER_BYTES} bytes in UTF-8`);
-  }
-  if (name.startsWith("pg_")) {
-    throw new Error('trackingSchema must not start with "pg_", which Postgres reserves');
-  }
-  return `"${name.replaceAll('"', '""')}"`;
-}
 
 const trackingTable = (schema: string): string => `
 create schema if not exists ${schema};
@@ -54,9 +37,9 @@ create table if not exists ${schema}.migrations (
 export async function migrate({
   driver,
   source,
-  trackingSchema = "smonn_db",
+  trackingSchema = DEFAULT_TRACKING_SCHEMA,
 }: MigrateOptions): Promise<MigrateResult> {
-  const schema = quoteSchema(trackingSchema);
+  const schema = quoteTrackingSchema(trackingSchema);
   const migrations = await loadVerifiedMigrations(source);
 
   return driver.session(async (session) => {

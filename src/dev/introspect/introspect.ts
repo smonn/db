@@ -1,7 +1,6 @@
+import { DEFAULT_TRACKING_SCHEMA } from "../../runtime/internal/index.ts";
 import type { Queryable, Session } from "../../runtime/ports/index.ts";
 import type { Catalog, Fact } from "../catalog/index.ts";
-
-const TRACKING_SCHEMA = "smonn_db";
 
 const NOT_EXTENSION_MEMBER = (catalog: string, alias: string): string => `not exists (
   select from pg_depend d
@@ -35,17 +34,20 @@ order by a.attnum`;
  * Reads the modeled objects of a live database in one snapshot, keyed by name. Skips system
  * schemas, the tracking schema, extension members, and every kind v0.1 doesn't model.
  */
-export function introspect(session: Session): Promise<Catalog> {
+export function introspect(
+  session: Session,
+  trackingSchema: string = DEFAULT_TRACKING_SCHEMA,
+): Promise<Catalog> {
   return session.transaction(async (tx) => {
     await tx.execute(
       "set transaction isolation level repeatable read read only; set local search_path = pg_catalog",
     );
-    return read(tx);
+    return read(tx, trackingSchema);
   });
 }
 
-async function read(tx: Queryable): Promise<Catalog> {
-  const { rows: schemas } = await tx.query(SCHEMAS, [TRACKING_SCHEMA]);
+async function read(tx: Queryable, trackingSchema: string): Promise<Catalog> {
+  const { rows: schemas } = await tx.query(SCHEMAS, [trackingSchema]);
   const { rows: tables } = await tx.query(TABLES);
   const { rows: columns } = await tx.query(COLUMNS);
 
