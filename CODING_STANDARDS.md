@@ -1,6 +1,6 @@
 # Coding standards
 
-Judgement rules that no check can enforce. Implementation agents follow them while writing code, and `review` checks every change against them. A rule a linter, type check, or script can express belongs in that check instead (see AGENTS.md, Repo tooling). Each rule cites the change that earned it; add a rule when a review catches a judgement mistake, and drop one that stops earning its place.
+Judgement rules that no check can enforce. Implementation agents follow them while writing code, and `review` checks every change against them. A rule a check can express belongs in that check instead (see AGENTS.md, Repo tooling), so treat every rule here as a candidate for one, and move it out once a check covers it. Each rule cites the change that earned it; add a rule when a review catches a judgement mistake, and drop one that stops earning its place.
 
 ## Design
 
