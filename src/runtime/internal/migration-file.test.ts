@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { migrationHash, parseMigration } from "./migration-file.ts";
+import {
+  committedFilenames,
+  migrationHash,
+  parseCurrent,
+  parseMigration,
+  writeCurrent,
+  writeMigration,
+} from "./migration-file.ts";
 
 const HASH_A = `sha256:${"a".repeat(64)}`;
 const HASH_B = `sha256:${"b".repeat(64)}`;
@@ -73,5 +80,102 @@ describe("migrationHash", () => {
     expect(await migrationHash(`sha256:${"a".repeat(64)}`, "create table b (n int);\n")).toBe(
       "sha256:da769c6fe78ea3f7868d6e624c7e405f7f1035605c4d54d2f9057a81f2e07764",
     );
+  });
+});
+
+describe("writeMigration", () => {
+  it("writes a first file that parses back to its body and hash", async () => {
+    const written = await writeMigration("000001-a.sql", undefined, "create table a (n int);\n");
+
+    expect(written.content).toBe(
+      `--! Previous: -\n--! Hash: ${written.hash}\n\ncreate table a (n int);\n`,
+    );
+    expect(parseMigration(written)).toStrictEqual({
+      filename: "000001-a.sql",
+      sequence: 1,
+      previous: undefined,
+      hash: "sha256:d7d725aa0112fb1cbd6f88755f17784646fcd5154e0ea687f488c87fa1499173",
+      body: "create table a (n int);\n",
+    });
+  });
+
+  it("chains a later file onto the previous Hash", async () => {
+    const written = await writeMigration("000002-b.sql", HASH_A, "create table b (n int);\n");
+
+    expect(parseMigration(written)).toMatchObject({
+      sequence: 2,
+      previous: HASH_A,
+      hash: "sha256:da769c6fe78ea3f7868d6e624c7e405f7f1035605c4d54d2f9057a81f2e07764",
+    });
+  });
+
+  it("normalises the body before hashing, as parseMigration reads it", async () => {
+    const written = await writeMigration("000001-a.sql", undefined, "\r\n  select 1;\r\n\r\n");
+
+    expect(parseMigration(written).body).toBe("select 1;\n");
+    expect(written.hash).toBe(await migrationHash(undefined, "select 1;\n"));
+  });
+
+  it("refuses a filename without a sequence and slug", async () => {
+    await expect(writeMigration("create-a.sql", undefined, "select 1;\n")).rejects.toThrow(
+      "create-a.sql: name it like 000001-create-users.sql",
+    );
+  });
+});
+
+describe("committedFilenames", () => {
+  it("keeps every .sql name but current.sql, misnamed ones included", () => {
+    expect(
+      committedFilenames(["000001-a.sql", "current.sql", "create-b.sql", "README.md", "a.sql.bak"]),
+    ).toStrictEqual(["000001-a.sql", "create-b.sql"]);
+  });
+});
+
+describe("writeCurrent", () => {
+  it("writes the body under a Generated header with the body's SHA-256", async () => {
+    const hash = "sha256:a4761ea34262cc0f4cace3d40017a45aababa033d240fe51dd2ecf692f22929d";
+
+    expect(await writeCurrent("create table a (n int);\n")).toStrictEqual({
+      body: "create table a (n int);\n",
+      hash,
+      content: `--! Generated: ${hash}\n\ncreate table a (n int);\n`,
+    });
+  });
+
+  it("normalises the body before hashing, as parseCurrent reads it", async () => {
+    const written = await writeCurrent("\n  select 1;\r\n\n");
+
+    expect(written.body).toBe("select 1;\n");
+    expect(await parseCurrent(written.content)).toStrictEqual({
+      body: "select 1;\n",
+      edited: false,
+    });
+  });
+});
+
+describe("parseCurrent", () => {
+  it("reads a file generate wrote, CRLF or not", async () => {
+    const { content } = await writeCurrent("select 1;\n");
+
+    expect(await parseCurrent(content.replaceAll("\n", "\r\n"))).toStrictEqual({
+      body: "select 1;\n",
+      edited: false,
+    });
+  });
+
+  it("marks a body that no longer matches its header as edited", async () => {
+    const { content } = await writeCurrent("select 1;\n");
+
+    expect(await parseCurrent(content.replace("select 1", "select 2"))).toStrictEqual({
+      body: "select 2;\n",
+      edited: true,
+    });
+  });
+
+  it("marks a file without a Generated header as edited, keeping its first line", async () => {
+    expect(await parseCurrent("select 1;\nselect 2;\n")).toStrictEqual({
+      body: "select 1;\nselect 2;\n",
+      edited: true,
+    });
   });
 });

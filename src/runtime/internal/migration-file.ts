@@ -52,6 +52,74 @@ export async function migrationHash(previous: string | undefined, body: string):
   return `sha256:${await sha256(`${previous ?? ""}\n${body}`)}`;
 }
 
+export type WrittenMigration = MigrationFile & {
+  /** The `--! Hash` header, which the next file names as its Previous. */
+  readonly hash: string;
+};
+
+/** Writes a Committed migration whose headers chain `body` onto `previous`, the prior file's Hash. */
+export async function writeMigration(
+  filename: string,
+  previous: string | undefined,
+  body: string,
+): Promise<WrittenMigration> {
+  if (!COMMITTED_FILENAME.test(filename)) {
+    throw new Error(`${filename}: name it like 000001-create-users.sql`);
+  }
+  const normalized = normalizeBody(body);
+  const hash = await migrationHash(previous, normalized);
+  return {
+    filename,
+    content: `--! Previous: ${previous ?? "-"}\n--! Hash: ${hash}\n\n${normalized}`,
+    hash,
+  };
+}
+
+/**
+ * The names in a migrations folder that are Committed migrations: every `.sql` file but the
+ * Current migration. A misnamed one is kept, so `parseMigration` refuses it by name.
+ */
+export function committedFilenames(names: readonly string[]): string[] {
+  return names.filter((name) => name.endsWith(".sql") && name !== CURRENT_FILENAME);
+}
+
+export type CurrentMigration = {
+  readonly body: string;
+  /** The `--! Generated` header: `sha256:` and the body's SHA-256. */
+  readonly hash: string;
+};
+
+const GENERATED = /^--! Generated: (sha256:[0-9a-f]{64})$/u;
+
+/** Writes the Current migration under a `--! Generated` header hashing its body (ADR-0003). */
+export async function writeCurrent(sql: string): Promise<CurrentMigration & { content: string }> {
+  const body = normalizeBody(sql);
+  const hash = await currentHash(body);
+  return { body, hash, content: `--! Generated: ${hash}\n\n${body}` };
+}
+
+export type ParsedCurrent = {
+  /** The SQL below the `--! Generated` header, or the whole file when that header is gone. */
+  readonly body: string;
+  /** `true` when the header is gone or no longer matches the body. */
+  readonly edited: boolean;
+};
+
+/** Parses `current.sql`, telling a file `generate` wrote from one edited by hand. */
+export async function parseCurrent(content: string): Promise<ParsedCurrent> {
+  const [header = "", ...rest] = content.replaceAll("\r\n", "\n").split("\n");
+  const generated = GENERATED.exec(header)?.[1];
+  if (generated === undefined) {
+    return { body: normalizeBody([header, ...rest].join("\n")), edited: true };
+  }
+  const body = normalizeBody(rest.join("\n"));
+  return { body, edited: generated !== (await currentHash(body)) };
+}
+
+async function currentHash(body: string): Promise<string> {
+  return `sha256:${await sha256(body)}`;
+}
+
 function requiredHeader(
   filename: string,
   headers: ReadonlyMap<string, string>,

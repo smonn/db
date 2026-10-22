@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
-import { sha256 } from "../../runtime/internal/index.ts";
-import { chain, filesIn } from "./committed-migrations.test-helper.ts";
+import { sha256, writeMigration } from "../../runtime/internal/index.ts";
 import { generate } from "./generate.ts";
-import { memoryFileSystem } from "./memory-file-system.test-helper.ts";
+import { filesIn, memoryFileSystem } from "./memory-file-system.test-helper.ts";
 
 const db = useTestDatabase();
 
@@ -61,10 +60,13 @@ describe("generate", () => {
 
   it("diffs against the Committed migrations and replays them before current.sql", async () => {
     const fileSystem = memoryFileSystem(
-      filesIn(
-        "db/migrations",
-        await chain(["000001-create-users.sql", "create table public.users (id text not null);\n"]),
-      ),
+      filesIn("db/migrations", [
+        await writeMigration(
+          "000001-create-users.sql",
+          undefined,
+          "create table public.users (id text not null);\n",
+        ),
+      ]),
     );
     const definition = defineDatabase({
       public: { users: defineTable((c) => ({ id: c.text().notNull(), email: c.text() })) },
@@ -217,10 +219,13 @@ alter table "public"."users" add column "email" text;
 
   it("deletes current.sql when the Definition matches the Committed migrations", async () => {
     const fileSystem = memoryFileSystem({
-      ...filesIn(
-        "db/migrations",
-        await chain(["000001-create-users.sql", "create table public.users (id text);\n"]),
-      ),
+      ...filesIn("db/migrations", [
+        await writeMigration(
+          "000001-create-users.sql",
+          undefined,
+          "create table public.users (id text);\n",
+        ),
+      ]),
       [CURRENT]: await generated("select 1;\n"),
     });
     const definition = defineDatabase({

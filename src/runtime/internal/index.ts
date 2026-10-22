@@ -1,8 +1,12 @@
 export {
   COMMITTED_FILENAME,
+  committedFilenames,
   CURRENT_FILENAME,
   migrationHash,
+  parseCurrent,
   parseMigration,
+  writeCurrent,
+  writeMigration,
   type ParsedMigration,
 } from "./migration-file.ts";
 export { quoteIdentifier } from "./quote-identifier.ts";

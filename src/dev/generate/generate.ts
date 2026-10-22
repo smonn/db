@@ -2,7 +2,8 @@ import {
   COMMITTED_FILENAME,
   CURRENT_FILENAME,
   DEFAULT_TRACKING_SCHEMA,
-  sha256,
+  parseCurrent,
+  writeCurrent,
 } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type {
@@ -35,8 +36,6 @@ export type GenerateResult = {
   /** The Current migration's body, or `undefined` when there was no diff and the file was deleted. */
   readonly sql: string | undefined;
 };
-
-const GENERATED = /^--! Generated: (sha256:[0-9a-f]{64})$/u;
 
 /**
  * Diffs the Definition against the Committed migrations, writes the result to `current.sql`, then
@@ -74,10 +73,10 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
     await resetDevDatabase(driver, source, trackingSchema);
     return { path, sql: undefined };
   }
-  const hash = `sha256:${await sha256(sql)}`;
-  await fileSystem.writeFile(path, `--! Generated: ${hash}\n\n${sql}`);
-  await resetDevDatabase(driver, source, trackingSchema, { body: sql, hash });
-  return { path, sql };
+  const current = await writeCurrent(sql);
+  await fileSystem.writeFile(path, current.content);
+  await resetDevDatabase(driver, source, trackingSchema, current);
+  return { path, sql: current.body };
 }
 
 /**
@@ -87,10 +86,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
 async function requireGenerated(fileSystem: FileSystem, path: string): Promise<void> {
   const content = await fileSystem.readFile(path);
   if (content === undefined) return;
-  const [header = "", ...rest] = content.replaceAll("\r\n", "\n").split("\n");
-  const recorded = GENERATED.exec(header)?.[1];
-  const body = `${rest.join("\n").trim()}\n`;
-  if (recorded !== `sha256:${await sha256(body)}`) {
+  if ((await parseCurrent(content)).edited) {
     throw new Error(
       `${path} was edited by hand, so generate won't overwrite it; delete it to generate again`,
     );
