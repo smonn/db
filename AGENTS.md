@@ -14,7 +14,7 @@
 
 - Enforce a rule with a static check in CI whenever one can express it: a lint rule, a semantic-grep rule, a `scripts/` check, a type test, or mutation testing. Document only what no tool can check.
 - Write repo scripts in TypeScript under `scripts/`, run directly by Node. A shell file may only invoke one. Scripts get the same tests, lint, and formatting as `src/`.
-- Tests need the Postgres from README's Development section. Parallel agents each run their own with `POSTGRES_PORT=<port> docker compose -p <name> up -d --wait`, point `DATABASE_URL` at that port, and stop it with `docker compose -p <name> down`.
+- Tests need Postgres: run `node scripts/test-db.ts` once per worktree, then plain `pnpm test`; `node scripts/test-db.ts stop` removes it.
 
 ## Coding standards
 
