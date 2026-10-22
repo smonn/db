@@ -145,3 +145,6 @@ dist
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Test database URL from scripts/test-db.ts
+.env.test
