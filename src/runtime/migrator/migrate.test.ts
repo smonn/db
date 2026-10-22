@@ -134,7 +134,106 @@ describe("migrate", () => {
       migrate({ driver: db.driver, source: source(withPrevious(CREATE_USERS, HASH_2)) }),
     ).rejects.toThrow(`000001-create-users.sql: --! Previous should be -, not ${HASH_2}`);
   });
+
+  it("refuses a missing file, before running anything", async () => {
+    const third = await chained(
+      "000003-add-age.sql",
+      HASH_2,
+      "alter table users add column age int;\n",
+    );
+
+    await expect(
+      migrate({ driver: db.driver, source: source(CREATE_USERS, third) }),
+    ).rejects.toThrow("000003-add-age.sql: sequence 2 is missing before it");
+    expect(
+      (await db.driver.query("select 1 from pg_namespace where nspname = 'smonn_db'")).rows,
+    ).toStrictEqual([]);
+  });
+
+  it("refuses reordered files", async () => {
+    const swapped = [
+      { ...CREATE_USERS, filename: "000002-create-users.sql" },
+      { ...ADD_EMAIL, filename: "000001-add-email.sql" },
+    ];
+
+    await expect(migrate({ driver: db.driver, source: source(...swapped) })).rejects.toThrow(
+      `000001-add-email.sql: --! Previous should be -, not ${HASH_1}`,
+    );
+  });
+
+  it("refuses a recorded migration that has no file", async () => {
+    await migrate({ driver: db.driver, source: source(CREATE_USERS, ADD_EMAIL) });
+
+    await expect(migrate({ driver: db.driver, source: source(CREATE_USERS) })).rejects.toThrow(
+      `000002-add-email.sql: recorded as ${HASH_2} but has no file`,
+    );
+  });
+
+  it("refuses a recorded file whose body changed and was rehashed", async () => {
+    await migrate({ driver: db.driver, source: source(CREATE_USERS) });
+    const rehashed = await chained(
+      CREATE_USERS.filename,
+      undefined,
+      "create table users (id integer primary key, name text);\n",
+    );
+
+    await expect(migrate({ driver: db.driver, source: source(rehashed) })).rejects.toThrow(
+      new RegExp(
+        `^000001-create-users\\.sql: recorded as ${HASH_1} but now hashes to sha256:\\w+$`,
+        "u",
+      ),
+    );
+  });
+
+  it("refuses a file inserted before a recorded one, without running it", async () => {
+    await migrate({ driver: db.driver, source: source(CREATE_USERS, ADD_EMAIL) });
+    const inserted = await chained(
+      "000002-add-phone.sql",
+      HASH_1,
+      "alter table users add column phone text;\n",
+    );
+    const moved = await chained(
+      "000003-add-email.sql",
+      parseHash(inserted),
+      "alter table users add column email text;\n",
+    );
+
+    await expect(
+      migrate({ driver: db.driver, source: source(CREATE_USERS, inserted, moved) }),
+    ).rejects.toThrow(
+      `000002-add-phone.sql: stands where the recorded 000002-add-email.sql (${HASH_2}) was`,
+    );
+    expect(
+      (
+        await db.driver.query(
+          "select column_name from information_schema.columns where column_name = 'phone'",
+        )
+      ).rows,
+    ).toStrictEqual([]);
+  });
+
+  it("accepts a recorded file renamed to a new slug", async () => {
+    await migrate({ driver: db.driver, source: source(CREATE_USERS) });
+    const renamed = { ...CREATE_USERS, filename: "000001-make-users.sql" };
+
+    const result = await migrate({ driver: db.driver, source: source(renamed, ADD_EMAIL) });
+
+    expect(result).toStrictEqual({ applied: ["000002-add-email.sql"] });
+  });
 });
+
+async function chained(
+  filename: string,
+  previous: string | undefined,
+  body: string,
+): Promise<MigrationFile> {
+  const hash = await migrationHash(previous, body);
+  return { filename, content: `--! Previous: ${previous ?? "-"}\n--! Hash: ${hash}\n\n${body}` };
+}
+
+function parseHash(file: MigrationFile): string {
+  return /--! Hash: (.*)/u.exec(file.content)?.[1] ?? "";
+}
 
 function withPrevious(file: MigrationFile, previous: string): MigrationFile {
   return {
