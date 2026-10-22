@@ -81,13 +81,17 @@ export function useTestDatabase(): TestDatabase {
   };
 }
 
-/** Waits until another backend runs a statement containing `fragment`, then terminates it. */
+/**
+ * Waits until another backend in this database runs a statement containing `fragment`, then
+ * terminates it. Other test files' databases are out of reach, and a backend that ends first
+ * doesn't count as terminated.
+ */
 export async function terminateBackendRunning(driver: Driver, fragment: string): Promise<void> {
   const { rows } = await driver.query(
-    "select pg_terminate_backend(pid) from pg_stat_activity where pid <> pg_backend_pid() and state = 'active' and strpos(query, $1) > 0",
+    "select pg_terminate_backend(pid) as terminated from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and state = 'active' and strpos(query, $1) > 0",
     [fragment],
   );
-  if (rows.length === 0) {
+  if (!rows.some((row) => row.terminated === true)) {
     await setTimeout(10);
     await terminateBackendRunning(driver, fragment);
   }
