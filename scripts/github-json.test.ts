@@ -1,0 +1,75 @@
+import { describe, expect, test } from "vitest";
+import {
+  array,
+  field,
+  literal,
+  number,
+  optionalField,
+  parseJson,
+  record,
+  string,
+} from "./github-json.ts";
+
+describe("parseJson", () => {
+  test("returns the parsed value", () => {
+    expect(parseJson("[1]", "x")).toEqual([1]);
+  });
+
+  test("names the source when the text is not JSON", () => {
+    expect(() => parseJson("{nope", "gh api")).toThrow("gh api: invalid JSON");
+  });
+});
+
+describe("readers", () => {
+  test("string and number accept their type and name the path otherwise", () => {
+    expect(string("a", "$")).toBe("a");
+    expect(number(1, "$")).toBe(1);
+    expect(() => string(1, "$.title")).toThrow("$.title: expected string, got number");
+    expect(() => number("1", "$.n")).toThrow("$.n: expected number, got string");
+  });
+
+  test("literal accepts only the listed values", () => {
+    const state = literal("open", "closed");
+    expect(state("open", "$")).toBe("open");
+    expect(() => state("merged", "$.state")).toThrow('$.state: expected "open" | "closed"');
+  });
+
+  test("array reads each element and names the index", () => {
+    expect(array(number)([1, 2], "$")).toEqual([1, 2]);
+    expect(() => array(number)([1, "x"], "$.ids")).toThrow("$.ids[1]: expected number");
+    expect(() => array(number)({}, "$.ids")).toThrow("$.ids: expected array, got object");
+  });
+
+  test("record rejects null, arrays, and primitives", () => {
+    expect(record({ a: 1 }, "$")).toEqual({ a: 1 });
+    expect(() => record(null, "$")).toThrow("$: expected object, got null");
+    expect(() => record([], "$")).toThrow("$: expected object, got array");
+    expect(() => record("x", "$")).toThrow("$: expected object, got string");
+  });
+});
+
+describe("field", () => {
+  test("reads a present key", () => {
+    expect(field({ id: 1 }, "id", number, "$.issue")).toBe(1);
+  });
+
+  test("names the path of a missing or mistyped key", () => {
+    expect(() => field({}, "id", number, "$.issue")).toThrow(
+      "$.issue.id: expected number, got undefined",
+    );
+    expect(() => field({ id: "1" }, "id", number, "$.issue")).toThrow(
+      "$.issue.id: expected number",
+    );
+  });
+});
+
+describe("optionalField", () => {
+  test("passes a missing key through as undefined", () => {
+    expect(optionalField({}, "n", number, "$")).toBeUndefined();
+  });
+
+  test("reads a present key and rejects a mistyped one", () => {
+    expect(optionalField({ n: 2 }, "n", number, "$")).toBe(2);
+    expect(() => optionalField({ n: "x" }, "n", number, "$")).toThrow("$.n: expected number");
+  });
+});
