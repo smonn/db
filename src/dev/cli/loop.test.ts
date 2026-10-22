@@ -43,6 +43,7 @@ function urlOf(name: string): string {
 }
 
 let project: string;
+let written: { mock: { calls: unknown[][] }; mockClear: () => unknown };
 
 beforeEach(async () => {
   project = await mkdtemp(join(tmpdir(), "smonn-db-cli-"));
@@ -52,7 +53,7 @@ beforeEach(async () => {
   await writeFile(join(project, "production.config.ts"), config("SMONNDB_TEST_PRODUCTION_URL"));
   vi.stubEnv("SMONNDB_TEST_DEV_URL", urlOf(dev.name));
   vi.stubEnv("SMONNDB_TEST_PRODUCTION_URL", urlOf(production.name));
-  vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+  written = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 });
 
 afterEach(async () => {
@@ -62,6 +63,21 @@ afterEach(async () => {
 });
 
 describe("smonndb", () => {
+  it("keeps a hand-edited current.sql and prints the diff to what generate would write", async () => {
+    const devConfig = join(project, "dev.config.ts");
+    expect(await main(["generate", "--config", devConfig])).toBe(0);
+    const file = join(project, "db", "migrations", "current.sql");
+    await writeFile(file, `${await readFile(file, "utf8")}-- mine\n`);
+    written.mockClear();
+
+    expect(await main(["generate", "--config", devConfig])).toBe(0);
+
+    expect(await readFile(file, "utf8")).toContain("-- mine\n");
+    const output = written.mock.calls.map(([chunk]) => String(chunk)).join("");
+    expect(output).toContain("kept hand-edited");
+    expect(output).toContain("--- mine");
+  });
+
   it("generates, commits, and migrates a Definition into a second database", async () => {
     const devConfig = join(project, "dev.config.ts");
 

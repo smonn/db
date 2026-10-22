@@ -50,6 +50,16 @@ describe("Dev database catch-up", () => {
     expect(await hasJunk()).toBe(true);
   });
 
+  it("keeps the Dev database when a hand-edited current.sql already matches it", async () => {
+    const fileSystem = memoryFileSystem({ [CURRENT]: "select 1;\n" });
+    await generateInto(fileSystem);
+    await db.driver.execute("create table public.junk (id int)");
+
+    await generateInto(fileSystem);
+
+    expect(await hasJunk()).toBe(true);
+  });
+
   it("resets when the Current migration's hash differs from smonn_db.current", async () => {
     const fileSystem = memoryFileSystem();
     await generateInto(fileSystem);
