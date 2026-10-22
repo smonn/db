@@ -1,4 +1,5 @@
 import type { Table } from "../../runtime/definition/index.ts";
+import { quoteIdentifier } from "../../runtime/internal/index.ts";
 
 export type ColumnPayload = {
   readonly type: string;
@@ -119,5 +120,5 @@ function keyOf(fact: Fact): Key {
 }
 
 function quoted(names: readonly string[]): string {
-  return names.map((name) => `"${name.replaceAll('"', '""')}"`).join(".");
+  return names.map((name) => quoteIdentifier(name)).join(".");
 }
