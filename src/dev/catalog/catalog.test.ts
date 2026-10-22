@@ -3,40 +3,40 @@ import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { catalogBuilder, childrenOf, definitionCatalog, namesOf, parentOf } from "./catalog.ts";
 
 describe("definitionCatalog", () => {
-  it("has a fact per schema, table, and column, keyed by dotted path", () => {
+  it("has a fact per schema, table, and column, keyed by their chain of names", () => {
     const users = defineTable((c) => ({ id: c.text().notNull(), email: c.text() }));
     const sessions = defineTable((c) => ({ token: c.text() }));
     const catalog = definitionCatalog(defineDatabase({ public: { users }, auth: { sessions } }));
 
     expect([...catalog]).toStrictEqual([
       ["public", { kind: "schema", name: "public", parent: undefined, payload: {} }],
-      ["public.users", { kind: "table", name: "users", parent: "public", payload: {} }],
+      ["public\0users", { kind: "table", name: "users", parent: "public", payload: {} }],
       [
-        "public.users.id",
+        "public\0users\0id",
         {
           kind: "column",
           name: "id",
-          parent: "public.users",
+          parent: "public\0users",
           payload: { type: "text", notNull: true },
         },
       ],
       [
-        "public.users.email",
+        "public\0users\0email",
         {
           kind: "column",
           name: "email",
-          parent: "public.users",
+          parent: "public\0users",
           payload: { type: "text", notNull: false },
         },
       ],
       ["auth", { kind: "schema", name: "auth", parent: undefined, payload: {} }],
-      ["auth.sessions", { kind: "table", name: "sessions", parent: "auth", payload: {} }],
+      ["auth\0sessions", { kind: "table", name: "sessions", parent: "auth", payload: {} }],
       [
-        "auth.sessions.token",
+        "auth\0sessions\0token",
         {
           kind: "column",
           name: "token",
-          parent: "auth.sessions",
+          parent: "auth\0sessions",
           payload: { type: "text", notNull: false },
         },
       ],

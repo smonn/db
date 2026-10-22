@@ -25,12 +25,14 @@ describe("introspect", () => {
       create schema auth;
       create table auth.users (id text not null, email text);
       create table auth.empty ();
+      create table auth."users.email" (id text);
     `);
     const definition = defineDatabase({
       public: {},
       auth: {
         users: defineTable((c) => ({ id: c.text().notNull(), email: c.text() })),
         empty: defineTable(() => ({})),
+        "users.email": defineTable((c) => ({ id: c.text() })),
       },
     });
 
@@ -38,6 +40,10 @@ describe("introspect", () => {
 
     expect(new Map([...catalog].toSorted(([a], [b]) => a.localeCompare(b)))).toStrictEqual(
       new Map([...definitionCatalog(definition)].toSorted(([a], [b]) => a.localeCompare(b))),
+    );
+    const named = [...catalog.values()].map((f) => `${f.kind} ${namesOf(catalog, f).join(".")}`);
+    expect(named).toEqual(
+      expect.arrayContaining(["column auth.users.email", "table auth.users.email"]),
     );
   });
 

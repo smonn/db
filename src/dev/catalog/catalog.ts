@@ -106,7 +106,8 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
   return builder.build();
 }
 
-const SEPARATOR = ".";
+// No Postgres name can hold a NUL byte, so no two chains of names join to the same key.
+const SEPARATOR = "\0";
 
 function key(...names: string[]): Key {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The brand exists only in types.

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { catalogBuilder, type Catalog, type CatalogBuilder } from "../catalog/index.ts";
+import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
+import {
+  catalogBuilder,
+  definitionCatalog,
+  type Catalog,
+  type CatalogBuilder,
+} from "../catalog/index.ts";
 import { diff } from "./diff.ts";
 
 const text = { type: "text", notNull: false };
@@ -66,6 +72,29 @@ alter table "public"."users" add column "alpha" text;
     );
   });
 
+  it("keeps a table whose name holds a dot apart from the column it spells", () => {
+    const to = definitionCatalog(
+      defineDatabase({
+        public: {
+          users: defineTable((c) => ({ archive: c.text() })),
+          "users.archive": defineTable((c) => ({ id: c.text() })),
+        },
+      }),
+    );
+    expect(diff(catalog(), to)).toBe(
+      `create schema "public";
+
+create table "public"."users" (
+  "archive" text
+);
+
+create table "public"."users.archive" (
+  "id" text
+);
+`,
+    );
+  });
+
   it("quotes identifiers, doubling embedded quotes", () => {
     const to = catalog((b) => {
       b.schema('we"ird');
@@ -81,7 +110,7 @@ alter table "public"."users" add column "alpha" text;
       b.schema("public");
       b.table("public", "users");
     });
-    expect(() => diff(from, to)).toThrow("Can't drop table public.users yet");
+    expect(() => diff(from, to)).toThrow(`Can't drop table "public"."users" yet`);
   });
 
   it("refuses a changed fact, which v0.1 can't alter yet", () => {
@@ -90,6 +119,6 @@ alter table "public"."users" add column "alpha" text;
       b.table("public", "users");
       b.column("public", "users", "id", textNotNull);
     });
-    expect(() => diff(catalog(users), to)).toThrow("Can't alter column public.users.id yet");
+    expect(() => diff(catalog(users), to)).toThrow(`Can't alter column "public"."users"."id" yet`);
   });
 });
