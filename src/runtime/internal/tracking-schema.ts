@@ -64,6 +64,14 @@ export function trackingSchema(name: string): TrackingSchema {
   const schema = quoteTrackingSchema(name);
   const current = `${schema}.current`;
 
+  async function readCurrent(session: Queryable): Promise<string | undefined> {
+    const { rows } = (await tableExists(session, current))
+      ? await session.query(`select hash from ${schema}.current`)
+      : { rows: [] };
+    const hash: unknown = rows[0]?.["hash"];
+    return typeof hash === "string" ? hash : undefined;
+  }
+
   return {
     name,
 
@@ -85,16 +93,7 @@ export function trackingSchema(name: string): TrackingSchema {
       );
     },
 
-    async holdsCurrentMigration(session) {
-      const {
-        rows: [table],
-      } = await session.query("select to_regclass($1) is not null as present", [current]);
-      if (table?.["present"] !== true) return false;
-      const {
-        rows: [marker],
-      } = await session.query(`select exists (select 1 from ${schema}.current) as marked`);
-      return marker?.["marked"] === true;
-    },
+    holdsCurrentMigration: async (session) => (await readCurrent(session)) !== undefined,
 
     isResettable: (session) => isResettable(session, current),
 
@@ -106,6 +105,14 @@ export function trackingSchema(name: string): TrackingSchema {
       await tx.query(`insert into ${schema}.current (hash) values ($1)`, [hash]);
     },
   };
+}
+
+/** `table` is a quoted, qualified table name, bound as a value. */
+async function tableExists(session: Queryable, table: string): Promise<boolean> {
+  const {
+    rows: [row],
+  } = await session.query("select to_regclass($1) is not null as present", [table]);
+  return row?.["present"] === true;
 }
 
 /** `current` is the quoted, qualified name of the `current` table, bound as a value. */
