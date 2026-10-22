@@ -1,5 +1,11 @@
 import type { MigrationFile } from "../ports/index.ts";
-import { COMMITTED_FILENAME } from "../internal/index.ts";
+import { sha256 } from "./sha256.ts";
+
+/** A Committed migration's name, such as `000001-create-users.sql`, capturing its sequence. */
+export const COMMITTED_FILENAME: RegExp = /^(\d+)-[^/]+\.sql$/u;
+
+/** The Current migration's name, beside the Committed migrations in the same folder. */
+export const CURRENT_FILENAME = "current.sql";
 
 export type ParsedMigration = {
   readonly filename: string;
@@ -39,6 +45,11 @@ export function parseMigration({ filename, content }: MigrationFile): ParsedMigr
     hash: checkedHash(filename, "Hash", requiredHeader(filename, headers, "Hash")),
     body: normalizeBody(lines.slice(line).join("\n")),
   };
+}
+
+/** ADR-0008's chain hash: the previous hash (empty for the first file), a newline, and the body. */
+export async function migrationHash(previous: string | undefined, body: string): Promise<string> {
+  return `sha256:${await sha256(`${previous ?? ""}\n${body}`)}`;
 }
 
 function requiredHeader(
