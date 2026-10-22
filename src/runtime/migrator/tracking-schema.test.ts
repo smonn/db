@@ -53,7 +53,7 @@ describe("migrate's tracking schema and Dev database guard", () => {
     await markDev("smonn_db");
 
     await expect(migrate({ driver: db.driver, source: source(CREATE_USERS) })).rejects.toThrow(
-      "smonn_db.current holds a row, so this is a Dev database",
+      '"smonn_db"."current" holds a row, so this is a Dev database',
     );
     expect(
       (await db.driver.query("select 1 from pg_class where relname = 'users'")).rows,
@@ -66,7 +66,7 @@ describe("migrate's tracking schema and Dev database guard", () => {
 
     await expect(
       migrate({ driver: db.driver, source: source(CREATE_USERS), trackingSchema: "app_tracking" }),
-    ).rejects.toThrow("app_tracking.current holds a row");
+    ).rejects.toThrow('"app_tracking"."current" holds a row');
   });
 
   it("does nothing on a Dev database with nothing pending", async () => {
@@ -110,7 +110,7 @@ describe("migrate's tracking schema and Dev database guard", () => {
 
     await expect(
       migrate({ driver: db.driver, source: source(CREATE_USERS), trackingSchema: "AppTracking" }),
-    ).rejects.toThrow("AppTracking.current holds a row");
+    ).rejects.toThrow('"AppTracking"."current" holds a row');
   });
 
   it.each([

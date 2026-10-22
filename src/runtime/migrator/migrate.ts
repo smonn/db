@@ -40,7 +40,7 @@ export async function migrate({
     const pending = migrations.slice(recorded.length);
     if (pending.length > 0 && (await tracking.holdsCurrentMigration(session))) {
       throw new Error(
-        `${tracking.name}.current holds a row, so this is a Dev database; Committed migrations would run on top of an applied Current migration`,
+        `${tracking.currentTable} holds a row, so this is a Dev database; Committed migrations would run on top of an applied Current migration`,
       );
     }
 
