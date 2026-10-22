@@ -65,9 +65,8 @@ function parseTimestamp(text: string): Date {
 }
 
 // toISOString writes BC and five-digit years as `-000043` and `+010000`, which Postgres refuses.
-// The text names a UTC instant. A Date param reaches a timestamp column as a timestamptz, cast
-// in the session zone (#114).
-function formatTimestamp(value: Date): string {
+// The text names a UTC instant, and a timestamp column ignores the `+00`.
+export function formatTimestamp(value: Date): string {
   const iso = value.toISOString();
   const time = iso.indexOf("T");
   const year = value.getUTCFullYear();
@@ -75,20 +74,22 @@ function formatTimestamp(value: Date): string {
   return `${String(year > 0 ? year : 1 - year).padStart(4, "0")}${iso.slice(time - 6, time)} ${iso.slice(time + 1, -1)}+00${era}`;
 }
 
+// A string passes through for Postgres to read, which is how postgresJsDriver sends a Date.
 const timestamp: postgres.PostgresType<Date> = {
   to: 1114,
   from: [1114],
-  serialize: formatTimestamp,
+  serialize: (value: Date | string) => (typeof value === "string" ? value : formatTimestamp(value)),
   parse: parseTimestamp,
 };
 
-// postgres.js sends every Date param as a timestamptz, so this serializer writes both columns.
-// It takes other values as postgres.js's own timestamptz serializer does.
+// A string passes through too. A number reads as postgres.js's own timestamptz serializer reads it.
 const timestamptz: postgres.PostgresType<Date> = {
   to: 1184,
   from: [1184],
   serialize: (value: Date | string | number) =>
-    formatTimestamp(value instanceof Date ? value : new Date(value)),
+    typeof value === "string"
+      ? value
+      : formatTimestamp(value instanceof Date ? value : new Date(value)),
   parse: parseTimestamp,
 };
 

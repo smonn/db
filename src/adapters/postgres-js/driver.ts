@@ -1,6 +1,6 @@
 import type { ParameterOrJSON, ReservedSql, Sql } from "postgres";
 import type { Driver, Queryable, Session } from "../../runtime/ports/index.ts";
-import { hasPostgresJsConnection, hasPostgresJsTypes } from "./value-types.ts";
+import { formatTimestamp, hasPostgresJsConnection, hasPostgresJsTypes } from "./value-types.ts";
 
 // Without params, postgres.js switches to the simple protocol unless `simple` is false, which its
 // types leave out of UnsafeQueryOptions.
@@ -9,8 +9,12 @@ const prepared = { prepare: true, simple: false };
 function queryable(connection: ReservedSql | Sql): Queryable {
   return {
     async query(text, params = []) {
+      // postgres.js types a Date param as timestamptz, which Postgres converts to a timestamp in
+      // the session's zone. Sent as untyped UTC text, it takes its column's type instead.
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- postgres.js serializes any param value.
-      const values = params as ParameterOrJSON<never>[];
+      const values = params.map((value) =>
+        value instanceof Date ? formatTimestamp(value) : value,
+      ) as ParameterOrJSON<never>[];
       const result = await connection.unsafe(text, values, prepared);
       return { rows: [...result], count: result.count ?? 0 };
     },
