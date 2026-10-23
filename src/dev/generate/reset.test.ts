@@ -61,6 +61,23 @@ describe("reset", () => {
     expect((await db.driver.query("select hash from smonn_db.current")).rows).toHaveLength(1);
   });
 
+  it("refuses a broken hash chain, naming the file, before it drops anything", async () => {
+    const fileSystem = memoryFileSystem();
+    await generateInto(fileSystem);
+    await commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "create-users" });
+    const file = `${MIGRATIONS}/000001-create-users.sql`;
+    fileSystem.files.set(file, `${fileSystem.files.get(file)}\nselect 1;\n`);
+    await db.driver.execute("create schema extra; create table extra.junk (id int)");
+    const before = await tables();
+
+    await expect(reset({ driver: db.driver, fileSystem, migrations: MIGRATIONS })).rejects.toThrow(
+      /^000001-create-users\.sql: --! Hash says /u,
+    );
+
+    expect(await tables()).toStrictEqual(before);
+    expect(before).toContain("extra.junk");
+  });
+
   it("runs on an empty Database and marks it", async () => {
     await reset({ driver: db.driver, fileSystem: memoryFileSystem(), migrations: MIGRATIONS });
 
