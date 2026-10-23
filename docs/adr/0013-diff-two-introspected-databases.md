@@ -4,7 +4,7 @@ status: proposed
 
 # Generate diffs two introspected databases
 
-Generate runs the Definition's DDL in a throwaway Definition database and introspects it with the same `pg_catalog` queries it runs on the Shadow database, so the diff compares two catalogs that Postgres normalized itself instead of a TypeScript guess at how Postgres stores each type and default. Before writing the Current migration, generate applies the generated body to the Shadow, introspects again, and requires no difference from the Definition database. When `current.sql` is hand-edited, generate runs the edit in the Shadow instead. One more `CREATE DATABASE` per run keeps the diff accurate whatever the Postgres version, because the same server deparses both sides, and the verification stops a broken migration before it reaches real data. On generated SQL it should never fail by itself; an Unmodeled object can still block it.
+Generate runs the Definition's DDL in a throwaway Definition database and introspects it with the same `pg_catalog` queries it runs on the Shadow database, so the diff compares two catalogs that Postgres normalized itself instead of a TypeScript guess at how Postgres stores each type and default. Before writing the Current migration, generate applies the generated body to the Shadow, or the edit when `current.sql` is hand-edited, introspects again, and requires no difference from the Definition database. One more `CREATE DATABASE` per run keeps the diff accurate whatever the Postgres version, because the same server deparses both sides, and the verification stops a broken migration before it reaches real data, though an Unmodeled object can still block it.
 
 ## Considered Options
 
