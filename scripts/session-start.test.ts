@@ -32,19 +32,22 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 
 function git(cwd: string, ...args: string[]): string {
-  return execFileSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      GIT_AUTHOR_NAME: "t",
-      GIT_AUTHOR_EMAIL: "t@example.com",
-      GIT_COMMITTER_NAME: "t",
-      GIT_COMMITTER_EMAIL: "t@example.com",
-      GIT_CONFIG_GLOBAL: "/dev/null",
-      GIT_CONFIG_SYSTEM: "/dev/null",
-    },
-  }).trim();
+  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+}
+
+// Git hooks export GIT_DIR and GIT_INDEX_FILE, which would point every git call, ours and
+// main()'s, at the real repository instead of the temp one.
+function isolateGitEnv(): void {
+  for (const name of Object.keys(process.env)) {
+    // oxlint-disable-next-line unicorn/no-useless-undefined -- stubEnv requires a value; undefined unsets.
+    if (name.startsWith("GIT_")) vi.stubEnv(name, undefined);
+  }
+  vi.stubEnv("GIT_AUTHOR_NAME", "t");
+  vi.stubEnv("GIT_AUTHOR_EMAIL", "t@example.com");
+  vi.stubEnv("GIT_COMMITTER_NAME", "t");
+  vi.stubEnv("GIT_COMMITTER_EMAIL", "t@example.com");
+  vi.stubEnv("GIT_CONFIG_GLOBAL", "/dev/null");
+  vi.stubEnv("GIT_CONFIG_SYSTEM", "/dev/null");
 }
 
 function commit(cwd: string, file: string): void {
@@ -67,6 +70,7 @@ describe("main", () => {
   }
 
   beforeEach(() => {
+    isolateGitEnv();
     root = realpathSync(mkdtempSync(join(tmpdir(), "session-start-")));
     origin = join(root, "origin");
     clone = join(root, "clone");
@@ -81,6 +85,7 @@ describe("main", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     rmSync(root, { recursive: true, force: true });
   });
 
