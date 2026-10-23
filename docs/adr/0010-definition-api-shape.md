@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Definition as defineTable callbacks rolled up by defineDatabase
