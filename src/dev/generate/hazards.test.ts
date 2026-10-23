@@ -24,6 +24,38 @@ describe("hazardsIn", () => {
     ]);
   });
 
+  it("pairs back-to-back hazards in separate statements, and one cut off at the end", () => {
+    const sql = [
+      "-- hazard: data_loss",
+      "drop table a;",
+      "-- hazard: rewrite",
+      "alter table b",
+    ].join("\n");
+
+    expect(hazardsIn(sql)).toStrictEqual([
+      { kind: "data_loss", statement: "drop table a;" },
+      { kind: "rewrite", statement: "alter table b" },
+    ]);
+  });
+
+  it("reads a hazard comment inside a statement as part of that statement", () => {
+    const sql = ["-- hazard: a", "alter table x", "-- hazard: b", "  drop column y;"].join("\n");
+
+    expect(hazardsIn(sql)).toStrictEqual([
+      { kind: "a", statement: "alter table x -- hazard: b drop column y;" },
+    ]);
+  });
+
+  it("starts the statement at the first line after the hazards, even a blank or comment line", () => {
+    const sql = ["-- hazard: a", "", "-- note", "drop table t;"].join("\n");
+
+    const found = hazardsIn(sql);
+
+    expect(found).toHaveLength(1);
+    expect(found[0]?.kind).toBe("a");
+    expect(found[0]?.statement.trim()).toBe("-- note drop table t;");
+  });
+
   it("finds none in a migration without hazard comments", () => {
     expect(hazardsIn("-- hazard lookalike\ncreate table a (n int);\n")).toStrictEqual([]);
   });
