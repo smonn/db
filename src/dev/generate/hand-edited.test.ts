@@ -142,6 +142,24 @@ describe("generate with a hand-edited current.sql", () => {
     await expect(failure).rejects.not.toThrow(/no USING/u);
   });
 
+  it("words the blocked-drop hint for a hand edit, not for generated SQL", async () => {
+    const fileSystem = memoryFileSystem({
+      [CURRENT]:
+        "create table public.t (id int); create view public.v as select id from public.t; drop table public.t;\n",
+    });
+
+    const failure = generate({
+      driver: db.driver,
+      connect: db.connect,
+      fileSystem,
+      definition,
+      migrations: "db/migrations",
+    });
+
+    await expect(failure).rejects.toThrow(/an Unmodeled object blocks it/u);
+    await expect(failure).rejects.not.toThrow(/never uses CASCADE/u);
+  });
+
   it("resumes generating once the hand-edited current.sql is deleted", async () => {
     const fileSystem = memoryFileSystem({ [CURRENT]: "select 1;\n" });
     const options = {
