@@ -77,6 +77,8 @@ describe("nodeMigrationSource", () => {
   });
 
   it("rejects when the folder is missing", async () => {
-    await expect(nodeMigrationSource(join(directory, "missing")).list()).rejects.toThrow("ENOENT");
+    await expect(nodeMigrationSource(join(directory, "missing")).list()).rejects.toThrow(
+      "missing doesn't exist",
+    );
   });
 });

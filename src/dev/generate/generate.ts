@@ -48,6 +48,8 @@ export type GenerateResult = {
    * generation. Empty when they match. `sql` is then the replayed body.
    */
   readonly diff?: string;
+  /** Whether generate reset the Dev database, which it does only when the files left it behind. */
+  readonly reset: boolean;
 };
 
 /**
@@ -95,24 +97,21 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
 
   if (edited !== undefined) {
     const current = { body: edited, hash: await currentHash(edited) };
-    if (await needsReset(driver, tracking, committed, current.hash)) {
-      await resetDevDatabase(driver, source, tracking, current);
-    }
-    return { path, sql: edited, diff: lineDiff(edited, (await writeCurrent(sql)).body) };
+    const reset = await needsReset(driver, tracking, committed, current.hash);
+    if (reset) await resetDevDatabase(driver, source, tracking, current);
+    return { path, sql: edited, diff: lineDiff(edited, (await writeCurrent(sql)).body), reset };
   }
   if (sql === "") {
     await fileSystem.remove(path);
-    if (await needsReset(driver, tracking, committed)) {
-      await resetDevDatabase(driver, source, tracking);
-    }
-    return { path, sql: undefined };
+    const reset = await needsReset(driver, tracking, committed);
+    if (reset) await resetDevDatabase(driver, source, tracking);
+    return { path, sql: undefined, reset };
   }
   const current = await writeCurrent(sql);
   await fileSystem.writeFile(path, current.content);
-  if (await needsReset(driver, tracking, committed, current.hash)) {
-    await resetDevDatabase(driver, source, tracking, current);
-  }
-  return { path, sql: current.body };
+  const reset = await needsReset(driver, tracking, committed, current.hash);
+  if (reset) await resetDevDatabase(driver, source, tracking, current);
+  return { path, sql: current.body, reset };
 }
 
 /**

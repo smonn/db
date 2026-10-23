@@ -24,14 +24,15 @@ beforeEach(async () => {
   );
 });
 
-async function generateInto(fileSystem: MemoryFileSystem, definition = users): Promise<void> {
-  await generate({
+async function generateInto(fileSystem: MemoryFileSystem, definition = users): Promise<boolean> {
+  const result = await generate({
     driver: db.driver,
     connect: db.connect,
     fileSystem,
     definition,
     migrations: MIGRATIONS,
   });
+  return result.reset;
 }
 
 async function hasJunk(): Promise<boolean> {
@@ -42,10 +43,10 @@ async function hasJunk(): Promise<boolean> {
 describe("Dev database catch-up", () => {
   it("keeps the Dev database when current.sql and the Committed tip already match it", async () => {
     const fileSystem = memoryFileSystem();
-    await generateInto(fileSystem);
+    expect(await generateInto(fileSystem)).toBe(true);
     await db.driver.execute("create table public.junk (id int)");
 
-    await generateInto(fileSystem);
+    expect(await generateInto(fileSystem)).toBe(false);
 
     expect(await hasJunk()).toBe(true);
   });
@@ -65,7 +66,7 @@ describe("Dev database catch-up", () => {
     await generateInto(fileSystem);
     await db.driver.execute("create table public.junk (id int)");
 
-    await generateInto(fileSystem, withEmail);
+    expect(await generateInto(fileSystem, withEmail)).toBe(true);
 
     expect(await hasJunk()).toBe(false);
   });
