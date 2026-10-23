@@ -84,6 +84,8 @@ describe("retypeHazards branches", () => {
     ["timestamp without time zone", "timestamp with time zone", false],
     ["date", "timestamp without time zone", false],
     ["text", "integer", false],
+    ["real", "real", false],
+    ["double precision", "double precision", false],
   ];
 
   it.each(LOSSY)("%s to %s loses data: %s", (before, after, loses) => {
@@ -104,6 +106,7 @@ describe("retypeHazards branches", () => {
     ["text", "integer", true],
     ["numeric(10,2)", "numeric", false],
     ["numeric", "numeric(10,2)", true],
+    ["numeric(10,2)", "numeric(10,2)", false],
     ["numeric(10,2)", "numeric(12,2)", false],
     ["numeric(10,2)", "numeric(12,4)", true],
     ["numeric(10,2)", "numeric(8,2)", true],

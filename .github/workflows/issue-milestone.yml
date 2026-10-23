@@ -2,7 +2,7 @@ name: Issue milestone
 
 on:
   issues:
-    types: [opened, edited, demilestoned]
+    types: [opened, edited, demilestoned, labeled, milestoned]
 
 permissions:
   contents: read
@@ -11,6 +11,7 @@ permissions:
 jobs:
   milestone:
     name: Milestone
+    if: contains(fromJSON('["opened","edited","demilestoned"]'), github.event.action)
     runs-on: ubuntu-24.04
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
@@ -22,3 +23,24 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
         run: pnpm check:issue
+
+  parent:
+    name: Parent
+    if: >-
+      github.event.action == 'opened' || github.event.action == 'milestoned' ||
+      (github.event.action == 'labeled' && startsWith(github.event.label.name, 'area:'))
+    runs-on: ubuntu-24.04
+    # Serialises events for one issue, so a label and a milestone set together post one comment.
+    concurrency:
+      group: issue-parent-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          cache: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm check:parent

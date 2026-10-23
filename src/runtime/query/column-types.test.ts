@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { beforeEach, describe, expect, expectTypeOf, it } from "vitest";
 import { defineDatabase, defineTable } from "../definition/index.ts";
 import { createClient, from } from "./index.ts";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
@@ -82,9 +82,12 @@ async function insert(row: Record<string, unknown>): Promise<void> {
   );
 }
 
+beforeEach(async () => {
+  await testDatabase.driver.execute(`drop table if exists public.everything; ${createTable}`);
+});
+
 describe("every column type through the postgres-js driver", () => {
   it("round-trips a filled row as the Definition's value types", async () => {
-    await testDatabase.driver.execute(createTable);
     await insert(filled);
 
     const rows = await client.all(from(db.public.everything));
@@ -94,7 +97,6 @@ describe("every column type through the postgres-js driver", () => {
   });
 
   it("reads a row of nulls", async () => {
-    await testDatabase.driver.execute("delete from public.everything");
     await insert({ id: 2 });
 
     const rows = await client.all(from(db.public.everything));
@@ -105,7 +107,6 @@ describe("every column type through the postgres-js driver", () => {
   });
 
   it("selects every column through the callback as the Definition's value types", async () => {
-    await testDatabase.driver.execute("delete from public.everything");
     await insert(filled);
     await insert({ id: 6 });
 
@@ -139,7 +140,6 @@ describe("every column type through the postgres-js driver", () => {
   });
 
   it("reads timestamps as UTC whatever the session time zone", async () => {
-    await testDatabase.driver.execute("delete from public.everything");
     const [row] = await testDatabase.driver.session(async (session) => {
       await session.execute(`
         set time zone 'Asia/Tokyo';
@@ -163,7 +163,6 @@ describe("every column type through the postgres-js driver", () => {
   });
 
   it("writes a Date to timestamps whatever the session time zone", async () => {
-    await testDatabase.driver.execute("delete from public.everything");
     const at = new Date("2026-01-01T00:00:00Z");
     const [row] = await testDatabase.driver.session(async (session) => {
       await session.execute("set time zone 'Asia/Tokyo'");
@@ -183,7 +182,6 @@ describe("every column type through the postgres-js driver", () => {
   });
 
   it("filters timestamps by a Date whatever the session time zone", async () => {
-    await testDatabase.driver.execute("delete from public.everything");
     const at = new Date("2026-01-01T00:00:00Z");
     const rows = await testDatabase.driver.session(async (session) => {
       await session.execute(`
