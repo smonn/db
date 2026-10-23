@@ -24,6 +24,20 @@ describe("hazardsIn", () => {
     ]);
   });
 
+  it("pairs back-to-back hazards in separate statements, and one cut off at the end", () => {
+    const sql = [
+      "-- hazard: data_loss",
+      "drop table a;",
+      "-- hazard: rewrite",
+      "alter table b",
+    ].join("\n");
+
+    expect(hazardsIn(sql)).toStrictEqual([
+      { kind: "data_loss", statement: "drop table a;" },
+      { kind: "rewrite", statement: "alter table b" },
+    ]);
+  });
+
   it("finds none in a migration without hazard comments", () => {
     expect(hazardsIn("-- hazard lookalike\ncreate table a (n int);\n")).toStrictEqual([]);
   });
