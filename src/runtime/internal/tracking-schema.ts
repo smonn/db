@@ -32,6 +32,10 @@ export type TrackingSchema = {
   /** The hash `current` holds, or `undefined` when the table is missing or empty. */
   readCurrent(session: Queryable): Promise<string | undefined>;
   clearCurrent(tx: Queryable): Promise<void>;
+  /** Whether the `current` table exists, which marks a Dev database even when it holds no row. */
+  hasCurrentTable(session: Queryable): Promise<boolean>;
+  /** The hash of the last recorded migration, or `undefined` when none is recorded or the table is missing. */
+  readTip(session: Queryable): Promise<string | undefined>;
 };
 
 // A Dev database holds the tracking schema's current table, or nothing outside an empty public.
@@ -69,13 +73,8 @@ export function trackingSchema(name: string): TrackingSchema {
   const schema = quoteTrackingSchema(name);
   const current = `${schema}.${quoteIdentifier("current")}`;
 
-  async function readCurrent(session: Queryable): Promise<string | undefined> {
-    const { rows } = (await tableExists(session, current))
-      ? await session.query(`select hash from ${schema}.current`)
-      : { rows: [] };
-    const hash: unknown = rows[0]?.["hash"];
-    return typeof hash === "string" ? hash : undefined;
-  }
+  const readCurrent = (session: Queryable): Promise<string | undefined> =>
+    readHash(session, current, `select hash from ${schema}.current`);
 
   return {
     name,
@@ -98,21 +97,35 @@ export function trackingSchema(name: string): TrackingSchema {
     },
 
     holdsCurrentMigration: async (session) => (await readCurrent(session)) !== undefined,
-
     isResettable: (session) => isResettable(session, current),
-
-    async createCurrentTable(tx) {
-      await tx.execute(CURRENT_TABLE(schema));
-    },
+    createCurrentTable: (tx) => tx.execute(CURRENT_TABLE(schema)),
 
     async recordCurrent(tx, hash) {
       await tx.query(`insert into ${schema}.current (hash) values ($1)`, [hash]);
     },
 
     readCurrent,
-
     clearCurrent: (tx) => tx.execute(`delete from ${schema}.current`),
+    hasCurrentTable: (session) => tableExists(session, current),
+
+    readTip: (session) =>
+      readHash(
+        session,
+        `${schema}.${quoteIdentifier("migrations")}`,
+        `select hash from ${schema}.migrations order by sequence desc limit 1`,
+      ),
   };
+}
+
+/** The first row's `hash` from `query`, or `undefined` when `table` (quoted, qualified) is missing or empty. */
+async function readHash(
+  session: Queryable,
+  table: string,
+  query: string,
+): Promise<string | undefined> {
+  const { rows } = (await tableExists(session, table)) ? await session.query(query) : { rows: [] };
+  const hash: unknown = rows[0]?.["hash"];
+  return typeof hash === "string" ? hash : undefined;
 }
 
 /** `table` is a quoted, qualified table name, bound as a value. */

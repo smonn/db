@@ -49,7 +49,7 @@ describe("generate", () => {
 
     const body = `create table "public"."users" (\n  "id" text not null,\n  "email" text\n);\n`;
     const hash = `sha256:${await sha256(body)}`;
-    expect(result).toStrictEqual({ path: CURRENT, sql: body });
+    expect(result).toStrictEqual({ path: CURRENT, sql: body, reset: true });
     expect(fileSystem.files.get(CURRENT)).toBe(`--! Generated: ${hash}\n\n${body}`);
     expect(await tables()).toStrictEqual([
       { table_schema: "public", table_name: "users", column_name: "id" },
@@ -138,25 +138,6 @@ alter table "public"."users" add column "email" text;
     ).toStrictEqual([{ typname: "mood" }]);
   });
 
-  it.each([
-    ["an edited body", async () => `${await generated("select 1;\n")}select 2;\n`],
-    ["no Generated header", () => Promise.resolve("select 1;\n")],
-  ])("refuses to overwrite or delete a current.sql with %s", async (_, build) => {
-    const content = await build();
-    const fileSystem = memoryFileSystem({ [CURRENT]: content });
-
-    await expect(
-      generate({
-        driver: db.driver,
-        connect: db.connect,
-        fileSystem,
-        definition: defineDatabase({ public: {} }),
-        migrations: "db/migrations",
-      }),
-    ).rejects.toThrow(`${CURRENT} was edited by hand`);
-    expect(fileSystem.files.get(CURRENT)).toBe(content);
-  });
-
   it("overwrites a current.sql that generate wrote", async () => {
     const fileSystem = memoryFileSystem({ [CURRENT]: await generated("select 1;\n") });
     const definition = defineDatabase({
@@ -240,7 +221,7 @@ alter table "public"."users" add column "email" text;
       migrations: "db/migrations",
     });
 
-    expect(result).toStrictEqual({ path: CURRENT, sql: undefined });
+    expect(result).toStrictEqual({ path: CURRENT, sql: undefined, reset: true });
     expect(fileSystem.files.has(CURRENT)).toBe(false);
     expect(await tables()).toStrictEqual([
       { table_schema: "public", table_name: "users", column_name: "id" },

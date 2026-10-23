@@ -20,6 +20,6 @@ export function postgresJsConnect(
       types: postgresJsTypes,
       connection: { ...postgresJsConnection, ...options.connection },
     });
-    return Promise.resolve({ driver: postgresJsDriver(sql), close: () => sql.end() });
+    return Promise.resolve({ driver: postgresJsDriver(sql), close: () => sql.end({ timeout: 0 }) });
   };
 }
