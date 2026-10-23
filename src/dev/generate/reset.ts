@@ -9,7 +9,7 @@ import {
   type CurrentMigration,
   type TrackingSchema,
 } from "../../runtime/internal/index.ts";
-import { migrate } from "../../runtime/migrator/index.ts";
+import { migrate, verify } from "../../runtime/migrator/index.ts";
 import type { Driver, FileSystem, MigrationSource } from "../../runtime/ports/index.ts";
 import { withDevLock } from "./dev-lock.ts";
 
@@ -110,12 +110,15 @@ async function resetLocked(options: ResetOptions): Promise<ResetResult> {
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
   if (!erase) await requireDevDatabase(driver, tracking, "reset");
   const committed = await readCommitted(fileSystem, migrations);
+  const source: MigrationSource = { list: () => Promise.resolve(committed) };
+  // A broken chain would otherwise fail the replay after the wipe and leave the Dev database empty.
+  await verify(source);
   const content = await fileSystem.readFile(`${migrations}/${CURRENT_FILENAME}`);
   let current: CurrentMigration | undefined;
   if (content !== undefined) {
     const { body } = await parseCurrent(content);
     current = { body, hash: await currentHash(body) };
   }
-  await resetDevDatabase(driver, { list: () => Promise.resolve(committed) }, tracking, current);
+  await resetDevDatabase(driver, source, tracking, current);
   return { committed: committed.length, current: current !== undefined };
 }
