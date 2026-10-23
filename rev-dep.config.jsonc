@@ -6,8 +6,8 @@
   "workspaces": [
     {
       "path": ".",
-      // minDepth 2 skips flat object literals and one-line blocks. The snapshot holds the four
-      // test-only duplicates found at adoption (2026-10-22); the check fails on any new one.
+      // minDepth 2 skips flat object literals and one-line blocks. The snapshot is empty, so the
+      // check fails on any duplicate.
       "duplicatedCodeDetection": {
         "enabled": true,
         "minDepth": 2,

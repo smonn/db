@@ -13,40 +13,5 @@
     "minDuplicates": 2,
     "skipObjects": false
   },
-  "duplications": [
-    {
-      "hash": "41f02763dd461a23",
-      "occurrences": 2,
-      "files": {
-        "src/runtime/query/column-types.test.ts": 2
-      },
-      "label": "id: number;"
-    },
-    {
-      "hash": "8dd44d3234000220",
-      "occurrences": 2,
-      "files": {
-        "src/dev/cli/main-lost-backend.test.ts": 1,
-        "src/dev/cli/main.test.ts": 1
-      },
-      "label": "project = await mkdtemp(join(tmpdir(), \"smonn-db-cli-\"));"
-    },
-    {
-      "hash": "cec9b6e45db44a17",
-      "occurrences": 2,
-      "files": {
-        "src/dev/generate/migrations-folder.test.ts": 1,
-        "src/dev/generate/shadow-replay.test.ts": 1
-      },
-      "label": "driver: db.driver,"
-    },
-    {
-      "hash": "e601795082ce88de",
-      "occurrences": 2,
-      "files": {
-        "scripts/check-issue-milestone.test.ts": 2
-      },
-      "label": "const gh = vi.fn<(args: string[]) => void>();"
-    }
-  ]
+  "duplications": []
 }

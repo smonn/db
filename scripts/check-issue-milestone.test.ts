@@ -185,10 +185,14 @@ describe("main", () => {
     expect(gh.mock.calls).toEqual([[titleComment]]);
   });
 
-  test("leaves an uppercase title with a milestone alone", () => {
+  const runOnMilestonedIssue = (): ReturnType<typeof vi.fn> => {
     const gh = vi.fn<(args: string[]) => void>();
     main({ GITHUB_EVENT_PATH: write(event({ milestone: { title: "v0.1" } })) }, gh);
-    expect(gh).not.toHaveBeenCalled();
+    return gh;
+  };
+
+  test("leaves an uppercase title with a milestone alone", () => {
+    expect(runOnMilestonedIssue()).not.toHaveBeenCalled();
   });
 
   test("leaves the milestone alone on an edit", () => {
@@ -214,9 +218,7 @@ describe("main", () => {
   });
 
   test("leaves an issue with a milestone alone", () => {
-    const gh = vi.fn<(args: string[]) => void>();
-    main({ GITHUB_EVENT_PATH: write(event({ milestone: { title: "v0.1" } })) }, gh);
-    expect(gh).not.toHaveBeenCalled();
+    expect(runOnMilestonedIssue()).not.toHaveBeenCalled();
   });
 
   test("fails when GITHUB_EVENT_PATH is unset", () => {
