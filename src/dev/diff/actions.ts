@@ -1,5 +1,5 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
-import { childrenOf, namesOf, parentOf, type Catalog, type Fact } from "../catalog/index.ts";
+import { childrenOf, parentOf, qualified, type Catalog, type Fact } from "../catalog/index.ts";
 import { HAZARD_KINDS, LONG_LOCK, REWRITE, retypeHazards, type HazardKind } from "./hazards.ts";
 
 type FactOf<K extends Fact["kind"]> = Extract<Fact, { readonly kind: K }>;
@@ -186,12 +186,6 @@ function indexBuild(
   { from }: Catalogs,
 ): readonly HazardKind[] {
   return from.has(fact.parent) ? LONG_LOCK : [];
-}
-
-export function qualified(fact: Fact, catalog: Catalog): string {
-  return namesOf(catalog, fact)
-    .map((name) => quoteIdentifier(name))
-    .join(".");
 }
 
 function createTable(table: FactOf<"table">, { to }: Catalogs): string {
