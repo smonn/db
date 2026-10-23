@@ -17,6 +17,8 @@ export type TestDatabase = {
   readonly ownPool: () => Driver;
   /** Opens another database on the same server; the caller closes it. */
   readonly connect: Connect;
+  /** Like `connect`, with a pool of one connection, so a second connection would wait forever. */
+  readonly connectSingle: Connect;
 };
 
 const ignoreNotice = (): void => {};
@@ -78,6 +80,7 @@ export function useTestDatabase(): TestDatabase {
       return postgresJsDriver(pool);
     },
     connect: postgresJsConnect(serverUrl, { onnotice: ignoreNotice }),
+    connectSingle: postgresJsConnect(serverUrl, { max: 1, onnotice: ignoreNotice }),
   };
 }
 
