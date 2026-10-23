@@ -1,27 +1,75 @@
+type Identity = "always" | "by default";
+
 export type ColumnState = {
   readonly sqlType: string;
+  /** True for a primary key or identity column too, as Postgres makes them. */
   readonly notNull: boolean;
+  /** A SQL expression, written as it would follow `default` in DDL. */
+  readonly default: string | undefined;
+  readonly identity: Identity | undefined;
+  /** Columns that declare it form the primary key, in column order. */
+  readonly primaryKey: boolean;
+  readonly unique: boolean;
 };
 
-export type Column<V, N extends boolean = false> = {
+/**
+ * `Int` is true for the types Postgres allows an identity on. `Gen` is true once the column has a
+ * default or an identity, which Postgres allows only one of.
+ */
+export type Column<
+  V,
+  N extends boolean = false,
+  Int extends boolean = false,
+  Gen extends boolean = false,
+> = {
   readonly state: ColumnState;
   /** Type-only: the value a row holds and whether the column is NOT NULL. */
   readonly "~types": { readonly value: V; readonly notNull: N };
-  notNull(): Column<V, true>;
+  notNull(): Column<V, true, Int, Gen>;
+  /** Several primary key columns make a composite key, in column order. */
+  primaryKey(): Column<V, true, Int, Gen>;
+  /** A single-column unique constraint. */
+  unique(): Column<V, N, Int, Gen>;
+} & (Gen extends true
+  ? unknown
+  : {
+      /** Takes a SQL expression, such as `now()`; a string literal needs its quotes (`"'new'"`). */
+      default(expression: string): Column<V, N, Int, true>;
+    } & (Int extends true
+      ? {
+          /** Generates the value from a sequence. */
+          identity(generated?: Identity): Column<V, true, Int, true>;
+        }
+      : unknown));
+
+/** A column of any kind, which is all a table needs to read. */
+type AnyColumn = {
+  readonly state: ColumnState;
+  readonly "~types": { readonly value: unknown; readonly notNull: boolean };
 };
 
-function column<V, N extends boolean>(state: ColumnState): Column<V, N> {
-  const parts = { state, notNull: () => column<V, true>({ ...state, notNull: true }) };
+function column<V, N extends boolean, Int extends boolean, Gen extends boolean>(
+  state: ColumnState,
+): Column<V, N, Int, Gen> {
+  const parts = {
+    state,
+    notNull: () => column({ ...state, notNull: true }),
+    default: (expression: string) => column({ ...state, default: expression }),
+    identity: (generated: Identity = "by default") =>
+      column({ ...state, notNull: true, identity: generated }),
+    primaryKey: () => column({ ...state, notNull: true, primaryKey: true }),
+    unique: () => column({ ...state, unique: true }),
+  };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- "~types" exists only in types.
-  return parts as Column<V, N>;
+  return parts as unknown as Column<V, N, Int, Gen>;
 }
 
 export type ColumnFactories = {
   readonly text: () => Column<string>;
   readonly varchar: (length: number) => Column<string>;
-  readonly smallint: () => Column<number>;
-  readonly integer: () => Column<number>;
-  readonly bigint: () => Column<bigint>;
+  readonly smallint: () => Column<number, false, true>;
+  readonly integer: () => Column<number, false, true>;
+  readonly bigint: () => Column<bigint, false, true>;
   /** Without a precision the column holds any number of digits. */
   readonly numeric: (precision?: number, scale?: number) => Column<string>;
   readonly real: () => Column<number>;
@@ -35,8 +83,15 @@ export type ColumnFactories = {
   readonly bytea: () => Column<Uint8Array>;
 };
 
-function of<V>(sqlType: string): Column<V> {
-  return column<V, false>({ sqlType, notNull: false });
+function of<V, Int extends boolean = false>(sqlType: string): Column<V, false, Int> {
+  return column<V, false, Int, false>({
+    sqlType,
+    notNull: false,
+    default: undefined,
+    identity: undefined,
+    primaryKey: false,
+    unique: false,
+  });
 }
 
 function numericType(precision?: number, scale?: number): string {
@@ -62,7 +117,7 @@ const factories: ColumnFactories = {
   bytea: () => of("bytea"),
 };
 
-export type Columns = Record<string, Column<unknown, boolean>>;
+export type Columns = Record<string, AnyColumn>;
 
 /** A table without its name or schema, which `defineDatabase` gives it. */
 export type TableDefinition<C extends Columns = Columns> = {
