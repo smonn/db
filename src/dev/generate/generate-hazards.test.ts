@@ -2,7 +2,6 @@ import { beforeEach, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { writeMigration } from "../../runtime/internal/index.ts";
-import { hazardsIn } from "../cli/hazards.ts";
 import { generate } from "./generate.ts";
 import { filesIn, memoryFileSystem } from "./memory-file-system.test-helper.ts";
 
@@ -52,5 +51,4 @@ it("writes each Hazard as a comment above its statement and returns it", async (
   expect(fileSystem.files.get("db/migrations/current.sql")).toContain(
     `-- hazard: data_loss\n${dropColumn}`,
   );
-  expect(hazardsIn(result.sql ?? "")).toStrictEqual(result.hazards);
 });

@@ -6,7 +6,7 @@ describe("generateReport", () => {
     const sql = '-- hazard: data_loss\ndrop table "public"."a";\n';
 
     expect(
-      generateReport({ path: "/p/current.sql", sql, reset: true }, "current.sql"),
+      generateReport({ path: "/p/current.sql", sql, reset: true, hazards: [] }, "current.sql"),
     ).toStrictEqual([
       "wrote current.sql",
       'hazard data_loss: drop table "public"."a";',
@@ -16,13 +16,19 @@ describe("generateReport", () => {
 
   it("says when there was no diff and the Dev database stayed", () => {
     expect(
-      generateReport({ path: "/p/current.sql", sql: undefined, reset: false }, "current.sql"),
+      generateReport(
+        { path: "/p/current.sql", sql: undefined, reset: false, hazards: [] },
+        "current.sql",
+      ),
     ).toStrictEqual(["no diff, removed current.sql", "left the Dev database as it was"]);
   });
 
   it("says when a hand-edited file matches what generate would write", () => {
     expect(
-      generateReport({ path: "/p/current.sql", sql: "select 1;", diff: "", reset: false }, "c.sql"),
+      generateReport(
+        { path: "/p/current.sql", sql: "select 1;", diff: "", reset: false, hazards: [] },
+        "c.sql",
+      ),
     ).toStrictEqual([
       "kept hand-edited c.sql, replayed as written; diff to what generate would write:",
       "matches what generate would write",
