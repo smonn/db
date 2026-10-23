@@ -14,10 +14,10 @@
     "reportUnusedDisableDirectives": "error"
   },
   "rules": {
-    // Baselines at adoption (2026-10-22): complexity 21 (dev/diff/hazards.ts), max-params 5
-    // (dev/shadow/shadow.ts). Targets: 6 and 4. Lower them as functions are split.
+    // Baseline at adoption (2026-10-22): complexity 21 (dev/diff/hazards.ts). Target: 6. Lower it
+    // as functions are split.
     "complexity": ["error", { "max": 21 }],
-    "max-params": ["error", { "max": 5 }],
+    "max-params": ["error", { "max": 4 }],
     "max-depth": ["error", { "max": 4 }],
     // A backstop; fta judges file maintainability, so this stays above the largest file.
     "max-lines": ["error", { "max": 300 }],
