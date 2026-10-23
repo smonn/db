@@ -122,7 +122,7 @@ function losesData(from: Type, to: Type): boolean {
   return false;
 }
 
-function integerLosesData(from: string, to: Type): boolean {
+function integerLosesData(from: Type["name"], to: Type): boolean {
   if (to.name === "real") return from !== "smallint";
   if (to.name === "double precision") return from === "bigint";
   return false;
@@ -147,7 +147,7 @@ function numericNarrows(from: Numeric, to: Numeric): boolean {
   return from.precision === undefined || to.scale < from.scale;
 }
 
-function floatLosesData(from: string, to: Type): boolean {
+function floatLosesData(from: Type["name"], to: Type): boolean {
   if (INTEGERS.has(to.name) || to.name === "numeric") return true;
   return from === "double precision" && to.name === "real";
 }
