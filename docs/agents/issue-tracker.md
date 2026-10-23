@@ -17,6 +17,10 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## Testing tracker tooling
+
+Never create, edit, or close a live issue on `smonn/db` to test tooling: a test issue shows up in other agents' `node scripts/frontier.ts` output (#132). Test against recorded payload fixtures with `node:child_process` mocked (`scripts/fixtures/`, `ghReturns` in `scripts/frontier.test-helper.ts`). Lint enforces the mock: `smonn/mock-child-process` fails a `scripts/**/*.test.ts` that imports a value from `node:child_process` without `vi.mock("node:child_process", ...)`. It cannot see an indirect call through an unmocked script module, so mock `gh` at the script's boundary.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

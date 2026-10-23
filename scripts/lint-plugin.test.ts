@@ -115,3 +115,27 @@ tester.run("error-message-qualifier", plugin.rules["error-message-qualifier"], {
     },
   ],
 });
+
+tester.run("mock-child-process", plugin.rules["mock-child-process"], {
+  valid: [
+    'import { spawnSync } from "node:child_process";\nvi.mock("node:child_process", () => ({ spawnSync: vi.fn() }));',
+    'import type { spawnSync } from "node:child_process";',
+    'import { type SpawnSyncReturns } from "node:child_process";',
+    'import { readFileSync } from "node:fs";',
+    'vi.mock("node:child_process", async (importOriginal) => importOriginal());',
+  ],
+  invalid: [
+    {
+      code: 'import { execFileSync } from "node:child_process";',
+      errors: [{ message: /never a live gh call/u }],
+    },
+    {
+      code: 'import { spawnSync } from "node:child_process";\nvi.mock("node:fs", () => ({}));',
+      errors: 1,
+    },
+    {
+      code: 'import * as cp from "node:child_process";',
+      errors: 1,
+    },
+  ],
+});
