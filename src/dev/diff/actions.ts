@@ -21,6 +21,7 @@ type Target = {
   "drop not null": "column";
   "set default": "default";
   "add identity": "identity";
+  "set identity mode": "identity";
   "add primary key": "primary key";
   "add unique": "unique";
 };
@@ -141,6 +142,11 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
   "add identity": {
     phase: 13,
     render: (fact, { to }) => `${alterColumn(fact, to)} add ${identityClause(fact)};`,
+    hazards: none,
+  },
+  "set identity mode": {
+    phase: 13,
+    render: (fact, { to }) => `${alterColumn(fact, to)} set generated ${fact.payload.generated};`,
     hazards: none,
   },
   "add primary key": {
