@@ -71,6 +71,54 @@ describe("defineTable", () => {
     expectTypeOf<Row<typeof t>>().toEqualTypeOf<{ id: number; n: number }>();
   });
 
+  it("declares a composite primary key in the options, in the listed order", () => {
+    const t = defineTable((c) => ({ a: c.integer(), b: c.integer(), n: c.text() }), {
+      primaryKey: ["b", "a"],
+    });
+    expect(t.primaryKey).toStrictEqual(["b", "a"]);
+    expectTypeOf<Row<typeof t>>().toEqualTypeOf<{ a: number; b: number; n: string | null }>();
+  });
+
+  it("records a single-column key from the column", () => {
+    const t = defineTable((c) => ({ id: c.integer().primaryKey(), n: c.text() }));
+    expect(t.primaryKey).toStrictEqual(["id"]);
+    expect(users.primaryKey).toStrictEqual([]);
+  });
+
+  it("fails at load on a key declared twice, on several columns, or on a bad name", () => {
+    expect(() =>
+      defineTable((c) => ({ a: c.integer().primaryKey(), b: c.integer() }), {
+        // @ts-expect-error -- a column key and an options key can't both be declared.
+        primaryKey: ["a", "b"],
+      }),
+    ).toThrow('Column "a" calls primaryKey() and the table options also declare a primary key');
+    expect(() =>
+      // @ts-expect-error -- primaryKey() on two columns needs the options form.
+      defineTable((c) => ({ a: c.integer().primaryKey(), b: c.integer().primaryKey() })),
+    ).toThrow('Columns "a", "b" each call primaryKey()');
+    expect(() =>
+      // @ts-expect-error -- "z" is not a column.
+      defineTable((c) => ({ a: c.integer(), b: c.integer() }), { primaryKey: ["a", "z"] }),
+    ).toThrow('names "z", which is not a column');
+    expect(() =>
+      defineTable((c) => ({ a: c.integer(), b: c.integer() }), { primaryKey: ["a", "a"] }),
+    ).toThrow('lists "a" twice');
+    expect(() =>
+      // @ts-expect-error -- a single column goes on the column.
+      defineTable((c) => ({ a: c.integer() }), { primaryKey: ["a"] }),
+    ).toThrow("fewer than two columns");
+  });
+
+  it("has no second primaryKey() on a column that already is the key", () => {
+    /* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-call -- the missing method is the point. */
+    const t = defineTable((c) => {
+      // @ts-expect-error -- the column already is the primary key.
+      return { a: c.integer().primaryKey().primaryKey() };
+    });
+    /* oxlint-enable typescript/no-unsafe-assignment, typescript/no-unsafe-call */
+    expect(t.primaryKey).toStrictEqual(["a"]);
+  });
+
   it("leaves the column notNull was called on unchanged", () => {
     users.columns.email.notNull();
     expect(users.columns.email.state.notNull).toBe(false);
@@ -171,11 +219,13 @@ describe("defineDatabase", () => {
       schema: "public",
       name: "users",
       columns: users.columns,
+      primaryKey: [],
     });
     expect(db.auth.sessions).toStrictEqual({
       schema: "auth",
       name: "sessions",
       columns: sessions.columns,
+      primaryKey: [],
     });
   });
 

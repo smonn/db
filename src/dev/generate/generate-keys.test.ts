@@ -24,10 +24,13 @@ describe("defaults, identity, and keys", () => {
         created_at: c.timestamptz().default("now()"),
         email: c.text().unique(),
       })),
-      memberships: defineTable((c) => ({
-        account_id: c.integer().primaryKey(),
-        team_id: c.integer().primaryKey(),
-      })),
+      memberships: defineTable(
+        (c) => ({
+          account_id: c.integer(),
+          team_id: c.integer(),
+        }),
+        { primaryKey: ["account_id", "team_id"] },
+      ),
     },
   });
 
