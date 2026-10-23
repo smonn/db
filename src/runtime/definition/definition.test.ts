@@ -6,10 +6,19 @@ const users = defineTable((c) => ({
   email: c.text(),
 }));
 
+const PLAIN = {
+  sqlType: "",
+  notNull: false,
+  default: undefined,
+  identity: undefined,
+  primaryKey: false,
+  unique: false,
+};
+
 describe("defineTable", () => {
   it("makes columns nullable unless marked notNull", () => {
-    expect(users.columns.id.state).toMatchObject({ sqlType: "text", notNull: true });
-    expect(users.columns.email.state).toMatchObject({ sqlType: "text", notNull: false });
+    expect(users.columns.id.state).toStrictEqual({ ...PLAIN, sqlType: "text", notNull: true });
+    expect(users.columns.email.state).toStrictEqual({ ...PLAIN, sqlType: "text", notNull: false });
   });
 
   it("declares a default, identity, primary key, and unique constraint", () => {
@@ -25,6 +34,36 @@ describe("defineTable", () => {
     expect(t.columns.c.state).toMatchObject({ identity: "always", notNull: true });
     expect(t.columns.d.state).toMatchObject({ primaryKey: true, notNull: true });
     expect(t.columns.e.state).toMatchObject({ unique: true, notNull: false });
+  });
+
+  it("allows an identity on integer types only, and not alongside a default", () => {
+    defineTable((c) => ({
+      a: c.smallint().identity(),
+      b: c.integer().identity(),
+      c: c.bigint().identity(),
+      d: c.integer().default("1"),
+    }));
+    /* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-call -- each missing method is the point. */
+    const rejected = [
+      defineTable((c) => {
+        // @ts-expect-error -- text can't be an identity.
+        return { e: c.text().identity() };
+      }),
+      defineTable((c) => {
+        // @ts-expect-error -- real can't be an identity.
+        return { f: c.real().identity() };
+      }),
+      defineTable((c) => {
+        // @ts-expect-error -- an identity can't have a default.
+        return { g: c.integer().identity().default("1") };
+      }),
+      defineTable((c) => {
+        // @ts-expect-error -- a default column can't be an identity.
+        return { h: c.integer().default("1").identity() };
+      }),
+    ];
+    /* oxlint-enable typescript/no-unsafe-assignment, typescript/no-unsafe-call */
+    expect(rejected).toHaveLength(4);
   });
 
   it("types primary key and identity columns as NOT NULL", () => {
@@ -89,7 +128,8 @@ describe("column types", () => {
   });
 
   it("keeps the SQL type through notNull", () => {
-    expect(all.columns.numericPS.notNull().state).toMatchObject({
+    expect(all.columns.numericPS.notNull().state).toStrictEqual({
+      ...PLAIN,
       sqlType: "numeric(10,2)",
       notNull: true,
     });
