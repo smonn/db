@@ -89,6 +89,18 @@ describe("hazardRefusal", () => {
     );
   });
 
+  it("refuses an unpaired comment without suggesting --accept", () => {
+    expect(hazardRefusal("create table a (n int);\n-- hazard: data_loss\n", [])).toBe(
+      `current.sql:2 looks like a Hazard comment but isn't one: "-- hazard: data_loss"; use "-- hazard: <kind>" above a statement or delete the line`,
+    );
+  });
+
+  it("refuses an exact comment inside an ungated multi-line statement", () => {
+    expect(hazardRefusal("create table t (\n-- hazard: data_loss\na int\n);\n", [])).toBe(
+      `current.sql:2 looks like a Hazard comment but isn't one: "-- hazard: data_loss"; use "-- hazard: <kind>" above a statement or delete the line`,
+    );
+  });
+
   it("doesn't refuse a plural prose comment or a hazards table", () => {
     expect(
       hazardRefusal("-- hazards: none here\ncreate table hazards (n int);\n", []),
