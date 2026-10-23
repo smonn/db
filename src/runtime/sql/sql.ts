@@ -41,7 +41,7 @@ export class Fragment {
 }
 
 /** Binds each interpolated value as a param, except a Fragment, whose SQL is inlined. */
-export function sql(strings: TemplateStringsArray, ...values: unknown[]): Fragment {
+export function fragment(strings: TemplateStringsArray, ...values: unknown[]): Fragment {
   return new Fragment(strings, values);
 }
 
@@ -50,8 +50,6 @@ export function identifier(name: string): Fragment {
 }
 
 export function join(fragments: readonly Fragment[], separator: Fragment): Fragment {
-  const values = fragments.flatMap((fragment, index) =>
-    index === 0 ? [fragment] : [separator, fragment],
-  );
+  const values = fragments.flatMap((piece, index) => (index === 0 ? [piece] : [separator, piece]));
   return new Fragment(["", ...values.map(() => "")], values);
 }
