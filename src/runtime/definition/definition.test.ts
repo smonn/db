@@ -61,9 +61,13 @@ describe("defineTable", () => {
         // @ts-expect-error -- a default column can't be an identity.
         return { h: c.integer().default("1").identity() };
       }),
+      defineTable((c) => {
+        // @ts-expect-error -- double precision can't be an identity.
+        return { i: c.doublePrecision().identity() };
+      }),
     ];
     /* oxlint-enable typescript/no-unsafe-assignment, typescript/no-unsafe-call */
-    expect(rejected).toHaveLength(4);
+    expect(rejected).toHaveLength(5);
   });
 
   it("types primary key and identity columns as NOT NULL", () => {
