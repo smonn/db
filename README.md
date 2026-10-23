@@ -6,6 +6,8 @@ A Postgres-first TypeScript toolkit: define your database in TypeScript, migrate
 
 ## Getting started
 
+`@smonn/db` is not on npm yet, so the `pnpm add` below works once the first release ships; until then, install from a `pnpm pack` tarball of a checkout.
+
 This needs Node 24 or later, `pnpm`, and a Postgres 18 server with an empty database to use as your Dev database.
 
 Start a project and install the package, which also gives you the `smonndb` command, with the `postgres` driver:
