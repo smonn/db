@@ -64,6 +64,7 @@ jobs:
       - run: pnpm lint:actions -color
       - run: pnpm check:imports
       - run: pnpm check:index
+      - run: pnpm check:node-version
       - run: pnpm knip
       - run: pnpm deps
       - run: pnpm fta

@@ -1,8 +1,11 @@
 {
   "name": "@smonn/db",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/smonn/db.git"
+  },
   "bin": {
     "smonndb": "./dist/cli.mjs"
   },
@@ -20,6 +23,9 @@
     "./postgres-js": "./dist/postgres-js.mjs",
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown",
     "check": "node scripts/check.ts",
@@ -28,6 +34,7 @@
     "check:index": "node scripts/check-index-exports.ts",
     "check:issue": "node scripts/check-issue-milestone.ts",
     "check:mermaid": "node scripts/check-mermaid.ts",
+    "check:node-version": "node scripts/check-node-version.ts",
     "check:parent": "node scripts/check-issue-parent.ts",
     "check:static": "node scripts/check.ts --static",
     "check:pr": "node scripts/check-pr.ts",

@@ -18,6 +18,12 @@
   ],
   "packageRules": [
     {
+      "description": "One PR bumps .tool-versions and devEngines.runtime; pnpm regenerates the lockfile entry. scripts/check-node-version.ts guards the three copies.",
+      "matchManagers": ["asdf", "npm"],
+      "matchDepNames": ["node"],
+      "groupName": "Node.js runtime"
+    },
+    {
       "matchDepTypes": ["devDependencies"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "devDependencies (non-major)"

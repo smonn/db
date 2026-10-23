@@ -44,6 +44,12 @@
       }
     },
     {
+      "files": ["scripts/**/*.test.ts"],
+      "rules": {
+        "smonn/mock-child-process": "error"
+      }
+    },
+    {
       "files": ["src/**"],
       "rules": {
         "eslint/no-restricted-globals": [
