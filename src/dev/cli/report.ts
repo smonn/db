@@ -9,11 +9,12 @@ export function generateReport(result: GenerateResult, path: string): string[] {
   return [...fileLines(result, path), ...hazards, reset];
 }
 
-function fileLines({ diff, sql }: GenerateResult, path: string): string[] {
+function fileLines({ diff, sql, leftover }: GenerateResult, path: string): string[] {
   if (diff === undefined) return [sql === undefined ? `no diff, removed ${path}` : `wrote ${path}`];
   return [
     `kept hand-edited ${path}, replayed as written; diff to what generate would write:`,
     (diff === "" ? "matches what generate would write" : diff).trimEnd(),
+    ...(leftover === undefined ? [] : [`warning: ${leftover}`]),
   ];
 }
 

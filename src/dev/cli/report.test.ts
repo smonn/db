@@ -37,6 +37,24 @@ describe("generateReport", () => {
   });
 });
 
+describe("generateReport warnings", () => {
+  it("prints the leftover difference as a warning", () => {
+    expect(
+      generateReport(
+        {
+          path: "/p/current.sql",
+          sql: "select 1;",
+          diff: "-select 1;\n",
+          leftover: "the edit leaves a difference",
+          reset: false,
+          hazards: [],
+        },
+        "c.sql",
+      ),
+    ).toContain("warning: the edit leaves a difference");
+  });
+});
+
 describe("resetReport", () => {
   it.each([
     [{ committed: 0, current: false }, "reset the Dev database from 0 Committed migrations"],

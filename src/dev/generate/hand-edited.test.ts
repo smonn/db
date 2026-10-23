@@ -24,6 +24,9 @@ beforeEach(async () => {
 });
 
 describe("generate with a hand-edited current.sql", () => {
+  const LEFTOVER = `the Current migration leaves the Shadow database unlike the Definition database:
+  table "public"."users" is missing from the Shadow database
+  column "public"."users"."id" is missing from the Shadow database`;
   const USERS_DIFF = '+create table "public"."users" (\n+  "id" text\n+);\n';
 
   it.each([
@@ -52,7 +55,14 @@ describe("generate with a hand-edited current.sql", () => {
     });
 
     expect(fileSystem.files.get(CURRENT)).toBe(content);
-    expect(result).toStrictEqual({ path: CURRENT, sql: body, diff, reset: true, hazards: [] });
+    expect(result).toStrictEqual({
+      path: CURRENT,
+      sql: body,
+      diff,
+      leftover: LEFTOVER,
+      reset: true,
+      hazards: [],
+    });
     const { rows: tables } = await db.driver.query(
       "select table_name from information_schema.tables where table_schema = 'public'",
     );
@@ -76,6 +86,60 @@ describe("generate with a hand-edited current.sql", () => {
     });
 
     expect(result.diff).toBe("");
+  });
+
+  it("runs the edit in the Shadow, not the generated body, and reports no leftover when it passes", async () => {
+    const body = 'create table "public"."users" (\n  "id" text\n);\n-- by hand\n';
+    const fileSystem = memoryFileSystem({ [CURRENT]: body });
+
+    const result = await generate({
+      driver: db.driver,
+      connect: db.connect,
+      fileSystem,
+      definition,
+      migrations: "db/migrations",
+    });
+
+    expect(result.leftover).toBeUndefined();
+    expect(result.sql).toBe(body);
+  });
+
+  it("fails on a SQL error in the edit and leaves the Dev database untouched", async () => {
+    const fileSystem = memoryFileSystem({ [CURRENT]: "select * from public.nope;\n" });
+
+    await expect(
+      generate({
+        driver: db.driver,
+        connect: db.connect,
+        fileSystem,
+        definition,
+        migrations: "db/migrations",
+      }),
+    ).rejects.toThrow(/relation "public.nope" does not exist/u);
+
+    expect(fileSystem.files.get(CURRENT)).toBe("select * from public.nope;\n");
+    const { rows } = await db.driver.query(
+      "select 1 from information_schema.tables where table_schema = 'smonn_db'",
+    );
+    expect(rows).toStrictEqual([]);
+  });
+
+  it("words the hint for a hand edit, not for generated SQL", async () => {
+    const fileSystem = memoryFileSystem({
+      [CURRENT]:
+        "create table public.t (id text); alter table public.t alter column id type integer;\n",
+    });
+
+    const failure = generate({
+      driver: db.driver,
+      connect: db.connect,
+      fileSystem,
+      definition,
+      migrations: "db/migrations",
+    });
+
+    await expect(failure).rejects.toThrow(/add the USING clause to the ALTER COLUMN/u);
+    await expect(failure).rejects.not.toThrow(/no USING/u);
   });
 
   it("resumes generating once the hand-edited current.sql is deleted", async () => {
