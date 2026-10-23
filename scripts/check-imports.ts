@@ -95,6 +95,14 @@ export const importRules: IForbiddenRuleType[] = [
     },
   },
   {
+    name: "no-group-index-imports",
+    comment:
+      "A group index such as src/runtime/index.ts is a package entry point, so no src/ file imports it and pulls in the whole group.",
+    severity: "error",
+    from: { path: "^src/" },
+    to: { path: String.raw`^src/[^/]+/index\.ts$` },
+  },
+  {
     name: "internal-not-reexported",
     comment:
       "runtime/internal holds shared helpers, never public API, so no other module's index.ts imports it.",

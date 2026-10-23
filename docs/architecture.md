@@ -316,9 +316,9 @@ Each folder under a group is a module: its `index.ts` is its only entry point, a
 
 CI enforces the module boundaries:
 
-- `scripts/check-imports.ts` holds the dependency-cruiser rules, each with a one-line comment: `runtime/` stays self-contained and free of npm packages, an adapter imports only `runtime/ports`, `runtime/internal`, and its host package, only `dev/cli` wires in adapters, `node:*` stays in host code, cross-module imports go through `index.ts`, no other module's `index.ts` re-exports `runtime/internal`, no cycles, and only tests import `*.test.ts` files, `*.test-helper.ts` helpers, and `vitest`. Tests in any group may import `adapters/postgres-js/test-database.test-helper.ts`, which the group, adapter, and `index.ts` rules otherwise forbid. It fails when it scans 0 modules.
+- `scripts/check-imports.ts` holds the dependency-cruiser rules, each with a one-line comment: `runtime/` stays self-contained and free of npm packages, an adapter imports only `runtime/ports`, `runtime/internal`, and its host package, only `dev/cli` wires in adapters, `node:*` stays in host code, cross-module imports go through `index.ts`, no `src/` file imports a group index such as `src/runtime/index.ts`, no other module's `index.ts` re-exports `runtime/internal`, no cycles, and only tests import `*.test.ts` files, `*.test-helper.ts` helpers, and `vitest`. Tests in any group may import `adapters/postgres-js/test-database.test-helper.ts`, which the group, adapter, and `index.ts` rules otherwise forbid. It fails when it scans 0 modules.
 - `.oxlintrc.json` bans the `process`, `Buffer`, and `__dirname` globals in `src/` outside `adapters/` and `dev/cli`.
-- `scripts/check-index-exports.ts` keeps each `index.ts` to named re-exports: no declarations, no `export *`.
+- `scripts/check-index-exports.ts` keeps each `index.ts` to named re-exports: no declarations, no `export *`. It also checks that `src/runtime/index.ts` and `src/dev/index.ts` exist and re-export only names their group's module indexes export, a value as a value and a type as a type, never from `runtime/internal` or `dev/cli`.
 
 oxfmt formats TypeScript and Markdown. knip reports unused files, exports, and dependencies.
 
@@ -333,12 +333,14 @@ Baselines recorded at adoption (2026-10-22), each lowered as code improves and n
 
 ## Package entry points
 
-| Entry                   | Contents                                              |
-| ----------------------- | ----------------------------------------------------- |
-| `@smonn/db`             | runtime: sql, definition, query, migrator, port types |
-| `@smonn/db/postgres-js` | Driver adapter                                        |
-| `@smonn/db/node`        | Node MigrationSource and FileSystem adapters          |
-| `@smonn/db/dev`         | config, catalog, introspect, diff, shadow, generate   |
-| CLI binary              | `dev/cli`, shipped as the package's `bin`             |
+| Entry                   | Source                              | Contents                                              |
+| ----------------------- | ----------------------------------- | ----------------------------------------------------- |
+| `@smonn/db`             | `src/runtime/index.ts`              | runtime: sql, definition, query, migrator, port types |
+| `@smonn/db/postgres-js` | `src/adapters/postgres-js/index.ts` | Driver adapter                                        |
+| `@smonn/db/node`        | `src/adapters/node/index.ts`        | Node MigrationSource and FileSystem adapters          |
+| `@smonn/db/dev`         | `src/dev/index.ts`                  | config, catalog, introspect, diff, shadow, generate   |
+| `smonndb` bin           | `src/dev/cli/bin.ts`                | the CLI, shipped as the package's `bin`               |
 
-Each subpath maps to one future package, so a split renames imports one-to-one.
+Each subpath maps to one future package, so a split renames imports one-to-one. `src/runtime/index.ts` and `src/dev/index.ts` list the package's public API by hand, picked from their group's module indexes, and no `src/` file imports them. A module index also serves imports between modules, so a name there is not public until a group index lists it.
+
+tsdown builds every entry in one pass (`pnpm build`, which `prepack` runs before `pnpm pack`), so modules shared between entries land in shared chunks and load once. It also writes the `exports` and `bin` fields of `package.json` from `tsdown.config.ts`: add an entry there, build, and commit the rewritten `package.json`. `src/dev/cli/package.test.ts` packs the tarball, installs it in a temp project, imports and type-checks each entry, runs the bin, and fails when the build changed `package.json`.

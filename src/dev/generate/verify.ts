@@ -1,6 +1,6 @@
 import type { TrackingSchema } from "../../runtime/internal/index.ts";
 import type { Driver } from "../../runtime/ports/index.ts";
-import { payloadsEqual, qualified, type Catalog, type Fact } from "../catalog/index.ts";
+import { arePayloadsEqual, qualified, type Catalog, type Fact } from "../catalog/index.ts";
 import { introspect } from "../introspect/index.ts";
 import { explainShadowError } from "./shadow-errors.ts";
 
@@ -34,7 +34,7 @@ function differences(shadow: Catalog, definition: Catalog): string[] {
     const wanted = definition.get(key);
     if (wanted === undefined) {
       lines.push(`${describe(fact, shadow)} is only in the Shadow database`);
-    } else if (!payloadsEqual(fact.payload, wanted.payload)) {
+    } else if (!arePayloadsEqual(fact.payload, wanted.payload)) {
       lines.push(
         `${describe(fact, shadow)} is ${JSON.stringify(fact.payload)} in the Shadow database and ${JSON.stringify(wanted.payload)} in the Definition database`,
       );
