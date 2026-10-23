@@ -10,7 +10,7 @@
 - Keep each PR to one self-contained change.
 - Link every PR to its issue in the template's Issue section. Use `Closes #<n>` so merging closes the issue, and don't close it by hand. Closing keywords only fire on PRs into `main`.
 - Agents may commit, push, and open a draft PR without asking. Mark it ready for review once CI passes, or right away while the repo has no CI, and add `review:needed`. Only the maintainer merges, unless they approve an agent merging that PR.
-- The maintainer sets the `review:*` labels; agents only add `review:needed`. `review:approved` approves an agent merging that PR. On `review:blocked`, address the PR's review comments, then swap the label back to `review:needed`. Merge an approved PR with `sync-and-merge <pr> --require-label review:approved`.
+- The maintainer sets the `review:*` labels; agents only add `review:needed`. Adding `review:needed` removes every other `review:*` label (the Clear stale review workflow), so an approval never outlives a new request for review. `review:approved` approves an agent merging that PR. On `review:blocked`, address the PR's review comments, then swap the label back to `review:needed`. Merge an approved PR with `sync-and-merge <pr> --require-label review:approved`.
 
 ## Repo tooling
 
