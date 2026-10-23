@@ -90,3 +90,28 @@ tester.run("required-brand", plugin.rules["required-brand"], {
     },
   ],
 });
+
+tester.run("error-message-qualifier", plugin.rules["error-message-qualifier"], {
+  valid: [
+    "throw new Error(`Refusing to touch ${quoted}.`);",
+    "throw new Error(`Schema ${schema} is missing.\\nRun migrate.`);",
+    "throw new Error(`${quoteIdentifier(schema)}.${quoteIdentifier('current')} is missing`);",
+    "throw new Error('Table .current is missing');",
+    "throw new Error(message);",
+    "log(`${schema}.current`);",
+  ],
+  invalid: [
+    {
+      code: "throw new Error(`Table ${schema}.current is missing`);",
+      errors: [{ message: /Quote and qualify the identifier/u }],
+    },
+    {
+      code: "throw new UsageError(`Missing ${tracking.name}.current`);",
+      errors: 1,
+    },
+    {
+      code: "throw new Error(`${a}.x and ${b}.y`);",
+      errors: 2,
+    },
+  ],
+});

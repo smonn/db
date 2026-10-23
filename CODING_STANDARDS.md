@@ -21,4 +21,4 @@ Judgement rules that no check can enforce. Implementation agents follow them whi
 ## SQL
 
 - **Quote identifiers, bind values, in SQL built before the call.** `smonn/sql-interpolation` checks a template literal passed straight to `query`, `unsafe`, or `execute`. SQL text built earlier, such as `MIGRATIONS_TABLE(schema)`, quotes every identifier with `quoteIdentifier` and passes every value as a bound parameter. (#104, #109)
-- **Messages name identifiers the way SQL does.** An error that names a database object quotes and qualifies it (`"public"."users.archive"`), because a dotted, unquoted name can spell two objects. (#116)
+- **Messages name identifiers the way SQL does.** An error that names a database object quotes and qualifies it (`"public"."users.archive"`), because a dotted, unquoted name can spell two objects. `smonn/error-message-qualifier` flags a `.` and identifier character right after an interpolation in an `Error` message, such as `${schema}.current`. (#116, #203)
