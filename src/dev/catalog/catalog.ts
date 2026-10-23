@@ -1,5 +1,6 @@
 import type { Table } from "../../runtime/definition/index.ts";
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
+import { constraintName } from "./constraint-names.ts";
 
 export type ColumnPayload = {
   /** The type as `format_type` renders it, such as `character varying(20)`. */
@@ -215,20 +216,6 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
     }
   }
   return builder.build();
-}
-
-const MAX_NAME_BYTES = 63;
-
-/**
- * Postgres's own default names (`users_pkey`, `users_email_key`), so a hand-written constraint
- * introspects to the same name. Postgres truncates a longer name, which would not key back.
- */
-function constraintName(table: string, suffix: string): string {
-  const name = `${table}_${suffix}`;
-  if (new TextEncoder().encode(name).length > MAX_NAME_BYTES) {
-    throw new Error(`the constraint name ${quoted([name])} is longer than ${MAX_NAME_BYTES} bytes`);
-  }
-  return name;
 }
 
 const TYPE_NAMES: Readonly<Record<string, string>> = {
