@@ -28,6 +28,7 @@
     "check:index": "node scripts/check-index-exports.ts",
     "check:issue": "node scripts/check-issue-milestone.ts",
     "check:mermaid": "node scripts/check-mermaid.ts",
+    "check:node-version": "node scripts/check-node-version.ts",
     "check:parent": "node scripts/check-issue-parent.ts",
     "check:static": "node scripts/check.ts --static",
     "check:pr": "node scripts/check-pr.ts",
