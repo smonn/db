@@ -9,7 +9,8 @@ services:
     ports:
       - "${POSTGRES_PORT:-54318}:5432"
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres"]
+      # Over TCP: the image's init server listens only on the Unix socket, then restarts (#169).
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres"]
       interval: 1s
       timeout: 5s
       retries: 30

@@ -65,6 +65,10 @@ describe("compose.yaml", () => {
   test("turns off fsync, which drop database's checkpoint waits on (#169)", () => {
     expect(compose).toContain('command: ["postgres", "-c", "fsync=off"]');
   });
+
+  test("checks readiness over TCP, which the image's init server doesn't listen on (#169)", () => {
+    expect(compose).toContain('test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres"]');
+  });
 });
 
 describe("main", () => {
