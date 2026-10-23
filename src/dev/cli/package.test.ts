@@ -1,18 +1,40 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const repo = join(import.meta.dirname, "../../..");
 
-const ENTRY_POINTS = {
-  "@smonn/db": "src/runtime/index.ts",
-  "@smonn/db/postgres-js": "src/adapters/postgres-js/index.ts",
-  "@smonn/db/node": "src/adapters/node/index.ts",
-  "@smonn/db/dev": "src/dev/index.ts",
-} as const;
+function stringRecord(value: unknown, what: string): Record<string, string> {
+  const isStrings =
+    typeof value === "object" &&
+    value !== null &&
+    Object.values(value).every((item) => typeof item === "string");
+  if (!isStrings) throw new Error(`${what} is not a map of strings`);
+  return Object.fromEntries(Object.entries(value));
+}
+
+function field(value: unknown, key: string): unknown {
+  return typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
+}
+
+// Imported by URL so the import-rule check, which cruises src/, doesn't follow it out of src/.
+const config: unknown = await import(pathToFileURL(join(repo, "tsdown.config.ts")).href);
+const entries = stringRecord(field(field(config, "default"), "entry"), "tsdown.config.ts entry");
+const manifest: unknown = JSON.parse(readFileSync(join(repo, "package.json"), "utf8"));
+const exportMap = stringRecord(field(manifest, "exports"), "package.json exports");
+
+// Each public export, paired with the source of the entry tsdown builds it from.
+const ENTRY_POINTS = Object.entries(exportMap)
+  .filter(([, target]) => target.startsWith("./dist/"))
+  .map(([subpath, target]) => {
+    const source = entries[basename(target, ".mjs")];
+    if (source === undefined) throw new Error(`${subpath} has no entry in tsdown.config.ts`);
+    return [subpath === "." ? "@smonn/db" : `@smonn/db/${subpath.slice(2)}`, source] as const;
+  });
 
 const CONSUMER = `import { defineDatabase, type Fragment } from "@smonn/db";
 import { defineConfig, type Config } from "@smonn/db/dev";
@@ -61,7 +83,7 @@ describe("the packed package", () => {
     await expect(readFile(join(repo, "package.json"), "utf8")).resolves.toBe(packageJson);
   });
 
-  it.each(Object.entries(ENTRY_POINTS))("exports %s as its source does", (name, source) => {
+  it.each(ENTRY_POINTS)("exports %s as its source does", (name, source) => {
     expect(exportsOf(name, project)).toBe(exportsOf(pathToFileURL(join(repo, source)).href, repo));
   });
 
@@ -70,7 +92,14 @@ describe("the packed package", () => {
     await writeFile(
       join(project, "tsconfig.json"),
       JSON.stringify({
-        compilerOptions: { module: "nodenext", strict: true, noEmit: true, skipLibCheck: true },
+        compilerOptions: {
+          module: "nodenext",
+          strict: true,
+          noEmit: true,
+          // postgres's types need @types/node, which the project doesn't install.
+          typeRoots: [join(repo, "node_modules/@types")],
+          types: ["node"],
+        },
         files: ["consumer.ts"],
       }),
     );
