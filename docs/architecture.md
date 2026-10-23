@@ -328,7 +328,7 @@ oxfmt formats TypeScript and Markdown. knip reports unused files, exports, and d
 
 Baselines recorded at adoption (2026-10-22), each lowered as code improves and never raised without the maintainer:
 
-- `complexity` starts at 21 (`dev/diff/hazards.ts`), target 6, in `.oxlintrc.json`. `max-params` and `max-depth` are at their target of 4.
+- `complexity` is at 18 (`parseCommand` in `dev/cli/main.ts`), down from 21 at adoption, target 6, in `.oxlintrc.json`. `max-params` and `max-depth` are at their target of 4.
 - Every TypeScript strictness flag is on, so the compiler has no baseline.
 
 ## Package entry points
