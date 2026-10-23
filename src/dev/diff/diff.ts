@@ -1,5 +1,12 @@
-import { parentOf, type Catalog, type Fact, type Key } from "../catalog/index.ts";
-import { hazardsOf, order, qualified, render, type Action, type Catalogs } from "./actions.ts";
+import {
+  parentOf,
+  payloadsEqual,
+  qualified,
+  type Catalog,
+  type Fact,
+  type Key,
+} from "../catalog/index.ts";
+import { hazardsOf, order, render, type Action, type Catalogs } from "./actions.ts";
 import type { Hazard } from "./hazards.ts";
 
 export type Diff = {
@@ -16,7 +23,8 @@ export function diff(from: Catalog, to: Catalog): Diff {
     const after = to.get(key);
     if (after === undefined) actions.push(...dropped(fact, to));
     // A key can't change in place: the old one drops here, and `altered` adds the new one.
-    else if (isKey(fact) && !equal(fact.payload, after.payload)) actions.push(...dropped(fact, to));
+    else if (isKey(fact) && !payloadsEqual(fact.payload, after.payload))
+      actions.push(...dropped(fact, to));
     // Postgres refuses to retype a column whose default can't be cast, so it goes first.
     else if (fact.kind === "default" && retyped(fact.parent, catalogs)) {
       actions.push({ kind: "drop default", fact });
@@ -79,10 +87,10 @@ function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {
   }
   if (before.kind === "default" && after.kind === "default") {
     // A retyped column's default was dropped first, whether or not it changed.
-    if (equal(before.payload, after.payload) && !retyped(after.parent, catalogs)) return [];
+    if (payloadsEqual(before.payload, after.payload) && !retyped(after.parent, catalogs)) return [];
     return [{ kind: "set default", fact: after }];
   }
-  if (equal(before.payload, after.payload)) return [];
+  if (payloadsEqual(before.payload, after.payload)) return [];
   // The old key was dropped in the source pass.
   if (before.kind === "primary key" && after.kind === "primary key") {
     return [{ kind: "add primary key", fact: after }];
@@ -107,16 +115,5 @@ function retyped(column: Key, { from, to }: Catalogs): boolean {
     before?.kind === "column" &&
     after?.kind === "column" &&
     before.payload.type !== after.payload.type
-  );
-}
-
-function equal(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true;
-  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
-  const aEntries = Object.entries(a);
-  const bValues = new Map(Object.entries(b));
-  return (
-    aEntries.length === bValues.size &&
-    aEntries.every(([key, value]) => bValues.has(key) && equal(value, bValues.get(key)))
   );
 }
