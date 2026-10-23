@@ -30,7 +30,4 @@ A Definition is one file, named in config, whose default export `defineDatabase(
 - A shared column helper is a function of the factories, such as `(c) => ({ created_at: c.timestamptz().notNull() })`, and the exported `ColumnFactories` type lets the helper declare its parameter.
 - `Row<typeof t>` types a query result and `NewRow<typeof t>` an insert's input, for a standalone or a rolled-up table.
 - Column values map to TypeScript as `bigint` for `bigint`, `string` for `numeric` and `date`, `Date` for `timestamp` and `timestamptz`, `T` for `jsonb<T>()`, and `Uint8Array` for `bytea`. Overriding the mapping with a codec waits until after v0.1.
-
-## Open questions
-
-- Why `bigint` maps to `bigint`, and `numeric` and `date` to `string`, rather than to `number` and `Date`. The resolution of #5 records the mapping without a reason.
+- A JavaScript number loses precision above 2^53 and for arbitrary-precision `numeric`, so `bigint` and `string` keep those values exact. A Postgres `date` has no time of day or zone, and a `Date` would add both and can shift the day, so it stays a string, while a timestamp is an instant and fits `Date`. Once Temporal is supported, `date` would map to a Temporal type instead of a string; `numeric` is unlikely to change.
