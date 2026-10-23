@@ -104,7 +104,8 @@ export function introspect(
 
 const MINIMUM_MAJOR_VERSION = 18;
 
-async function requireSupportedServer(tx: Queryable): Promise<void> {
+/** Refuses a server older than the minimum Postgres major version, naming it. */
+export async function requireSupportedServer(tx: Queryable): Promise<void> {
   const {
     rows: [row],
   } = await tx.query("select current_setting('server_version_num') as server_version_num");

@@ -59,6 +59,25 @@ describe("withShadowDatabases", () => {
     }
   });
 
+  it("refuses a server older than Postgres 18 before it creates a database", async () => {
+    const executed: string[] = [];
+    const driver: Driver = {
+      execute: (sql) => {
+        executed.push(sql);
+        return Promise.resolve();
+      },
+      query: () =>
+        Promise.resolve({ rows: [{ allowed: true, server_version_num: "170006" }], count: 1 }),
+      session: () => Promise.reject(new Error("unexpected session")),
+      transaction: () => Promise.reject(new Error("unexpected transaction")),
+    };
+
+    await expect(withShadowDatabases(driver, db.connect, async () => {})).rejects.toThrow(
+      "smonn/db needs Postgres 18 or newer, and this server runs Postgres 17",
+    );
+    expect(executed).toStrictEqual([]);
+  });
+
   it("sweeps stale Shadow and Definition databases before it creates its own", async () => {
     const hoursAgo = Math.floor(Date.now() / 1000) - 7200;
     const stale = [

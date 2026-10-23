@@ -1,5 +1,6 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
 import type { Connect, Driver } from "../../runtime/ports/index.ts";
+import { requireSupportedServer } from "../introspect/index.ts";
 
 export type ShadowDatabases = {
   readonly shadow: Driver;
@@ -45,6 +46,7 @@ export async function withShadowDatabases<T>(
   options: ShadowOptions = {},
 ): Promise<T> {
   const { log = () => {}, onInterrupt = () => () => {} } = options;
+  await requireSupportedServer(driver);
   await requireCreateDb(driver);
   await sweepStaleDatabases(driver, [SHADOW_PREFIX, DEFINITION_PREFIX], log);
   const server: Server = { driver, connect, onInterrupt };
