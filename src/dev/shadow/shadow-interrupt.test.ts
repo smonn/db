@@ -49,7 +49,7 @@ function interruptDuringCreate(prefix: string) {
     await recorded;
     return db.connect(name);
   };
-  return { driver, connect, onInterrupt, created, leftAtExit };
+  return { driver, connect, onInterrupt, leftAtExit };
 }
 
 describe("withShadowDatabases interrupted", () => {
