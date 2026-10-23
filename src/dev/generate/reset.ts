@@ -1,10 +1,16 @@
 import {
+  CURRENT_FILENAME,
+  currentHash,
+  DEFAULT_TRACKING_SCHEMA,
+  parseCurrent,
   quoteIdentifier,
+  readCommitted,
+  trackingSchema,
   type CurrentMigration,
   type TrackingSchema,
 } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
-import type { Driver, MigrationSource } from "../../runtime/ports/index.ts";
+import type { Driver, FileSystem, MigrationSource } from "../../runtime/ports/index.ts";
 
 // Extensions go first: one can own a schema, which then refuses a plain drop or vanishes with it.
 const EXTENSIONS = `
@@ -27,13 +33,17 @@ grant usage on schema public to public;
 comment on schema public is 'standard public schema';`;
 
 /** Refuses unless the Database is marked as a Dev database or holds nothing yet (ADR-0016). */
-export async function requireDevDatabase(driver: Driver, tracking: TrackingSchema): Promise<void> {
+export async function requireDevDatabase(
+  driver: Driver,
+  tracking: TrackingSchema,
+  command: "generate" | "reset" = "generate",
+): Promise<void> {
   if (await tracking.isResettable(driver)) return;
   const {
     rows: [row],
   } = await driver.query("select current_database() as name");
   throw new Error(
-    `${quoteIdentifier(String(row?.["name"]))} isn't a Dev database: it has no ${tracking.currentTable} table and isn't empty, so generate won't reset it`,
+    `${quoteIdentifier(String(row?.["name"]))} isn't a Dev database: it has no ${tracking.currentTable} table and isn't empty, so ${command === "reset" ? "reset needs --erase to wipe it" : "generate won't reset it"}`,
   );
 }
 
@@ -64,4 +74,35 @@ export async function resetDevDatabase(
     await tx.execute(current.body);
     await tracking.recordCurrent(tx, current.hash);
   });
+}
+
+export type ResetOptions = {
+  /** The Dev database to rebuild. */
+  readonly driver: Driver;
+  readonly fileSystem: FileSystem;
+  /** The directory holding the Committed migrations and `current.sql`. */
+  readonly migrations: string;
+  /** The schema `migrate` tracks into. Defaults to `smonn_db`. */
+  readonly trackingSchema?: string;
+  /** Resets a Database that is neither marked as a Dev database nor empty (ADR-0016). */
+  readonly erase?: boolean;
+};
+
+/**
+ * Rebuilds the Dev database from the files: drops every non-system schema, then replays the
+ * Committed migrations and `current.sql` as written, without regenerating it. Refuses an unmarked,
+ * non-empty Database unless `erase` is set.
+ */
+export async function reset(options: ResetOptions): Promise<void> {
+  const { driver, fileSystem, migrations, erase = false } = options;
+  const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
+  if (!erase) await requireDevDatabase(driver, tracking, "reset");
+  const committed = await readCommitted(fileSystem, migrations);
+  const content = await fileSystem.readFile(`${migrations}/${CURRENT_FILENAME}`);
+  let current: CurrentMigration | undefined;
+  if (content !== undefined) {
+    const { body } = await parseCurrent(content);
+    current = { body, hash: await currentHash(body) };
+  }
+  await resetDevDatabase(driver, { list: () => Promise.resolve(committed) }, tracking, current);
 }
