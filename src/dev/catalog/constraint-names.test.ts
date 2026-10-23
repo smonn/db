@@ -39,6 +39,13 @@ describe("a constraint name", () => {
     expect(() => pkeyCatalog("é".repeat(29))).not.toThrow();
     expect(() => pkeyCatalog("é".repeat(30))).toThrow("is longer than 63 bytes");
   });
+
+  it("counts bytes on an explicit name too", () => {
+    const name = "é".repeat(32);
+    expect(name).toHaveLength(32);
+    expect(() => named(name)).toThrow("is longer than 63 bytes");
+    expect(() => named("é".repeat(31))).not.toThrow();
+  });
 });
 
 describe("an explicit constraint name", () => {
@@ -103,6 +110,62 @@ describe("two keys in one schema", () => {
     expect(() => definitionCatalog(defineDatabase({ public: pairs }))).toThrow(
       'the primary key on "public"."pairs" ("a", "b") and the unique constraint on "public"."pairs" ("b") both take',
     );
+  });
+
+  it("can't take the name of a table in the schema, which the key's index would clash with", () => {
+    const tables = {
+      users: defineTable((c) => ({ id: c.integer() })),
+      accounts: defineTable((c) => ({ email: c.text().unique({ name: "users" }) })),
+    };
+    expect(() => definitionCatalog(defineDatabase({ public: tables }))).toThrow(
+      'the unique constraint on "public"."accounts" ("email") takes the constraint name "users", which is also the name of the table "public"."users"; give the key another name',
+    );
+    const own = { users: defineTable((c) => ({ id: c.integer().primaryKey({ name: "users" }) })) };
+    expect(() => definitionCatalog(defineDatabase({ public: own }))).toThrow(
+      'the primary key on "public"."users" ("id") takes the constraint name "users", which is also the name of the table "public"."users"',
+    );
+  });
+
+  it("can't derive the name of a table either", () => {
+    const tables = {
+      users_pkey: defineTable((c) => ({ id: c.integer() })),
+      users: defineTable((c) => ({ id: c.integer().primaryKey() })),
+    };
+    expect(() => definitionCatalog(defineDatabase({ public: tables }))).toThrow(
+      'the primary key on "public"."users" ("id") takes the constraint name "users_pkey", which is also the name of the table "public"."users_pkey"',
+    );
+  });
+
+  it("can take the name of a table in another schema", () => {
+    const apart = defineDatabase({
+      public: { users: defineTable((c) => ({ id: c.integer() })) },
+      auth: { accounts: defineTable((c) => ({ email: c.text().unique({ name: "users" }) })) },
+    });
+    expect(keysOf(definitionCatalog(apart))).toStrictEqual(["users"]);
+  });
+
+  it("can't take the name of an identity column's sequence", () => {
+    const tables = {
+      users: defineTable((c) => ({
+        id: c.integer().identity(),
+        email: c.text().unique({ name: "users_id_seq" }),
+      })),
+    };
+    expect(() => definitionCatalog(defineDatabase({ public: tables }))).toThrow(
+      'the unique constraint on "public"."users" ("email") takes the constraint name "users_id_seq", which is also the name of the identity sequence of "public"."users" ("id"); give the key another name',
+    );
+  });
+
+  it("can take the name of a sequence no identity column creates", () => {
+    const tables = {
+      users: defineTable((c) => ({
+        id: c.integer(),
+        email: c.text().unique({ name: "users_id_seq" }),
+      })),
+    };
+    expect(keysOf(definitionCatalog(defineDatabase({ public: tables })))).toStrictEqual([
+      "users_id_seq",
+    ]);
   });
 
   it("can take one name once either is named, or in different schemas", () => {

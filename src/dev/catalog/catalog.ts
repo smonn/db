@@ -184,7 +184,7 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
   const builder = catalogBuilder();
   for (const [schema, tables] of Object.entries(definition)) {
     builder.schema(schema);
-    const names = constraintNames(schema);
+    const names = constraintNames(schema, tables);
     for (const [table, { columns, primaryKey, primaryKeyName }] of Object.entries(tables)) {
       builder.table(schema, table);
       const entries = Object.entries(columns);
