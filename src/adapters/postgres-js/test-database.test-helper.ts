@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import postgres, { type Sql } from "postgres";
-import { afterAll, beforeAll } from "vitest";
+import { afterAll, afterEach, beforeAll } from "vitest";
 import type { Connect, Driver } from "../../runtime/ports/index.ts";
 import { postgresJsConnect } from "./connect.ts";
 import { postgresJsDriver } from "./driver.ts";
@@ -35,6 +35,12 @@ export function explainConnectionError(error: unknown, serverUrl: string): unkno
   );
 }
 
+async function endAdvisoryLockSessions(sql: Sql): Promise<void> {
+  await sql.unsafe(
+    "select pg_terminate_backend(pid) from pg_locks where locktype = 'advisory' and granted and database = (select oid from pg_database where datname = current_database()) and pid <> pg_backend_pid()",
+  );
+}
+
 /**
  * Creates a fresh database on `DATABASE_URL`'s server before the test file and drops it after.
  * Every test in the file shares it, so give each test its own table names.
@@ -63,6 +69,9 @@ export function useTestDatabase(): TestDatabase {
       throw explainConnectionError(error, serverUrl);
     });
   });
+  // A test that times out leaves its session open, and a session advisory lock (the Dev lock)
+  // would fail every later test in the file (#286).
+  afterEach(() => endAdvisoryLockSessions(sql));
   afterAll(async () => {
     await Promise.all([sql.end(), ...ownPools.map((pool) => pool.end({ timeout: 0 }))]);
     await admin.unsafe(`drop database ${name} with (force)`).catch((error: unknown) => {
