@@ -83,11 +83,20 @@ type ApiIssue = {
   sub_issues_summary?: { total: number } | undefined;
 };
 
+type Current = {
+  number: number;
+  state: string;
+  milestone: { number: number } | null;
+  labels: { name: string }[];
+  parent_issue_url: string | null;
+  sub_issues_summary: { total: number };
+};
+
 const readSummary: Reader<{ total: number }> = (value, path) => ({
   total: field(record(value, path), "total", number, path),
 });
 
-// GitHub omits `parent_issue_url` and `sub_issues_summary` from issues that have neither.
+// The issue list omits `parent_issue_url` and `sub_issues_summary` from issues that have neither.
 const readApiIssue: Reader<ApiIssue> = (value, path) => {
   const issue = record(value, path);
   return {
@@ -96,6 +105,24 @@ const readApiIssue: Reader<ApiIssue> = (value, path) => {
     pull_request: optionalField(issue, "pull_request", record, path),
     parent_issue_url: optionalField(issue, "parent_issue_url", nullable(string), path) ?? undefined,
     sub_issues_summary: optionalField(issue, "sub_issues_summary", readSummary, path),
+  };
+};
+
+const readMilestone: Reader<{ number: number }> = (value, path) => ({
+  number: field(record(value, path), "number", number, path),
+});
+
+// `GET /repos/{repo}/issues/{n}` always sends both parent fields, `parent_issue_url` as null for
+// an orphan, so a missing one means GitHub changed the API. Fail rather than call it parentless.
+const readCurrent: Reader<Current> = (value, path) => {
+  const issue = record(value, path);
+  return {
+    number: field(issue, "number", number, path),
+    state: field(issue, "state", string, path),
+    milestone: field(issue, "milestone", nullable(readMilestone), path),
+    labels: field(issue, "labels", array(readName), path),
+    parent_issue_url: field(issue, "parent_issue_url", nullable(string), path),
+    sub_issues_summary: field(issue, "sub_issues_summary", readSummary, path),
   };
 };
 
@@ -108,8 +135,8 @@ type Gh = (args: string[]) => string;
 
 const runGh: Gh = (args) => execFileSync("gh", args, { encoding: "utf8" });
 
-function getOne(gh: Gh, path: string): ApiIssue {
-  return readApiIssue(parseJson(gh(["api", path]), `gh api ${path}`), "$");
+function getOne(gh: Gh, path: string): Current {
+  return readCurrent(parseJson(gh(["api", path]), `gh api ${path}`), "$");
 }
 
 function getAll<T>(gh: Gh, path: string, read: Reader<T>): T[] {
@@ -121,21 +148,25 @@ function areas(labels: { name: string }[]): string[] {
   return labels.map((label) => label.name).filter((name) => name.startsWith("area:"));
 }
 
-type Milestoned = ParentEvent & { issue: { milestone: { number: number } } };
+type Checkable = { state: string; milestone: unknown; labels: { name: string }[] };
 
-export function needsParentCheck(event: ParentEvent): event is Milestoned {
-  const { action, issue } = event;
+function qualifies(issue: Checkable): boolean {
   return (
-    CHECKED_ACTIONS.has(action) &&
     issue.state === "open" &&
-    issue.user.type !== "Bot" &&
     issue.milestone !== null &&
     areas(issue.labels).length > 0 &&
     !issue.labels.some((label) => label.name === "wayfinder:map")
   );
 }
 
-function matchingParents(self: ParentEvent["issue"], milestoneIssues: ApiIssue[]): number[] {
+/** A cheap pre-filter on the event; `main` re-checks the issue it fetches. */
+export function needsParentCheck(event: ParentEvent): boolean {
+  return (
+    CHECKED_ACTIONS.has(event.action) && event.issue.user.type !== "Bot" && qualifies(event.issue)
+  );
+}
+
+function matchingParents(self: Current, milestoneIssues: ApiIssue[]): number[] {
   const wanted = areas(self.labels);
   return milestoneIssues
     .filter(
@@ -161,17 +192,16 @@ export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void
   const { issue, repository } = event;
   const issuePath = `repos/${repository.full_name}/issues/${issue.number}`;
   const current = getOne(gh, issuePath);
-  if (current.parent_issue_url !== undefined || (current.sub_issues_summary?.total ?? 0) > 0) {
-    return;
-  }
+  if (!qualifies(current) || current.milestone === null) return;
+  if (current.parent_issue_url !== null || current.sub_issues_summary.total > 0) return;
   const comments = getAll(gh, `${issuePath}/comments?per_page=100`, readComment);
   if (comments.some((comment) => comment.body.includes(MARKER))) return;
   const milestoneIssues = getAll(
     gh,
-    `repos/${repository.full_name}/issues?milestone=${issue.milestone.number}&state=open&per_page=100`,
+    `repos/${repository.full_name}/issues?milestone=${current.milestone.number}&state=open&per_page=100`,
     readApiIssue,
   );
-  const parents = matchingParents(issue, milestoneIssues);
+  const parents = matchingParents(current, milestoneIssues);
   if (parents.length === 0) return;
   const named = parents.map((parent) => `#${parent}`).join(", ");
   const body = `${MARKER}\nThis issue has no parent, and its milestone has a parent for its area: ${named}. If it belongs there, attach it as a sub-issue (\`gh issue edit <parent> --add-sub-issue ${issue.number}\`). Not every issue needs a parent, so ignore this if it doesn't.`;
