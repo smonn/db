@@ -1,10 +1,10 @@
 export {
+  arePayloadsEqual,
   catalogBuilder,
   childrenOf,
   definitionCatalog,
   namesOf,
   parentOf,
-  payloadsEqual,
   qualified,
 } from "./catalog/index.ts";
 export type {
