@@ -9,6 +9,8 @@ import { postgresJsConnection, postgresJsTypes } from "./value-types.ts";
 
 export type TestDatabase = {
   readonly name: string;
+  /** The connection URL of this database. */
+  readonly url: string;
   readonly driver: Driver;
   /**
    * Opens a pool of its own on this database, for a test that breaks a connection. postgres.js
@@ -73,6 +75,7 @@ export function useTestDatabase(): TestDatabase {
 
   return {
     name,
+    url: url.href,
     driver: postgresJsDriver(sql),
     ownPool: () => {
       const pool = client();
