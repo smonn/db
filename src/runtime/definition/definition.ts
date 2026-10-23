@@ -69,7 +69,7 @@ function column<V, N extends boolean, Int extends boolean, Gen extends boolean, 
     primaryKey: () => column({ ...state, notNull: true, primaryKey: true }),
     unique: () => column({ ...state, unique: true }),
   };
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- "~types" exists only in types.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- "~types" exists only in types, so `parts` doesn't overlap `Column` enough for a direct cast (TS2352); it goes through `unknown`.
   return parts as unknown as Column<V, N, Int, Gen, Pk>;
 }
 

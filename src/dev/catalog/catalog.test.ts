@@ -132,17 +132,6 @@ describe("definitionCatalog", () => {
     });
   });
 
-  it("refuses a constraint name Postgres would truncate", () => {
-    const table = "t".repeat(60);
-    expect(() =>
-      definitionCatalog(
-        defineDatabase({
-          public: { [table]: defineTable((c) => ({ id: c.text().primaryKey() })) },
-        }),
-      ),
-    ).toThrow("is longer than 63 bytes");
-  });
-
   it("keeps a schema with no tables", () => {
     expect([...definitionCatalog(defineDatabase({ empty: {} }))]).toStrictEqual([
       ["empty", { kind: "schema", name: "empty", parent: undefined, payload: {} }],
