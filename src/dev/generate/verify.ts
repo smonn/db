@@ -1,6 +1,6 @@
-import { quoteIdentifier, type TrackingSchema } from "../../runtime/internal/index.ts";
+import type { TrackingSchema } from "../../runtime/internal/index.ts";
 import type { Driver } from "../../runtime/ports/index.ts";
-import { namesOf, type Catalog, type Fact } from "../catalog/index.ts";
+import { payloadsEqual, qualified, type Catalog, type Fact } from "../catalog/index.ts";
 import { introspect } from "../introspect/index.ts";
 
 /**
@@ -29,8 +29,7 @@ function differences(shadow: Catalog, definition: Catalog): string[] {
     const wanted = definition.get(key);
     if (wanted === undefined) {
       lines.push(`${describe(fact, shadow)} is only in the Shadow database`);
-    } else if (JSON.stringify(fact.payload) !== JSON.stringify(wanted.payload)) {
-      // Both catalogs come from introspect, so equal payloads serialize with the same key order.
+    } else if (!payloadsEqual(fact.payload, wanted.payload)) {
       lines.push(
         `${describe(fact, shadow)} is ${JSON.stringify(fact.payload)} in the Shadow database and ${JSON.stringify(wanted.payload)} in the Definition database`,
       );
@@ -44,7 +43,5 @@ function differences(shadow: Catalog, definition: Catalog): string[] {
 }
 
 function describe(fact: Fact, catalog: Catalog): string {
-  return `${fact.kind} ${namesOf(catalog, fact)
-    .map((name) => quoteIdentifier(name))
-    .join(".")}`;
+  return `${fact.kind} ${qualified(fact, catalog)}`;
 }

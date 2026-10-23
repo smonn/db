@@ -1,4 +1,5 @@
 export { catalogBuilder, childrenOf, definitionCatalog, namesOf, parentOf } from "./catalog.ts";
+export { payloadsEqual, qualified } from "./compare.ts";
 export type {
   Catalog,
   CatalogBuilder,
