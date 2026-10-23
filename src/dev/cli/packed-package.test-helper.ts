@@ -31,21 +31,28 @@ async function acquire(lock: string): Promise<void> {
   }
 }
 
-async function withBuildLock(action: () => void): Promise<void> {
+async function withBuildLock<T>(action: () => Promise<T> | T): Promise<T> {
   const lock = join(tmpdir(), `smonn-db-build-${createHash("sha1").update(repo).digest("hex")}`);
   await acquire(lock);
   try {
-    action();
+    return await action();
   } finally {
     await rm(lock, { recursive: true, force: true });
   }
 }
 
+/** The repo's package.json, read while no other file's build is rewriting it. */
+export function readPackageJson(): Promise<string> {
+  return withBuildLock(() => readFile(join(repo, "package.json"), "utf8"));
+}
+
 export type PackedPackage = {
   /** The built package as `pnpm pack` writes it. */
   readonly tarball: string;
-  /** The repo's package.json as it was before the build rewrote anything. */
+  /** The repo's package.json as it was before the build. */
   readonly packageJson: string;
+  /** The repo's package.json as it was right after the build. */
+  readonly builtPackageJson: string;
   /** `pnpm add` arguments that install the tarball and a postgres peer without the registry. */
   readonly installArgs: readonly string[];
 };
@@ -55,17 +62,19 @@ export function usePackedPackage(): PackedPackage {
   let dir: string;
   let tarball: string;
   let packageJson: string;
+  let builtPackageJson: string;
 
   beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), "smonn-db-packed-"));
     tarball = join(dir, "package.tgz");
-    packageJson = await readFile(join(repo, "package.json"), "utf8");
-    await withBuildLock(() => {
+    await withBuildLock(async () => {
+      packageJson = await readFile(join(repo, "package.json"), "utf8");
       run("pnpm", ["run", "build"], repo);
+      builtPackageJson = await readFile(join(repo, "package.json"), "utf8");
       // The build already ran, and prepare's hook install would touch git config.
       run("pnpm", ["pack", "--ignore-scripts", "--out", tarball], repo);
     });
-  }, 120_000);
+  }, 240_000);
 
   afterAll(async () => {
     await rm(dir, { recursive: true, force: true });
@@ -77,6 +86,9 @@ export function usePackedPackage(): PackedPackage {
     },
     get packageJson() {
       return packageJson;
+    },
+    get builtPackageJson() {
+      return builtPackageJson;
     },
     // The repo's installed postgres stands in for the peer, so the install needs no registry.
     get installArgs() {

@@ -1,10 +1,9 @@
-import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { repo, run, usePackedPackage } from "./packed-package.test-helper.ts";
+import { readPackageJson, repo, run, usePackedPackage } from "./packed-package.test-helper.ts";
 
 function stringRecord(value: unknown, what: string): Record<string, string> {
   const isStrings =
@@ -22,7 +21,7 @@ function field(value: unknown, key: string): unknown {
 // Imported by URL so the import-rule check, which cruises src/, doesn't follow it out of src/.
 const config: unknown = await import(pathToFileURL(join(repo, "tsdown.config.ts")).href);
 const entries = stringRecord(field(field(config, "default"), "entry"), "tsdown.config.ts entry");
-const manifest: unknown = JSON.parse(readFileSync(join(repo, "package.json"), "utf8"));
+const manifest: unknown = JSON.parse(await readPackageJson());
 const exportMap = stringRecord(field(manifest, "exports"), "package.json exports");
 
 // Each public export, paired with the source of the entry tsdown builds it from.
@@ -59,16 +58,16 @@ beforeAll(async () => {
   await mkdir(join(project, "migrations"), { recursive: true });
   await writeFile(join(project, "package.json"), '{ "private": true, "type": "module" }\n');
   run("pnpm", packed.installArgs, project);
-}, 120_000);
+}, 240_000);
 
 afterAll(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
 describe("the packed package", () => {
-  it("builds without changing the exports and bin in package.json", async () => {
+  it("builds without changing the exports and bin in package.json", () => {
     // tsdown rewrites them from tsdown.config.ts, so a change means the committed copy is stale.
-    await expect(readFile(join(repo, "package.json"), "utf8")).resolves.toBe(packed.packageJson);
+    expect(packed.builtPackageJson).toBe(packed.packageJson);
   });
 
   it("declares only the bin as having side effects", () => {
