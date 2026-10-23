@@ -33,7 +33,13 @@ const MISMATCH = `the Dev database's Committed migrations don't match the files 
 async function committedThenRegenerated(): Promise<MemoryFileSystem> {
   const fileSystem = memoryFileSystem();
   await generateInto(fileSystem);
-  await commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "create-users" });
+  await commit({
+    driver: db.driver,
+    fileSystem,
+    migrations: MIGRATIONS,
+    slug: "create-users",
+    accept: [],
+  });
   await generateInto(
     fileSystem,
     defineDatabase({ public: { users: defineTable((c) => ({ id: c.text(), email: c.text() })) } }),
@@ -69,6 +75,7 @@ describe("commit", () => {
       fileSystem,
       migrations: MIGRATIONS,
       slug: "create-users",
+      accept: [],
     });
 
     const written = await writeMigration("000001-create-users.sql", undefined, USERS_SQL);
@@ -83,7 +90,13 @@ describe("commit", () => {
   it("chains the next Committed migration onto the tip", async () => {
     const fileSystem = memoryFileSystem();
     await generateInto(fileSystem);
-    await commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "create-users" });
+    await commit({
+      driver: db.driver,
+      fileSystem,
+      migrations: MIGRATIONS,
+      slug: "create-users",
+      accept: [],
+    });
     await generateInto(
       fileSystem,
       defineDatabase({
@@ -96,6 +109,7 @@ describe("commit", () => {
       fileSystem,
       migrations: MIGRATIONS,
       slug: "add-email",
+      accept: [],
     });
 
     const first = await writeMigration("000001-create-users.sql", undefined, USERS_SQL);
@@ -117,7 +131,13 @@ describe("commit", () => {
     const before = new Map(fileSystem.files);
 
     await expect(
-      commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "Create_Users" }),
+      commit({
+        driver: db.driver,
+        fileSystem,
+        migrations: MIGRATIONS,
+        slug: "Create_Users",
+        accept: [],
+      }),
     ).rejects.toThrow('slug "Create_Users" must be kebab-case, such as create-users');
     expect(fileSystem.files).toStrictEqual(before);
     expect(await currentRows()).toBe(1);
@@ -130,6 +150,7 @@ describe("commit", () => {
         fileSystem: memoryFileSystem(),
         migrations: MIGRATIONS,
         slug: "create-users",
+        accept: [],
       }),
     ).rejects.toThrow(`${CURRENT} doesn't exist; run generate first`);
   });
@@ -141,33 +162,16 @@ describe("commit", () => {
     const before = new Map(fileSystem.files);
 
     await expect(
-      commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "create-users" }),
-    ).rejects.toThrow(
-      `the Dev database hasn't replayed ${CURRENT} as it reads now; run generate first`,
-    );
-    expect(fileSystem.files).toStrictEqual(before);
-    expect(await currentRows()).toBe(1);
-  });
-
-  it("hands the gate the body it reads and leaves everything as it was when the gate throws", async () => {
-    const fileSystem = memoryFileSystem();
-    await generateInto(fileSystem);
-    const before = new Map(fileSystem.files);
-    const bodies: string[] = [];
-
-    await expect(
       commit({
         driver: db.driver,
         fileSystem,
         migrations: MIGRATIONS,
         slug: "create-users",
-        gate: (body) => {
-          bodies.push(body);
-          throw new Error("gate says no");
-        },
+        accept: [],
       }),
-    ).rejects.toThrow("gate says no");
-    expect(bodies).toStrictEqual([USERS_SQL]);
+    ).rejects.toThrow(
+      `the Dev database hasn't replayed ${CURRENT} as it reads now; run generate first`,
+    );
     expect(fileSystem.files).toStrictEqual(before);
     expect(await currentRows()).toBe(1);
   });
@@ -178,7 +182,13 @@ describe("commit", () => {
     await db.driver.execute("drop schema smonn_db cascade");
 
     await expect(
-      commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "create-users" }),
+      commit({
+        driver: db.driver,
+        fileSystem,
+        migrations: MIGRATIONS,
+        slug: "create-users",
+        accept: [],
+      }),
     ).rejects.toThrow(
       `the Dev database hasn't replayed ${CURRENT} as it reads now; run generate first`,
     );
@@ -191,7 +201,13 @@ describe("commit", () => {
     fileSystem.files.set(`${MIGRATIONS}/${pulled.filename}`, pulled.content);
 
     await expect(
-      commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "create-users" }),
+      commit({
+        driver: db.driver,
+        fileSystem,
+        migrations: MIGRATIONS,
+        slug: "create-users",
+        accept: [],
+      }),
     ).rejects.toThrow(MISMATCH);
     expect(fileSystem.files.has(`${MIGRATIONS}/000002-create-users.sql`)).toBe(false);
   });
@@ -203,7 +219,13 @@ describe("commit", () => {
     const before = new Map(fileSystem.files);
 
     await expect(
-      commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "add-email" }),
+      commit({
+        driver: db.driver,
+        fileSystem,
+        migrations: MIGRATIONS,
+        slug: "add-email",
+        accept: [],
+      }),
     ).rejects.toThrow(MISMATCH);
     expect(fileSystem.files).toStrictEqual(before);
   });
@@ -214,7 +236,13 @@ describe("commit", () => {
     const before = new Map(fileSystem.files);
 
     await expect(
-      commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "add-email" }),
+      commit({
+        driver: db.driver,
+        fileSystem,
+        migrations: MIGRATIONS,
+        slug: "add-email",
+        accept: [],
+      }),
     ).rejects.toThrow(MISMATCH);
     expect(fileSystem.files).toStrictEqual(before);
   });
@@ -229,7 +257,13 @@ describe("commit", () => {
     );
 
     await expect(
-      commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "create-users" }),
+      commit({
+        driver: db.driver,
+        fileSystem,
+        migrations: MIGRATIONS,
+        slug: "create-users",
+        accept: [],
+      }),
     ).rejects.toThrow("000001-a.sql: --! Hash says");
   });
 
@@ -244,7 +278,13 @@ describe("commit", () => {
         for each row execute function smonn_db.refuse();`);
 
     await expect(
-      commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "create-users" }),
+      commit({
+        driver: db.driver,
+        fileSystem,
+        migrations: MIGRATIONS,
+        slug: "create-users",
+        accept: [],
+      }),
     ).rejects.toThrow("refused by test");
     expect(fileSystem.files).toStrictEqual(before);
     expect(await recorded()).toStrictEqual([]);

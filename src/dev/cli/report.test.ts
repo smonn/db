@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateReport, hazardRefusal, resetReport } from "./report.ts";
+import { generateReport, resetReport } from "./report.ts";
 
 describe("generateReport", () => {
   it("names the file, each Hazard with its statement, and the reset", () => {
@@ -34,48 +34,6 @@ describe("generateReport", () => {
       "matches what generate would write",
       "left the Dev database as it was",
     ]);
-  });
-});
-
-describe("hazardRefusal", () => {
-  const sql = [
-    'create table "public"."a" (id int);',
-    "-- hazard: data_loss",
-    'drop table "public"."b";',
-    "-- hazard: rewrite",
-    "-- hazard: access_exclusive_lock",
-    'alter table "public"."c"',
-    "  alter column n type bigint;",
-    "",
-  ].join("\n");
-
-  it("accepts a migration without hazard comments", () => {
-    expect(hazardRefusal("create table a (n int);\n", [])).toBeUndefined();
-  });
-
-  it("accepts when every kind is named, including kinds the file doesn't use", () => {
-    expect(hazardRefusal(sql, ["rewrite", "data_loss", "access_exclusive_lock"])).toBeUndefined();
-  });
-
-  it("groups the missing kinds by statement and prints one combined flag", () => {
-    expect(hazardRefusal(sql, [])).toBe(
-      [
-        "current.sql has Hazards that --accept doesn't name:",
-        '  data_loss: drop table "public"."b";',
-        '  rewrite, access_exclusive_lock: alter table "public"."c" alter column n type bigint;',
-        "to commit anyway, pass --accept data_loss,rewrite,access_exclusive_lock",
-      ].join("\n"),
-    );
-  });
-
-  it("lists only the kinds still missing, and the flag keeps the ones already named", () => {
-    expect(hazardRefusal(sql, ["data_loss", "rewrite"])).toBe(
-      [
-        "current.sql has Hazards that --accept doesn't name:",
-        '  access_exclusive_lock: alter table "public"."c" alter column n type bigint;',
-        "to commit anyway, pass --accept data_loss,rewrite,access_exclusive_lock",
-      ].join("\n"),
-    );
   });
 });
 

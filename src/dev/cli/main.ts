@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
 import { nodeMigrationSource } from "../../adapters/node/index.ts";
 import { verify } from "../../runtime/migrator/index.ts";
-import { HAZARD_KINDS } from "../diff/index.ts";
+import { HAZARD_KINDS, type HazardKind } from "../diff/index.ts";
 import { loadMigrationsFolder, loadProject } from "./project.ts";
 import { print, run, type DatabaseCommand } from "./run.ts";
 
@@ -46,16 +46,18 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
 }
 
-function parseAccept(value: string | undefined): string[] {
-  const kinds = value === undefined ? [] : value.split(",");
-  for (const kind of kinds) {
-    if (!(HAZARD_KINDS as readonly string[]).includes(kind)) {
+function parseAccept(value: string | undefined): HazardKind[] {
+  const accepted: HazardKind[] = [];
+  for (const kind of value === undefined ? [] : value.split(",")) {
+    const known = HAZARD_KINDS.find((candidate) => candidate === kind);
+    if (known === undefined) {
       throw new UsageError(
         `unknown Hazard kind ${JSON.stringify(kind)}; the kinds are ${HAZARD_KINDS.join(", ")}`,
       );
     }
+    accepted.push(known);
   }
-  return kinds;
+  return accepted;
 }
 
 function parseCommand(argv: readonly string[]): Command {

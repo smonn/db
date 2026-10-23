@@ -43,7 +43,13 @@ describe("reset", () => {
   it("replays the Committed migrations and current.sql into a marked Database", async () => {
     const fileSystem = memoryFileSystem();
     await generateInto(fileSystem);
-    await commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "create-users" });
+    await commit({
+      driver: db.driver,
+      fileSystem,
+      migrations: MIGRATIONS,
+      slug: "create-users",
+      accept: [],
+    });
     await generateInto(fileSystem, withEmail);
     await db.driver.execute("create schema extra; create table extra.junk (id int)");
 
