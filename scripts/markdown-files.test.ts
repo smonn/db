@@ -32,6 +32,11 @@ describe("markdownFiles", () => {
     expect(markdownFiles(root)).toEqual(["a.md"]);
   });
 
+  test("skips the CHANGELOG.md that release-please writes", () => {
+    touch("a.md", "CHANGELOG.md");
+    expect(markdownFiles(root)).toEqual(["a.md"]);
+  });
+
   test("defaults to the working directory", () => {
     expect(markdownFiles()).toContain("AGENTS.md");
   });
