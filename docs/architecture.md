@@ -330,7 +330,6 @@ Baselines recorded at adoption (2026-10-22), each lowered as code improves and n
 
 - `complexity` starts at 21 (`dev/diff/hazards.ts`), target 6, in `.oxlintrc.json`. `max-params` and `max-depth` are at their target of 4.
 - `fta-baseline.json` holds the five test files that score above 60. `pnpm fta:update` lowers a baseline after a file improves.
-- `rev-dep.duplicates.json` holds the four duplicated test blocks found at adoption. `deps` fails on any new duplicate.
 - Every TypeScript strictness flag is on, so the compiler has no baseline.
 
 ## Package entry points

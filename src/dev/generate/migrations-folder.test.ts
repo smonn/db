@@ -3,6 +3,7 @@ import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-h
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { writeMigration } from "../../runtime/internal/index.ts";
 import { generate } from "./generate.ts";
+import { generateOptions } from "./generate-options.test-helper.ts";
 import { filesIn, memoryFileSystem } from "./memory-file-system.test-helper.ts";
 
 const db = useTestDatabase();
@@ -32,13 +33,13 @@ describe("generate reading the migrations folder", () => {
     });
 
     await expect(
-      generate({
-        driver: db.driver,
-        connect: db.connect,
-        fileSystem,
-        definition: defineDatabase({ public: { users: defineTable((c) => ({ id: c.text() })) } }),
-        migrations: "db/migrations",
-      }),
+      generate(
+        generateOptions(
+          db,
+          fileSystem,
+          defineDatabase({ public: { users: defineTable((c) => ({ id: c.text() })) } }),
+        ),
+      ),
     ).rejects.toThrow("create-posts.sql: name it like 000001-create-users.sql");
     expect(fileSystem.files.has("db/migrations/current.sql")).toBe(false);
     expect(
@@ -54,16 +55,16 @@ describe("generate reading the migrations folder", () => {
     const fileSystem = memoryFileSystem();
 
     await expect(
-      generate({
-        driver: db.driver,
-        connect: db.connect,
-        fileSystem: {
-          ...fileSystem,
-          list: async (directory) => [...(await fileSystem.list(directory)), "000001-gone.sql"],
-        },
-        definition: defineDatabase({ public: {} }),
-        migrations: "db/migrations",
-      }),
+      generate(
+        generateOptions(
+          db,
+          {
+            ...fileSystem,
+            list: async (directory) => [...(await fileSystem.list(directory)), "000001-gone.sql"],
+          },
+          defineDatabase({ public: {} }),
+        ),
+      ),
     ).rejects.toThrow("db/migrations/000001-gone.sql vanished between listing and reading");
   });
 });

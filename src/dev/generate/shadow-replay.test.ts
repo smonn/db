@@ -3,6 +3,7 @@ import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-h
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { writeMigration } from "../../runtime/internal/index.ts";
 import { generate } from "./generate.ts";
+import { generateOptions } from "./generate-options.test-helper.ts";
 import { filesIn, memoryFileSystem } from "./memory-file-system.test-helper.ts";
 
 const db = useTestDatabase();
@@ -38,13 +39,13 @@ create event trigger audit on ddl_command_end when tag in ('CREATE TABLE')
     );
 
     await expect(
-      generate({
-        driver: db.driver,
-        connect: db.connect,
-        fileSystem,
-        definition: defineDatabase({ public: { users: defineTable((c) => ({ id: c.text() })) } }),
-        migrations: "db/migrations",
-      }),
+      generate(
+        generateOptions(
+          db,
+          fileSystem,
+          defineDatabase({ public: { users: defineTable((c) => ({ id: c.text() })) } }),
+        ),
+      ),
     ).rejects.toThrow(
       `the Current migration leaves the Shadow database unlike the Definition database:\n  column "public"."users"."audited" is only in the Shadow database`,
     );
@@ -63,13 +64,7 @@ create event trigger audit on ddl_command_end when tag in ('CREATE TABLE')
     );
 
     await expect(
-      generate({
-        driver: db.driver,
-        connect: db.connect,
-        fileSystem,
-        definition: defineDatabase({ public: {} }),
-        migrations: "db/migrations",
-      }),
+      generate(generateOptions(db, fileSystem, defineDatabase({ public: {} }))),
     ).rejects.toThrow(`relation "public.missing" does not exist`);
   });
 });

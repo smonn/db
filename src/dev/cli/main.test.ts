@@ -1,32 +1,17 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { writeMigration } from "../../runtime/internal/index.ts";
+import { useCliProject } from "./cli-project.test-helper.ts";
 import { main } from "./main.ts";
 
 const defineConfigUrl = pathToFileURL(join(import.meta.dirname, "../config/index.ts")).href;
 
-let project: string;
-let stderr: string;
-
-beforeEach(async () => {
-  project = await mkdtemp(join(tmpdir(), "smonn-db-cli-"));
-  stderr = "";
-  vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
-    stderr += String(chunk);
-    return true;
-  });
-});
-
-afterEach(async () => {
-  vi.restoreAllMocks();
-  await rm(project, { recursive: true, force: true });
-});
+const cli = useCliProject();
 
 async function writeConfig(body: string): Promise<string> {
-  const file = join(project, "smonndb.config.ts");
+  const file = join(cli.dir, "smonndb.config.ts");
   await writeFile(file, `import { defineConfig } from "${defineConfigUrl}";\n\n${body}`);
   return file;
 }
@@ -50,20 +35,20 @@ describe("main", () => {
     [["commit", "a", "--accept", ""], 'unknown Hazard kind ""'],
   ])("exits 2 with the usage for %j", async (argv, message) => {
     expect(await main(argv)).toBe(2);
-    expect(stderr).toContain(message);
-    expect(stderr).toContain("usage: smonndb <command> [--config <path>]");
+    expect(cli.stderr).toContain(message);
+    expect(cli.stderr).toContain("usage: smonndb <command> [--config <path>]");
   });
 
   it("exits 1 when the config file is missing, naming it", async () => {
-    expect(await main(["migrate", "--config", join(project, "missing.config.ts")])).toBe(1);
-    expect(stderr).toContain("missing.config.ts");
+    expect(await main(["migrate", "--config", join(cli.dir, "missing.config.ts")])).toBe(1);
+    expect(cli.stderr).toContain("missing.config.ts");
   });
 
   it("exits 1 when the config file has no default export", async () => {
     const file = await writeConfig("export const config = {};\n");
 
     expect(await main(["migrate", "--config", file])).toBe(1);
-    expect(stderr).toBe(
+    expect(cli.stderr).toBe(
       `${relative(process.cwd(), file)} must export defineConfig({ ... }) as its default export\n`,
     );
   });
@@ -74,18 +59,18 @@ describe("main", () => {
     );
 
     expect(await main(["migrate", "--config", file])).toBe(1);
-    expect(stderr).toContain("url is undefined; set the environment variable it reads");
+    expect(cli.stderr).toContain("url is undefined; set the environment variable it reads");
   });
 
   it("exits 1 when the Definition file has no default export, before connecting", async () => {
-    await writeFile(join(project, "definition.ts"), "export const users = {};\n");
+    await writeFile(join(cli.dir, "definition.ts"), "export const users = {};\n");
     const file = await writeConfig(
       `export default defineConfig({ definition: "./definition.ts", migrations: "./migrations", url: "postgres://localhost:1/none" });\n`,
     );
 
     expect(await main(["generate", "--config", file])).toBe(1);
-    expect(stderr).toBe(
-      `${relative(process.cwd(), join(project, "definition.ts"))} must export defineDatabase({ ... }) as its default export\n`,
+    expect(cli.stderr).toBe(
+      `${relative(process.cwd(), join(cli.dir, "definition.ts"))} must export defineDatabase({ ... }) as its default export\n`,
     );
   });
 });
@@ -99,8 +84,8 @@ function writeVerifyConfig(): Promise<string> {
 async function commitChain(): Promise<void> {
   const a = await writeMigration("000001-a.sql", undefined, "create table a (n int);\n");
   const b = await writeMigration("000002-b.sql", a.hash, "create table b (n int);\n");
-  await writeFile(join(project, "migrations", a.filename), a.content);
-  await writeFile(join(project, "migrations", b.filename), b.content);
+  await writeFile(join(cli.dir, "migrations", a.filename), a.content);
+  await writeFile(join(cli.dir, "migrations", b.filename), b.content);
 }
 
 describe("main verify", () => {
@@ -112,7 +97,7 @@ describe("main verify", () => {
       stdout += String(chunk);
       return true;
     });
-    await mkdir(join(project, "migrations"));
+    await mkdir(join(cli.dir, "migrations"));
   });
 
   it("verifies an intact chain without a url or a database", async () => {
@@ -126,15 +111,15 @@ describe("main verify", () => {
   it("exits 1 naming the first bad file", async () => {
     const file = await writeVerifyConfig();
     await commitChain();
-    const path = join(project, "migrations", "000002-b.sql");
+    const path = join(cli.dir, "migrations", "000002-b.sql");
     await writeFile(path, (await readFile(path, "utf8")).replace("table b", "table bb"));
 
     expect(await main(["verify", "--config", file])).toBe(1);
-    expect(stderr).toMatch(/^000002-b\.sql: --! Hash says /u);
+    expect(cli.stderr).toMatch(/^000002-b\.sql: --! Hash says /u);
   });
 
   it("exits 2 given an argument", async () => {
     expect(await main(["verify", "now"])).toBe(2);
-    expect(stderr).toContain("verify takes no arguments: now");
+    expect(cli.stderr).toContain("verify takes no arguments: now");
   });
 });

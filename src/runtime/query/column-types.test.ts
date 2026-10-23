@@ -27,6 +27,27 @@ const everything = defineTable((c) => ({
 }));
 const db = defineDatabase({ public: { everything } });
 
+// Spelled out rather than derived from `everything`, so the test checks the Definition's value types.
+type EverythingRow = {
+  id: number;
+  text: string | null;
+  varchar: string | null;
+  smallint: number | null;
+  integer: number | null;
+  bigint: bigint | null;
+  numeric: string | null;
+  scaled: string | null;
+  real: number | null;
+  doublePrecision: number | null;
+  boolean: boolean | null;
+  uuid: string | null;
+  date: string | null;
+  timestamp: Date | null;
+  timestamptz: Date | null;
+  jsonb: { tags: string[]; nested: { n: number } } | null;
+  bytea: Uint8Array | null;
+};
+
 const columnNames = Object.keys(everything.columns);
 const createTable = `create table public.everything (${Object.entries(everything.columns)
   .map(([name, col]) => `"${name}" ${col.state.sqlType}${col.state.notNull ? " not null" : ""}`)
@@ -69,27 +90,7 @@ describe("every column type through the postgres-js driver", () => {
     const rows = await client.all(from(db.public.everything));
 
     expect(rows).toStrictEqual([filled]);
-    expectTypeOf(rows).toEqualTypeOf<
-      {
-        id: number;
-        text: string | null;
-        varchar: string | null;
-        smallint: number | null;
-        integer: number | null;
-        bigint: bigint | null;
-        numeric: string | null;
-        scaled: string | null;
-        real: number | null;
-        doublePrecision: number | null;
-        boolean: boolean | null;
-        uuid: string | null;
-        date: string | null;
-        timestamp: Date | null;
-        timestamptz: Date | null;
-        jsonb: { tags: string[]; nested: { n: number } } | null;
-        bytea: Uint8Array | null;
-      }[]
-    >();
+    expectTypeOf(rows).toEqualTypeOf<EverythingRow[]>();
   });
 
   it("reads a row of nulls", async () => {
@@ -134,27 +135,7 @@ describe("every column type through the postgres-js driver", () => {
 
     const nulls = { ...Object.fromEntries(columnNames.map((name) => [name, null])), id: 6 };
     expect(rows).toStrictEqual([filled, nulls]);
-    expectTypeOf(rows).toEqualTypeOf<
-      {
-        id: number;
-        text: string | null;
-        varchar: string | null;
-        smallint: number | null;
-        integer: number | null;
-        bigint: bigint | null;
-        numeric: string | null;
-        scaled: string | null;
-        real: number | null;
-        doublePrecision: number | null;
-        boolean: boolean | null;
-        uuid: string | null;
-        date: string | null;
-        timestamp: Date | null;
-        timestamptz: Date | null;
-        jsonb: { tags: string[]; nested: { n: number } } | null;
-        bytea: Uint8Array | null;
-      }[]
-    >();
+    expectTypeOf(rows).toEqualTypeOf<EverythingRow[]>();
   });
 
   it("reads timestamps as UTC whatever the session time zone", async () => {
