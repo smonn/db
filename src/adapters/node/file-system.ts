@@ -16,7 +16,15 @@ export function nodeFileSystem(): FileSystem {
       await writeFile(path, content, "utf8");
     },
     async list(directory) {
-      const entries = await readdir(directory, { withFileTypes: true });
+      let entries;
+      try {
+        entries = await readdir(directory, { withFileTypes: true });
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+          throw new Error(`the folder ${directory} doesn't exist`, { cause: error });
+        }
+        throw error;
+      }
       return entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
     },
     async mkdir(directory) {

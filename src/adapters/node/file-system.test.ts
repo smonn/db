@@ -50,7 +50,7 @@ describe("nodeFileSystem", () => {
   });
 
   it("rejects listing a missing directory", async () => {
-    await expect(fileSystem.list(`${directory}/missing`)).rejects.toThrow("ENOENT");
+    await expect(fileSystem.list(`${directory}/missing`)).rejects.toThrow("missing doesn't exist");
   });
 
   it("creates a directory and its parents, and does nothing when it exists", async () => {

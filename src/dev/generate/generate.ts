@@ -3,17 +3,26 @@ import {
   currentHash,
   DEFAULT_TRACKING_SCHEMA,
   parseCurrent,
+  parseMigration,
   quoteIdentifier,
   readCommitted,
   trackingSchema,
+  type TrackingSchema,
   writeCurrent,
 } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
-import type { Connect, Driver, FileSystem, MigrationSource } from "../../runtime/ports/index.ts";
+import type {
+  Connect,
+  Driver,
+  FileSystem,
+  MigrationFile,
+  MigrationSource,
+} from "../../runtime/ports/index.ts";
 import { definitionCatalog, type Catalog, type DefinitionTables } from "../catalog/index.ts";
 import { diff } from "../diff/index.ts";
 import { introspect, skippedSchemaReason } from "../introspect/index.ts";
 import { withShadowDatabases } from "../shadow/index.ts";
+import { withDevLock } from "./dev-lock.ts";
 import { lineDiff } from "./line-diff.ts";
 import { requireDevDatabase, resetDevDatabase } from "./reset.ts";
 
@@ -39,14 +48,26 @@ export type GenerateResult = {
    * generation. Empty when they match. `sql` is then the replayed body.
    */
   readonly diff?: string;
+  /** Whether generate reset the Dev database, which it does only when the files left it behind. */
+  readonly reset: boolean;
 };
 
 /**
  * Diffs the Definition against the Committed migrations, writes the result to `current.sql`, then
- * resets the Dev database and replays the Committed migrations and the Current migration. A
- * hand-edited `current.sql` is replayed as written and left alone.
+ * resets the Dev database and replays the Committed migrations and the Current migration when it
+ * has fallen behind them. A hand-edited `current.sql` is replayed as written and left alone. Holds
+ * the Dev lock, so a second run fails at once.
  */
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
+  const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
+  requireModeledSchemas(options.definition, tracking.name);
+  const result = await withDevLock(options.driver, "generate", (driver) =>
+    generateLocked({ ...options, driver }),
+  );
+  return result;
+}
+
+async function generateLocked(options: GenerateOptions): Promise<GenerateResult> {
   const {
     driver,
     connect,
@@ -56,7 +77,6 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
     trackingSchema: trackingName = DEFAULT_TRACKING_SCHEMA,
   } = options;
   const tracking = trackingSchema(trackingName);
-  requireModeledSchemas(definition, tracking.name);
   await requireDevDatabase(driver, tracking);
   const path = `${migrations}/${CURRENT_FILENAME}`;
   const edited = await readHandEdited(fileSystem, path);
@@ -77,18 +97,37 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
 
   if (edited !== undefined) {
     const current = { body: edited, hash: await currentHash(edited) };
-    await resetDevDatabase(driver, source, tracking, current);
-    return { path, sql: edited, diff: lineDiff(edited, (await writeCurrent(sql)).body) };
+    const reset = await needsReset(driver, tracking, committed, current.hash);
+    if (reset) await resetDevDatabase(driver, source, tracking, current);
+    return { path, sql: edited, diff: lineDiff(edited, (await writeCurrent(sql)).body), reset };
   }
   if (sql === "") {
     await fileSystem.remove(path);
-    await resetDevDatabase(driver, source, tracking);
-    return { path, sql: undefined };
+    const reset = await needsReset(driver, tracking, committed);
+    if (reset) await resetDevDatabase(driver, source, tracking);
+    return { path, sql: undefined, reset };
   }
   const current = await writeCurrent(sql);
   await fileSystem.writeFile(path, current.content);
-  await resetDevDatabase(driver, source, tracking, current);
-  return { path, sql: current.body };
+  const reset = await needsReset(driver, tracking, committed, current.hash);
+  if (reset) await resetDevDatabase(driver, source, tracking, current);
+  return { path, sql: current.body, reset };
+}
+
+/**
+ * Whether the Dev database has fallen behind the files: it isn't marked yet, its `current` hash
+ * differs from the Current migration's, or its last recorded hash differs from the Committed tip.
+ */
+async function needsReset(
+  driver: Driver,
+  tracking: TrackingSchema,
+  committed: readonly MigrationFile[],
+  current?: string,
+): Promise<boolean> {
+  if (!(await tracking.hasCurrentTable(driver))) return true;
+  if ((await tracking.readCurrent(driver)) !== current) return true;
+  const chain = committed.map((file) => parseMigration(file));
+  return (await tracking.readTip(driver)) !== chain.find((m) => m.sequence === chain.length)?.hash;
 }
 
 /** Refuses a schema `introspect` skips, whose tables would otherwise vanish from `current.sql`. */
