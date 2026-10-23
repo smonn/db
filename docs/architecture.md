@@ -299,7 +299,7 @@ Generate resets the Dev database whenever the Current migration's hash differs f
 
 ### Postgres versions
 
-v0.1 supports Postgres 18 and newer, and CI runs 18 and, once released, 19. `introspect` reads `server_version_num`, refuses an older server with an error naming the minimum, and branches in TypeScript when a catalog differs between versions.
+v0.1 supports Postgres 18 and newer, and CI runs 18 and, once released, 19. `generate` and `reset` refuse an older server with an error naming the minimum. `generate` hits the check in `withShadowDatabases` and `introspect`, which read `server_version_num`; `reset` checks before it drops or replays anything. `introspect` branches in TypeScript when a catalog differs between versions.
 
 ## Import rules
 
