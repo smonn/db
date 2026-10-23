@@ -4,9 +4,14 @@
  * and otherwise reports how far behind the branch is. What it prints on stdout lands in the
  * agent's context.
  *
- * `.claude/settings.json` runs it on startup; run it by hand with `node scripts/session-start.ts`.
+ * `.claude/settings.json` runs it on session startup and when a subagent starts. Both events pass
+ * a JSON object on stdin whose `cwd` is the directory the session or subagent works in, while
+ * `$CLAUDE_PROJECT_DIR` stays at the project root. So the script installs into that `cwd`, which
+ * is the worktree for a worktree-isolated subagent. Run it by hand with
+ * `node scripts/session-start.ts`.
  */
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 type BranchState = { behind: number; ahead: number; dirty: boolean };
 
@@ -61,6 +66,24 @@ function syncWithMain(cwd: string): void {
   }
 }
 
+export function hookCwd(input: string, fallback: string): string {
+  try {
+    const parsed: unknown = JSON.parse(input);
+    if (typeof parsed !== "object" || parsed === null || !("cwd" in parsed)) return fallback;
+    return typeof parsed.cwd === "string" && parsed.cwd !== "" ? parsed.cwd : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readStdin(): string {
+  try {
+    return process.stdin.isTTY ? "" : readFileSync(0, "utf8");
+  } catch {
+    return "";
+  }
+}
+
 export function main(cwd: string = process.cwd()): void {
   syncWithMain(cwd);
   const install = run(cwd, "pnpm", ["install", "--frozen-lockfile"]);
@@ -68,4 +91,4 @@ export function main(cwd: string = process.cwd()): void {
     console.log(`pnpm install failed:\n${install.out.split("\n").slice(-10).join("\n")}`);
 }
 
-if (import.meta.main) main();
+if (import.meta.main) main(hookCwd(readStdin(), process.cwd()));

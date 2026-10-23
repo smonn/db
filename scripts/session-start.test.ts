@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { main } from "./session-start.ts";
+import { hookCwd, main } from "./session-start.ts";
 
 // A spawn that fails to start returns null output, which SpawnSyncReturns doesn't model.
 type Result = { status: number | null; stdout: string | null; stderr: string | null };
@@ -163,4 +163,19 @@ describe("main", () => {
       expect.objectContaining({ cwd: clone }),
     );
   });
+});
+
+describe("hookCwd", () => {
+  test("uses the cwd the hook input names", () => {
+    expect(hookCwd('{"cwd":"/work/tree","hook_event_name":"SubagentStart"}', "/fallback")).toBe(
+      "/work/tree",
+    );
+  });
+
+  test.each(["", "not json", "{}", '{"cwd":""}', '{"cwd":3}', "null"])(
+    "falls back for %j",
+    (input) => {
+      expect(hookCwd(input, "/fallback")).toBe("/fallback");
+    },
+  );
 });
