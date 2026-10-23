@@ -49,13 +49,13 @@ export async function withShadowDatabases<T>(
   await requireSupportedServer(driver);
   await requireCreateDb(driver);
   await sweepStaleDatabases(driver, [SHADOW_PREFIX, DEFINITION_PREFIX], log);
-  const server: Server = { driver, connect, onInterrupt };
-  return withThrowawayDatabase(server, SHADOW, (shadow) =>
-    withThrowawayDatabase(server, DEFINITION, (definition) => fn({ shadow, definition })),
+  const context: ProvisioningContext = { driver, connect, onInterrupt };
+  return withThrowawayDatabase(context, SHADOW, (shadow) =>
+    withThrowawayDatabase(context, DEFINITION, (definition) => fn({ shadow, definition })),
   );
 }
 
-type Server = {
+type ProvisioningContext = {
   readonly driver: Driver;
   readonly connect: Connect;
   readonly onInterrupt: OnInterrupt;
@@ -113,7 +113,7 @@ export async function sweepStaleDatabases(
 }
 
 async function withThrowawayDatabase<T>(
-  { driver, connect, onInterrupt }: Server,
+  { driver, connect, onInterrupt }: ProvisioningContext,
   { prefix, checkFunctionBodies }: Throwaway,
   fn: (database: Driver) => Promise<T>,
 ): Promise<T> {

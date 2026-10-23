@@ -27,7 +27,7 @@ describe("main", () => {
   });
 
   test("prints the takeable children that have no open blocker", () => {
-    ghReturns({
+    ghReturns(spawn, {
       "repos/{owner}/{repo}/issues/5/sub_issues": [
         issue(8),
         issue(9, { assignees: [{ login: "smonn" }] }),
@@ -48,14 +48,16 @@ describe("main", () => {
   });
 
   test("says so when no child is on the frontier", () => {
-    ghReturns({ "repos/{owner}/{repo}/issues/5/sub_issues": [issue(8, { state: "closed" })] });
+    ghReturns(spawn, {
+      "repos/{owner}/{repo}/issues/5/sub_issues": [issue(8, { state: "closed" })],
+    });
     main("5");
     expect(console.log).toHaveBeenCalledWith("No frontier tickets.");
   });
 
   test("with no map, prints every open ticket that has no open blocker", () => {
     const renovate = { login: "renovate[bot]" };
-    ghReturns({
+    ghReturns(spawn, {
       [openIssues]: [
         issue(8, { labels: [] }),
         issue(9, { assignees: [{ login: "smonn" }] }),
@@ -87,7 +89,7 @@ describe("main", () => {
   });
 
   test("with no map, lists open issues oldest first", () => {
-    ghReturns({ [openIssues]: [] });
+    ghReturns(spawn, { [openIssues]: [] });
     process.argv = ["node", "scripts/frontier.ts"];
     main();
     expect(console.log).toHaveBeenCalledWith("No frontier tickets.");
@@ -107,7 +109,7 @@ describe("main", () => {
   });
 
   test("prints the gh error and exits 1 when gh fails", () => {
-    ghReturns({});
+    ghReturns(spawn, {});
     expect(() => {
       main("5");
     }).toThrow("exit 1");
