@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
+import {
+  terminateBackendRunning,
+  useTestDatabase,
+} from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { writeMigration } from "../internal/index.ts";
 import type { MigrationFile, MigrationSource } from "../ports/index.ts";
 import { migrate } from "./migrate.ts";
@@ -98,6 +101,19 @@ describe("migrate", () => {
     await expect(
       migrate({ driver: db.driver, source: source(CREATE_USERS, failing) }),
     ).rejects.toThrow('column "name" of relation "users" already exists');
+    expect(await recorded()).toStrictEqual([
+      { sequence: 1, filename: "000001-create-users.sql", hash: HASH_1, previous_hash: null },
+    ]);
+  });
+
+  it("rejects with the statement's error when the backend ends mid-file", async () => {
+    const sleeping = await writeMigration("000002-sleep.sql", HASH_1, "select pg_sleep(30);\n");
+
+    const failed = migrate({ driver: db.ownPool(), source: source(CREATE_USERS, sleeping) });
+    await Promise.all([
+      expect(failed).rejects.toMatchObject({ code: "CONNECTION_CLOSED" }),
+      terminateBackendRunning(db.driver, "pg_sleep(30)"),
+    ]);
     expect(await recorded()).toStrictEqual([
       { sequence: 1, filename: "000001-create-users.sql", hash: HASH_1, previous_hash: null },
     ]);
