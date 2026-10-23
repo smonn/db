@@ -328,7 +328,7 @@ oxfmt formats TypeScript and Markdown. knip reports unused files, exports, and d
 
 Baselines recorded at adoption (2026-10-22), each lowered as code improves and never raised without the maintainer:
 
-- `complexity` starts at 21 (`dev/diff/hazards.ts`), target 6, and `max-params` at 5 (`dev/shadow/shadow.ts`), target 4, in `.oxlintrc.json`. `max-depth` is at its target of 4.
+- `complexity` starts at 21 (`dev/diff/hazards.ts`), target 6, in `.oxlintrc.json`. `max-params` and `max-depth` are at their target of 4.
 - `fta-baseline.json` holds the five test files that score above 60. `pnpm fta:update` lowers a baseline after a file improves.
 - `rev-dep.duplicates.json` holds the four duplicated test blocks found at adoption. `deps` fails on any new duplicate.
 - Every TypeScript strictness flag is on, so the compiler has no baseline.
