@@ -4,9 +4,15 @@
  * and otherwise reports how far behind the branch is. What it prints on stdout lands in the
  * agent's context.
  *
- * `.claude/settings.json` runs it on startup; run it by hand with `node scripts/session-start.ts`.
+ * `.claude/settings.json` runs it on session startup and when a subagent starts. Both events pass
+ * a JSON object on stdin whose `cwd` is the directory the session or subagent works in, while
+ * `$CLAUDE_PROJECT_DIR` stays at the project root. So the script installs into that `cwd`, which
+ * is the worktree for a worktree-isolated subagent. Run it by hand with
+ * `node scripts/session-start.ts`.
  */
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 type BranchState = { behind: number; ahead: number; dirty: boolean };
 
@@ -61,11 +67,45 @@ function syncWithMain(cwd: string): void {
   }
 }
 
-export function main(cwd: string = process.cwd()): void {
-  syncWithMain(cwd);
+function hookField(input: string, field: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(input);
+    if (typeof parsed !== "object" || parsed === null) return undefined;
+    const value: unknown = Object.entries(parsed).find(([key]) => key === field)?.[1];
+    return typeof value === "string" && value !== "" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function hookCwd(input: string, fallback: string): string {
+  return hookField(input, "cwd") ?? fallback;
+}
+
+// A subagent without worktree isolation works in the parent's own checkout, which the running
+// session owns: fetching or fast-forwarding there would change files under it.
+export function shouldSync(input: string, cwd: string, projectDir?: string): boolean {
+  if (hookField(input, "hook_event_name") !== "SubagentStart") return true;
+  return projectDir === undefined || resolve(cwd) !== resolve(projectDir);
+}
+
+function readStdin(): string {
+  try {
+    return process.stdin.isTTY ? "" : readFileSync(0, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+export function main(cwd: string = process.cwd(), sync = true): void {
+  if (sync) syncWithMain(cwd);
   const install = run(cwd, "pnpm", ["install", "--frozen-lockfile"]);
   if (!install.ok)
     console.log(`pnpm install failed:\n${install.out.split("\n").slice(-10).join("\n")}`);
 }
 
-if (import.meta.main) main();
+if (import.meta.main) {
+  const input = readStdin();
+  const cwd = hookCwd(input, process.cwd());
+  main(cwd, shouldSync(input, cwd, process.env["CLAUDE_PROJECT_DIR"]));
+}

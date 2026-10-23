@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { main } from "./session-start.ts";
+import { hookCwd, main, shouldSync } from "./session-start.ts";
 
 // A spawn that fails to start returns null output, which SpawnSyncReturns doesn't model.
 type Result = { status: number | null; stdout: string | null; stderr: string | null };
@@ -163,4 +163,54 @@ describe("main", () => {
       expect.objectContaining({ cwd: clone }),
     );
   });
+});
+
+describe("shouldSync", () => {
+  const subagent = '{"hook_event_name":"SubagentStart"}';
+
+  test("skips a subagent that works in the project checkout", () => {
+    expect(shouldSync(subagent, "/proj", "/proj/")).toBe(false);
+  });
+
+  test("syncs a subagent in another directory", () => {
+    expect(shouldSync(subagent, "/proj/.claude/worktrees/a", "/proj")).toBe(true);
+  });
+
+  test("syncs a subagent when the project directory is unknown", () => {
+    expect(shouldSync(subagent, "/proj")).toBe(true);
+  });
+
+  test.each(['{"hook_event_name":"SessionStart"}', "", "not json"])(
+    "syncs a session start in the project checkout for %j",
+    (input) => {
+      expect(shouldSync(input, "/proj", "/proj")).toBe(true);
+    },
+  );
+});
+
+describe("main without sync", () => {
+  test("installs but does not touch git", () => {
+    mocks.pnpm.mockReset();
+    mocks.pnpm.mockReturnValue({ status: 0, stdout: "", stderr: "" });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    main("/nonexistent-dir", false);
+    expect(output()).toEqual([]);
+    expect(mocks.pnpm).toHaveBeenCalledTimes(1);
+    vi.restoreAllMocks();
+  });
+});
+
+describe("hookCwd", () => {
+  test("uses the cwd the hook input names", () => {
+    expect(hookCwd('{"cwd":"/work/tree","hook_event_name":"SubagentStart"}', "/fallback")).toBe(
+      "/work/tree",
+    );
+  });
+
+  test.each(["", "not json", "{}", '{"cwd":""}', '{"cwd":3}', "null"])(
+    "falls back for %j",
+    (input) => {
+      expect(hookCwd(input, "/fallback")).toBe("/fallback");
+    },
+  );
 });
