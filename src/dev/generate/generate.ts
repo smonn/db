@@ -10,7 +10,6 @@ import {
   type TrackingSchema,
   writeCurrent,
 } from "../../runtime/internal/index.ts";
-import { migrate } from "../../runtime/migrator/index.ts";
 import type {
   Connect,
   Driver,
@@ -18,14 +17,13 @@ import type {
   MigrationFile,
   MigrationSource,
 } from "../../runtime/ports/index.ts";
-import { definitionCatalog, type Catalog, type DefinitionTables } from "../catalog/index.ts";
-import { diff } from "../diff/index.ts";
-import { introspect, skippedSchemaReason } from "../introspect/index.ts";
-import { withShadowDatabases, type ShadowOptions } from "../shadow/index.ts";
+import type { DefinitionTables } from "../catalog/index.ts";
+import { skippedSchemaReason } from "../introspect/index.ts";
+import type { ShadowOptions } from "../shadow/index.ts";
 import { withDevLock } from "./dev-lock.ts";
 import { lineDiff } from "./line-diff.ts";
 import { requireDevDatabase, resetDevDatabase } from "./reset.ts";
-import { verifyInShadow } from "./verify.ts";
+import { diffInShadow } from "./shadow-diff.ts";
 
 export type GenerateOptions = ShadowOptions & {
   /** The Dev database, which also creates and drops the Shadow and Definition databases. */
@@ -86,21 +84,7 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
   const committed = await readCommitted(fileSystem, migrations);
   const source: MigrationSource = { list: () => Promise.resolve(committed) };
 
-  const sql = await withShadowDatabases(
-    driver,
-    connect,
-    async (databases) => {
-      await migrate({ driver: databases.shadow, source, trackingSchema: tracking.name });
-      await databases.definition.execute(
-        await definitionSql(databases.definition, definitionCatalog(definition)),
-      );
-      const target = await introspect(databases.definition, tracking);
-      const body = diff(await introspect(databases.shadow, tracking), target);
-      if (body !== "") await verifyInShadow(databases.shadow, body, target, tracking);
-      return body;
-    },
-    shadowOptions,
-  );
+  const sql = await diffInShadow({ driver, connect, source, definition, tracking, shadowOptions });
 
   if (edited !== undefined) {
     const current = { body: edited, hash: await currentHash(edited) };
@@ -155,13 +139,4 @@ async function readHandEdited(fileSystem: FileSystem, path: string): Promise<str
   if (content === undefined) return undefined;
   const parsed = await parseCurrent(content);
   return parsed.edited ? parsed.body : undefined;
-}
-
-/**
- * The SQL that builds the Definition into a fresh database. It only creates, so `public`, which
- * template0 ships, stays whether or not the Definition names it, as it does in the Shadow.
- */
-async function definitionSql(database: Driver, wanted: Catalog): Promise<string> {
-  const existing = [...(await introspect(database))].filter(([path]) => wanted.has(path));
-  return diff(new Map(existing), wanted);
 }
