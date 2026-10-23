@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, type Mock, test, vi } from "vitest";
 import {
   type IssueEvent,
   main,
@@ -185,14 +185,15 @@ describe("main", () => {
     expect(gh.mock.calls).toEqual([[titleComment]]);
   });
 
-  const runOnMilestonedIssue = (): ReturnType<typeof vi.fn> => {
+  const runOnMilestonedIssue = (title = event().issue.title): Mock<(args: string[]) => void> => {
     const gh = vi.fn<(args: string[]) => void>();
-    main({ GITHUB_EVENT_PATH: write(event({ milestone: { title: "v0.1" } })) }, gh);
+    const milestone = { title: "v0.1" };
+    main({ GITHUB_EVENT_PATH: write(event({ title, milestone })) }, gh);
     return gh;
   };
 
   test("leaves an uppercase title with a milestone alone", () => {
-    expect(runOnMilestonedIssue()).not.toHaveBeenCalled();
+    expect(runOnMilestonedIssue("Generate drops tables")).not.toHaveBeenCalled();
   });
 
   test("leaves the milestone alone on an edit", () => {
