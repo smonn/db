@@ -6,7 +6,10 @@ export function diff(from: Catalog, to: Catalog): string {
   const catalogs = { from, to };
   const actions: Action[] = [];
   for (const [key, fact] of from) {
-    if (!to.has(key)) actions.push(...dropped(fact, to));
+    const after = to.get(key);
+    if (after === undefined) actions.push(...dropped(fact, to));
+    // A key can't change in place: the old one drops here, and `altered` adds the new one.
+    else if (isKey(fact) && !equal(fact.payload, after.payload)) actions.push(...dropped(fact, to));
     // Postgres refuses to retype a column whose default can't be cast, so it goes first.
     else if (fact.kind === "default" && retyped(fact.parent, catalogs)) {
       actions.push({ kind: "drop default", fact });
@@ -66,23 +69,21 @@ function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {
     return [{ kind: "set default", fact: after }];
   }
   if (equal(before.payload, after.payload)) return [];
-  // A key can't change in place; the drop runs in an earlier phase than the add.
+  // The old key was dropped in the source pass.
   if (before.kind === "primary key" && after.kind === "primary key") {
-    return [
-      { kind: "drop primary key", fact: before },
-      { kind: "add primary key", fact: after },
-    ];
+    return [{ kind: "add primary key", fact: after }];
   }
   if (before.kind === "unique" && after.kind === "unique") {
-    return [
-      { kind: "drop unique", fact: before },
-      { kind: "add unique", fact: after },
-    ];
+    return [{ kind: "add unique", fact: after }];
   }
   // Schemas and tables carry no payload, so only an identity is left.
   throw new Error(
     `Can't alter identity of column ${qualified(parentOf(catalogs.to, after), catalogs.to)} yet`,
   );
+}
+
+function isKey(fact: Fact): fact is Extract<Fact, { readonly kind: "primary key" | "unique" }> {
+  return fact.kind === "primary key" || fact.kind === "unique";
 }
 
 function retyped(column: Key, { from, to }: Catalogs): boolean {
