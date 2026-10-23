@@ -11,13 +11,13 @@ import { migrate } from "../../runtime/migrator/index.ts";
 import type { Driver } from "../../runtime/ports/index.ts";
 import { commit, generate, reset } from "../generate/index.ts";
 import type { Project } from "./project.ts";
-import { generateReport, resetReport } from "./report.ts";
+import { generateReport, hazardRefusal, resetReport } from "./report.ts";
 import { onProcessInterrupt } from "./signals.ts";
 
 /** A command that runs against the Dev database. */
 export type DatabaseCommand = { readonly config: string } & (
   | { readonly name: "generate" | "migrate" }
-  | { readonly name: "commit"; readonly slug: string }
+  | { readonly name: "commit"; readonly slug: string; readonly accept: readonly string[] }
   | { readonly name: "reset"; readonly erase: boolean }
 );
 
@@ -58,8 +58,9 @@ async function runOn(driver: Driver, command: DatabaseCommand, project: Project)
       return;
     }
     case "commit": {
-      const { slug } = command;
-      const result = await commit({ driver, fileSystem, migrations, slug, ...tracking });
+      const { slug, accept } = command;
+      const gate = hazardGate(accept);
+      const result = await commit({ driver, fileSystem, migrations, slug, gate, ...tracking });
       print(`wrote ${relative(process.cwd(), result.path)}`);
       return;
     }
@@ -82,6 +83,13 @@ async function runOn(driver: Driver, command: DatabaseCommand, project: Project)
       );
     }
   }
+}
+
+function hazardGate(accept: readonly string[]): (body: string) => void {
+  return (body) => {
+    const refusal = hazardRefusal(body, accept);
+    if (refusal !== undefined) throw new Error(refusal);
+  };
 }
 
 export function print(line: string): void {

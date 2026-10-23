@@ -22,6 +22,8 @@ export type CommitOptions = {
   readonly slug: string;
   /** The schema `migrate` tracks into. Defaults to `smonn_db`. */
   readonly trackingSchema?: string;
+  /** Runs on the body just read from `current.sql`, before anything else; throws to refuse. */
+  readonly gate?: (body: string) => void;
 };
 
 export type CommitResult = {
@@ -51,6 +53,7 @@ async function commitLocked(options: CommitOptions): Promise<CommitResult> {
   const content = await fileSystem.readFile(currentPath);
   if (content === undefined) throw new Error(`${currentPath} doesn't exist; run generate first`);
   const { body } = await parseCurrent(content);
+  options.gate?.(body);
 
   const committed = await readCommitted(fileSystem, migrations);
   await verify({ list: () => Promise.resolve(committed) });

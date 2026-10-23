@@ -149,6 +149,29 @@ describe("commit", () => {
     expect(await currentRows()).toBe(1);
   });
 
+  it("hands the gate the body it reads and leaves everything as it was when the gate throws", async () => {
+    const fileSystem = memoryFileSystem();
+    await generateInto(fileSystem);
+    const before = new Map(fileSystem.files);
+    const bodies: string[] = [];
+
+    await expect(
+      commit({
+        driver: db.driver,
+        fileSystem,
+        migrations: MIGRATIONS,
+        slug: "create-users",
+        gate: (body) => {
+          bodies.push(body);
+          throw new Error("gate says no");
+        },
+      }),
+    ).rejects.toThrow("gate says no");
+    expect(bodies).toStrictEqual([USERS_SQL]);
+    expect(fileSystem.files).toStrictEqual(before);
+    expect(await currentRows()).toBe(1);
+  });
+
   it("refuses a Database without the tracking schema's current table", async () => {
     const fileSystem = memoryFileSystem();
     await generateInto(fileSystem);
