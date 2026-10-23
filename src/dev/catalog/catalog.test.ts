@@ -107,11 +107,14 @@ describe("definitionCatalog", () => {
     const catalog = definitionCatalog(
       defineDatabase({
         public: {
-          users: defineTable((c) => ({
-            a: c.integer().identity("always").primaryKey(),
-            b: c.integer().primaryKey(),
-            c: c.text().default("'new'").unique(),
-          })),
+          users: defineTable(
+            (c) => ({
+              a: c.integer().identity("always"),
+              b: c.integer(),
+              c: c.text().default("'new'").unique(),
+            }),
+            (t) => ({ primaryKey: [t.a, t.b] }),
+          ),
         },
       }),
     );

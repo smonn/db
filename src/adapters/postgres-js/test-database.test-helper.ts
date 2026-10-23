@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import postgres, { type Sql } from "postgres";
-import { afterAll, beforeAll } from "vitest";
+import { afterAll, afterEach, beforeAll } from "vitest";
 import type { Connect, Driver } from "../../runtime/ports/index.ts";
 import { postgresJsConnect } from "./connect.ts";
 import { postgresJsDriver } from "./driver.ts";
@@ -9,6 +9,8 @@ import { postgresJsConnection, postgresJsTypes } from "./value-types.ts";
 
 export type TestDatabase = {
   readonly name: string;
+  /** The connection URL of this database. */
+  readonly url: string;
   readonly driver: Driver;
   /**
    * Opens a pool of its own on this database, for a test that breaks a connection. postgres.js
@@ -32,6 +34,17 @@ export function explainConnectionError(error: unknown, serverUrl: string): unkno
   return new Error(
     `DATABASE_URL's server at ${host} rejected the login (${error.message}); another server may hold that port`,
     { cause: error },
+  );
+}
+
+/**
+ * A test that times out leaves its session open, and a session advisory lock (the Dev lock) would
+ * fail every later test in the file (#286). The terminated connection never releases to the pool,
+ * so the pool must end with `timeout: 0` instead of waiting on it.
+ */
+async function endAdvisoryLockSessions(sql: Sql): Promise<void> {
+  await sql.unsafe(
+    "select pg_terminate_backend(pid) from pg_locks where locktype = 'advisory' and granted and database = (select oid from pg_database where datname = current_database()) and pid <> pg_backend_pid()",
   );
 }
 
@@ -63,8 +76,12 @@ export function useTestDatabase(): TestDatabase {
       throw explainConnectionError(error, serverUrl);
     });
   });
+  afterEach(() => endAdvisoryLockSessions(sql));
   afterAll(async () => {
-    await Promise.all([sql.end(), ...ownPools.map((pool) => pool.end({ timeout: 0 }))]);
+    await Promise.all([
+      sql.end({ timeout: 0 }),
+      ...ownPools.map((pool) => pool.end({ timeout: 0 })),
+    ]);
     await admin.unsafe(`drop database ${name} with (force)`).catch((error: unknown) => {
       throw explainConnectionError(error, serverUrl);
     });
@@ -73,6 +90,7 @@ export function useTestDatabase(): TestDatabase {
 
   return {
     name,
+    url: url.href,
     driver: postgresJsDriver(sql),
     ownPool: () => {
       const pool = client();

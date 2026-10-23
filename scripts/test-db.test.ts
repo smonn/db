@@ -145,7 +145,7 @@ describe("main", () => {
 
     main(["stop"], root);
 
-    expect(calls()).toEqual([`docker compose -p ${name} down`]);
+    expect(calls()).toEqual([`docker compose -p ${name} down --volumes`]);
     expect(existsSync(envFile())).toBe(false);
   });
 

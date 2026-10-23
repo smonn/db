@@ -1,8 +1,8 @@
 /**
  * Runs every check CI runs, in sequence, so a contributor or agent needn't hand-write a loop.
  * Keeps going after a failure, then lists the failed scripts and exits non-zero if any failed.
- * Leaves out `check:pr` (needs a PR title and branch) and `check:issue` and `check:parent` (each
- * needs an issues event).
+ * Leaves out `check:pr` (needs a PR title and branch) and `check:issue`, `check:parent`, and `clear:review` (each
+ * needs an event payload).
  *
  * Run from the repo root with `pnpm check`. Like `pnpm coverage`, it needs the test database:
  * run `node scripts/test-db.ts` first. When a CI job gains a step, add its script here.
