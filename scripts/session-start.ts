@@ -12,6 +12,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 type BranchState = { behind: number; ahead: number; dirty: boolean };
 
@@ -66,14 +67,26 @@ function syncWithMain(cwd: string): void {
   }
 }
 
-export function hookCwd(input: string, fallback: string): string {
+function hookField(input: string, field: string): string | undefined {
   try {
     const parsed: unknown = JSON.parse(input);
-    if (typeof parsed !== "object" || parsed === null || !("cwd" in parsed)) return fallback;
-    return typeof parsed.cwd === "string" && parsed.cwd !== "" ? parsed.cwd : fallback;
+    if (typeof parsed !== "object" || parsed === null) return undefined;
+    const value: unknown = Object.entries(parsed).find(([key]) => key === field)?.[1];
+    return typeof value === "string" && value !== "" ? value : undefined;
   } catch {
-    return fallback;
+    return undefined;
   }
+}
+
+export function hookCwd(input: string, fallback: string): string {
+  return hookField(input, "cwd") ?? fallback;
+}
+
+// A subagent without worktree isolation works in the parent's own checkout, which the running
+// session owns: fetching or fast-forwarding there would change files under it.
+export function shouldSync(input: string, cwd: string, projectDir?: string): boolean {
+  if (hookField(input, "hook_event_name") !== "SubagentStart") return true;
+  return projectDir === undefined || resolve(cwd) !== resolve(projectDir);
 }
 
 function readStdin(): string {
@@ -84,11 +97,15 @@ function readStdin(): string {
   }
 }
 
-export function main(cwd: string = process.cwd()): void {
-  syncWithMain(cwd);
+export function main(cwd: string = process.cwd(), sync = true): void {
+  if (sync) syncWithMain(cwd);
   const install = run(cwd, "pnpm", ["install", "--frozen-lockfile"]);
   if (!install.ok)
     console.log(`pnpm install failed:\n${install.out.split("\n").slice(-10).join("\n")}`);
 }
 
-if (import.meta.main) main(hookCwd(readStdin(), process.cwd()));
+if (import.meta.main) {
+  const input = readStdin();
+  const cwd = hookCwd(input, process.cwd());
+  main(cwd, shouldSync(input, cwd, process.env["CLAUDE_PROJECT_DIR"]));
+}
