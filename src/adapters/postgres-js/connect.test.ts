@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { postgresJsConnect } from "./connect.ts";
-import { useTestDatabase } from "./test-database.test-helper.ts";
+import { terminateBackendRunning, useTestDatabase } from "./test-database.test-helper.ts";
 
 const db = useTestDatabase();
 
@@ -29,6 +29,18 @@ describe("postgresJsConnect", () => {
     } finally {
       await db.driver.execute(`drop database "${name}" with (force)`);
     }
+  });
+
+  // sql.end() never settles after a backend ended mid-statement (porsager/postgres#1226).
+  it("closes a connection whose backend ended mid-statement", async () => {
+    const connection = await db.connect(db.name);
+    const failed = connection.driver.session((s) => s.query("select pg_sleep(30)"));
+    await Promise.all([
+      expect(failed).rejects.toMatchObject({ code: "CONNECTION_CLOSED" }),
+      terminateBackendRunning(db.driver, "pg_sleep(30)"),
+    ]);
+
+    await connection.close();
   });
 
   it("keeps a caller's DateStyle order", async () => {
