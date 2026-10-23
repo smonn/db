@@ -83,6 +83,12 @@ describe("the packed package", () => {
     await expect(readFile(join(repo, "package.json"), "utf8")).resolves.toBe(packageJson);
   });
 
+  it("declares only the bin as having side effects", () => {
+    // The bin runs main() at import; every other built module is declarations only.
+    const bins = Object.values(stringRecord(field(manifest, "bin"), "package.json bin"));
+    expect(field(manifest, "sideEffects")).toEqual(bins);
+  });
+
   it.each(ENTRY_POINTS)("exports %s as its source does", (name, source) => {
     expect(exportsOf(name, project)).toBe(exportsOf(pathToFileURL(join(repo, source)).href, repo));
   });
