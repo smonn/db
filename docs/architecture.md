@@ -333,12 +333,14 @@ Baselines recorded at adoption (2026-10-22), each lowered as code improves and n
 
 ## Package entry points
 
-| Entry                   | Contents                                              |
-| ----------------------- | ----------------------------------------------------- |
-| `@smonn/db`             | runtime: sql, definition, query, migrator, port types |
-| `@smonn/db/postgres-js` | Driver adapter                                        |
-| `@smonn/db/node`        | Node MigrationSource and FileSystem adapters          |
-| `@smonn/db/dev`         | config, catalog, introspect, diff, shadow, generate   |
-| CLI binary              | `dev/cli`, shipped as the package's `bin`             |
+| Entry                   | Source                              | Contents                                              |
+| ----------------------- | ----------------------------------- | ----------------------------------------------------- |
+| `@smonn/db`             | `src/runtime/index.ts`              | runtime: sql, definition, query, migrator, port types |
+| `@smonn/db/postgres-js` | `src/adapters/postgres-js/index.ts` | Driver adapter                                        |
+| `@smonn/db/node`        | `src/adapters/node/index.ts`        | Node MigrationSource and FileSystem adapters          |
+| `@smonn/db/dev`         | `src/dev/index.ts`                  | config, catalog, introspect, diff, shadow, generate   |
+| `smonndb` bin           | `src/dev/cli/bin.ts`                | the CLI, shipped as the package's `bin`               |
 
-Each subpath maps to one future package, so a split renames imports one-to-one.
+Each subpath maps to one future package, so a split renames imports one-to-one. `src/runtime/index.ts` and `src/dev/index.ts` re-export their group's modules, so they sit outside the module rules above.
+
+tsdown builds every entry in one pass (`pnpm build`, which `prepack` runs before `pnpm pack`), so modules shared between entries land in shared chunks and load once. It also writes the `exports` and `bin` fields of `package.json` from `tsdown.config.ts`: add an entry there, build, and commit the rewritten `package.json`. `src/dev/cli/package.test.ts` packs the tarball, installs it in a temp project, imports and type-checks each entry, runs the bin, and fails when the build changed `package.json`.
