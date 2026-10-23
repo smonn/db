@@ -73,6 +73,24 @@ describe("data_loss", () => {
   });
 });
 
+describe("dropping a schema", () => {
+  it("puts data_loss on the drop table, not on the drop schema, of a schema that holds a table", () => {
+    const { sql, hazards } = diff(table({ a: {} }), empty);
+
+    expect(sql).toBe(`-- hazard: data_loss\ndrop table "public"."t";\n\ndrop schema "public";\n`);
+    expect(hazards).toStrictEqual([{ kind: "data_loss", statement: `drop table "public"."t";` }]);
+  });
+
+  it("flags nothing for an empty schema", () => {
+    const builder = catalogBuilder();
+    builder.schema("public");
+    const { sql, hazards } = diff(builder.build(), empty);
+
+    expect(sql).toBe(`drop schema "public";\n`);
+    expect(hazards).toStrictEqual([]);
+  });
+});
+
 describe("rewrite", () => {
   it("flags a type change that rewrites, with the lock it holds", () => {
     expect(
