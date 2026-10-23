@@ -1,12 +1,16 @@
 services:
   postgres:
     image: postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+    # Every drop database waits on a checkpoint, whose fsyncs take seconds when other containers
+    # share the disk (#169). The server is throwaway, so it skips them.
+    command: ["postgres", "-c", "fsync=off"]
     environment:
       POSTGRES_PASSWORD: postgres
     ports:
       - "${POSTGRES_PORT:-54318}:5432"
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres"]
+      # Over TCP: the image's init server listens only on the Unix socket, then restarts (#169).
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres"]
       interval: 1s
       timeout: 5s
       retries: 30
