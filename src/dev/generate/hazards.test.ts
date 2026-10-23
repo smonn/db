@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hazardsIn } from "./hazards.ts";
+import { hazardsIn, strayHazardComments } from "./hazards.ts";
 
 describe("hazardsIn", () => {
   it("pairs each hazard comment with the statement under it", () => {
@@ -58,5 +58,95 @@ describe("hazardsIn", () => {
 
   it("finds none in a migration without hazard comments", () => {
     expect(hazardsIn("-- hazard lookalike\ncreate table a (n int);\n")).toStrictEqual([]);
+  });
+});
+
+describe("strayHazardComments", () => {
+  it.each([
+    ["indented", "  -- hazard: data_loss"],
+    ["unspaced", "--hazard: data_loss"],
+    ["recased", "-- Hazard: data_loss"],
+    ["triple dash", "--- hazard: data_loss"],
+    ["spaced colon", "-- hazard : data_loss"],
+  ])("flags a %s comment above a statement", (_name, comment) => {
+    const sql = `${comment}\ndrop table a;\n`;
+
+    expect(strayHazardComments(sql)).toStrictEqual([{ line: 1, text: comment }]);
+    expect(hazardsIn(sql)).toStrictEqual([]);
+  });
+
+  it("flags a comment trailing a statement", () => {
+    const sql = "create table a (n int); -- hazard: data_loss\n";
+
+    expect(strayHazardComments(sql)).toStrictEqual([{ line: 1, text: sql.trimEnd() }]);
+  });
+
+  it("flags an exact comment inside a multi-line statement, with its line number", () => {
+    const sql = ["-- hazard: a", "alter table x", "-- hazard: b", "  drop column y;"].join("\n");
+
+    expect(strayHazardComments(sql)).toStrictEqual([{ line: 3, text: "-- hazard: b" }]);
+  });
+
+  it("flags an exact comment with no statement under it", () => {
+    expect(strayHazardComments("create table a (n int);\n-- hazard: data_loss\n")).toStrictEqual([
+      { line: 2, text: "-- hazard: data_loss" },
+    ]);
+  });
+
+  it("flags an exact comment inside a multi-line statement that has no Hazard above it", () => {
+    const sql = "CREATE TABLE t (\n-- hazard: data_loss\na int\n);\n";
+
+    expect(strayHazardComments(sql)).toStrictEqual([{ line: 2, text: "-- hazard: data_loss" }]);
+    expect(hazardsIn(sql)).toStrictEqual([]);
+  });
+
+  it("flags an exact comment between the clauses of an ALTER with no Hazard above it", () => {
+    const sql = "ALTER TABLE t\nADD c int,\n-- hazard: rewrite\nDROP COLUMN d;\n";
+
+    expect(strayHazardComments(sql)).toStrictEqual([{ line: 3, text: "-- hazard: rewrite" }]);
+    expect(hazardsIn(sql)).toStrictEqual([]);
+  });
+
+  it("gives an unpaired comment no Hazard", () => {
+    expect(hazardsIn("create table a (n int);\n-- hazard: data_loss\n")).toStrictEqual([]);
+  });
+
+  it("ends a statement at a semicolon followed by a comment", () => {
+    const sql = "-- hazard: data_loss\nDROP TABLE t; -- ok\n-- hazard: rewrite\nDROP TABLE u;\n";
+
+    expect(hazardsIn(sql)).toStrictEqual([
+      { kind: "data_loss", statement: "DROP TABLE t; -- ok" },
+      { kind: "rewrite", statement: "DROP TABLE u;" },
+    ]);
+    expect(strayHazardComments(sql)).toStrictEqual([]);
+  });
+
+  it("doesn't end a statement at a semicolon inside a trailing comment", () => {
+    const sql = "-- hazard: data_loss\nDROP TABLE t -- gone;\n;\nSELECT 1;\n";
+
+    expect(hazardsIn(sql)).toStrictEqual([
+      { kind: "data_loss", statement: "DROP TABLE t -- gone; ;" },
+    ]);
+  });
+
+  it("still flags a Hazard comment trailing the semicolon", () => {
+    const sql = "DROP TABLE t; -- hazard: data_loss\n-- hazard: rewrite\nDROP TABLE u;\n";
+
+    expect(strayHazardComments(sql)).toStrictEqual([
+      { line: 1, text: "DROP TABLE t; -- hazard: data_loss" },
+    ]);
+    expect(hazardsIn(sql)).toStrictEqual([{ kind: "rewrite", statement: "DROP TABLE u;" }]);
+  });
+
+  it("ignores paired comments, plural prose, block comments, and a hazards table", () => {
+    const sql = [
+      "-- hazard: data_loss",
+      "drop table a;",
+      "-- hazards: see the docs",
+      "/* hazard: data_loss */",
+      "create table hazards (hazard text);",
+    ].join("\n");
+
+    expect(strayHazardComments(sql)).toStrictEqual([]);
   });
 });
