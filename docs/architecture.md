@@ -318,7 +318,7 @@ CI enforces the module boundaries:
 
 - `scripts/check-imports.ts` holds the dependency-cruiser rules, each with a one-line comment: `runtime/` stays self-contained and free of npm packages, an adapter imports only `runtime/ports`, `runtime/internal`, and its host package, only `dev/cli` wires in adapters, `node:*` stays in host code, cross-module imports go through `index.ts`, no other module's `index.ts` re-exports `runtime/internal`, no cycles, and only tests import `*.test.ts` files, `*.test-helper.ts` helpers, and `vitest`. Tests in any group may import `adapters/postgres-js/test-database.test-helper.ts`, which the group, adapter, and `index.ts` rules otherwise forbid. It fails when it scans 0 modules.
 - `.oxlintrc.json` bans the `process`, `Buffer`, and `__dirname` globals in `src/` outside `adapters/` and `dev/cli`.
-- `scripts/check-index-exports.ts` keeps each `index.ts` to named re-exports: no declarations, no `export *`.
+- `scripts/check-index-exports.ts` keeps each `index.ts` to named re-exports: no declarations, no `export *`. It also checks that `src/runtime/index.ts` and `src/dev/index.ts` re-export exactly the values and types of their group's module indexes, minus `runtime/internal` and `dev/cli`.
 
 oxfmt formats TypeScript and Markdown. knip reports unused files, exports, and dependencies.
 
