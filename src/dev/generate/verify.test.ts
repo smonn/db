@@ -77,6 +77,23 @@ describe("verifyInShadow", () => {
     );
   });
 
+  it("names the view and column when a type change alters a column a view uses (0A000)", async () => {
+    await db.driver.execute(
+      "create table public.users (id text not null); create view public.user_ids as select id from public.users;",
+    );
+
+    await expect(
+      verifyInShadow(
+        db.driver,
+        "alter table public.users alter column id type varchar;",
+        definition(),
+        tracking,
+      ),
+    ).rejects.toThrow(
+      /cannot alter type of a column used by a view or rule:\n.*view user_ids depends on column "id".*\ngenerate never alters a view.*by hand/su,
+    );
+  });
+
   it("passes other SQL errors through", async () => {
     await expect(
       verifyInShadow(db.driver, "select * from public.nope;", definition(), tracking),
