@@ -162,11 +162,24 @@ describe("smonndb", () => {
 
     expect(await main(["reset", "--config", devConfig])).toBe(0);
     expect(stdoutOf()).toBe("reset the Dev database from 1 Committed migration\n");
+  });
 
+  it("prints that reset also replayed current.sql when one is present", async () => {
+    const devConfig = join(project, "dev.config.ts");
     expect(await main(["generate", "--config", devConfig])).toBe(0);
+    expect(await main(["commit", "create-users", "--config", devConfig])).toBe(0);
+    await writeFile(join(project, "db", "narrow.ts"), DEFINITION.replace(", email: c.text()", ""));
+    await writeFile(
+      join(project, "narrow.config.ts"),
+      config("SMONNDB_TEST_DEV_URL").replace("definition.ts", "narrow.ts"),
+    );
+    expect(await main(["generate", "--config", join(project, "narrow.config.ts")])).toBe(0);
+    expect(await readdir(join(project, "db", "migrations"))).toContain("current.sql");
     written.mockClear();
+
     expect(await main(["reset", "--config", devConfig])).toBe(0);
-    expect(stdoutOf()).toBe("reset the Dev database from 1 Committed migration\n");
+
+    expect(stdoutOf()).toBe("reset the Dev database from 1 Committed migration and current.sql\n");
   });
 
   it("refuses to run while another command holds the Dev lock, on stderr with exit 1", async () => {
