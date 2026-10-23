@@ -14,9 +14,9 @@
     "reportUnusedDisableDirectives": "error"
   },
   "rules": {
-    // Baseline at adoption (2026-10-22): complexity 21 (dev/diff/hazards.ts). Target: 6. Lower it
-    // as functions are split.
-    "complexity": ["error", { "max": 21 }],
+    // Baseline: complexity 18 (parseCommand in dev/cli/main.ts); it was 21 at adoption
+    // (2026-10-22). Target: 6. Lower it as functions are split.
+    "complexity": ["error", { "max": 18 }],
     "max-params": ["error", { "max": 4 }],
     "max-depth": ["error", { "max": 4 }],
     // A backstop; fta judges file maintainability, so this stays above the largest file.

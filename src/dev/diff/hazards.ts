@@ -22,6 +22,9 @@ type Type =
   | { readonly name: "numeric"; readonly precision: number | undefined; readonly scale: number }
   | { readonly name: SimpleName };
 
+type Varchar = Extract<Type, { readonly name: "character varying" }>;
+type Numeric = Extract<Type, { readonly name: "numeric" }>;
+
 const SIMPLE_NAMES = [
   "text",
   "smallint",
@@ -78,25 +81,33 @@ export function retypeHazards(before: string, after: string): readonly HazardKin
  * migrating session's time zone is UTC.
  */
 function rewrites(from: Type, to: Type): boolean {
-  if (from.name === "character varying") {
-    if (to.name === "text") return false;
-    if (to.name === "character varying") {
-      return !(to.length === undefined || (from.length !== undefined && to.length >= from.length));
-    }
-  }
-  if (from.name === "text" && to.name === "character varying") return to.length !== undefined;
-  if (from.name === "numeric" && to.name === "numeric") {
-    if (to.precision === undefined) return false;
-    return !(
-      from.precision !== undefined &&
-      from.scale === to.scale &&
-      to.precision >= from.precision
-    );
-  }
+  if (from.name === "character varying") return varcharRewrites(from, to);
+  if (from.name === "text") return to.name !== "character varying" || to.length !== undefined;
+  if (from.name === "numeric" && to.name === "numeric") return numericRewrites(from, to);
   return true;
 }
 
+function varcharRewrites(from: Varchar, to: Type): boolean {
+  if (to.name === "text") return false;
+  if (to.name !== "character varying") return true;
+  return !(to.length === undefined || (from.length !== undefined && to.length >= from.length));
+}
+
+function numericRewrites(from: Numeric, to: Numeric): boolean {
+  if (to.precision === undefined) return false;
+  return !(
+    from.precision !== undefined &&
+    from.scale === to.scale &&
+    to.precision >= from.precision
+  );
+}
+
 const INTEGERS: ReadonlySet<string> = new Set(["smallint", "integer", "bigint"]);
+const FLOATS: ReadonlySet<string> = new Set(["real", "double precision"]);
+const TIMESTAMPS: ReadonlySet<string> = new Set([
+  "timestamp without time zone",
+  "timestamp with time zone",
+]);
 
 /**
  * True when Postgres converts a value without an error but not back to what it was: rounding,
@@ -104,29 +115,39 @@ const INTEGERS: ReadonlySet<string> = new Set(["smallint", "integer", "bigint"])
  * `bigint` to `integer` or `text` to `varchar(5)`, loses nothing, since the statement rolls back.
  */
 function losesData(from: Type, to: Type): boolean {
-  if (INTEGERS.has(from.name)) {
-    if (to.name === "real") return from.name !== "smallint";
-    if (to.name === "double precision") return from.name === "bigint";
-    return false;
-  }
-  if (from.name === "numeric") {
-    const wholeNumbers = from.precision !== undefined && from.scale === 0;
-    if (INTEGERS.has(to.name)) return !wholeNumbers;
-    // Precision of a float: 6 decimal digits for real, 15 for double precision.
-    if (to.name === "real") return from.precision === undefined || from.precision > 6;
-    if (to.name === "double precision") return from.precision === undefined || from.precision > 15;
-    if (to.name === "numeric") {
-      if (to.precision === undefined) return false;
-      return from.precision === undefined || to.scale < from.scale;
-    }
-    return false;
-  }
-  if (from.name === "real" || from.name === "double precision") {
-    if (INTEGERS.has(to.name) || to.name === "numeric") return true;
-    return from.name === "double precision" && to.name === "real";
-  }
-  if (from.name === "timestamp without time zone" || from.name === "timestamp with time zone") {
-    return to.name === "date";
-  }
+  if (INTEGERS.has(from.name)) return integerLosesData(from.name, to);
+  if (from.name === "numeric") return numericLosesData(from, to);
+  if (FLOATS.has(from.name)) return floatLosesData(from.name, to);
+  if (TIMESTAMPS.has(from.name)) return to.name === "date";
   return false;
+}
+
+function integerLosesData(from: Type["name"], to: Type): boolean {
+  if (to.name === "real") return from !== "smallint";
+  if (to.name === "double precision") return from === "bigint";
+  return false;
+}
+
+function numericLosesData(from: Numeric, to: Type): boolean {
+  const wholeNumbers = from.precision !== undefined && from.scale === 0;
+  if (INTEGERS.has(to.name)) return !wholeNumbers;
+  // Precision of a float: 6 decimal digits for real, 15 for double precision.
+  if (to.name === "real") return exceeds(from, 6);
+  if (to.name === "double precision") return exceeds(from, 15);
+  if (to.name === "numeric") return numericNarrows(from, to);
+  return false;
+}
+
+function exceeds(from: Numeric, digits: number): boolean {
+  return from.precision === undefined || from.precision > digits;
+}
+
+function numericNarrows(from: Numeric, to: Numeric): boolean {
+  if (to.precision === undefined) return false;
+  return from.precision === undefined || to.scale < from.scale;
+}
+
+function floatLosesData(from: Type["name"], to: Type): boolean {
+  if (INTEGERS.has(to.name) || to.name === "numeric") return true;
+  return from === "double precision" && to.name === "real";
 }
