@@ -2,6 +2,7 @@ import type { TrackingSchema } from "../../runtime/internal/index.ts";
 import type { Driver } from "../../runtime/ports/index.ts";
 import { payloadsEqual, qualified, type Catalog, type Fact } from "../catalog/index.ts";
 import { introspect } from "../introspect/index.ts";
+import { explainShadowError } from "./shadow-errors.ts";
 
 /**
  * Applies the Current migration to the Shadow database and refuses, naming each remaining
@@ -13,7 +14,11 @@ export async function verifyInShadow(
   definition: Catalog,
   tracking: TrackingSchema,
 ): Promise<void> {
-  await shadow.execute(sql);
+  try {
+    await shadow.execute(sql);
+  } catch (error) {
+    throw explainShadowError(error);
+  }
   const remaining = differences(await introspect(shadow, tracking), definition);
   if (remaining.length === 0) return;
   throw new Error(
