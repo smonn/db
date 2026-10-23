@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { catalogBuilder, type Catalog, type CatalogBuilder } from "../catalog/index.ts";
 import { introspect } from "../introspect/index.ts";
-import { diff } from "./diff.ts";
+import { bareDiff as diff } from "./bare-sql.test-helper.ts";
 
 const db = useTestDatabase();
 
@@ -21,7 +21,7 @@ function fullTable(builder: CatalogBuilder, schema: string, name = "t"): void {
   builder.column(schema, name, "id", id);
   builder.columnIdentity(schema, name, "id", { generated: "always" });
   builder.column(schema, name, "a", text);
-  builder.columnDefault(schema, name, "a", { expression: "'x'::text" });
+  builder.columnDefault(schema, name, "a", { expression: "'x'::text", volatile: false });
   builder.primaryKey(schema, name, `${name}_pkey`, { columns: ["id"] });
   builder.unique(schema, name, `${name}_a_key`, { column: "a" });
 }
@@ -43,7 +43,7 @@ describe("drops", () => {
       b.table("public", "t");
       b.column("public", "t", "keep", text);
       b.column("public", "t", "a", text);
-      b.columnDefault("public", "t", "a", { expression: "'x'::text" });
+      b.columnDefault("public", "t", "a", { expression: "'x'::text", volatile: false });
       b.column("public", "t", "n", id);
       b.columnIdentity("public", "t", "n", { generated: "by default" });
     });

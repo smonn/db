@@ -129,7 +129,10 @@ describe("catalogBuilder", () => {
     builder.column("public", "users", "id", { type: "integer", notNull: true });
     builder.columnIdentity("public", "users", "id", { generated: "always" });
     builder.column("public", "users", "role", { type: "text", notNull: false });
-    builder.columnDefault("public", "users", "role", { expression: "'member'::text" });
+    builder.columnDefault("public", "users", "role", {
+      expression: "'member'::text",
+      volatile: false,
+    });
     const catalog = builder.build();
 
     expect([...catalog.keys()].slice(2)).toStrictEqual([
@@ -142,7 +145,7 @@ describe("catalogBuilder", () => {
       kind: "default",
       name: "default",
       parent: "public\0users\0role",
-      payload: { expression: "'member'::text" },
+      payload: { expression: "'member'::text", volatile: false },
     });
   });
 
@@ -151,7 +154,7 @@ describe("catalogBuilder", () => {
     builder.schema("public");
     builder.table("public", "users");
     expect(() => {
-      builder.columnDefault("public", "users", "role", { expression: "1" });
+      builder.columnDefault("public", "users", "role", { expression: "1", volatile: false });
     }).toThrow(`column "public"."users"."role" isn't in the catalog`);
     expect(() => {
       builder.columnIdentity("public", "users", "id", { generated: "always" });

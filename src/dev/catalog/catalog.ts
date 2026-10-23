@@ -11,6 +11,11 @@ export type ColumnPayload = {
 export type DefaultPayload = {
   /** The expression as `pg_get_expr` renders it, such as `now()` or `'new'::text`. */
   readonly expression: string;
+  /**
+   * True when the expression calls a volatile function, such as `random()` or `nextval`, so
+   * adding the column evaluates it once per row instead of once for the table.
+   */
+  readonly volatile: boolean;
 };
 
 export type IdentityPayload = {

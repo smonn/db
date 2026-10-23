@@ -103,6 +103,24 @@ describe("smonndb", () => {
     expect(stdoutOf()).not.toContain("\u001B");
   });
 
+  it("prints each Hazard generate returns, with its statement", async () => {
+    const devConfig = join(project, "dev.config.ts");
+    expect(await main(["generate", "--config", devConfig])).toBe(0);
+    expect(await main(["commit", "create-users", "--config", devConfig])).toBe(0);
+    await writeFile(join(project, "db", "narrow.ts"), DEFINITION.replace(", email: c.text()", ""));
+    await writeFile(
+      join(project, "narrow.config.ts"),
+      config("SMONNDB_TEST_DEV_URL").replace("definition.ts", "narrow.ts"),
+    );
+    written.mockClear();
+
+    expect(await main(["generate", "--config", join(project, "narrow.config.ts")])).toBe(0);
+
+    expect(stdoutOf()).toContain(
+      'hazard data_loss: alter table "public"."users" drop column "email";\n',
+    );
+  });
+
   it("prints what reset replayed", async () => {
     const devConfig = join(project, "dev.config.ts");
     expect(await main(["generate", "--config", devConfig])).toBe(0);

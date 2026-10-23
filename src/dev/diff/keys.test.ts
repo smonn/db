@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { catalogBuilder, type Catalog } from "../catalog/index.ts";
 import { introspect } from "../introspect/index.ts";
-import { diff } from "./diff.ts";
+import { bareDiff as diff } from "./bare-sql.test-helper.ts";
 
 const db = useTestDatabase();
 

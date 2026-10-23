@@ -9,14 +9,14 @@ import {
   type IdentityPayload,
 } from "../catalog/index.ts";
 import { introspect } from "../introspect/index.ts";
-import { diff } from "./diff.ts";
+import { bareDiff as diff } from "./bare-sql.test-helper.ts";
 
 const db = useTestDatabase();
 
 type Column = {
   readonly type?: string;
   readonly notNull?: boolean;
-  readonly default?: DefaultPayload;
+  readonly default?: Omit<DefaultPayload, "volatile">;
   readonly identity?: IdentityPayload;
 };
 
@@ -32,7 +32,10 @@ function table(columns: Readonly<Record<string, Column>>): Catalog {
     };
     builder.column("public", "t", name, payload);
     if (column.identity !== undefined) builder.columnIdentity("public", "t", name, column.identity);
-    if (column.default !== undefined) builder.columnDefault("public", "t", name, column.default);
+    const { default: defaultPayload } = column;
+    if (defaultPayload !== undefined) {
+      builder.columnDefault("public", "t", name, { ...defaultPayload, volatile: false });
+    }
   }
   return builder.build();
 }

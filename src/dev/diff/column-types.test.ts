@@ -3,7 +3,7 @@ import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-h
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { catalogBuilder, definitionCatalog } from "../catalog/index.ts";
 import { introspect } from "../introspect/index.ts";
-import { diff } from "./diff.ts";
+import { bareDiff as diff } from "./bare-sql.test-helper.ts";
 
 const db = useTestDatabase();
 

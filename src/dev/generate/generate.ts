@@ -18,6 +18,7 @@ import type {
   MigrationSource,
 } from "../../runtime/ports/index.ts";
 import type { DefinitionTables } from "../catalog/index.ts";
+import type { Hazard } from "../diff/index.ts";
 import { skippedSchemaReason } from "../introspect/index.ts";
 import type { ShadowOptions } from "../shadow/index.ts";
 import { withDevLock } from "./dev-lock.ts";
@@ -49,6 +50,12 @@ export type GenerateResult = {
   readonly diff?: string;
   /** Whether generate reset the Dev database, which it does only when the files left it behind. */
   readonly reset: boolean;
+  /**
+   * Every Hazard in the diff generate computed, for the CLI to print and gate (ADR-0015). Empty when
+   * there was no diff. Beside a hand-edited `sql` (`diff` set) these are the generation's, not the
+   * edit's: the edit keeps its own `-- hazard:` comments.
+   */
+  readonly hazards: readonly Hazard[];
 };
 
 /**
@@ -84,25 +91,33 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
   const committed = await readCommitted(fileSystem, migrations);
   const source: MigrationSource = { list: () => Promise.resolve(committed) };
 
-  const sql = await diffInShadow({ driver, connect, source, definition, tracking, shadowOptions });
+  const { sql, hazards } = await diffInShadow({
+    driver,
+    connect,
+    source,
+    definition,
+    tracking,
+    shadowOptions,
+  });
 
   if (edited !== undefined) {
     const current = { body: edited, hash: await currentHash(edited) };
     const reset = await needsReset(driver, tracking, committed, current.hash);
     if (reset) await resetDevDatabase(driver, source, tracking, current);
-    return { path, sql: edited, diff: lineDiff(edited, (await writeCurrent(sql)).body), reset };
+    const generated = await writeCurrent(sql);
+    return { path, sql: edited, diff: lineDiff(edited, generated.body), reset, hazards };
   }
   if (sql === "") {
     await fileSystem.remove(path);
     const reset = await needsReset(driver, tracking, committed);
     if (reset) await resetDevDatabase(driver, source, tracking);
-    return { path, sql: undefined, reset };
+    return { path, sql: undefined, reset, hazards: [] };
   }
   const current = await writeCurrent(sql);
   await fileSystem.writeFile(path, current.content);
   const reset = await needsReset(driver, tracking, committed, current.hash);
   if (reset) await resetDevDatabase(driver, source, tracking, current);
-  return { path, sql: current.body, reset };
+  return { path, sql: current.body, reset, hazards };
 }
 
 /**
