@@ -4,7 +4,7 @@ import {
   type TrackingSchema,
 } from "../../runtime/internal/index.ts";
 import type { Queryable, Session } from "../../runtime/ports/index.ts";
-import { catalogBuilder, type Catalog } from "../catalog/index.ts";
+import { catalogBuilder, type Catalog, type IdentityPayload } from "../catalog/index.ts";
 
 const NOT_EXTENSION_MEMBER = (catalog: string, alias: string): string => `not exists (
   select from pg_depend d
@@ -39,12 +39,21 @@ order by c.relname`;
 
 const COLUMNS = `
 select n.nspname as schema, c.relname as table, a.attname as name,
-  format_type(a.atttypid, a.atttypmod) as type, a.attnotnull as not_null
+  format_type(a.atttypid, a.atttypmod) as type, a.attnotnull as not_null,
+  a.attidentity as identity,
+  case when a.attgenerated = '' then pg_get_expr(d.adbin, d.adrelid) end as default_expression
 from pg_attribute a
   join pg_class c on c.oid = a.attrelid
   join pg_namespace n on n.oid = c.relnamespace
+  left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
 where c.relkind = 'r' and a.attnum > 0 and not a.attisdropped and ${KEPT_SCHEMA}
 order by a.attnum`;
+
+/** The `pg_attribute.attidentity` codes; an empty string means no identity. */
+const IDENTITY_KINDS: Readonly<Record<string, IdentityPayload["generated"]>> = {
+  a: "always",
+  d: "by default",
+};
 
 /**
  * Reads the modeled objects of a live database in one snapshot, keyed by name. Skips system
@@ -76,10 +85,21 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
       builder.table(schema, tableName);
       for (const column of columns) {
         if (column["schema"] !== schema || column["table"] !== tableName) continue;
-        builder.column(schema, tableName, String(column["name"]), {
+        const columnName = String(column["name"]);
+        // `attnotnull` is true for every Postgres 18 NOT NULL constraint row, valid or not.
+        builder.column(schema, tableName, columnName, {
           type: String(column["type"]),
           notNull: column["not_null"] === true,
         });
+        const generated = IDENTITY_KINDS[String(column["identity"])];
+        if (generated !== undefined) {
+          builder.columnIdentity(schema, tableName, columnName, { generated });
+        }
+        if (typeof column["default_expression"] === "string") {
+          builder.columnDefault(schema, tableName, columnName, {
+            expression: column["default_expression"],
+          });
+        }
       }
     }
   }

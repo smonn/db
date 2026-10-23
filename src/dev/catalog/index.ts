@@ -3,7 +3,9 @@ export type {
   Catalog,
   CatalogBuilder,
   ColumnPayload,
+  DefaultPayload,
   DefinitionTables,
   Fact,
+  IdentityPayload,
   Key,
 } from "./catalog.ts";

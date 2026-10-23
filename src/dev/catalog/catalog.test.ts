@@ -112,6 +112,42 @@ describe("catalogBuilder", () => {
       builder.column("auth", "users", "id", { type: "text", notNull: false });
     }).toThrow(`table "auth"."users" isn't in the catalog`);
   });
+
+  it("keeps a default and an identity as facts under their column", () => {
+    const builder = catalogBuilder();
+    builder.schema("public");
+    builder.table("public", "users");
+    builder.column("public", "users", "id", { type: "integer", notNull: true });
+    builder.columnIdentity("public", "users", "id", { generated: "always" });
+    builder.column("public", "users", "role", { type: "text", notNull: false });
+    builder.columnDefault("public", "users", "role", { expression: "'member'::text" });
+    const catalog = builder.build();
+
+    expect([...catalog.keys()].slice(2)).toStrictEqual([
+      "public\0users\0id",
+      "public\0users\0id\0identity",
+      "public\0users\0role",
+      "public\0users\0role\0default",
+    ]);
+    expect([...catalog.values()].at(-1)).toStrictEqual({
+      kind: "default",
+      name: "default",
+      parent: "public\0users\0role",
+      payload: { expression: "'member'::text" },
+    });
+  });
+
+  it("refuses a default or identity on a column it hasn't added, naming it", () => {
+    const builder = catalogBuilder();
+    builder.schema("public");
+    builder.table("public", "users");
+    expect(() => {
+      builder.columnDefault("public", "users", "role", { expression: "1" });
+    }).toThrow(`column "public"."users"."role" isn't in the catalog`);
+    expect(() => {
+      builder.columnIdentity("public", "users", "id", { generated: "always" });
+    }).toThrow(`column "public"."users"."id" isn't in the catalog`);
+  });
 });
 
 describe("lookups", () => {

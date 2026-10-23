@@ -4,7 +4,17 @@ import { quoteIdentifier } from "../../runtime/internal/index.ts";
 export type ColumnPayload = {
   /** The type as `format_type` renders it, such as `character varying(20)`. */
   readonly type: string;
+  /** True for a Postgres 18 `pg_constraint` NOT NULL row too, whatever its constraint name. */
   readonly notNull: boolean;
+};
+
+export type DefaultPayload = {
+  /** The expression as `pg_get_expr` renders it, such as `now()` or `'new'::text`. */
+  readonly expression: string;
+};
+
+export type IdentityPayload = {
+  readonly generated: "always" | "by default";
 };
 
 /** Schemas and tables carry nothing beyond their name in v0.1. */
@@ -31,7 +41,23 @@ export type Fact =
       readonly name: string;
       readonly parent: Key;
       readonly payload: ColumnPayload;
+    }
+  | {
+      readonly kind: "default";
+      readonly name: typeof DEFAULT_NAME;
+      readonly parent: Key;
+      readonly payload: DefaultPayload;
+    }
+  | {
+      readonly kind: "identity";
+      readonly name: typeof IDENTITY_NAME;
+      readonly parent: Key;
+      readonly payload: IdentityPayload;
     };
+
+/** A column has at most one default and one identity, so their names are fixed. */
+const DEFAULT_NAME = "default";
+const IDENTITY_NAME = "identity";
 
 /**
  * Every modeled object, keyed by the chain of names from its schema down. The payload leaves out
@@ -43,10 +69,12 @@ export type CatalogBuilder = {
   schema(name: string): void;
   table(schema: string, name: string): void;
   column(schema: string, table: string, name: string, payload: ColumnPayload): void;
+  columnDefault(schema: string, table: string, column: string, payload: DefaultPayload): void;
+  columnIdentity(schema: string, table: string, column: string, payload: IdentityPayload): void;
   build(): Catalog;
 };
 
-/** Throws when a table or column names a parent not added yet. */
+/** Throws when a table, column, default, or identity names a parent not added yet. */
 export function catalogBuilder(): CatalogBuilder {
   const catalog = new Map<Key, Fact>();
   const added = (kind: Fact["kind"], ...names: string[]): Key => {
@@ -65,6 +93,24 @@ export function catalogBuilder(): CatalogBuilder {
     column(schema, table, name, payload) {
       const parent = added("table", schema, table);
       catalog.set(key(schema, table, name), { kind: "column", name, parent, payload });
+    },
+    columnDefault(schema, table, column, payload) {
+      const parent = added("column", schema, table, column);
+      catalog.set(key(schema, table, column, DEFAULT_NAME), {
+        kind: "default",
+        name: DEFAULT_NAME,
+        parent,
+        payload,
+      });
+    },
+    columnIdentity(schema, table, column, payload) {
+      const parent = added("column", schema, table, column);
+      catalog.set(key(schema, table, column, IDENTITY_NAME), {
+        kind: "identity",
+        name: IDENTITY_NAME,
+        parent,
+        payload,
+      });
     },
     build: () => new Map(catalog),
   };
