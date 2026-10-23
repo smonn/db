@@ -14,6 +14,13 @@
     "reportUnusedDisableDirectives": "error"
   },
   "rules": {
+    // Baselines at adoption (2026-10-22): complexity 21 (dev/diff/hazards.ts), max-params 5
+    // (dev/shadow/shadow.ts). Targets: 6 and 4. Lower them as functions are split.
+    "complexity": ["error", { "max": 21 }],
+    "max-params": ["error", { "max": 5 }],
+    "max-depth": ["error", { "max": 4 }],
+    // vi.importActual's type argument needs `typeof import()`.
+    "typescript/consistent-type-imports": ["error", { "disallowTypeAnnotations": false }],
     "typescript/consistent-type-definitions": ["error", "type"],
     "typescript/prefer-readonly-parameter-types": "off",
     "unicorn/no-empty-file": "off",
