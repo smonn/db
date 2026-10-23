@@ -32,7 +32,7 @@ export type Column<
 } & (Pk extends true
   ? unknown
   : {
-      /** The table's whole primary key. A composite key goes in `defineTable`'s options. */
+      /** The table's whole primary key. A composite key goes in `defineTable`'s second callback. */
       primaryKey(): Column<V, true, Int, Gen, true>;
     }) &
   (Gen extends true
@@ -155,80 +155,90 @@ type IsUnion<T, U = T> = [T] extends [never]
       : true
     : never;
 
-/** The arguments after the callback; a misuse of the primary key leaves no argument list that fits. */
-type PrimaryKeyArgs<C extends Columns> = [KeyedColumns<C>] extends [never]
-  ? [
-      options?: {
-        readonly primaryKey?: readonly [
-          keyof C & string,
-          keyof C & string,
-          ...(keyof C & string)[],
-        ];
-      },
-    ]
-  : IsUnion<KeyedColumns<C>> extends true
+/** A reference to a column of the table being defined, which table-level entries name instead of a string. */
+export type Ref<K extends string = string> = { readonly "~ref": K };
+
+/** The column references handed to a table's second callback, one per column key. */
+export type Refs<C extends Columns> = { readonly [K in keyof C & string]: Ref<K> };
+
+type KeyRefs<C extends Columns> = readonly [
+  Ref<keyof C & string>,
+  Ref<keyof C & string>,
+  ...Ref<keyof C & string>[],
+];
+
+/** The table-level entries, keyed by kind. Later kinds (indexes, checks) join here. */
+type TableExtras<C extends Columns> = [KeyedColumns<C>] extends [never]
+  ? { readonly primaryKey?: KeyRefs<C> }
+  : { readonly primaryKey?: never };
+
+/** The arguments after the columns; a misuse of the primary key leaves no argument list that fits. */
+type ExtrasArgs<C extends Columns> =
+  IsUnion<KeyedColumns<C>> extends true
     ? [
-        options: {
-          readonly "several columns call primaryKey(); declare a composite key in options": never;
+        extras: (t: Refs<C>) => {
+          readonly primaryKey?: never;
+          readonly "several columns call primaryKey(); declare a composite key in the second callback": never;
         },
       ]
-    : [options?: { readonly primaryKey?: never }];
+    : [extras?: (t: Refs<C>) => TableExtras<C>];
 
 type KeyOf<C extends Columns, Args extends unknown[]> = Args extends [
-  { readonly primaryKey: readonly (infer K extends string)[] },
+  (t: never) => { readonly primaryKey: readonly Ref<infer K>[] },
 ]
   ? K
   : KeyedColumns<C>;
+
+function refsOf(columns: Columns): Record<string, Ref> {
+  return Object.fromEntries(Object.keys(columns).map((name) => [name, { "~ref": name }]));
+}
 
 function primaryKeyOf(columns: Columns, declared: unknown): string[] {
   const single = Object.entries(columns)
     .filter(([, { state }]) => state.primaryKey)
     .map(([name]) => name);
-  if (!Array.isArray(declared)) {
+  if (declared === undefined) {
     if (single.length > 1) {
       throw new Error(
-        `Columns ${single.map((n) => `"${n}"`).join(", ")} each call primaryKey(); declare a composite key in the table options instead`,
+        `Columns ${single.map((n) => `"${n}"`).join(", ")} each call primaryKey(); declare a composite key in the table's second callback instead`,
       );
     }
     return single;
   }
-  const names: unknown[] = declared;
   if (single.length > 0) {
     throw new Error(
-      `Column "${single[0]}" calls primaryKey() and the table options also declare a primary key; use one`,
+      `Column "${single[0]}" calls primaryKey() and the table's second callback also declares a primary key; use one`,
     );
   }
-  if (names.length < 2) {
+  const refs: unknown[] = Array.isArray(declared) ? declared : [];
+  if (refs.length < 2) {
     throw new Error(
-      "The table options' primaryKey lists fewer than two columns; call primaryKey() on the column instead",
+      "The table's primaryKey lists fewer than two columns; call primaryKey() on the column instead",
     );
   }
   const keys: string[] = [];
-  for (const name of names) {
+  for (const ref of refs) {
+    const name = typeof ref === "object" && ref !== null && "~ref" in ref ? ref["~ref"] : undefined;
     if (typeof name !== "string" || !Object.hasOwn(columns, name)) {
-      throw new Error(
-        `The table options' primaryKey names "${String(name)}", which is not a column`,
-      );
+      throw new Error("The table's primaryKey names something that is not one of its columns");
     }
     if (keys.includes(name)) {
-      throw new Error(`The table options' primaryKey lists "${name}" twice`);
+      throw new Error(`The table's primaryKey lists "${name}" twice`);
     }
     keys.push(name);
   }
   return keys;
 }
 
-export function defineTable<C extends Columns, Args extends PrimaryKeyArgs<C>>(
+export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
   define: (c: ColumnFactories) => C,
   ...args: Args
 ): TableDefinition<C, KeyOf<C, Args>> {
   const columns = define(factories);
-  const options: unknown = args[0];
-  const declared =
-    typeof options === "object" && options !== null && "primaryKey" in options
-      ? options.primaryKey
-      : undefined;
-  const primaryKey = primaryKeyOf(columns, declared);
+  const extras: ((t: Refs<C>) => { readonly primaryKey?: unknown }) | undefined = args[0];
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- refsOf builds one Ref per key.
+  const declared = extras?.(refsOf(columns) as Refs<C>);
+  const primaryKey = primaryKeyOf(columns, declared?.primaryKey);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the key names are checked above.
   return { columns, primaryKey } as unknown as TableDefinition<C, KeyOf<C, Args>>;
 }

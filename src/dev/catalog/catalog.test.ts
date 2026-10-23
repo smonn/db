@@ -113,7 +113,7 @@ describe("definitionCatalog", () => {
               b: c.integer(),
               c: c.text().default("'new'").unique(),
             }),
-            { primaryKey: ["a", "b"] },
+            (t) => ({ primaryKey: [t.a, t.b] }),
           ),
         },
       }),

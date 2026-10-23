@@ -71,10 +71,11 @@ describe("defineTable", () => {
     expectTypeOf<Row<typeof t>>().toEqualTypeOf<{ id: number; n: number }>();
   });
 
-  it("declares a composite primary key in the options, in the listed order", () => {
-    const t = defineTable((c) => ({ a: c.integer(), b: c.integer(), n: c.text() }), {
-      primaryKey: ["b", "a"],
-    });
+  it("declares a composite primary key in the second callback, in the written order", () => {
+    const t = defineTable(
+      (c) => ({ a: c.integer(), b: c.integer(), n: c.text() }),
+      (r) => ({ primaryKey: [r.b, r.a] }),
+    );
     expect(t.primaryKey).toStrictEqual(["b", "a"]);
     expectTypeOf<Row<typeof t>>().toEqualTypeOf<{ a: number; b: number; n: string | null }>();
   });
@@ -85,27 +86,37 @@ describe("defineTable", () => {
     expect(users.primaryKey).toStrictEqual([]);
   });
 
-  it("fails at load on a key declared twice, on several columns, or on a bad name", () => {
+  it("fails at load on a key declared twice, on several columns, or on a bad reference", () => {
     expect(() =>
-      defineTable((c) => ({ a: c.integer().primaryKey(), b: c.integer() }), {
-        // @ts-expect-error -- a column key and an options key can't both be declared.
-        primaryKey: ["a", "b"],
-      }),
-    ).toThrow('Column "a" calls primaryKey() and the table options also declare a primary key');
+      defineTable(
+        (c) => ({ a: c.integer().primaryKey(), b: c.integer() }),
+        // @ts-expect-error -- a column key and a callback key can't both be declared.
+        (r) => ({ primaryKey: [r.a, r.b] }),
+      ),
+    ).toThrow('Column "a" calls primaryKey() and the table\'s second callback also declares');
     expect(() =>
-      // @ts-expect-error -- primaryKey() on two columns needs the options form.
+      // @ts-expect-error -- primaryKey() on two columns needs the second callback.
       defineTable((c) => ({ a: c.integer().primaryKey(), b: c.integer().primaryKey() })),
     ).toThrow('Columns "a", "b" each call primaryKey()');
     expect(() =>
-      // @ts-expect-error -- "z" is not a column.
-      defineTable((c) => ({ a: c.integer(), b: c.integer() }), { primaryKey: ["a", "z"] }),
-    ).toThrow('names "z", which is not a column');
+      defineTable(
+        (c) => ({ a: c.integer(), b: c.integer() }),
+        // @ts-expect-error -- "z" is not a column.
+        (r) => ({ primaryKey: [r.a, r.z] }),
+      ),
+    ).toThrow("not one of its columns");
     expect(() =>
-      defineTable((c) => ({ a: c.integer(), b: c.integer() }), { primaryKey: ["a", "a"] }),
+      defineTable(
+        (c) => ({ a: c.integer(), b: c.integer() }),
+        (r) => ({ primaryKey: [r.a, r.a] }),
+      ),
     ).toThrow('lists "a" twice');
     expect(() =>
-      // @ts-expect-error -- a single column goes on the column.
-      defineTable((c) => ({ a: c.integer() }), { primaryKey: ["a"] }),
+      defineTable(
+        (c) => ({ a: c.integer() }),
+        // @ts-expect-error -- a single column goes on the column.
+        (r) => ({ primaryKey: [r.a] }),
+      ),
     ).toThrow("fewer than two columns");
   });
 

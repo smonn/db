@@ -29,7 +29,7 @@ describe("defaults, identity, and keys", () => {
           account_id: c.integer(),
           team_id: c.integer(),
         }),
-        { primaryKey: ["account_id", "team_id"] },
+        (t) => ({ primaryKey: [t.account_id, t.team_id] }),
       ),
     },
   });
