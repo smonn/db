@@ -10,6 +10,9 @@
     "dist"
   ],
   "type": "module",
+  "sideEffects": [
+    "./dist/cli.mjs"
+  ],
   "exports": {
     ".": "./dist/index.mjs",
     "./dev": "./dist/dev.mjs",
