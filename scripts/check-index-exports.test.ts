@@ -77,15 +77,14 @@ describe("exportedNames", () => {
 });
 
 describe("checkGroupIndex", () => {
-  test("passes when the group exports exactly its modules' names", () => {
-    expect(checkGroupIndex(["a", "type T"], ["type T", "a"])).toEqual([]);
+  test("passes a group that exports a subset of its modules' names", () => {
+    expect(checkGroupIndex(["a", "type T"], ["type T", "a", "b"])).toEqual([]);
   });
 
-  test("names what the group misses and what it adds", () => {
-    expect(checkGroupIndex(["a", "type b", "c"], ["a", "b", "type T"])).toEqual([
-      "misses b, which a module's index.ts exports",
-      "misses type T, which a module's index.ts exports",
+  test("names each export that no module exports in that form", () => {
+    expect(checkGroupIndex(["a", "type b", "T", "c"], ["a", "b", "type T"])).toEqual([
       "exports type b, which no module's index.ts exports",
+      "exports T, which no module's index.ts exports",
       "exports c, which no module's index.ts exports",
     ]);
   });
@@ -131,14 +130,27 @@ describe("main", () => {
     expect(process.exitCode).toBe(1);
   });
 
-  test("fails a group index that drifted from its modules' indexes", () => {
+  test("passes a group index that leaves out some of its modules' names", () => {
     const errors = runMain({
       ...GROUP_INDEXES,
       "src/dev/config/index.ts":
-        'export { defineConfig } from "./config.ts";\nexport type { Config } from "./config.ts";',
+        'export { parseConfig } from "./config.ts";\nexport type { Config } from "./config.ts";',
+    });
+    expect(errors).toEqual([]);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  test("fails a group index that exports a name its modules don't, or in another form", () => {
+    const errors = runMain({
+      ...GROUP_INDEXES,
+      "src/dev/index.ts": [
+        'export { Config } from "./config/index.ts";',
+        'export { main } from "./cli/index.ts";',
+      ].join("\n"),
     });
     expect(errors).toEqual([
-      ["src/dev/index.ts: misses defineConfig, which a module's index.ts exports"],
+      ["src/dev/index.ts: exports Config, which no module's index.ts exports"],
+      ["src/dev/index.ts: exports main, which no module's index.ts exports"],
     ]);
     expect(process.exitCode).toBe(1);
   });

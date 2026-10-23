@@ -1,8 +1,10 @@
 /**
  * Checks that every `src/**\/index.ts` holds only named re-exports, such as
  * `export { a } from "./a.ts"`: no declarations, no imports, no `export *`, and no default
- * re-export. Also checks that each group index (`src/runtime/index.ts`, `src/dev/index.ts`)
- * re-exports exactly the names its modules' `index.ts` files do, minus the modules in `GROUPS`.
+ * re-export. Also checks each group index (`src/runtime/index.ts`, `src/dev/index.ts`), which
+ * lists the package's public API by hand: it exists, and it re-exports only names its modules'
+ * `index.ts` files export in the same form (a value as a value, a type as a type), outside the
+ * modules `GROUPS` leaves out.
  * Prints `file: problem` and exits 1 on any problem.
  *
  * Run from the repo root with `pnpm check:index`; CI runs it in the Lint job.
@@ -49,18 +51,12 @@ export function exportedNames(text: string): string[] {
   });
 }
 
-/** Compares a group index's names with the union of its modules' index names. */
+/** Names each group index export that no module's index exports in the same form. */
 export function checkGroupIndex(group: readonly string[], modules: readonly string[]): string[] {
-  const expected = new Set(modules);
-  const actual = new Set(group);
-  return [
-    ...[...expected]
-      .filter((name) => !actual.has(name))
-      .map((name) => `misses ${name}, which a module's index.ts exports`),
-    ...[...actual]
-      .filter((name) => !expected.has(name))
-      .map((name) => `exports ${name}, which no module's index.ts exports`),
-  ];
+  const exported = new Set(modules);
+  return group
+    .filter((name) => !exported.has(name))
+    .map((name) => `exports ${name}, which no module's index.ts exports`);
 }
 
 function groupProblems(cwd: string): string[] {
