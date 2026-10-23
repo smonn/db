@@ -1,8 +1,11 @@
 {
   "name": "@smonn/db",
   "version": "0.0.0",
-  "private": true,
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/smonn/db.git"
+  },
   "bin": {
     "smonndb": "./dist/cli.mjs"
   },
@@ -19,6 +22,9 @@
     "./node": "./dist/node.mjs",
     "./postgres-js": "./dist/postgres-js.mjs",
     "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsdown",
