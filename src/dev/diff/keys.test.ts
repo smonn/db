@@ -85,6 +85,17 @@ describe("dropping and changing keys", () => {
     ]);
   });
 
+  it("drops a changed key and a removed key in the source catalog's order", () => {
+    const from = table({ unique: { t_changed: "a", t_removed: "b" } });
+    const to = table({ unique: { t_changed: "c" } });
+
+    expect(diff(from, to).split("\n\n")).toStrictEqual([
+      `alter table "public"."t" drop constraint "t_changed";`,
+      `alter table "public"."t" drop constraint "t_removed";`,
+      `alter table "public"."t" add constraint "t_changed" unique ("c");\n`,
+    ]);
+  });
+
   it("rebuilds a primary key whose columns change, dropping before adding", () => {
     const from = table({ primaryKey: { name: "t_pkey", columns: ["a"] } });
     const to = table({ primaryKey: { name: "t_pkey", columns: ["a", "b"] } });

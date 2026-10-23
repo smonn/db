@@ -102,23 +102,46 @@ create table "public"."users.archive" (
     expect(diff(catalog(), to)).toBe(`create schema "we""ird";\n`);
   });
 
-  it("refuses a drop, which v0.1 can't emit yet", () => {
-    const to = catalog((b) => {
-      b.schema("public");
-    });
+  it("orders drops, then creates, then column alters, then key adds", () => {
     const from = catalog((b) => {
       b.schema("public");
-      b.table("public", "users");
+      b.table("public", "gone");
+      b.table("public", "t");
+      b.column("public", "t", "a", text);
+      b.column("public", "t", "b", { type: "integer", notNull: false });
+      b.columnDefault("public", "t", "b", { expression: "1" });
+      b.column("public", "t", "c", textNotNull);
+      b.primaryKey("public", "t", "t_pkey", { columns: ["c"] });
+      b.unique("public", "t", "t_a_key", { column: "a" });
     });
-    expect(() => diff(from, to)).toThrow(`Can't drop table "public"."users" yet`);
-  });
-
-  it("refuses a changed type, which v0.1 can't alter yet", () => {
     const to = catalog((b) => {
+      b.schema("app");
+      b.table("app", "u");
       b.schema("public");
-      b.table("public", "users");
-      b.column("public", "users", "id", { type: "integer", notNull: false });
+      b.table("public", "t");
+      b.column("public", "t", "b", { type: "bigint", notNull: true });
+      b.columnDefault("public", "t", "b", { expression: "1" });
+      b.column("public", "t", "c", text);
+      b.column("public", "t", "d", text);
+      b.primaryKey("public", "t", "t_pkey", { columns: ["b"] });
+      b.unique("public", "t", "t_d_key", { column: "d" });
     });
-    expect(() => diff(catalog(users), to)).toThrow(`Can't alter column "public"."users"."id" yet`);
+
+    expect(diff(from, to).split("\n\n")).toStrictEqual([
+      `alter table "public"."t" drop constraint "t_a_key";`,
+      `alter table "public"."t" drop constraint "t_pkey";`,
+      `alter table "public"."t" drop column "a";`,
+      `drop table "public"."gone";`,
+      `create schema "app";`,
+      `create table "app"."u" ();`,
+      `alter table "public"."t" add column "d" text;`,
+      `alter table "public"."t" alter column "b" drop default;`,
+      `alter table "public"."t" alter column "b" type bigint;`,
+      `alter table "public"."t" alter column "b" set not null;`,
+      `alter table "public"."t" alter column "c" drop not null;`,
+      `alter table "public"."t" alter column "b" set default (1);`,
+      `alter table "public"."t" add constraint "t_pkey" primary key ("b");`,
+      `alter table "public"."t" add constraint "t_d_key" unique ("d");\n`,
+    ]);
   });
 });
