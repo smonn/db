@@ -8,8 +8,28 @@ const users = defineTable((c) => ({
 
 describe("defineTable", () => {
   it("makes columns nullable unless marked notNull", () => {
-    expect(users.columns.id.state).toStrictEqual({ sqlType: "text", notNull: true });
-    expect(users.columns.email.state).toStrictEqual({ sqlType: "text", notNull: false });
+    expect(users.columns.id.state).toMatchObject({ sqlType: "text", notNull: true });
+    expect(users.columns.email.state).toMatchObject({ sqlType: "text", notNull: false });
+  });
+
+  it("declares a default, identity, primary key, and unique constraint", () => {
+    const t = defineTable((c) => ({
+      a: c.text().default("'new'"),
+      b: c.integer().identity(),
+      c: c.bigint().identity("always"),
+      d: c.uuid().primaryKey(),
+      e: c.text().unique(),
+    }));
+    expect(t.columns.a.state).toMatchObject({ default: "'new'", notNull: false });
+    expect(t.columns.b.state).toMatchObject({ identity: "by default", notNull: true });
+    expect(t.columns.c.state).toMatchObject({ identity: "always", notNull: true });
+    expect(t.columns.d.state).toMatchObject({ primaryKey: true, notNull: true });
+    expect(t.columns.e.state).toMatchObject({ unique: true, notNull: false });
+  });
+
+  it("types primary key and identity columns as NOT NULL", () => {
+    const t = defineTable((c) => ({ id: c.integer().primaryKey(), n: c.integer().identity() }));
+    expectTypeOf<Row<typeof t>>().toEqualTypeOf<{ id: number; n: number }>();
   });
 
   it("leaves the column notNull was called on unchanged", () => {
@@ -69,7 +89,7 @@ describe("column types", () => {
   });
 
   it("keeps the SQL type through notNull", () => {
-    expect(all.columns.numericPS.notNull().state).toStrictEqual({
+    expect(all.columns.numericPS.notNull().state).toMatchObject({
       sqlType: "numeric(10,2)",
       notNull: true,
     });

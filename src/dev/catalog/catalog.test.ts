@@ -103,6 +103,43 @@ describe("definitionCatalog", () => {
     });
   });
 
+  it("adds default, identity, primary key, and unique facts with Postgres's constraint names", () => {
+    const catalog = definitionCatalog(
+      defineDatabase({
+        public: {
+          users: defineTable((c) => ({
+            a: c.integer().identity("always").primaryKey(),
+            b: c.integer().primaryKey(),
+            c: c.text().default("'new'").unique(),
+          })),
+        },
+      }),
+    );
+
+    expect(
+      Object.fromEntries([...catalog].map(([k, f]) => [k.replaceAll("\0", "."), f.payload])),
+    ).toMatchObject({
+      "public.users.a": { type: "integer", notNull: true },
+      "public.users.b": { type: "integer", notNull: true },
+      "public.users.c": { type: "text", notNull: false },
+      "public.users.a.identity": { generated: "always" },
+      "public.users.c.default": { expression: "'new'", volatile: false },
+      "public.users..users_pkey": { columns: ["a", "b"] },
+      "public.users..users_c_key": { column: "c" },
+    });
+  });
+
+  it("refuses a constraint name Postgres would truncate", () => {
+    const table = "t".repeat(60);
+    expect(() =>
+      definitionCatalog(
+        defineDatabase({
+          public: { [table]: defineTable((c) => ({ id: c.text().primaryKey() })) },
+        }),
+      ),
+    ).toThrow("is longer than 63 bytes");
+  });
+
   it("keeps a schema with no tables", () => {
     expect([...definitionCatalog(defineDatabase({ empty: {} }))]).toStrictEqual([
       ["empty", { kind: "schema", name: "empty", parent: undefined, payload: {} }],

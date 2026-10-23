@@ -1,6 +1,15 @@
+type Identity = "always" | "by default";
+
 export type ColumnState = {
   readonly sqlType: string;
+  /** True for a primary key or identity column too, as Postgres makes them. */
   readonly notNull: boolean;
+  /** A SQL expression, written as it would follow `default` in DDL. */
+  readonly default: string | undefined;
+  readonly identity: Identity | undefined;
+  /** Columns that declare it form the primary key, in column order. */
+  readonly primaryKey: boolean;
+  readonly unique: boolean;
 };
 
 export type Column<V, N extends boolean = false> = {
@@ -8,10 +17,26 @@ export type Column<V, N extends boolean = false> = {
   /** Type-only: the value a row holds and whether the column is NOT NULL. */
   readonly "~types": { readonly value: V; readonly notNull: N };
   notNull(): Column<V, true>;
+  /** Takes a SQL expression, such as `now()`; a string literal needs its quotes (`"'new'"`). */
+  default(expression: string): Column<V, N>;
+  /** Generates the value from a sequence. Postgres allows it on integer types only. */
+  identity(generated?: Identity): Column<V, true>;
+  /** Several primary key columns make a composite key, in column order. */
+  primaryKey(): Column<V, true>;
+  /** A single-column unique constraint. */
+  unique(): Column<V, N>;
 };
 
 function column<V, N extends boolean>(state: ColumnState): Column<V, N> {
-  const parts = { state, notNull: () => column<V, true>({ ...state, notNull: true }) };
+  const parts = {
+    state,
+    notNull: () => column<V, true>({ ...state, notNull: true }),
+    default: (expression: string) => column<V, N>({ ...state, default: expression }),
+    identity: (generated: Identity = "by default") =>
+      column<V, true>({ ...state, notNull: true, identity: generated }),
+    primaryKey: () => column<V, true>({ ...state, notNull: true, primaryKey: true }),
+    unique: () => column<V, N>({ ...state, unique: true }),
+  };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- "~types" exists only in types.
   return parts as Column<V, N>;
 }
@@ -36,7 +61,14 @@ export type ColumnFactories = {
 };
 
 function of<V>(sqlType: string): Column<V> {
-  return column<V, false>({ sqlType, notNull: false });
+  return column<V, false>({
+    sqlType,
+    notNull: false,
+    default: undefined,
+    identity: undefined,
+    primaryKey: false,
+    unique: false,
+  });
 }
 
 function numericType(precision?: number, scale?: number): string {
