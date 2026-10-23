@@ -24,7 +24,10 @@ export function issue(number: number, overrides: Partial<Issue> = {}): Issue {
   };
 }
 
-/** Answers each `gh api` call from `responses`, keyed by the request path, and fails the rest. */
+/**
+ * Answers each `gh api` call from `responses`, keyed by the request path, and fails the rest.
+ * The importing test file must mock `node:child_process`.
+ */
 export function ghReturns(responses: Record<string, Issue[]>): void {
   vi.mocked(spawnSync).mockImplementation((_command, args) => {
     const path = args?.at(-1) ?? "";
