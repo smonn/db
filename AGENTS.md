@@ -22,6 +22,7 @@
 ## Coding standards
 
 - Read `CODING_STANDARDS.md` before writing or reviewing code.
+- Layers and modules are design intent: read `docs/architecture.md` (Import rules) before adding a module or an import across one.
 
 ## Design decisions
 

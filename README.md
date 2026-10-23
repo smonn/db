@@ -142,9 +142,9 @@ Results go to stdout and errors to stderr, as plain text with no colors. `genera
 
 Tests need a Postgres 18 server. `docker compose up -d --wait` starts one on port 54318, or on `POSTGRES_PORT` when set. Then run `DATABASE_URL=postgres://postgres:postgres@localhost:54318/postgres pnpm test`. Or run `node scripts/test-db.ts`, which starts a server for this checkout on a free port and saves its URL in `.env.test`, so plain `pnpm test` finds it. Each test file gets its own fresh database, dropped afterward.
 
-`pnpm check` runs every check CI runs, keeps going after a failure, and exits non-zero if any failed. It needs the test database above.
+`pnpm check` runs every check CI runs, keeps going after a failure, and exits non-zero if any failed. It needs the test database above. `pnpm check:static` runs all of them but the tests, and needs no database.
 
-`pnpm install` sets git's `core.hooksPath` to `.githooks/`, in a fresh clone and in a worktree. The pre-commit hook checks the staged files with `oxfmt --check` and `oxlint`, and the pre-push hook runs `pnpm typecheck` and `pnpm knip`. Neither hook runs the tests. When pre-commit reports formatting, run `pnpm format` and stage the result.
+`pnpm install` installs the [lefthook](https://lefthook.dev) hooks in `lefthook.yml`. The pre-commit hook runs `oxlint --fix` and `oxfmt` on the staged files and stages their fixes. The pre-push hook runs `pnpm check:static` and the unit tests changed since `origin/main`; the database tests run in CI.
 
 ## Learn more
 

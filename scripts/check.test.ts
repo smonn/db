@@ -25,7 +25,7 @@ test("runChecks runs every script after a failure and returns the failed ones", 
 });
 
 test("main sets a non-zero exit code and names the failed checks", () => {
-  main((script) => script !== "lint");
+  main((script) => script !== "lint", []);
   expect(process.exitCode).toBe(1);
   expect(console.error).toHaveBeenCalledWith(expect.stringContaining("failed: lint"));
 });
@@ -35,9 +35,27 @@ test("main leaves the exit code alone when every check passes", () => {
   main((script) => {
     ran.push(script);
     return true;
-  });
+  }, []);
   expect(process.exitCode).toBeUndefined();
   expect(ran).toEqual([...checks]);
+});
+
+test("main with --static runs every check but coverage", () => {
+  const ran: string[] = [];
+  main(
+    (script) => {
+      ran.push(script);
+      return true;
+    },
+    ["--static"],
+  );
+  expect(ran).toEqual(checks.filter((script) => script !== "coverage"));
+});
+
+test("main rejects an unknown argument by name", () => {
+  expect(() => {
+    main(() => true, ["--statc"]);
+  }).toThrow('Unknown argument "--statc"');
 });
 
 test("checks cover every pnpm script a CI job runs, except the PR-only check", () => {

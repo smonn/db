@@ -1,0 +1,25 @@
+pre-commit:
+  # Sequential: oxlint --fix and oxfmt both rewrite the same files.
+  jobs:
+    - name: lint
+      glob: "*.ts"
+      run: pnpm exec oxlint --fix {staged_files}
+      stage_fixed: true
+    - name: format
+      run: pnpm exec oxfmt --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+
+pre-push:
+  parallel: true
+  jobs:
+    - name: static checks
+      run: pnpm run check:static
+    # Only the unit project: the database project needs `node scripts/test-db.ts`, and CI runs it.
+    # The first push has no origin/main to diff against, so it runs every unit test.
+    - name: changed unit tests
+      run: |
+        if git rev-parse -q --verify origin/main >/dev/null; then
+          pnpm exec vitest run --project unit --changed origin/main --passWithNoTests
+        else
+          pnpm exec vitest run --project unit
+        fi

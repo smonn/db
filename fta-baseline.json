@@ -1,0 +1,7 @@
+{
+  "scripts/check-imports.test.ts": 66,
+  "scripts/frontier.test.ts": 66.35,
+  "scripts/session-start.test.ts": 60.6,
+  "src/dev/diff/column-attributes.test.ts": 63.96,
+  "src/dev/shadow/shadow.test.ts": 65.62
+}
