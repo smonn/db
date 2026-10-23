@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: proposed
 ---
 
 # Definition as defineTable callbacks rolled up by defineDatabase
@@ -27,4 +27,10 @@ A Definition is one file, named in config, whose default export `defineDatabase(
 - The references make a column name checked by the type, so an editor rename follows it. Later table-level entries (multi-column indexes, checks, triggers) can name columns through the same references, including inside SQL expressions, under their own keys of the returned object.
 - `.identity()` without an argument means `"by default"`. `"always"` refuses explicit values unless the insert says `OVERRIDING SYSTEM VALUE`, which surprises anyone seeding or copying data, so `"by default"` is the less hostile default.
 - Until renames land after v0.1, renaming a key generates a drop and create, flagged as data loss.
-- A shared column helper is a function of the factories, such as `(c) => ({ created_at: c.timestamptz().notNull() })`.
+- A shared column helper is a function of the factories, such as `(c) => ({ created_at: c.timestamptz().notNull() })`, and the exported `ColumnFactories` type lets the helper declare its parameter.
+- `Row<typeof t>` types a query result and `NewRow<typeof t>` an insert's input, for a standalone or a rolled-up table.
+- Column values map to TypeScript as `bigint` for `bigint`, `string` for `numeric` and `date`, `Date` for `timestamp` and `timestamptz`, `T` for `jsonb<T>()`, and `Uint8Array` for `bytea`. Overriding the mapping with a codec waits until after v0.1.
+
+## Open questions
+
+- Why `bigint` maps to `bigint`, and `numeric` and `date` to `string`, rather than to `number` and `Date`. The resolution of #5 records the mapping without a reason.
