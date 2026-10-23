@@ -13,7 +13,7 @@ export type Mode = "check" | "update" | "init";
 export type Outcome = { failures: string[]; stale: string[]; next: Map<string, number> };
 
 const sourceDirs = ["src", "scripts"];
-// fta calls 60 and above "needs improvement". At adoption (2026-10-22) only five test files
+// fta calls a score above 60 "needs improvement". At adoption (2026-10-22) only five test files
 // scored above it, so they hold baselines and every other file stays within it.
 export const threshold = 60;
 const baselineFile = "fta-baseline.json";
@@ -32,9 +32,11 @@ function isScored(value: unknown): value is { file_name: string; fta_score: numb
 export function parseScores(dir: string, json: string): [string, number][] {
   const parsed: unknown = JSON.parse(json);
   if (!Array.isArray(parsed)) throw new TypeError(`fta returned no file list for ${dir}`);
-  return parsed
-    .filter((file) => isScored(file))
-    .map((file) => [`${dir}/${file.file_name}`, Math.round(file.fta_score * 100) / 100]);
+  return parsed.map((file: unknown): [string, number] => {
+    if (!isScored(file))
+      throw new TypeError(`fta returned an entry without a score: ${JSON.stringify(file)}`);
+    return [`${dir}/${file.file_name}`, Math.round(file.fta_score * 100) / 100];
+  });
 }
 
 export function parseBaselines(json: string): Map<string, number> {
@@ -92,11 +94,34 @@ export function judge(
 }
 
 function modeOf(args: readonly string[]): Mode {
-  if (args.includes("--init")) return "init";
-  return args.includes("--update") ? "update" : "check";
+  const [arg, ...rest] = args;
+  if (rest.length > 0) throw new Error(`Expected at most one flag, got ${args.join(" ")}.`);
+  if (arg === undefined) return "check";
+  if (arg === "--init") return "init";
+  if (arg === "--update") return "update";
+  throw new Error(`Unknown flag "${arg}"; expected --init or --update.`);
 }
 
 const scoreDir = (dir: string): [string, number][] => parseScores(dir, runFta(dir, { json: true }));
+
+function loadBaselines(mode: Mode, baselinePath: string): Map<string, number> {
+  if (mode !== "init") return parseBaselines(readFileSync(baselinePath, "utf8"));
+  if (existsSync(baselinePath)) {
+    throw new Error(`${baselinePath} exists; --init runs once, at adoption.`);
+  }
+  return new Map();
+}
+
+function settle(mode: Mode, { failures, stale, next }: Outcome, baselinePath: string): string[] {
+  if (mode === "check") {
+    if (stale.length === 0) return failures;
+    return [...failures, ...stale, `Run \`pnpm fta:update\` and commit ${baselinePath}.`];
+  }
+  const sorted = Object.fromEntries([...next].toSorted(([a], [b]) => a.localeCompare(b)));
+  writeFileSync(baselinePath, `${JSON.stringify(sorted, null, 2)}\n`);
+  for (const line of stale) console.log(`Updated: ${line}`);
+  return failures;
+}
 
 export function main(
   args: readonly string[] = process.argv.slice(2),
@@ -104,23 +129,9 @@ export function main(
   baselinePath: string = baselineFile,
 ): void {
   const mode = modeOf(args);
-  if (mode === "init" && existsSync(baselinePath)) {
-    throw new Error(`${baselinePath} exists; --init runs once, at adoption.`);
-  }
+  const baselines = loadBaselines(mode, baselinePath);
   const scores = new Map(sourceDirs.flatMap((dir) => score(dir)));
-  const baselines =
-    mode === "init"
-      ? new Map<string, number>()
-      : parseBaselines(readFileSync(baselinePath, "utf8"));
-  const { failures, stale, next } = judge(scores, baselines, mode);
-  if (mode === "check") {
-    if (stale.length > 0)
-      failures.push(...stale, `Run \`pnpm fta:update\` and commit ${baselinePath}.`);
-  } else {
-    const sorted = Object.fromEntries([...next].toSorted(([a], [b]) => a.localeCompare(b)));
-    writeFileSync(baselinePath, `${JSON.stringify(sorted, null, 2)}\n`);
-    for (const line of stale) console.log(`Updated: ${line}`);
-  }
+  const failures = settle(mode, judge(scores, baselines, mode), baselinePath);
   if (failures.length > 0) {
     console.error(failures.join("\n"));
     process.exitCode = 1;

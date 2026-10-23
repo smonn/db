@@ -37,6 +37,9 @@ export function runChecks(scripts: readonly string[], run: Run = runScript): str
 }
 
 export function main(run: Run = runScript, args: readonly string[] = process.argv.slice(2)): void {
+  const unknown = args.filter((arg) => arg !== "--static");
+  if (unknown.length > 0)
+    throw new Error(`Unknown argument "${unknown.join(" ")}"; expected --static.`);
   const scripts = args.includes("--static")
     ? checks.filter((script) => script !== "coverage")
     : checks;

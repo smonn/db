@@ -25,8 +25,14 @@ afterEach(() => {
 
 describe("parseScores", () => {
   test("prefixes each file with its folder and rounds to two decimals", () => {
-    const json = JSON.stringify([{ file_name: "a.ts", fta_score: 12.3456 }, { other: 1 }]);
+    const json = JSON.stringify([{ file_name: "a.ts", fta_score: 12.3456 }]);
     expect(parseScores("src", json)).toEqual([["src/a.ts", 12.35]]);
+  });
+
+  test("rejects an entry without a score, naming it", () => {
+    expect(() => parseScores("src", '[{"other":1}]')).toThrow(
+      'fta returned an entry without a score: {"other":1}',
+    );
   });
 
   test("rejects output that isn't a list", () => {
@@ -140,6 +146,15 @@ describe("main", () => {
       `{\n  "scripts/a.ts": ${over},\n  "src/b.ts": ${over}\n}\n`,
     );
     expect(process.exitCode).toBeUndefined();
+  });
+
+  test("rejects an unknown flag and more than one flag", () => {
+    expect(() => {
+      main(["--updte"], scores({}), baselinePath);
+    }).toThrow('Unknown flag "--updte"');
+    expect(() => {
+      main(["--init", "--update"], scores({}), baselinePath);
+    }).toThrow("Expected at most one flag, got --init --update.");
   });
 
   test("--init refuses when a baseline file exists", () => {
