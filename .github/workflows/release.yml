@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # No cache: a release build installs from the lockfile alone.
+      # No dependency cache (no pnpm store restore). pnpm/setup still restores and saves its lockfile verification cache, whatever the cache input says.
       - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
       # prepack builds dist/. pnpm's git checks guard a local publish; this publishes the commit just tagged.
       - run: pnpm publish --no-git-checks
