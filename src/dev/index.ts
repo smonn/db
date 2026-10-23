@@ -1,12 +1,4 @@
-export {
-  arePayloadsEqual,
-  catalogBuilder,
-  childrenOf,
-  definitionCatalog,
-  namesOf,
-  parentOf,
-  qualified,
-} from "./catalog/index.ts";
+export { definitionCatalog } from "./catalog/index.ts";
 export type {
   Catalog,
   CatalogBuilder,
@@ -23,7 +15,7 @@ export { defineConfig, parseConfig, parseOfflineConfig } from "./config/index.ts
 export type { Config, LoadedConfig } from "./config/index.ts";
 export { diff, HAZARD_KINDS } from "./diff/index.ts";
 export type { Diff, Hazard, HazardKind } from "./diff/index.ts";
-export { commit, generate, hazardsIn, reset } from "./generate/index.ts";
+export { commit, generate, reset } from "./generate/index.ts";
 export type {
   CommitOptions,
   CommitResult,
@@ -32,6 +24,6 @@ export type {
   ResetOptions,
   ResetResult,
 } from "./generate/index.ts";
-export { introspect, requireSupportedServer, skippedSchemaReason } from "./introspect/index.ts";
+export { introspect } from "./introspect/index.ts";
 export { withShadowDatabases } from "./shadow/index.ts";
 export type { OnInterrupt, ShadowDatabases, ShadowOptions } from "./shadow/index.ts";
