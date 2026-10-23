@@ -132,13 +132,13 @@ function numericLosesData(from: Numeric, to: Type): boolean {
   const wholeNumbers = from.precision !== undefined && from.scale === 0;
   if (INTEGERS.has(to.name)) return !wholeNumbers;
   // Precision of a float: 6 decimal digits for real, 15 for double precision.
-  if (to.name === "real") return exceeds(from, 6);
-  if (to.name === "double precision") return exceeds(from, 15);
+  if (to.name === "real") return holdsMoreDigitsThan(from, 6);
+  if (to.name === "double precision") return holdsMoreDigitsThan(from, 15);
   if (to.name === "numeric") return numericNarrows(from, to);
   return false;
 }
 
-function exceeds(from: Numeric, digits: number): boolean {
+function holdsMoreDigitsThan(from: Numeric, digits: number): boolean {
   return from.precision === undefined || from.precision > digits;
 }
 
