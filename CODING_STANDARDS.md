@@ -16,7 +16,7 @@ Judgement rules that no check can enforce. Implementation agents follow them whi
 
 ## Destructive paths
 
-- **A destructive path proves ownership, then acts.** Code that drops, resets, or overwrites the user's data first proves it owns the target, refuses otherwise with the reason, and has a test for each refusal. (#109's reset guard and its handling of a hand-edited `current.sql`.)
+- **A destructive path checks, then acts, by itself.** Code that drops, resets, overwrites, or freezes the user's data proves it owns the target and runs every refusal from required inputs, not a hook the caller may skip. Each refusal names its reason and has a test. (#109's reset guard; #240's Hazard gate.)
 
 ## SQL
 
