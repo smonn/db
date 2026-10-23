@@ -11,6 +11,7 @@ import {
 } from "../../runtime/internal/index.ts";
 import { migrate, verify } from "../../runtime/migrator/index.ts";
 import type { Driver, FileSystem, MigrationSource } from "../../runtime/ports/index.ts";
+import { requireSupportedServer } from "../introspect/index.ts";
 import { withDevLock } from "./dev-lock.ts";
 
 // Extensions go first: one can own a schema, which then refuses a plain drop or vanishes with it.
@@ -101,7 +102,8 @@ export type ResetResult = {
  * Committed migrations and `current.sql` as written, without regenerating it. Refuses an unmarked,
  * non-empty Database unless `erase` is set.
  */
-export function reset(options: ResetOptions): Promise<ResetResult> {
+export async function reset(options: ResetOptions): Promise<ResetResult> {
+  await requireSupportedServer(options.driver);
   return withDevLock(options.driver, "reset", (driver) => resetLocked({ ...options, driver }));
 }
 

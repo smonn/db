@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
+import type { Driver } from "../../runtime/ports/index.ts";
 import { commit } from "./commit.ts";
 import { generate } from "./generate.ts";
 import { memoryFileSystem, type MemoryFileSystem } from "./memory-file-system.test-helper.ts";
@@ -40,6 +41,30 @@ async function tables(): Promise<unknown[]> {
 }
 
 describe("reset", () => {
+  it("refuses a server older than Postgres 18 after one version query and before it executes anything", async () => {
+    const queries: string[] = [];
+    const executed: string[] = [];
+    const driver: Driver = {
+      execute: (sql) => {
+        executed.push(sql);
+        return Promise.resolve();
+      },
+      query: (sql) => {
+        queries.push(sql);
+        return Promise.resolve({ rows: [{ server_version_num: "170006" }], count: 1 });
+      },
+      session: () => Promise.reject(new Error("unexpected session")),
+      transaction: () => Promise.reject(new Error("unexpected transaction")),
+    };
+
+    await expect(
+      reset({ driver, fileSystem: memoryFileSystem(), migrations: MIGRATIONS }),
+    ).rejects.toThrow("smonn/db needs Postgres 18 or newer, and this server runs Postgres 17");
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toContain("server_version_num");
+    expect(executed).toStrictEqual([]);
+  });
+
   it("replays the Committed migrations and current.sql into a marked Database", async () => {
     const fileSystem = memoryFileSystem();
     await generateInto(fileSystem);
