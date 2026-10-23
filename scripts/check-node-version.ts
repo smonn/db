@@ -2,8 +2,10 @@
  * Checks that the Node version agrees across `.tool-versions` (asdf), `devEngines.runtime` in
  * package.json, and the `node@runtime` entries in pnpm-lock.yaml. The lockfile importer must hold
  * `specifier: runtime:<devEngines range>` and `version: runtime:<asdf version>`. A frozen-lockfile
- * install already fails when the specifier drifts from package.json, and pnpm resolves the version
- * inside its specifier, so these string comparisons also prove the asdf version satisfies the range.
+ * install already fails when the specifier drifts from package.json. The check compares strings and
+ * does no semver: if `.tool-versions` and the lockfile are bumped together to a version outside
+ * `devEngines.runtime` (25.0.0 against `^24.22.1`), it passes, because a frozen install checks
+ * specifiers, not whether the resolved version satisfies them. Accepted to avoid a semver dependency.
  * Prints each problem and exits 1.
  *
  * Run from the repo root with `pnpm check:node-version`; CI runs it in the Lint job.

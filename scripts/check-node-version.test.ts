@@ -30,6 +30,18 @@ describe("checkNodeVersion", () => {
     expect(checkNodeVersion(sources({ packageJson }))).toEqual([]);
   });
 
+  test("finds the node entry after a non-node entry in the array", () => {
+    const packageJson = JSON.stringify({
+      devEngines: {
+        runtime: [
+          { name: "bun", version: "1" },
+          { name: "node", version: "^24.22.1" },
+        ],
+      },
+    });
+    expect(checkNodeVersion(sources({ packageJson }))).toEqual([]);
+  });
+
   test("flags an asdf version that differs from the lockfile", () => {
     const problems = checkNodeVersion(sources({ toolVersions: "nodejs 24.22.2\n" }));
     expect(problems).toEqual([
