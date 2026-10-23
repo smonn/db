@@ -1,46 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { checkImports, main } from "./check-imports.ts";
-
-const dirs: string[] = [];
+import { main } from "./check-imports.ts";
+import { removeRepos, repo, rulesBroken } from "./check-imports.test-helper.ts";
 
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  removeRepos();
   vi.restoreAllMocks();
   process.exitCode = undefined;
 });
-
-function repo(files: Record<string, string>): string {
-  const dir = mkdtempSync(join(tmpdir(), "check-imports-"));
-  dirs.push(dir);
-  const all: Record<string, string> = {
-    "package.json": JSON.stringify({
-      type: "module",
-      dependencies: { postgres: "*", "left-pad": "*" },
-      devDependencies: { vitest: "*" },
-    }),
-    "node_modules/postgres/package.json": JSON.stringify({ name: "postgres", main: "index.js" }),
-    "node_modules/postgres/index.js": "export default 1;",
-    "node_modules/left-pad/package.json": JSON.stringify({ name: "left-pad", main: "index.js" }),
-    "node_modules/left-pad/index.js": "export default 1;",
-    "node_modules/vitest/package.json": JSON.stringify({ name: "vitest", main: "index.js" }),
-    // An unresolvable import inside a package shows whether the cruise follows into node_modules.
-    "node_modules/vitest/index.js": 'import "not-installed";\nexport const test = 1;',
-    ...files,
-  };
-  for (const [path, text] of Object.entries(all)) {
-    mkdirSync(dirname(join(dir, path)), { recursive: true });
-    writeFileSync(join(dir, path), text);
-  }
-  return dir;
-}
-
-async function rulesBroken(files: Record<string, string>): Promise<string[]> {
-  const problems = await checkImports(repo(files));
-  return problems.map(({ rule }) => rule);
-}
 
 describe("checkImports", () => {
   test("fails when it scans no modules", async () => {
@@ -77,131 +43,6 @@ describe("checkImports", () => {
     ).toEqual([]);
   });
 
-  test("tests cross module boundaries only to reach the test database helper", async () => {
-    expect(
-      await rulesBroken({
-        "src/runtime/sql/sql.test.ts":
-          'import { postgresJsDriver } from "../../adapters/postgres-js/driver.ts";\nexport { postgresJsDriver };',
-        "src/adapters/postgres-js/driver.ts": "export function postgresJsDriver(): void {}",
-        "src/dev/shadow/shadow.test.ts":
-          'import { diff } from "../diff/index.ts";\nimport { postgresJsDriver } from "../../adapters/postgres-js/driver.ts";\nexport { diff, postgresJsDriver };',
-        "src/dev/diff/index.ts": "export function diff(): void {}",
-        "src/adapters/node/fs.test.ts":
-          'import { postgresJsDriver } from "../postgres-js/driver.ts";\nexport { postgresJsDriver };',
-        "src/runtime/sql/index.ts":
-          'import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";\nexport { useTestDatabase };',
-        "src/adapters/postgres-js/test-database.test-helper.ts":
-          "export function useTestDatabase(): void {}",
-      }),
-    ).toEqual([
-      "adapter-imports-ports-or-internal",
-      "cross-module-through-index",
-      "cross-module-through-index",
-      "cross-module-through-index",
-      "dev-no-adapters",
-      "no-test-imports",
-      "runtime-stays-in-runtime",
-    ]);
-  });
-
-  test("runtime/ imports nothing outside runtime/", async () => {
-    expect(
-      await rulesBroken({
-        "src/runtime/sql/index.ts":
-          'import type { E } from "../../dev/diff/index.ts";\nexport type D = E;',
-        "src/dev/diff/index.ts": "export type E = 1;",
-      }),
-    ).toEqual(["runtime-stays-in-runtime"]);
-  });
-
-  test("modules import runtime/internal, but no index.ts re-exports it", async () => {
-    expect(
-      await rulesBroken({
-        "src/runtime/internal/index.ts": 'export { sha256 } from "./sha256.ts";',
-        "src/runtime/internal/sha256.ts": "export const sha256 = 1;",
-        "src/runtime/migrator/migrate.ts":
-          'import { sha256 } from "../internal/index.ts";\nexport const hash = sha256;',
-        "src/runtime/migrator/index.ts":
-          'export { hash } from "./migrate.ts";\nexport { sha256 } from "../internal/index.ts";',
-        "src/dev/generate/generate.ts":
-          'import { sha256 } from "../../runtime/internal/index.ts";\nexport const hash = sha256;',
-        "src/dev/generate/index.ts": 'export { hash } from "./generate.ts";',
-        "src/adapters/node/source.ts":
-          'import { sha256 } from "../../runtime/internal/index.ts";\nexport const hash = sha256;',
-        "src/index.ts": 'export { sha256 } from "./runtime/internal/index.ts";',
-      }),
-    ).toEqual(["internal-not-reexported", "internal-not-reexported"]);
-  });
-
-  test("runtime/ imports no npm packages", async () => {
-    expect(
-      await rulesBroken({
-        "src/runtime/sql/index.ts": 'import pad from "left-pad";\nexport { pad };',
-      }),
-    ).toEqual(["runtime-no-npm"]);
-  });
-
-  test("an adapter imports only runtime/ports, runtime/internal, and its own files", async () => {
-    expect(
-      await rulesBroken({
-        "src/adapters/node/index.ts":
-          'import type { D } from "../postgres-js/index.ts";\nimport type { S } from "../../runtime/sql/index.ts";\nimport type { E } from "../../dev/diff/index.ts";\nexport type N = D | S | E;',
-        "src/adapters/postgres-js/index.ts": "export type D = 1;",
-        "src/runtime/sql/index.ts": "export type S = 1;",
-        "src/dev/diff/index.ts": "export type E = 1;",
-      }),
-    ).toEqual([
-      "adapter-imports-ports-or-internal",
-      "adapter-imports-ports-or-internal",
-      "adapter-imports-ports-or-internal",
-    ]);
-  });
-
-  test("adapters/postgres-js imports no npm package but postgres", async () => {
-    expect(
-      await rulesBroken({
-        "src/adapters/postgres-js/index.ts": 'import pad from "left-pad";\nexport { pad };',
-      }),
-    ).toEqual(["postgres-js-adapter-host-package"]);
-  });
-
-  test("other adapters import no npm packages", async () => {
-    expect(
-      await rulesBroken({
-        "src/adapters/node/index.ts": 'import postgres from "postgres";\nexport { postgres };',
-      }),
-    ).toEqual(["adapter-no-npm"]);
-  });
-
-  test("dev/ outside dev/cli never imports adapters/", async () => {
-    expect(
-      await rulesBroken({
-        "src/dev/diff/index.ts":
-          'import type { D } from "../../adapters/postgres-js/index.ts";\nexport type E = D;',
-        "src/adapters/postgres-js/index.ts": "export type D = 1;",
-      }),
-    ).toEqual(["dev-no-adapters"]);
-  });
-
-  test("node:* imports appear only in adapters/ and dev/cli", async () => {
-    expect(
-      await rulesBroken({
-        "src/runtime/sql/index.ts": 'import { readFile } from "node:fs";\nexport { readFile };',
-        "src/dev/diff/index.ts": 'import { readFile } from "node:fs";\nexport { readFile };',
-      }),
-    ).toEqual(["node-builtins-in-host-code", "node-builtins-in-host-code"]);
-  });
-
-  test("an import from another module goes through its index.ts", async () => {
-    expect(
-      await rulesBroken({
-        "src/runtime/sql/index.ts":
-          'import type { Q } from "../query/build.ts";\nexport type S = Q;',
-        "src/runtime/query/build.ts": "export type Q = 1;",
-      }),
-    ).toEqual(["cross-module-through-index"]);
-  });
-
   test("no cycles", async () => {
     expect(
       await rulesBroken({
@@ -209,25 +50,6 @@ describe("checkImports", () => {
         "src/runtime/sql/b.ts": 'import type { A } from "./a.ts";\nexport type B = A;',
       }),
     ).toEqual(["no-cycles"]);
-  });
-
-  test("non-test code never imports tests or test helpers", async () => {
-    expect(
-      await rulesBroken({
-        "src/runtime/sql/index.ts":
-          'import { helper } from "./sql.test-helper.ts";\nimport "./sql.test.ts";\nexport { helper };',
-        "src/runtime/sql/sql.test-helper.ts": "export function helper(): void {}",
-        "src/runtime/sql/sql.test.ts": "export {};",
-      }),
-    ).toEqual(["no-test-imports", "no-test-imports"]);
-  });
-
-  test("only tests and test helpers import vitest", async () => {
-    expect(
-      await rulesBroken({
-        "src/dev/diff/index.ts": 'import { test } from "vitest";\nexport { test };',
-      }),
-    ).toEqual(["vitest-in-tests-only"]);
   });
 
   test("main prints each violation and sets exit code 1", async () => {

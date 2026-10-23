@@ -1,0 +1,31 @@
+import { describe, expect, test } from "vitest";
+import { planSync } from "./session-start.ts";
+
+describe("planSync", () => {
+  test("does nothing when the branch is not behind", () => {
+    expect(planSync({ behind: 0, ahead: 2, dirty: true })).toEqual({ kind: "up-to-date" });
+  });
+
+  test("fast-forwards a clean branch with no commits of its own", () => {
+    expect(planSync({ behind: 3, ahead: 0, dirty: false })).toEqual({
+      kind: "fast-forward",
+      behind: 3,
+    });
+  });
+
+  test("reports instead of fast-forwarding a branch with its own commits", () => {
+    expect(planSync({ behind: 1, ahead: 2, dirty: false })).toEqual({
+      kind: "report",
+      message:
+        "This branch is 1 commit behind origin/main and has 2 commits of its own, so it was not fast-forwarded. Branch new work from origin/main.",
+    });
+  });
+
+  test("reports instead of fast-forwarding a branch with uncommitted changes", () => {
+    expect(planSync({ behind: 2, ahead: 1, dirty: true })).toEqual({
+      kind: "report",
+      message:
+        "This branch is 2 commits behind origin/main and has 1 commit of its own and uncommitted changes, so it was not fast-forwarded. Branch new work from origin/main.",
+    });
+  });
+});
