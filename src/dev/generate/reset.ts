@@ -89,16 +89,23 @@ export type ResetOptions = {
   readonly erase?: boolean;
 };
 
+export type ResetResult = {
+  /** How many Committed migrations it replayed. */
+  readonly committed: number;
+  /** Whether it also replayed `current.sql`. */
+  readonly current: boolean;
+};
+
 /**
  * Rebuilds the Dev database from the files: drops every non-system schema, then replays the
  * Committed migrations and `current.sql` as written, without regenerating it. Refuses an unmarked,
  * non-empty Database unless `erase` is set.
  */
-export function reset(options: ResetOptions): Promise<void> {
+export function reset(options: ResetOptions): Promise<ResetResult> {
   return withDevLock(options.driver, "reset", (driver) => resetLocked({ ...options, driver }));
 }
 
-async function resetLocked(options: ResetOptions): Promise<void> {
+async function resetLocked(options: ResetOptions): Promise<ResetResult> {
   const { driver, fileSystem, migrations, erase = false } = options;
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
   if (!erase) await requireDevDatabase(driver, tracking, "reset");
@@ -110,4 +117,5 @@ async function resetLocked(options: ResetOptions): Promise<void> {
     current = { body, hash: await currentHash(body) };
   }
   await resetDevDatabase(driver, { list: () => Promise.resolve(committed) }, tracking, current);
+  return { committed: committed.length, current: current !== undefined };
 }

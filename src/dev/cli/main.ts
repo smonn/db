@@ -11,6 +11,7 @@ import {
 import { migrate, verify } from "../../runtime/migrator/index.ts";
 import type { Driver } from "../../runtime/ports/index.ts";
 import { commit, generate, reset } from "../generate/index.ts";
+import { generateReport, resetReport } from "./report.ts";
 import { loadMigrationsFolder, loadProject, type Project } from "./project.ts";
 
 const USAGE = `usage: smonndb <command> [--config <path>]
@@ -126,14 +127,7 @@ async function runOn(driver: Driver, command: DatabaseCommand, project: Project)
         migrations,
         ...tracking,
       });
-      const path = relative(process.cwd(), result.path);
-      if (result.diff !== undefined) {
-        const differs = result.diff === "" ? "matches what generate would write" : result.diff;
-        print(`kept hand-edited ${path}, replayed as written; diff to what generate would write:`);
-        print(differs.trimEnd());
-        return;
-      }
-      print(result.sql === undefined ? `no diff, removed ${path}` : `wrote ${path}`);
+      for (const line of generateReport(result, relative(process.cwd(), result.path))) print(line);
       return;
     }
     case "commit": {
@@ -143,8 +137,14 @@ async function runOn(driver: Driver, command: DatabaseCommand, project: Project)
       return;
     }
     case "reset": {
-      await reset({ driver, fileSystem, migrations, erase: command.erase, ...tracking });
-      print("reset the Dev database");
+      const result = await reset({
+        driver,
+        fileSystem,
+        migrations,
+        erase: command.erase,
+        ...tracking,
+      });
+      print(resetReport(result));
       return;
     }
     case "migrate": {
