@@ -10,7 +10,6 @@ import {
   type TrackingSchema,
   writeCurrent,
 } from "../../runtime/internal/index.ts";
-import { migrate } from "../../runtime/migrator/index.ts";
 import type {
   Connect,
   Driver,
@@ -18,15 +17,15 @@ import type {
   MigrationFile,
   MigrationSource,
 } from "../../runtime/ports/index.ts";
-import { definitionCatalog, type Catalog, type DefinitionTables } from "../catalog/index.ts";
-import { diff } from "../diff/index.ts";
-import { introspect, skippedSchemaReason } from "../introspect/index.ts";
-import { withShadowDatabases } from "../shadow/index.ts";
+import type { DefinitionTables } from "../catalog/index.ts";
+import { skippedSchemaReason } from "../introspect/index.ts";
+import type { ShadowOptions } from "../shadow/index.ts";
 import { withDevLock } from "./dev-lock.ts";
 import { lineDiff } from "./line-diff.ts";
 import { requireDevDatabase, resetDevDatabase } from "./reset.ts";
+import { diffInShadow } from "./shadow-diff.ts";
 
-export type GenerateOptions = {
+export type GenerateOptions = ShadowOptions & {
   /** The Dev database, which also creates and drops the Shadow and Definition databases. */
   readonly driver: Driver;
   readonly connect: Connect;
@@ -53,10 +52,10 @@ export type GenerateResult = {
 };
 
 /**
- * Diffs the Definition against the Committed migrations, writes the result to `current.sql`, then
- * resets the Dev database and replays the Committed migrations and the Current migration when it
- * has fallen behind them. A hand-edited `current.sql` is replayed as written and left alone. Holds
- * the Dev lock, so a second run fails at once.
+ * Diffs the Definition against the Committed migrations, verifies the result in the Shadow
+ * database, writes it to `current.sql`, then resets the Dev database and replays the Committed
+ * migrations and the Current migration when it has fallen behind them. A hand-edited `current.sql`
+ * is replayed as written and left alone. Holds the Dev lock, so a second run fails at once.
  */
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
@@ -75,6 +74,7 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     definition,
     migrations,
     trackingSchema: trackingName = DEFAULT_TRACKING_SCHEMA,
+    ...shadowOptions
   } = options;
   const tracking = trackingSchema(trackingName);
   await requireDevDatabase(driver, tracking);
@@ -84,16 +84,7 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
   const committed = await readCommitted(fileSystem, migrations);
   const source: MigrationSource = { list: () => Promise.resolve(committed) };
 
-  const sql = await withShadowDatabases(driver, connect, async (databases) => {
-    await migrate({ driver: databases.shadow, source, trackingSchema: tracking.name });
-    await databases.definition.execute(
-      await definitionSql(databases.definition, definitionCatalog(definition)),
-    );
-    return diff(
-      await introspect(databases.shadow, tracking),
-      await introspect(databases.definition, tracking),
-    );
-  });
+  const sql = await diffInShadow({ driver, connect, source, definition, tracking, shadowOptions });
 
   if (edited !== undefined) {
     const current = { body: edited, hash: await currentHash(edited) };
@@ -148,13 +139,4 @@ async function readHandEdited(fileSystem: FileSystem, path: string): Promise<str
   if (content === undefined) return undefined;
   const parsed = await parseCurrent(content);
   return parsed.edited ? parsed.body : undefined;
-}
-
-/**
- * The SQL that builds the Definition into a fresh database. It only creates, so `public`, which
- * template0 ships, stays whether or not the Definition names it, as it does in the Shadow.
- */
-async function definitionSql(database: Driver, wanted: Catalog): Promise<string> {
-  const existing = [...(await introspect(database))].filter(([path]) => wanted.has(path));
-  return diff(new Map(existing), wanted);
 }

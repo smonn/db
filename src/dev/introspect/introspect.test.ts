@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { DEFAULT_TRACKING_SCHEMA, trackingSchema } from "../../runtime/internal/index.ts";
-import type { Session } from "../../runtime/ports/index.ts";
+import type { Queryable, Session } from "../../runtime/ports/index.ts";
 import { definitionCatalog, namesOf, type Catalog } from "../catalog/index.ts";
 import { introspect } from "./introspect.ts";
 
@@ -22,6 +22,18 @@ beforeEach(async () => {
 });
 
 describe("introspect", () => {
+  it("refuses a server older than Postgres 18, naming the minimum", async () => {
+    const tx: Queryable = {
+      execute: () => Promise.resolve(),
+      query: () => Promise.resolve({ rows: [{ server_version_num: "170006" }], count: 1 }),
+    };
+    const session: Session = { ...tx, transaction: (fn) => fn(tx) };
+
+    await expect(introspect(session)).rejects.toThrow(
+      "smonn/db needs Postgres 18 or newer, and this server runs Postgres 17",
+    );
+  });
+
   it("reads the same facts the Definition asks for", async () => {
     await db.driver.execute(`
       create schema auth;
