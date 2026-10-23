@@ -129,6 +129,19 @@ describe("checkImports rules", () => {
     ).toEqual(["cross-module-through-index"]);
   });
 
+  test("no src/ file imports a group index", async () => {
+    expect(
+      await rulesBroken({
+        "src/runtime/index.ts": 'export { s } from "./sql/index.ts";',
+        "src/runtime/sql/index.ts": "export const s = 1;",
+        "src/runtime/query/build.ts": 'import { s } from "../index.ts";\nexport const q = s;',
+        "src/dev/index.ts": 'export { d } from "./diff/index.ts";',
+        "src/dev/diff/index.ts": "export const d = 1;",
+        "src/dev/cli/main.ts": 'import { d } from "../index.ts";\nexport const m = d;',
+      }),
+    ).toEqual(["no-group-index-imports", "no-group-index-imports"]);
+  });
+
   test("non-test code never imports tests or test helpers", async () => {
     expect(
       await rulesBroken({
