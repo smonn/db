@@ -52,7 +52,7 @@ describe("generate with a hand-edited current.sql", () => {
     });
 
     expect(fileSystem.files.get(CURRENT)).toBe(content);
-    expect(result).toStrictEqual({ path: CURRENT, sql: body, diff, reset: true });
+    expect(result).toStrictEqual({ path: CURRENT, sql: body, diff, reset: true, hazards: [] });
     const { rows: tables } = await db.driver.query(
       "select table_name from information_schema.tables where table_schema = 'public'",
     );

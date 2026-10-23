@@ -1,8 +1,15 @@
 import { parentOf, type Catalog, type Fact, type Key } from "../catalog/index.ts";
-import { order, qualified, render, type Action, type Catalogs } from "./actions.ts";
+import { hazardsOf, order, qualified, render, type Action, type Catalogs } from "./actions.ts";
+import type { Hazard } from "./hazards.ts";
+
+export type Diff = {
+  /** Each statement follows one `-- hazard: <kind>` comment per Hazard it carries. */
+  readonly sql: string;
+  readonly hazards: readonly Hazard[];
+};
 
 /** The SQL that turns a database with catalog `from` into one with catalog `to`. */
-export function diff(from: Catalog, to: Catalog): string {
+export function diff(from: Catalog, to: Catalog): Diff {
   const catalogs = { from, to };
   const actions: Action[] = [];
   for (const [key, fact] of from) {
@@ -19,9 +26,16 @@ export function diff(from: Catalog, to: Catalog): string {
     const before = from.get(key);
     actions.push(...(before === undefined ? created(fact, from) : altered(before, fact, catalogs)));
   }
-  return order(actions)
-    .map((action) => `${render(action, catalogs)}\n`)
+  const hazards: Hazard[] = [];
+  const sql = order(actions)
+    .map((action) => {
+      const statement = render(action, catalogs);
+      const kinds = hazardsOf(action, catalogs);
+      hazards.push(...kinds.map((kind) => ({ kind, statement })));
+      return `${kinds.map((kind) => `-- hazard: ${kind}\n`).join("")}${statement}\n`;
+    })
     .join("\n");
+  return { sql, hazards };
 }
 
 /**
@@ -56,7 +70,7 @@ function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {
   if (before.kind === "column" && after.kind === "column") {
     const actions: Action[] = [];
     if (before.payload.type !== after.payload.type) {
-      actions.push({ kind: "alter type", fact: after });
+      actions.push({ kind: "alter type", fact: after, before });
     }
     if (before.payload.notNull !== after.payload.notNull) {
       actions.push({ kind: after.payload.notNull ? "set not null" : "drop not null", fact: after });

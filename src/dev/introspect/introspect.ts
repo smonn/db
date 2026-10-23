@@ -41,7 +41,15 @@ const COLUMNS = `
 select n.nspname as schema, c.relname as table, a.attname as name,
   format_type(a.atttypid, a.atttypmod) as type, a.attnotnull as not_null,
   a.attidentity as identity,
-  case when a.attgenerated = '' then pg_get_expr(d.adbin, d.adrelid) end as default_expression
+  case when a.attgenerated = '' then pg_get_expr(d.adbin, d.adrelid) end as default_expression,
+  case when a.attgenerated = '' then exists (
+    select from regexp_matches(
+      regexp_replace(pg_get_expr(d.adbin, d.adrelid), '''([^'']|'''')*''', '', 'g'),
+      '([A-Za-z_][A-Za-z0-9_$]*|"[^"]+")\\s*\\(', 'g'
+    ) as call(name)
+      join pg_proc p on p.proname = trim(both '"' from call.name[1])
+    where p.provolatile = 'v'
+  ) end as default_volatile
 from pg_attribute a
   join pg_class c on c.oid = a.attrelid
   join pg_namespace n on n.oid = c.relnamespace
@@ -135,6 +143,7 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
         if (typeof column["default_expression"] === "string") {
           builder.columnDefault(schema, tableName, columnName, {
             expression: column["default_expression"],
+            volatile: column["default_volatile"] === true,
           });
         }
       }

@@ -6,7 +6,7 @@ import {
   type Catalog,
   type CatalogBuilder,
 } from "../catalog/index.ts";
-import { diff } from "./diff.ts";
+import { bareDiff as diff } from "./bare-sql.test-helper.ts";
 
 const text = { type: "text", notNull: false };
 const textNotNull = { type: "text", notNull: true };
@@ -109,7 +109,7 @@ create table "public"."users.archive" (
       b.table("public", "t");
       b.column("public", "t", "a", text);
       b.column("public", "t", "b", { type: "integer", notNull: false });
-      b.columnDefault("public", "t", "b", { expression: "1" });
+      b.columnDefault("public", "t", "b", { expression: "1", volatile: false });
       b.column("public", "t", "c", textNotNull);
       b.primaryKey("public", "t", "t_pkey", { columns: ["c"] });
       b.unique("public", "t", "t_a_key", { column: "a" });
@@ -120,7 +120,7 @@ create table "public"."users.archive" (
       b.schema("public");
       b.table("public", "t");
       b.column("public", "t", "b", { type: "bigint", notNull: true });
-      b.columnDefault("public", "t", "b", { expression: "1" });
+      b.columnDefault("public", "t", "b", { expression: "1", volatile: false });
       b.column("public", "t", "c", text);
       b.column("public", "t", "d", text);
       b.primaryKey("public", "t", "t_pkey", { columns: ["b"] });

@@ -114,8 +114,8 @@ describe("introspect", () => {
     expect(facts).toStrictEqual([
       ["public.t.id.identity", { generated: "always" }],
       ["public.t.n.identity", { generated: "by default" }],
-      ["public.t.role.default", { expression: "'member'::text" }],
-      ["public.t.at.default", { expression: "now()" }],
+      ["public.t.role.default", { expression: "'member'::text", volatile: false }],
+      ["public.t.at.default", { expression: "now()", volatile: false }],
     ]);
   });
 
