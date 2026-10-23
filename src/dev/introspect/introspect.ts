@@ -49,6 +49,28 @@ from pg_attribute a
 where c.relkind = 'r' and a.attnum > 0 and not a.attisdropped and ${KEPT_SCHEMA}
 order by a.attnum`;
 
+// Multi-column unique constraints wait for v0.2, so only a single `conkey` entry counts. A
+// deferrable, NULLS NOT DISTINCT, INCLUDE, or WITHOUT OVERLAPS key reads like a plain one, so it
+// is skipped as an Unmodeled object (ADR-0005).
+const CONSTRAINTS = `
+select n.nspname as schema, c.relname as table, k.conname as name, k.contype as type,
+  array(
+    select a.attname::text
+    from unnest(k.conkey) with ordinality as key(attnum, position)
+      join pg_attribute a on a.attrelid = k.conrelid and a.attnum = key.attnum
+    order by key.position
+  ) as columns
+from pg_constraint k
+  join pg_class c on c.oid = k.conrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  join pg_index i on i.indexrelid = k.conindid
+where (k.contype = 'p' or (k.contype = 'u' and cardinality(k.conkey) = 1))
+  and not k.condeferrable and not k.conperiod
+  and not i.indnullsnotdistinct and i.indnkeyatts = i.indnatts
+  and c.relkind = 'r' and not c.relispartition and ${KEPT_SCHEMA}
+  and ${NOT_EXTENSION_MEMBER("pg_class", "c")}
+order by k.conname`;
+
 /** The `pg_attribute.attidentity` codes; an empty string means no identity. */
 const IDENTITY_KINDS: Readonly<Record<string, IdentityPayload["generated"]>> = {
   a: "always",
@@ -75,6 +97,7 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
   const { rows: schemas } = await tx.query(SCHEMAS, [trackingName]);
   const { rows: tables } = await tx.query(TABLES, [trackingName]);
   const { rows: columns } = await tx.query(COLUMNS, [trackingName]);
+  const { rows: constraints } = await tx.query(CONSTRAINTS, [trackingName]);
 
   const builder = catalogBuilder();
   for (const { name } of schemas) {
@@ -100,6 +123,14 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
             expression: column["default_expression"],
           });
         }
+      }
+      for (const row of constraints) {
+        if (row["schema"] !== schema || row["table"] !== tableName) continue;
+        const constraint = String(row["name"]);
+        const keyColumns = Array.isArray(row["columns"]) ? row["columns"].map(String) : [];
+        if (row["type"] === "p")
+          builder.primaryKey(schema, tableName, constraint, { columns: keyColumns });
+        else builder.unique(schema, tableName, constraint, { column: keyColumns[0] ?? "" });
       }
     }
   }

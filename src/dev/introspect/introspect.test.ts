@@ -134,6 +134,75 @@ describe("introspect", () => {
     expect([...catalog.values()].map((fact) => fact.kind)).not.toContain("constraint");
   });
 
+  it("reads primary keys in key order and single-column unique constraints, and no others", async () => {
+    await db.driver.execute(`
+      create table t (
+        a text not null, b text not null, c text, d text, e text, f text
+      );
+      alter table t add constraint pk primary key (b, a);
+      alter table t add constraint c_uq unique (c);
+      alter table t add constraint d_uq unique (d);
+      alter table t add constraint ef_uq unique (e, f);
+      alter table t add constraint f_check check (f <> '');
+      create unique index d_index on t (d);
+      create table keyless (a text);
+      create table parted (a text not null, primary key (a)) partition by list (a);
+      create table parted_1 partition of parted for values in ('x');
+    `);
+
+    const catalog = await introspect(db.driver);
+
+    const keys = [...catalog.values()]
+      .filter((fact) => ["primary key", "unique"].includes(fact.kind))
+      .map((fact) => [fact.kind, namesOf(catalog, fact).join("."), fact.payload]);
+    expect(keys).toStrictEqual([
+      ["unique", "public.t.c_uq", { column: "c" }],
+      ["unique", "public.t.d_uq", { column: "d" }],
+      ["primary key", "public.t.pk", { columns: ["b", "a"] }],
+    ]);
+  });
+
+  // Each variant has the row shape of a plain key but is an Unmodeled object (ADR-0005).
+  it.each([
+    ["NULLS NOT DISTINCT", "unique nulls not distinct (b)"],
+    ["DEFERRABLE", "unique (b) deferrable"],
+    ["DEFERRABLE INITIALLY DEFERRED", "unique (b) deferrable initially deferred"],
+    ["INCLUDE", "unique (b) include (c)"],
+  ])("skips a unique constraint with %s", async (_label, constraint) => {
+    await db.driver.execute(`
+      create table t (a text, b text, c text, d text);
+      alter table t add constraint a_uq unique (a);
+      alter table t add constraint b_uq ${constraint};
+    `);
+
+    const catalog = await introspect(db.driver);
+
+    const keys = [...catalog.values()]
+      .filter((fact) => fact.kind === "unique")
+      .map((fact) => namesOf(catalog, fact).join("."));
+    expect(keys).toStrictEqual(["public.t.a_uq"]);
+  });
+
+  it.each([
+    ["DEFERRABLE", "primary key (a) deferrable"],
+    ["INCLUDE", "primary key (a) include (b)"],
+    ["WITHOUT OVERLAPS", "primary key (a, during without overlaps)"],
+  ])("skips a primary key with %s", async (_label, constraint) => {
+    await db.driver.execute(`
+      create extension if not exists btree_gist;
+      create table t (a integer not null, b text, during daterange not null);
+      alter table t add constraint t_pk ${constraint};
+      create table plain (a integer primary key);
+    `);
+
+    const catalog = await introspect(db.driver);
+
+    const keys = [...catalog.values()]
+      .filter((fact) => fact.kind === "primary key")
+      .map((fact) => namesOf(catalog, fact).join("."));
+    expect(keys).toStrictEqual(["public.plain.plain_pkey"]);
+  });
+
   it("fetches no table or column of a skipped schema", async () => {
     await db.driver.execute(`
       create table kept (a text);
