@@ -27,17 +27,22 @@ type IsUnion<T, U = T> = [T] extends [never]
       : true
     : never;
 
-/** A reference to a column of the table being defined, which table-level entries name instead of a string. */
-export type Ref<K extends string = string> = { readonly "~ref": K };
+/**
+ * A reference to column `K` of the table with columns `C`, which table-level entries name instead of
+ * a string. `"~table"` exists only in types; its function type holds `C` invariant, so a reference
+ * from a table with other columns fails to compile.
+ */
+export type Ref<K extends string = string, C extends Columns = Columns> = {
+  readonly "~ref": K;
+  readonly "~table": (columns: C) => C;
+};
 
 /** The column references handed to a table's second callback, one per column key. */
-export type Refs<C extends Columns> = { readonly [K in keyof C & string]: Ref<K> };
+export type Refs<C extends Columns> = { readonly [K in keyof C & string]: Ref<K, C> };
 
-type KeyRefs<C extends Columns> = readonly [
-  Ref<keyof C & string>,
-  Ref<keyof C & string>,
-  ...Ref<keyof C & string>[],
-];
+type OwnRef<C extends Columns> = Ref<keyof C & string, C>;
+
+type KeyRefs<C extends Columns> = readonly [OwnRef<C>, OwnRef<C>, ...OwnRef<C>[]];
 
 /** The table-level entries, keyed by kind. Later kinds (indexes, checks) join here. */
 type TableExtras<C extends Columns> = [KeyedColumns<C>] extends [never]
@@ -56,16 +61,33 @@ type ExtrasArgs<C extends Columns> =
     : [extras?: (t: Refs<C>) => TableExtras<C>];
 
 type KeyOf<C extends Columns, Args extends unknown[]> = Args extends [
-  (t: never) => { readonly primaryKey: readonly Ref<infer K>[] },
+  (t: never) => { readonly primaryKey: readonly Ref<infer K, C>[] },
 ]
   ? K
   : KeyedColumns<C>;
 
-function refsOf(columns: Columns): Record<string, Ref> {
+/** A `Ref` as it exists at runtime; one table's references are told from another's by identity. */
+type RuntimeRefs = Readonly<Record<string, { readonly "~ref": string }>>;
+
+function refsOf(columns: Columns): RuntimeRefs {
   return Object.fromEntries(Object.keys(columns).map((name) => [name, { "~ref": name }]));
 }
 
-function primaryKeyOf(columns: Columns, declared: unknown): string[] {
+/** The column key `ref` names, once it proves to be one of this table's own references. */
+function columnOf(own: RuntimeRefs, ref: unknown, entry: string): string {
+  const name = typeof ref === "object" && ref !== null && "~ref" in ref ? ref["~ref"] : undefined;
+  if (typeof name !== "string") {
+    throw new TypeError(`The table's ${entry} names something that is not one of its columns`);
+  }
+  if (own[name] !== ref) {
+    throw new Error(
+      `The table's ${entry} takes "${name}" from another table; name columns through the references its own second callback receives`,
+    );
+  }
+  return name;
+}
+
+function primaryKeyOf(columns: Columns, own: RuntimeRefs, declared: unknown): string[] {
   const single = Object.entries(columns)
     .filter(([, { state }]) => state.primaryKey)
     .map(([name]) => name);
@@ -90,10 +112,7 @@ function primaryKeyOf(columns: Columns, declared: unknown): string[] {
   }
   const keys: string[] = [];
   for (const ref of refs) {
-    const name = typeof ref === "object" && ref !== null && "~ref" in ref ? ref["~ref"] : undefined;
-    if (typeof name !== "string" || !Object.hasOwn(columns, name)) {
-      throw new Error("The table's primaryKey names something that is not one of its columns");
-    }
+    const name = columnOf(own, ref, "primaryKey");
     if (keys.includes(name)) {
       throw new Error(`The table's primaryKey lists "${name}" twice`);
     }
@@ -108,9 +127,10 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
 ): TableDefinition<C, KeyOf<C, Args>> {
   const columns = define(factories);
   const extras: ((t: Refs<C>) => { readonly primaryKey?: unknown }) | undefined = args[0];
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- refsOf builds one Ref per key.
-  const declared = extras?.(refsOf(columns) as Refs<C>);
-  const primaryKey = primaryKeyOf(columns, declared?.primaryKey);
+  const own = refsOf(columns);
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- refsOf builds one Ref per key; "~table" exists only in types.
+  const declared = extras?.(own as unknown as Refs<C>);
+  const primaryKey = primaryKeyOf(columns, own, declared?.primaryKey);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the key names are checked above.
   return { columns, primaryKey } as unknown as TableDefinition<C, KeyOf<C, Args>>;
 }
