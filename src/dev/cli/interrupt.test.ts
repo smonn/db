@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -48,6 +48,27 @@ export default defineConfig({
   return project;
 }
 
+function spawnGenerate(cwd: string): { child: ChildProcess; stderr: () => string } {
+  const child = spawn(process.execPath, [join(import.meta.dirname, "bin.ts"), "generate"], {
+    cwd,
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  let stderr = "";
+  child.stderr?.setEncoding("utf8");
+  child.stderr?.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
+  return { child, stderr: () => stderr };
+}
+
+async function killIfRunning(child: ChildProcess): Promise<void> {
+  if (child.exitCode === null && child.signalCode === null) {
+    const exited = once(child, "exit");
+    child.kill("SIGKILL");
+    await exited;
+  }
+}
+
 describe("smonndb generate, interrupted", () => {
   // Its own role, so the databases it owns are the Dev database and the ones generate creates.
   it.each(["SIGINT", "SIGTERM"] as const)(
@@ -63,11 +84,8 @@ describe("smonndb generate, interrupted", () => {
       url.password = suffix;
       url.pathname = `/${dev}`;
       const project = await stallingProject(url.href);
+      const { child, stderr } = spawnGenerate(project);
       try {
-        const child = spawn(process.execPath, [join(import.meta.dirname, "bin.ts"), "generate"], {
-          cwd: project,
-          stdio: "ignore",
-        });
         const exited = once(child, "exit");
         await vi.waitFor(
           async () => {
@@ -85,7 +103,10 @@ describe("smonndb generate, interrupted", () => {
 
         expect(await exited).toStrictEqual([null, signal]);
         expect(await ownedDatabases(role)).toStrictEqual([dev]);
+      } catch (error) {
+        throw new Error(`${String(error)}\nchild stderr:\n${stderr()}`, { cause: error });
       } finally {
+        await killIfRunning(child);
         await Promise.all(
           (await ownedDatabases(role)).map((name) =>
             admin.driver.execute(`drop database ${name} with (force)`),
