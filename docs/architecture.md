@@ -303,6 +303,17 @@ v0.1 supports Postgres 18 and newer, and CI runs 18 and, once released, 19. `int
 
 ## Import rules
 
+The layer map is design intent: when code breaks it, fix the code, and change the map only with the design.
+
+| Layer       | Paths                    | May import                                         | Bans                                         |
+| ----------- | ------------------------ | -------------------------------------------------- | -------------------------------------------- |
+| runtime     | `src/runtime/`           | only itself, no npm packages                       | `node:*`; `process`, `Buffer`, `__dirname`   |
+| adapters    | `src/adapters/<name>/`   | `runtime/ports`, `runtime/internal`, its own files | npm packages but its host (`postgres`)       |
+| dev         | `src/dev/` but `dev/cli` | `runtime/`, other `dev/` modules                   | `adapters/`; `node:*`; Node globals as above |
+| composition | `src/dev/cli/`           | everything above                                   | nothing                                      |
+
+Each folder under a group is a module: its `index.ts` is its only entry point, and any other module imports it through that file. To add a module, create the folder with an `index.ts` of named re-exports, then run `pnpm check`. The rules match folders by pattern, so a new module needs no config change.
+
 CI enforces the module boundaries:
 
 - `scripts/check-imports.ts` holds the dependency-cruiser rules, each with a one-line comment: `runtime/` stays self-contained and free of npm packages, an adapter imports only `runtime/ports`, `runtime/internal`, and its host package, only `dev/cli` wires in adapters, `node:*` stays in host code, cross-module imports go through `index.ts`, no other module's `index.ts` re-exports `runtime/internal`, no cycles, and only tests import `*.test.ts` files, `*.test-helper.ts` helpers, and `vitest`. Tests in any group may import `adapters/postgres-js/test-database.test-helper.ts`, which the group, adapter, and `index.ts` rules otherwise forbid. It fails when it scans 0 modules.
@@ -310,6 +321,17 @@ CI enforces the module boundaries:
 - `scripts/check-index-exports.ts` keeps each `index.ts` to named re-exports: no declarations, no `export *`.
 
 oxfmt formats TypeScript and Markdown. knip reports unused files, exports, and dependencies.
+
+### Checks and baselines
+
+`pnpm check` runs every gate and the tests; `pnpm check:static` runs every gate but the tests. Each gate is also its own script: `format:check`, `check:docs`, `check:mermaid`, `typecheck`, `lint`, `lint:actions`, `check:imports`, `check:index`, `knip`, `deps` (rev-dep duplicated-code detection), `fta` (file maintainability), and `coverage`.
+
+Baselines recorded at adoption (2026-10-22), each lowered as code improves and never raised without the maintainer:
+
+- `complexity` starts at 21 (`dev/diff/hazards.ts`), target 6, and `max-params` at 5 (`dev/shadow/shadow.ts`), target 4, in `.oxlintrc.json`. `max-depth` is at its target of 4.
+- `fta-baseline.json` holds the five test files that score above 60. `pnpm fta:update` lowers a baseline after a file improves.
+- `rev-dep.duplicates.json` holds the four duplicated test blocks found at adoption. `deps` fails on any new duplicate.
+- Every TypeScript strictness flag is on, so the compiler has no baseline.
 
 ## Package entry points
 
