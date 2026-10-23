@@ -97,6 +97,26 @@ describe("insert", () => {
     expect(() => insert(db.public.users).values({ id: null })).not.toThrow();
   });
 
+  it("requires every composite-key column, and none can be null", () => {
+    const { memberships } = defineDatabase({
+      public: {
+        memberships: defineTable(
+          (c) => ({ account_id: c.integer(), team_id: c.integer(), note: c.text() }),
+          (t) => ({ primaryKey: [t.account_id, t.team_id] }),
+        ),
+      },
+    }).public;
+    expectTypeOf<NewRow<typeof memberships>>().toEqualTypeOf<
+      { account_id: number; team_id: number } & { note?: string | null }
+    >();
+    // @ts-expect-error team_id is part of the key, so it is required
+    expect(() => insert(memberships).values({ account_id: 1 })).not.toThrow();
+    // @ts-expect-error account_id is part of the key, so it is required
+    expect(() => insert(memberships).values({ team_id: 1 })).not.toThrow();
+    // @ts-expect-error account_id is part of the key, so null is no value
+    expect(() => insert(memberships).values({ account_id: null, team_id: 1 })).not.toThrow();
+  });
+
   it("is not a Query without returning", () => {
     expectTypeOf(insert(db.public.users).values({ id: "u1" })).not.toExtend<Query<unknown>>();
   });

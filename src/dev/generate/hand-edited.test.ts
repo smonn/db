@@ -106,6 +106,18 @@ describe("generate with a hand-edited current.sql", () => {
 
   it("fails on a SQL error in the edit and leaves the Dev database untouched", async () => {
     const fileSystem = memoryFileSystem({ [CURRENT]: "select * from public.nope;\n" });
+    const objects = async () => {
+      const { rows } = await db.driver.query(
+        `select 'schema' as kind, nspname as name from pg_namespace
+         where nspname not like 'pg\\_%' and nspname <> 'information_schema'
+         union all
+         select 'table', schemaname || '.' || tablename from pg_tables
+         where schemaname not in ('pg_catalog', 'information_schema')
+         order by 1, 2`,
+      );
+      return rows;
+    };
+    const before = await objects();
 
     await expect(
       generate({
@@ -118,10 +130,8 @@ describe("generate with a hand-edited current.sql", () => {
     ).rejects.toThrow(/relation "public.nope" does not exist/u);
 
     expect(fileSystem.files.get(CURRENT)).toBe("select * from public.nope;\n");
-    const { rows } = await db.driver.query(
-      "select 1 from information_schema.tables where table_schema = 'smonn_db'",
-    );
-    expect(rows).toStrictEqual([]);
+    expect(before).toStrictEqual([{ kind: "schema", name: "public" }]);
+    expect(await objects()).toStrictEqual(before);
   });
 
   it("words the hint for a hand edit, not for generated SQL", async () => {
@@ -199,7 +209,9 @@ describe("generate with a hand-edited current.sql", () => {
       migrations: "db/migrations",
     };
     await fileSystem.remove(CURRENT);
-    await expect(generate(options)).rejects.toThrow(/an Unmodeled object blocks it|CASCADE/u);
+    await expect(generate(options)).rejects.toThrow(
+      /^cannot drop column extra of table users because other objects depend on it; generate never uses CASCADE, so an Unmodeled object blocks it:\n {2}view v depends on column extra of table users\n/u,
+    );
     await fileSystem.writeFile(CURRENT, body);
 
     const result = await generate(options);
