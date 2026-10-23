@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
-import { sha256 } from "../../runtime/internal/index.ts";
+import { sha256, writeMigration } from "../../runtime/internal/index.ts";
 import { generate } from "./generate.ts";
-import { memoryFileSystem } from "./memory-file-system.test-helper.ts";
+import { filesIn, memoryFileSystem } from "./memory-file-system.test-helper.ts";
 
 const db = useTestDatabase();
 
@@ -158,6 +158,35 @@ describe("generate with a hand-edited current.sql", () => {
 
     await expect(failure).rejects.toThrow(/an Unmodeled object blocks it/u);
     await expect(failure).rejects.not.toThrow(/never uses CASCADE/u);
+  });
+
+  it("succeeds with an edit that fixes a body that fails verification on an Unmodeled view", async () => {
+    const committed = await writeMigration(
+      "000001-users.sql",
+      undefined,
+      'create table "public"."users" ("id" text, "extra" text);\ncreate view public.v as select extra from public.users;\n',
+    );
+    const body =
+      'drop view public.v;\nalter table "public"."users" drop column "extra";\ncreate view public.v as select id from public.users;\n';
+    const fileSystem = memoryFileSystem({
+      ...filesIn("db/migrations", [committed]),
+      [CURRENT]: body,
+    });
+    const options = {
+      driver: db.driver,
+      connect: db.connect,
+      fileSystem,
+      definition,
+      migrations: "db/migrations",
+    };
+    await fileSystem.remove(CURRENT);
+    await expect(generate(options)).rejects.toThrow(/an Unmodeled object blocks it|CASCADE/u);
+    await fileSystem.writeFile(CURRENT, body);
+
+    const result = await generate(options);
+
+    expect(result.sql).toBe(body);
+    expect(result.leftover).toBeUndefined();
   });
 
   it("resumes generating once the hand-edited current.sql is deleted", async () => {
