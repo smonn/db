@@ -142,6 +142,25 @@ describe("generate with a hand-edited current.sql", () => {
     await expect(failure).rejects.not.toThrow(/no USING/u);
   });
 
+  it("words the view-column hint for a hand edit, not for generated SQL", async () => {
+    const fileSystem = memoryFileSystem({
+      [CURRENT]:
+        "create table public.t (id text); create view public.v as select id from public.t; alter table public.t alter column id type varchar;\n",
+    });
+
+    const failure = generate({
+      driver: db.driver,
+      connect: db.connect,
+      fileSystem,
+      definition,
+      migrations: "db/migrations",
+    });
+
+    await expect(failure).rejects.toThrow(/cannot alter type of a column used by a view/u);
+    await expect(failure).rejects.toThrow(/\ndrop or change the view by hand/u);
+    await expect(failure).rejects.not.toThrow(/generate never alters/u);
+  });
+
   it("words the blocked-drop hint for a hand edit, not for generated SQL", async () => {
     const fileSystem = memoryFileSystem({
       [CURRENT]:

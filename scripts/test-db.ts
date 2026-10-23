@@ -53,7 +53,7 @@ function start(root: string, name: string): void {
 }
 
 function stop(root: string, name: string): void {
-  const down = compose(root, name, ["down"]);
+  const down = compose(root, name, ["down", "--volumes"]);
   if (!down.ok) throw new Error(`docker compose -p ${name} down failed:\n${down.out}`);
   rmSync(join(root, ".env.test"), { force: true });
   console.log(`Stopped ${name} and removed .env.test`);
