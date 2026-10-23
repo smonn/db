@@ -40,6 +40,18 @@ test("main leaves the exit code alone when every check passes", () => {
   expect(ran).toEqual([...checks]);
 });
 
+test("main with --static runs every check but coverage", () => {
+  const ran: string[] = [];
+  main(
+    (script) => {
+      ran.push(script);
+      return true;
+    },
+    ["--static"],
+  );
+  expect(ran).toEqual(checks.filter((script) => script !== "coverage"));
+});
+
 test("checks cover every pnpm script a CI job runs, except the PR-only check", () => {
   const ci = readFileSync(".github/workflows/ci.yml", "utf8");
   const inCi = Array.from(ci.matchAll(/run: pnpm (\S+)/gu), (match) => String(match[1]));

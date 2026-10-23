@@ -1,0 +1,18 @@
+{
+  "$schema": "https://github.com/jayu/rev-dep/blob/master/config-schema/2.2.schema.json?raw=true",
+  "configVersion": "2.2",
+  // rev-dep runs only duplicated-code detection. scripts/check-imports.ts owns boundaries, cycles,
+  // and unresolved imports; knip owns unused files, exports, and dependencies.
+  "workspaces": [
+    {
+      "path": ".",
+      // minDepth 2 skips flat object literals and one-line blocks. The snapshot holds the four
+      // test-only duplicates found at adoption (2026-10-22); the check fails on any new one.
+      "duplicatedCodeDetection": {
+        "enabled": true,
+        "minDepth": 2,
+        "snapshotPath": "rev-dep.duplicates.json",
+      },
+    },
+  ],
+}

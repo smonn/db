@@ -65,6 +65,8 @@ jobs:
       - run: pnpm check:imports
       - run: pnpm check:index
       - run: pnpm knip
+      - run: pnpm deps
+      - run: pnpm fta
 
   test:
     name: Test

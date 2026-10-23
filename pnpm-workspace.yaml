@@ -3,3 +3,5 @@ allowBuilds:
   puppeteer: true
   # Its postinstall only re-fetches the native binary that the platform optional dependency already ships.
   "@swc/core": false
+  # Its postinstall installs the hooks, which the prepare script already does.
+  lefthook: false
