@@ -6,21 +6,21 @@ A Postgres-first TypeScript toolkit: define your database in TypeScript, migrate
 
 ## Getting started
 
-Nothing is on npm yet, so this walks from a checkout. It needs Node 24 or later, `git`, `pnpm`, and a Postgres 18 server with an empty database to use as your Dev database.
+`@smonn/db` is not on npm yet, so the `pnpm add` below works once the first release ships; until then, run `pnpm pack` in a checkout, which writes `smonn-db-<version>.tgz`, and install that with `pnpm add ./smonn-db-<version>.tgz postgres`.
 
-Install the toolkit next to your project and give your project the `postgres` driver:
+This needs Node 24 or later, `pnpm`, and a Postgres 18 server with an empty database to use as your Dev database.
+
+Start a project and install the package, which also gives you the `smonndb` command, with the `postgres` driver:
 
 ```sh
-git clone https://github.com/smonn/db.git /path/to/smonn-db
-pnpm --dir /path/to/smonn-db install
 pnpm init
-pnpm add postgres
+pnpm add @smonn/db postgres
 ```
 
 Describe your database in TypeScript. This file is the Definition:
 
 ```ts file=db/definition.ts
-import { defineDatabase, defineTable } from "/path/to/smonn-db/src/runtime/definition/index.ts";
+import { defineDatabase, defineTable } from "@smonn/db";
 
 export default defineDatabase({
   public: {
@@ -35,7 +35,7 @@ export default defineDatabase({
 Point the CLI at it. `url` is the Dev database:
 
 ```ts file=smonndb.config.ts
-import { defineConfig } from "/path/to/smonn-db/src/dev/config/index.ts";
+import { defineConfig } from "@smonn/db/dev";
 
 export default defineConfig({
   definition: "./db/definition.ts",
@@ -48,7 +48,7 @@ export default defineConfig({
 
 ```sh
 export DATABASE_URL=postgres://localhost/app_dev
-node /path/to/smonn-db/src/dev/cli/bin.ts generate
+smonndb generate
 ```
 
 ```text
@@ -59,7 +59,7 @@ reset the Dev database
 `current.sql` is plain SQL you can read and edit. Change the Definition and run `generate` again to regenerate it. If you edit the file yourself, `generate` keeps your edit, replays it, and prints the lines that differ from what it would have written; delete the file to resume generating. When it is right, `commit` freezes it into a numbered Committed migration:
 
 ```sh
-node /path/to/smonn-db/src/dev/cli/bin.ts commit create-users
+smonndb commit create-users
 ```
 
 ```text
@@ -69,7 +69,7 @@ wrote db/migrations/000001-create-users.sql
 `migrate` applies the pending Committed migrations to any other database, such as production. It needs no Dev database, only the `url` the config reads:
 
 ```sh
-DATABASE_URL=postgres://localhost/app_prod node /path/to/smonn-db/src/dev/cli/bin.ts migrate
+DATABASE_URL=postgres://localhost/app_prod smonndb migrate
 ```
 
 ```text
@@ -80,12 +80,8 @@ Now query it. The Definition types the rows, with no codegen step:
 
 ```ts file=query.ts
 import postgres from "postgres";
-import {
-  postgresJsConnection,
-  postgresJsDriver,
-  postgresJsTypes,
-} from "/path/to/smonn-db/src/adapters/postgres-js/index.ts";
-import { createClient, from, insert } from "/path/to/smonn-db/src/runtime/query/index.ts";
+import { createClient, from, insert } from "@smonn/db";
+import { postgresJsConnection, postgresJsDriver, postgresJsTypes } from "@smonn/db/postgres-js";
 import db from "./db/definition.ts";
 
 const sql = postgres(process.env.DATABASE_URL ?? "", {
@@ -111,7 +107,7 @@ DATABASE_URL=postgres://localhost/app_prod node query.ts
 
 ### Commands
 
-Run each as `node /path/to/smonn-db/src/dev/cli/bin.ts <command>`, with `--config <path>` to pick a config file other than `smonndb.config.ts`.
+Run each as `smonndb <command>`, with `--config <path>` to pick a config file other than `smonndb.config.ts`.
 
 | Command           | What it does                                                                                             |
 | ----------------- | -------------------------------------------------------------------------------------------------------- |
