@@ -1,5 +1,5 @@
 import type { Row, Table } from "../definition/index.ts";
-import { identifier, join, sql, type Fragment, type RenderedSql } from "../sql/index.ts";
+import { fragment, identifier, join, type Fragment, type RenderedSql } from "../sql/index.ts";
 
 export type Statement = {
   toSql(): RenderedSql;
@@ -67,20 +67,20 @@ type State = {
   readonly predicate?: Predicate;
 };
 
-const predicate = (fragment: Fragment): Predicate => ({ "~predicate": fragment });
+const predicate = (piece: Fragment): Predicate => ({ "~predicate": piece });
 
 function refOf(name: string): ColumnRef<string | null> {
   const column = identifier(name);
   return {
     name,
-    eq: (value) => predicate(sql`${column} = ${value}`),
-    ne: (value) => predicate(sql`${column} <> ${value}`),
-    gt: (value) => predicate(sql`${column} > ${value}`),
-    gte: (value) => predicate(sql`${column} >= ${value}`),
-    lt: (value) => predicate(sql`${column} < ${value}`),
-    lte: (value) => predicate(sql`${column} <= ${value}`),
-    isNull: () => predicate(sql`${column} is null`),
-    isNotNull: () => predicate(sql`${column} is not null`),
+    eq: (value) => predicate(fragment`${column} = ${value}`),
+    ne: (value) => predicate(fragment`${column} <> ${value}`),
+    gt: (value) => predicate(fragment`${column} > ${value}`),
+    gte: (value) => predicate(fragment`${column} >= ${value}`),
+    lt: (value) => predicate(fragment`${column} < ${value}`),
+    lte: (value) => predicate(fragment`${column} <= ${value}`),
+    isNull: () => predicate(fragment`${column} is null`),
+    isNotNull: () => predicate(fragment`${column} is not null`),
   };
 }
 
@@ -95,23 +95,23 @@ function combine(separator: Fragment, terms: readonly Predicate[]): Predicate {
     terms.map((term) => term["~predicate"]),
     separator,
   );
-  return predicate(sql`(${inner})`);
+  return predicate(fragment`(${inner})`);
 }
 
 export function and(first: Predicate, ...rest: Predicate[]): Predicate {
-  return combine(sql` and `, [first, ...rest]);
+  return combine(fragment` and `, [first, ...rest]);
 }
 
 export function or(first: Predicate, ...rest: Predicate[]): Predicate {
-  return combine(sql` or `, [first, ...rest]);
+  return combine(fragment` or `, [first, ...rest]);
 }
 
 export function not(term: Predicate): Predicate {
-  return predicate(sql`not (${term["~predicate"]})`);
+  return predicate(fragment`not (${term["~predicate"]})`);
 }
 
 export function renderOutput([alias, name]: Output): Fragment {
-  return alias === name ? identifier(name) : sql`${identifier(name)} as ${identifier(alias)}`;
+  return alias === name ? identifier(name) : fragment`${identifier(name)} as ${identifier(alias)}`;
 }
 
 function selectQuery<T extends Table, R>(table: T, state: State): SelectQuery<T, R> {
@@ -132,10 +132,12 @@ function selectQuery<T extends Table, R>(table: T, state: State): SelectQuery<T,
     toSql() {
       const columns = join(
         state.outputs.map((output) => renderOutput(output)),
-        sql`, `,
+        fragment`, `,
       );
-      const filter = state.predicate ? sql` where ${state.predicate["~predicate"]}` : sql``;
-      return sql`select ${columns} from ${identifier(table.schema)}.${identifier(table.name)}${filter}`.toSql();
+      const filter = state.predicate
+        ? fragment` where ${state.predicate["~predicate"]}`
+        : fragment``;
+      return fragment`select ${columns} from ${identifier(table.schema)}.${identifier(table.name)}${filter}`.toSql();
     },
   });
 }
