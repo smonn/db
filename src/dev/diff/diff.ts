@@ -92,13 +92,8 @@ function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {
     return [{ kind: "set default", fact: after }];
   }
   if (arePayloadsEqual(before.payload, after.payload)) return [];
-  // The old key was dropped in the source pass.
-  if (before.kind === "primary key" && after.kind === "primary key") {
-    return [{ kind: "add primary key", fact: after }];
-  }
-  if (before.kind === "unique" && after.kind === "unique") {
-    return [{ kind: "add unique", fact: after }];
-  }
+  // The old key was dropped in the source pass, even when it was the other kind.
+  if (isKey(before) && isKey(after)) return created(after, catalogs.from);
   // Schemas and tables carry no payload, so only an identity is left.
   throw new Error(
     `Can't alter identity of column ${qualified(parentOf(catalogs.to, after), catalogs.to)} yet`,
