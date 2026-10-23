@@ -41,9 +41,13 @@ async function withBuildLock<T>(action: () => Promise<T> | T): Promise<T> {
   }
 }
 
-/** The repo's package.json, read while no other file's build is rewriting it. */
-export function readPackageJson(): Promise<string> {
-  return withBuildLock(() => readFile(join(repo, "package.json"), "utf8"));
+/** The `name` in a package.json. */
+export function nameOf(manifest: string): string {
+  const parsed: unknown = JSON.parse(manifest);
+  const name: unknown =
+    typeof parsed === "object" && parsed !== null ? Reflect.get(parsed, "name") : undefined;
+  if (typeof name !== "string") throw new Error("package.json has no name");
+  return name;
 }
 
 export type PackedPackage = {
@@ -53,6 +57,8 @@ export type PackedPackage = {
   readonly packageJson: string;
   /** The repo's package.json as it was right after the build. */
   readonly builtPackageJson: string;
+  /** The package.json inside the tarball: the manifest consumers get, not the repo's. */
+  readonly packedManifest: string;
   /** `pnpm add` arguments that install the tarball and a postgres peer without the registry. */
   readonly installArgs: readonly string[];
 };
@@ -63,6 +69,7 @@ export function usePackedPackage(): PackedPackage {
   let tarball: string;
   let packageJson: string;
   let builtPackageJson: string;
+  let packedManifest: string;
 
   beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), "smonn-db-packed-"));
@@ -74,6 +81,7 @@ export function usePackedPackage(): PackedPackage {
       // The build already ran, and prepare's hook install would touch git config.
       run("pnpm", ["pack", "--ignore-scripts", "--out", tarball], repo);
     });
+    packedManifest = run("tar", ["-xzOf", tarball, "package/package.json"], dir);
   }, 240_000);
 
   afterAll(async () => {
@@ -89,6 +97,9 @@ export function usePackedPackage(): PackedPackage {
     },
     get builtPackageJson() {
       return builtPackageJson;
+    },
+    get packedManifest() {
+      return packedManifest;
     },
     // The repo's installed postgres stands in for the peer, so the install needs no registry.
     get installArgs() {

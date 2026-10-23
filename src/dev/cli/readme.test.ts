@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
-import { repo, usePackedPackage } from "./packed-package.test-helper.ts";
+import { nameOf, repo, usePackedPackage } from "./packed-package.test-helper.ts";
 
 const dev = useTestDatabase();
 const production = useTestDatabase();
@@ -13,7 +13,6 @@ const packed = usePackedPackage();
 const FENCE = /^```(\w+)([^\n]*)\n([\s\S]*?)^```$/gmu;
 const COMMAND = /^(\w+=\S+ )?(smonndb|node) /u;
 const SETUP = /^pnpm /u;
-const INSTALL = "pnpm add @smonn/db postgres";
 
 type Block = { readonly lang: string; readonly info: string; readonly body: string };
 type Step = { readonly command: string; readonly expected: string };
@@ -46,8 +45,8 @@ function setupOf(blocks: readonly Block[]): string[] {
 }
 
 /** The arguments of a README `pnpm` line, with the install swapped for the local one. */
-function pnpmArgs(command: string, installArgs: readonly string[]): string[] {
-  return command === INSTALL ? [...installArgs] : command.split(" ").slice(1);
+function pnpmArgs(command: string, install: string, installArgs: readonly string[]): string[] {
+  return command === install ? [...installArgs] : command.split(" ").slice(1);
 }
 
 function filesOf(blocks: readonly Block[]): Block[] {
@@ -75,6 +74,7 @@ describe("README getting started", () => {
     const readme = (await readFile(join(repo, "README.md"), "utf8"))
       .replaceAll("postgres://localhost/app_dev", urlOf(dev.name))
       .replaceAll("postgres://localhost/app_prod", urlOf(production.name));
+    const install = `pnpm add ${nameOf(packed.packedManifest)} postgres`;
     const blocks = blocksOf(readme);
     const files = filesOf(blocks);
     const steps = stepsOf(blocks);
@@ -85,9 +85,11 @@ describe("README getting started", () => {
       PATH: [join(project, "node_modules/.bin"), process.env["PATH"]].join(delimiter),
     };
 
+    expect(setup).toStrictEqual(["pnpm init", install]);
+
     // Nothing is on the registry, so the install line runs against the packed tarball.
     for (const command of setup) {
-      execFileSync("pnpm", pnpmArgs(command, packed.installArgs), {
+      execFileSync("pnpm", pnpmArgs(command, install, packed.installArgs), {
         cwd: project,
         env,
         encoding: "utf8",
@@ -105,7 +107,6 @@ describe("README getting started", () => {
       execFileSync("sh", ["-c", command], { cwd: project, env, encoding: "utf8" }),
     );
 
-    expect(setup).toStrictEqual(["pnpm init", INSTALL]);
     expect(files.map((f) => f.info)).toStrictEqual([
       "file=db/definition.ts",
       "file=smonndb.config.ts",
