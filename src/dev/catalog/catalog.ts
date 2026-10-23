@@ -183,13 +183,13 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
   const builder = catalogBuilder();
   for (const [schema, tables] of Object.entries(definition)) {
     builder.schema(schema);
-    for (const [table, { columns }] of Object.entries(tables)) {
+    for (const [table, { columns, primaryKey }] of Object.entries(tables)) {
       builder.table(schema, table);
       const entries = Object.entries(columns);
       for (const [column, { state }] of entries) {
         builder.column(schema, table, column, {
           type: postgresType(state.sqlType),
-          notNull: state.notNull || state.primaryKey || state.identity !== undefined,
+          notNull: state.notNull || primaryKey.includes(column) || state.identity !== undefined,
         });
         if (state.default !== undefined) {
           // introspect reads the real volatility from the Definition database.
@@ -202,9 +202,10 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
           builder.columnIdentity(schema, table, column, { generated: state.identity });
         }
       }
-      const keyColumns = entries.filter(([, { state }]) => state.primaryKey).map(([name]) => name);
-      if (keyColumns.length > 0) {
-        builder.primaryKey(schema, table, constraintName(table, "pkey"), { columns: keyColumns });
+      if (primaryKey.length > 0) {
+        builder.primaryKey(schema, table, constraintName(table, "pkey"), {
+          columns: [...primaryKey],
+        });
       }
       for (const [column, { state }] of entries) {
         if (state.unique) {
