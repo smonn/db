@@ -184,11 +184,11 @@ describe("main", () => {
     expect(posted(gh)).toEqual([]);
   });
 
-  // GitHub sends both parent fields as null for a pull request. The check throws today; it is
-  // unreachable while the workflow reacts only to `issues` events.
-  test("fails on a pull request, whose parent fields are both null", () => {
+  // GitHub returns both parent fields as null for a pull request. The check throws on that shape
+  // today; it is unreachable while the workflow reacts only to `issues` events.
+  test("fails when both parent fields are null, as GitHub returns them for a pull request", () => {
     const gh = fakeGh({
-      [issueRoute]: fetched({ pull_request: {}, parent_issue_url: null, sub_issues_summary: null }),
+      [issueRoute]: fetched({ parent_issue_url: null, sub_issues_summary: null }),
       [commentsRoute]: [[]],
       [milestonePath]: [[parentIssue(44, "area:tooling")]],
     });
