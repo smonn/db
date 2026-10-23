@@ -171,6 +171,33 @@ describe("main", () => {
     expect(posted(gh)).toEqual([]);
   });
 
+  test("fails when the fetched issue lacks sub_issues_summary", () => {
+    const { sub_issues_summary: _summary, ...partial } = fetched();
+    const gh = fakeGh({
+      [issueRoute]: partial,
+      [commentsRoute]: [[]],
+      [milestonePath]: [[parentIssue(44, "area:tooling")]],
+    });
+    expect(() => {
+      main({ GITHUB_EVENT_PATH: writeEvent(event()) }, gh);
+    }).toThrow("$.sub_issues_summary: expected");
+    expect(posted(gh)).toEqual([]);
+  });
+
+  // GitHub returns both parent fields as null for a pull request. The check throws on that shape
+  // today; it is unreachable while the workflow reacts only to `issues` events.
+  test("fails when both parent fields are null, as GitHub returns them for a pull request", () => {
+    const gh = fakeGh({
+      [issueRoute]: fetched({ parent_issue_url: null, sub_issues_summary: null }),
+      [commentsRoute]: [[]],
+      [milestonePath]: [[parentIssue(44, "area:tooling")]],
+    });
+    expect(() => {
+      main({ GITHUB_EVENT_PATH: writeEvent(event()) }, gh);
+    }).toThrow("$.sub_issues_summary: expected");
+    expect(posted(gh)).toEqual([]);
+  });
+
   test("skips a bot issue without calling the API", () => {
     const gh = run(event({ user: { type: "Bot" } }), {});
     expect(gh).not.toHaveBeenCalled();

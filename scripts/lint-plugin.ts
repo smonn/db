@@ -8,6 +8,8 @@
  * - `smonn/error-message-qualifier`: a template literal passed to `new Error(...)`, or to a class
  *   whose name ends in `Error`, has no `.` and identifier character directly after a `${...}`.
  * - `smonn/required-brand`: an exported type has no optional property whose key starts with `~`.
+ * - `smonn/mock-child-process`: a file that imports a value from `node:child_process` also calls
+ *   `vi.mock("node:child_process", ...)`, so a script test cannot run `gh` against the live repo.
  */
 import type { RuleTester } from "oxlint/plugins-dev";
 
@@ -18,7 +20,10 @@ type Scope = ReturnType<Context["sourceCode"]["getScope"]>;
 type Plugin = {
   readonly meta: { readonly name: string };
   readonly rules: Readonly<
-    Record<"sql-interpolation" | "required-brand" | "error-message-qualifier", Rule>
+    Record<
+      "sql-interpolation" | "required-brand" | "error-message-qualifier" | "mock-child-process",
+      Rule
+    >
   >;
 };
 
@@ -169,12 +174,62 @@ const errorMessageQualifier: Rule = {
   },
 };
 
+const CHILD_PROCESS = "node:child_process";
+
+function isViMockOfChildProcess(node: Node): boolean {
+  if (node.type !== "CallExpression") return false;
+  const { callee } = node;
+  const [first] = node.arguments;
+  return (
+    callee.type === "MemberExpression" &&
+    !callee.computed &&
+    callee.object.type === "Identifier" &&
+    callee.object.name === "vi" &&
+    callee.property.type === "Identifier" &&
+    callee.property.name === "mock" &&
+    first?.type === "Literal" &&
+    first.value === CHILD_PROCESS
+  );
+}
+
+const mockChildProcess: Rule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Mock node:child_process in any test that imports a value from it" },
+  },
+  create(context) {
+    let imported: Node | undefined;
+    let mocked = false;
+    return {
+      ImportDeclaration(node) {
+        if (node.source.value !== CHILD_PROCESS || node.importKind === "type") return;
+        const typeOnly = node.specifiers.every(
+          (specifier) => specifier.type === "ImportSpecifier" && specifier.importKind === "type",
+        );
+        if (!typeOnly) imported ??= node;
+      },
+      CallExpression(node) {
+        if (isViMockOfChildProcess(node)) mocked = true;
+      },
+      "Program:exit"() {
+        if (imported === undefined || mocked) return;
+        context.report({
+          node: imported,
+          message:
+            'Call vi.mock("node:child_process", ...) in this file: tracker tooling is tested against recorded payloads, never a live gh call',
+        });
+      },
+    };
+  },
+};
+
 const plugin: Plugin = {
   meta: { name: "smonn" },
   rules: {
     "sql-interpolation": sqlInterpolation,
     "required-brand": requiredBrand,
     "error-message-qualifier": errorMessageQualifier,
+    "mock-child-process": mockChildProcess,
   },
 };
 export default plugin;
