@@ -101,6 +101,7 @@ describe("retypeHazards branches", () => {
     ["character varying(5)", "integer", true],
     ["text", "character varying(10)", true],
     ["text", "character varying", false],
+    ["text", "integer", true],
     ["numeric(10,2)", "numeric", false],
     ["numeric", "numeric(10,2)", true],
     ["numeric(10,2)", "numeric(12,2)", false],
