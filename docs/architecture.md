@@ -230,7 +230,7 @@ export default defineConfig({
 
 | Command         | What it does                                                                                                                                                                                                                                                                                                                                                                         |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `generate`      | Writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database, refusing to reset an unmarked Database (ADR-0016). A hand-edited file is kept and replayed as written, and generate prints the diff to what it would have generated.                                                                                                       |
+| `generate`      | Writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database, refusing to reset an unmarked Database (ADR-0016). A hand-edited file is kept and replayed as written, generate runs the edit in the Shadow instead of the generated body, and it prints the diff to what it would have generated.                                         |
 | `commit <slug>` | Freezes `current.sql` into `<next>-<slug>.sql`. The slug is kebab-case. Refuses with no `current.sql`, when dev hasn't replayed the file, for any Hazard kind missing from `--accept <kind,...>`, or for a near-miss Hazard comment. It runs no shadow replay, since dev just replayed the same file, and records the new file and clears `smonn_db.current` in one dev transaction. |
 | `migrate`       | Runs the runtime migrator against `url`. The migrator refuses when `smonn_db.current` holds a row and Committed migrations are pending (ADR-0016).                                                                                                                                                                                                                                   |
 | `reset`         | Drops the extensions that live outside `pg_catalog` or own a schema, and every non-system schema, then replays the Committed migrations and `current.sql` as written, without regenerating. `--erase` lets it run on an unmarked Database (ADR-0016).                                                                                                                                |
@@ -240,7 +240,7 @@ Every command takes `--config`. Arguments are parsed with `util.parseArgs`. Ther
 
 ### Hand edits
 
-Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body that no longer matches counts as hand-edited, and generate stops overwriting it (ADR-0003): it keeps the file, replays it as written, and prints the lines that differ from what it would have generated. Deleting `current.sql` resumes generation. Commit replaces the header with ADR-0008's Previous and Hash headers.
+Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body that no longer matches counts as hand-edited, and generate stops overwriting it (ADR-0003): it keeps the file, replays it as written, and prints the lines that differ from what it would have generated. Generate runs the edit in the Shadow instead of the generated body: a SQL error fails the run before the Dev database is touched, and a leftover difference from the Definition prints as a warning (ADR-0013). Deleting `current.sql` resumes generation. Commit replaces the header with ADR-0008's Previous and Hash headers.
 
 ### Concurrency
 
@@ -263,7 +263,7 @@ Schemas, tables, columns (type, NOT NULL, default, identity), single and composi
 1. The Definition converts to a catalog, spelling each type as `format_type` does, and the diff renders it against the catalog of the freshly created Definition database, which holds only template0's `public` schema. That SQL builds the Definition database.
 2. `introspect` reads each database in one `REPEATABLE READ READ ONLY` transaction with `search_path` pinned to `pg_catalog`, keyed by name, never by OID.
 3. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL.
-4. Generate verifies the SQL in the Shadow (ADR-0013), then writes the Current migration.
+4. Generate verifies the SQL in the Shadow (ADR-0013), then writes the Current migration. A hand-edited `current.sql` is verified instead of the generated SQL, and a leftover difference is a warning.
 
 ### Catalog
 

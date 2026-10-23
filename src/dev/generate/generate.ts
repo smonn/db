@@ -24,7 +24,7 @@ import type { ShadowOptions } from "../shadow/index.ts";
 import { withDevLock } from "./dev-lock.ts";
 import { lineDiff } from "./line-diff.ts";
 import { requireDevDatabase, resetDevDatabase } from "./reset.ts";
-import { diffInShadow } from "./shadow-diff.ts";
+import { diffInShadow, type ShadowDiff } from "./shadow-diff.ts";
 
 export type GenerateOptions = ShadowOptions & {
   /** The Dev database, which also creates and drops the Shadow and Definition databases. */
@@ -48,6 +48,11 @@ export type GenerateResult = {
    * generation. Empty when they match. `sql` is then the replayed body.
    */
   readonly diff?: string;
+  /**
+   * Set beside `diff` when the hand edit, run in the Shadow, leaves the Shadow unlike the
+   * Definition (ADR-0013). A warning, not a failure: the edit is the user's to finish.
+   */
+  readonly leftover?: string;
   /** Whether generate reset the Dev database, which it does only when the files left it behind. */
   readonly reset: boolean;
   /**
@@ -62,7 +67,8 @@ export type GenerateResult = {
  * Diffs the Definition against the Committed migrations, verifies the result in the Shadow
  * database, writes it to `current.sql`, then resets the Dev database and replays the Committed
  * migrations and the Current migration when it has fallen behind them. A hand-edited `current.sql`
- * is replayed as written and left alone. Holds the Dev lock, so a second run fails at once.
+ * is verified in the Shadow instead (a leftover difference is a warning), replayed as written and
+ * left alone. Holds the Dev lock, so a second run fails at once.
  */
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
@@ -91,21 +97,19 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
   const committed = await readCommitted(fileSystem, migrations);
   const source: MigrationSource = { list: () => Promise.resolve(committed) };
 
-  const { sql, hazards } = await diffInShadow({
+  const shadowDiff = await diffInShadow({
     driver,
     connect,
     source,
     definition,
     tracking,
     shadowOptions,
+    ...(edited === undefined ? {} : { edited }),
   });
 
+  const { sql, hazards } = shadowDiff;
   if (edited !== undefined) {
-    const current = { body: edited, hash: await currentHash(edited) };
-    const reset = await needsReset(driver, tracking, committed, current.hash);
-    if (reset) await resetDevDatabase(driver, source, tracking, current);
-    const generated = await writeCurrent(sql);
-    return { path, sql: edited, diff: lineDiff(edited, generated.body), reset, hazards };
+    return replayEdited({ driver, source, tracking, committed, path }, edited, shadowDiff);
   }
   if (sql === "") {
     await fileSystem.remove(path);
@@ -118,6 +122,35 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
   const reset = await needsReset(driver, tracking, committed, current.hash);
   if (reset) await resetDevDatabase(driver, source, tracking, current);
   return { path, sql: current.body, reset, hazards };
+}
+
+type KeptEdit = {
+  readonly driver: Driver;
+  readonly source: MigrationSource;
+  readonly tracking: TrackingSchema;
+  readonly committed: readonly MigrationFile[];
+  readonly path: string;
+};
+
+/** Replays a hand-edited `current.sql` as written and reports how it differs from the generation. */
+async function replayEdited(
+  { driver, source, tracking, committed, path }: KeptEdit,
+  edited: string,
+  { sql, hazards, leftover }: ShadowDiff,
+): Promise<GenerateResult> {
+  const current = { body: edited, hash: await currentHash(edited) };
+  const reset = await needsReset(driver, tracking, committed, current.hash);
+  if (reset) await resetDevDatabase(driver, source, tracking, current);
+  const generated = await writeCurrent(sql);
+  const diff = lineDiff(edited, generated.body);
+  return {
+    path,
+    sql: edited,
+    diff,
+    ...(leftover === undefined ? {} : { leftover }),
+    reset,
+    hazards,
+  };
 }
 
 /**

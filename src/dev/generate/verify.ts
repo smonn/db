@@ -14,18 +14,30 @@ export async function verifyInShadow(
   definition: Catalog,
   tracking: TrackingSchema,
 ): Promise<void> {
+  const leftover = await leftoverAfter(shadow, sql, definition, { tracking });
+  if (leftover !== undefined) throw new Error(leftover);
+}
+
+/**
+ * Applies the Current migration to the Shadow database, throwing on a SQL error, and returns the
+ * message naming each remaining difference from the Definition, or `undefined` when none is left.
+ */
+export async function leftoverAfter(
+  shadow: Driver,
+  sql: string,
+  definition: Catalog,
+  context: { readonly tracking: TrackingSchema; readonly handEdited?: boolean },
+): Promise<string | undefined> {
   try {
     await shadow.execute(sql);
   } catch (error) {
-    throw explainShadowError(error);
+    throw explainShadowError(error, context.handEdited);
   }
-  const remaining = differences(await introspect(shadow, tracking), definition);
-  if (remaining.length === 0) return;
-  throw new Error(
-    `the Current migration leaves the Shadow database unlike the Definition database:\n${remaining
-      .map((line) => `  ${line}`)
-      .join("\n")}`,
-  );
+  const remaining = differences(await introspect(shadow, context.tracking), definition);
+  if (remaining.length === 0) return undefined;
+  return `the Current migration leaves the Shadow database unlike the Definition database:\n${remaining
+    .map((line) => `  ${line}`)
+    .join("\n")}`;
 }
 
 function differences(shadow: Catalog, definition: Catalog): string[] {
