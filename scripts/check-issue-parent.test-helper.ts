@@ -11,7 +11,21 @@ export type Gh = Mock<(args: string[]) => string>;
 export const milestonePath = "repos/smonn/db/issues?milestone=1&state=open&per_page=100";
 export const issueRoute = "repos/smonn/db/issues/7";
 export const commentsRoute = "repos/smonn/db/issues/7/comments?per_page=100";
-export const orphan = { number: 7 };
+
+/** An issue as `GET /repos/{repo}/issues/{n}` returns it: both parent fields are always present. */
+export function fetched(overrides: ApiIssue = {}): ApiIssue {
+  return {
+    number: 7,
+    state: "open",
+    milestone: { number: 1 },
+    labels: labelled("area:tooling"),
+    parent_issue_url: null,
+    sub_issues_summary: { total: 0 },
+    ...overrides,
+  };
+}
+
+export const orphan: ApiIssue = fetched();
 
 const dir = mkdtempSync(join(tmpdir(), "check-issue-parent-"));
 
