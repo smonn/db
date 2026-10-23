@@ -19,6 +19,8 @@
     "complexity": ["error", { "max": 21 }],
     "max-params": ["error", { "max": 5 }],
     "max-depth": ["error", { "max": 4 }],
+    // A backstop; fta judges file maintainability, so this stays above the largest file.
+    "max-lines": ["error", { "max": 300 }],
     // vi.importActual's type argument needs `typeof import()`.
     "typescript/consistent-type-imports": ["error", { "disallowTypeAnnotations": false }],
     "typescript/consistent-type-definitions": ["error", "type"],
