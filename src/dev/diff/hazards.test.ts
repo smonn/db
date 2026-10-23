@@ -48,6 +48,73 @@ describe("retypeHazards", () => {
   });
 });
 
+describe("retypeHazards branches", () => {
+  const LOSSY: readonly (readonly [before: string, after: string, loses: boolean])[] = [
+    ["smallint", "real", false],
+    ["integer", "real", true],
+    ["bigint", "real", true],
+    ["bigint", "double precision", true],
+    ["integer", "double precision", false],
+    ["smallint", "double precision", false],
+    ["integer", "text", false],
+    ["integer", "numeric", false],
+    ["numeric(10,0)", "integer", false],
+    ["numeric(10,2)", "integer", true],
+    ["numeric", "bigint", true],
+    ["numeric(6,2)", "real", false],
+    ["numeric(7,2)", "real", true],
+    ["numeric", "real", true],
+    ["numeric(15,2)", "double precision", false],
+    ["numeric(16,2)", "double precision", true],
+    ["numeric", "double precision", true],
+    ["numeric(10,2)", "numeric", false],
+    ["numeric", "numeric(10,2)", true],
+    ["numeric(10,4)", "numeric(10,2)", true],
+    ["numeric(10,2)", "numeric(12,4)", false],
+    ["numeric(10,2)", "text", false],
+    ["real", "integer", true],
+    ["real", "numeric", true],
+    ["real", "double precision", false],
+    ["double precision", "real", true],
+    ["double precision", "bigint", true],
+    ["double precision", "numeric(10,2)", true],
+    ["real", "text", false],
+    ["timestamp without time zone", "date", true],
+    ["timestamp with time zone", "date", true],
+    ["timestamp without time zone", "timestamp with time zone", false],
+    ["date", "timestamp without time zone", false],
+    ["text", "integer", false],
+  ];
+
+  it.each(LOSSY)("%s to %s loses data: %s", (before, after, loses) => {
+    expect(retypeHazards(before, after).includes("data_loss")).toBe(loses);
+  });
+
+  const REWRITING: readonly (readonly [before: string, after: string, rewrites: boolean])[] = [
+    ["character varying(5)", "text", false],
+    ["character varying", "text", false],
+    ["character varying(5)", "character varying(10)", false],
+    ["character varying(10)", "character varying(5)", true],
+    ["character varying(5)", "character varying", false],
+    ["character varying", "character varying(5)", true],
+    ["character varying(5)", "character varying(5)", false],
+    ["character varying(5)", "integer", true],
+    ["text", "character varying(10)", true],
+    ["text", "character varying", false],
+    ["numeric(10,2)", "numeric", false],
+    ["numeric", "numeric(10,2)", true],
+    ["numeric(10,2)", "numeric(12,2)", false],
+    ["numeric(10,2)", "numeric(12,4)", true],
+    ["numeric(10,2)", "numeric(8,2)", true],
+    ["numeric(10,2)", "text", true],
+    ["integer", "bigint", true],
+  ];
+
+  it.each(REWRITING)("%s to %s rewrites: %s", (before, after, rewrites) => {
+    expect(retypeHazards(before, after).includes("rewrite")).toBe(rewrites);
+  });
+});
+
 /** A value of each type, and a short one that fits every `varchar(5)`, `numeric(8,2)`, and `smallint`. */
 const TYPES: readonly (readonly [type: string, rich: string, short: string])[] = [
   ["text", "'hello world long value'", "'ab'"],
