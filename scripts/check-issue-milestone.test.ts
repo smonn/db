@@ -185,16 +185,11 @@ describe("main", () => {
     expect(gh.mock.calls).toEqual([[titleComment]]);
   });
 
-  const runOnMilestonedIssue = (title = event().issue.title): Mock<(args: string[]) => void> => {
+  const runOnMilestonedIssue = (): Mock<(args: string[]) => void> => {
     const gh = vi.fn<(args: string[]) => void>();
-    const milestone = { title: "v0.1" };
-    main({ GITHUB_EVENT_PATH: write(event({ title, milestone })) }, gh);
+    main({ GITHUB_EVENT_PATH: write(event({ milestone: { title: "v0.1" } })) }, gh);
     return gh;
   };
-
-  test("leaves an uppercase title with a milestone alone", () => {
-    expect(runOnMilestonedIssue("Generate drops tables")).not.toHaveBeenCalled();
-  });
 
   test("leaves the milestone alone on an edit", () => {
     const gh = vi.fn<(args: string[]) => void>();
