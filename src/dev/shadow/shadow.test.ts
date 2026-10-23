@@ -61,13 +61,20 @@ describe("withShadowDatabases", () => {
 
   it("refuses a server older than Postgres 18 before it creates a database", async () => {
     const executed: string[] = [];
+    const queried: string[] = [];
+    // Also lacks CREATEDB, so a check that ran first would throw its own error instead.
     const driver: Driver = {
       execute: (sql) => {
         executed.push(sql);
         return Promise.resolve();
       },
-      query: () =>
-        Promise.resolve({ rows: [{ allowed: true, server_version_num: "170006" }], count: 1 }),
+      query: (sql) => {
+        queried.push(sql);
+        return Promise.resolve({
+          rows: [{ allowed: false, role: "nobody", server_version_num: "170006" }],
+          count: 1,
+        });
+      },
       session: () => Promise.reject(new Error("unexpected session")),
       transaction: () => Promise.reject(new Error("unexpected transaction")),
     };
@@ -75,6 +82,7 @@ describe("withShadowDatabases", () => {
     await expect(withShadowDatabases(driver, db.connect, async () => {})).rejects.toThrow(
       "smonn/db needs Postgres 18 or newer, and this server runs Postgres 17",
     );
+    expect(queried).toHaveLength(1);
     expect(executed).toStrictEqual([]);
   });
 

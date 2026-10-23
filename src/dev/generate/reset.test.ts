@@ -41,29 +41,32 @@ async function tables(): Promise<unknown[]> {
 }
 
 describe("reset", () => {
-  it("refuses a server older than Postgres 18 after one version query and before it executes anything", async () => {
-    const queries: string[] = [];
-    const executed: string[] = [];
-    const driver: Driver = {
-      execute: (sql) => {
-        executed.push(sql);
-        return Promise.resolve();
-      },
-      query: (sql) => {
-        queries.push(sql);
-        return Promise.resolve({ rows: [{ server_version_num: "170006" }], count: 1 });
-      },
-      session: () => Promise.reject(new Error("unexpected session")),
-      transaction: () => Promise.reject(new Error("unexpected transaction")),
-    };
+  it.each([{ erase: false }, { erase: true }])(
+    "refuses a server older than Postgres 18 after one version query and before it executes anything, with erase: $erase",
+    async ({ erase }) => {
+      const queries: string[] = [];
+      const executed: string[] = [];
+      const driver: Driver = {
+        execute: (sql) => {
+          executed.push(sql);
+          return Promise.resolve();
+        },
+        query: (sql) => {
+          queries.push(sql);
+          return Promise.resolve({ rows: [{ server_version_num: "170006" }], count: 1 });
+        },
+        session: () => Promise.reject(new Error("unexpected session")),
+        transaction: () => Promise.reject(new Error("unexpected transaction")),
+      };
 
-    await expect(
-      reset({ driver, fileSystem: memoryFileSystem(), migrations: MIGRATIONS }),
-    ).rejects.toThrow("smonn/db needs Postgres 18 or newer, and this server runs Postgres 17");
-    expect(queries).toHaveLength(1);
-    expect(queries[0]).toContain("server_version_num");
-    expect(executed).toStrictEqual([]);
-  });
+      await expect(
+        reset({ driver, fileSystem: memoryFileSystem(), migrations: MIGRATIONS, erase }),
+      ).rejects.toThrow("smonn/db needs Postgres 18 or newer, and this server runs Postgres 17");
+      expect(queries).toHaveLength(1);
+      expect(queries[0]).toContain("server_version_num");
+      expect(executed).toStrictEqual([]);
+    },
+  );
 
   it("replays the Committed migrations and current.sql into a marked Database", async () => {
     const fileSystem = memoryFileSystem();
