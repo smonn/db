@@ -10,11 +10,17 @@ export type ColumnState = {
   /** True when `.primaryKey()` made this column the table's whole primary key. */
   readonly primaryKey: boolean;
   readonly unique: boolean;
+  /** The name `.primaryKey({ name })` or `.unique({ name })` gave its constraint. */
+  readonly constraintName: string | undefined;
 };
+
+/** Replaces the name Postgres would derive, such as `users_pkey` or `users_email_key`. */
+type ConstraintOptions = { readonly name: string };
 
 /**
  * `Int` is true for the types Postgres allows an identity on. `Gen` is true once the column has a
- * default or an identity, which Postgres allows only one of. `Pk` is true once `.primaryKey()` ran.
+ * default or an identity, which Postgres allows only one of. `Pk` is true once `.primaryKey()` ran,
+ * and `Key` once `.primaryKey()` or `.unique()` ran, since a primary key is already unique.
  */
 export type Column<
   V,
@@ -22,28 +28,29 @@ export type Column<
   Int extends boolean = false,
   Gen extends boolean = false,
   Pk extends boolean = false,
+  Key extends boolean = false,
 > = {
   readonly state: ColumnState;
   /** Type-only: the value a row holds, whether the column is NOT NULL, and whether it is the primary key. */
   readonly "~types": { readonly value: V; readonly notNull: N; readonly primaryKey: Pk };
-  notNull(): Column<V, true, Int, Gen, Pk>;
-  /** A unique constraint on this column alone. */
-  unique(): Column<V, N, Int, Gen, Pk>;
-} & (Pk extends true
+  notNull(): Column<V, true, Int, Gen, Pk, Key>;
+} & (Key extends true
   ? unknown
   : {
       /** The table's whole primary key. A composite key goes in `defineTable`'s second callback. */
-      primaryKey(): Column<V, true, Int, Gen, true>;
+      primaryKey(options?: ConstraintOptions): Column<V, true, Int, Gen, true, true>;
+      /** A unique constraint on this column alone. */
+      unique(options?: ConstraintOptions): Column<V, N, Int, Gen, Pk, true>;
     }) &
   (Gen extends true
     ? unknown
     : {
         /** Takes a SQL expression, such as `now()`; a string literal needs its quotes (`"'new'"`). */
-        default(expression: string): Column<V, N, Int, true, Pk>;
+        default(expression: string): Column<V, N, Int, true, Pk, Key>;
       } & (Int extends true
         ? {
             /** Generates the value from a sequence. */
-            identity(generated?: Identity): Column<V, true, Int, true, Pk>;
+            identity(generated?: Identity): Column<V, true, Int, true, Pk, Key>;
           }
         : unknown));
 
@@ -57,20 +64,27 @@ type AnyColumn = {
   };
 };
 
-function column<V, N extends boolean, Int extends boolean, Gen extends boolean, Pk extends boolean>(
-  state: ColumnState,
-): Column<V, N, Int, Gen, Pk> {
+function column<
+  V,
+  N extends boolean,
+  Int extends boolean,
+  Gen extends boolean,
+  Pk extends boolean,
+  Key extends boolean,
+>(state: ColumnState): Column<V, N, Int, Gen, Pk, Key> {
   const parts = {
     state,
     notNull: () => column({ ...state, notNull: true }),
     default: (expression: string) => column({ ...state, default: expression }),
     identity: (generated: Identity = "by default") =>
       column({ ...state, notNull: true, identity: generated }),
-    primaryKey: () => column({ ...state, notNull: true, primaryKey: true }),
-    unique: () => column({ ...state, unique: true }),
+    primaryKey: (options?: ConstraintOptions) =>
+      column({ ...state, notNull: true, primaryKey: true, constraintName: options?.name }),
+    unique: (options?: ConstraintOptions) =>
+      column({ ...state, unique: true, constraintName: options?.name }),
   };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- "~types" exists only in types, so `parts` doesn't overlap `Column` enough for a direct cast (TS2352); it goes through `unknown`.
-  return parts as unknown as Column<V, N, Int, Gen, Pk>;
+  return parts as unknown as Column<V, N, Int, Gen, Pk, Key>;
 }
 
 export type ColumnFactories = {
@@ -93,13 +107,14 @@ export type ColumnFactories = {
 };
 
 function of<V, Int extends boolean = false>(sqlType: string): Column<V, false, Int> {
-  return column<V, false, Int, false, false>({
+  return column<V, false, Int, false, false, false>({
     sqlType,
     notNull: false,
     default: undefined,
     identity: undefined,
     primaryKey: false,
     unique: false,
+    constraintName: undefined,
   });
 }
 

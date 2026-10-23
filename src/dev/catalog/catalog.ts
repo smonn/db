@@ -1,6 +1,6 @@
 import type { Table } from "../../runtime/definition/index.ts";
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
-import { constraintName } from "./constraint-names.ts";
+import { constraintNames } from "./constraint-names.ts";
 
 export type ColumnPayload = {
   /** The type as `format_type` renders it, such as `character varying(20)`. */
@@ -184,7 +184,8 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
   const builder = catalogBuilder();
   for (const [schema, tables] of Object.entries(definition)) {
     builder.schema(schema);
-    for (const [table, { columns, primaryKey }] of Object.entries(tables)) {
+    const names = constraintNames(schema);
+    for (const [table, { columns, primaryKey, primaryKeyName }] of Object.entries(tables)) {
       builder.table(schema, table);
       const entries = Object.entries(columns);
       for (const [column, { state }] of entries) {
@@ -204,13 +205,14 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
         }
       }
       if (primaryKey.length > 0) {
-        builder.primaryKey(schema, table, constraintName(table, "pkey"), {
+        builder.primaryKey(schema, table, names.primaryKey(table, primaryKey, primaryKeyName), {
           columns: [...primaryKey],
         });
       }
       for (const [column, { state }] of entries) {
         if (state.unique) {
-          builder.unique(schema, table, constraintName(table, `${column}_key`), { column });
+          const name = names.unique(table, column, state.constraintName);
+          builder.unique(schema, table, name, { column });
         }
       }
     }

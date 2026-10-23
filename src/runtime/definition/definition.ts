@@ -5,6 +5,8 @@ export type TableDefinition<C extends Columns = Columns, K extends string = stri
   readonly columns: C;
   /** The primary key's columns in key order, empty without one. */
   readonly primaryKey: readonly K[];
+  /** The primary key's constraint name when the Definition gives one; the catalog derives it otherwise. */
+  readonly primaryKeyName: string | undefined;
 };
 
 export type Table<C extends Columns = Columns, K extends string = string> = TableDefinition<
@@ -44,9 +46,14 @@ type OwnRef<C extends Columns> = Ref<keyof C & string, C>;
 
 type KeyRefs<C extends Columns> = readonly [OwnRef<C>, OwnRef<C>, ...OwnRef<C>[]];
 
+/** A composite key's columns, or its columns and the constraint name that replaces the derived one. */
+type KeyEntry<C extends Columns> =
+  | KeyRefs<C>
+  | { readonly name: string; readonly columns: KeyRefs<C> };
+
 /** The table-level entries, keyed by kind. Later kinds (indexes, checks) join here. */
 type TableExtras<C extends Columns> = [KeyedColumns<C>] extends [never]
-  ? { readonly primaryKey?: KeyRefs<C> }
+  ? { readonly primaryKey?: KeyEntry<C> }
   : { readonly primaryKey?: never };
 
 /** The arguments after the columns; a misuse of the primary key leaves no argument list that fits. */
@@ -60,10 +67,14 @@ type ExtrasArgs<C extends Columns> =
       ]
     : [extras?: (t: Refs<C>) => TableExtras<C>];
 
+type ListedRefs<Entry> = Entry extends { readonly columns: infer Listed } ? Listed : Entry;
+
 type KeyOf<C extends Columns, Args extends unknown[]> = Args extends [
-  (t: never) => { readonly primaryKey: readonly Ref<infer K, C>[] },
+  (t: never) => { readonly primaryKey: infer Entry },
 ]
-  ? K
+  ? ListedRefs<Entry> extends readonly Ref<infer K, C>[]
+    ? K
+    : never
   : KeyedColumns<C>;
 
 /** A `Ref` as it exists at runtime; one table's references are told from another's by identity. */
@@ -87,23 +98,38 @@ function columnOf(own: RuntimeRefs, ref: unknown, entry: string): string {
   return name;
 }
 
-function primaryKeyOf(columns: Columns, own: RuntimeRefs, declared: unknown): string[] {
-  const single = Object.entries(columns)
-    .filter(([, { state }]) => state.primaryKey)
-    .map(([name]) => name);
+type PrimaryKey = { readonly columns: string[]; readonly name: string | undefined };
+
+function primaryKeyOf(columns: Columns, own: RuntimeRefs, declared: unknown): PrimaryKey {
+  const single = Object.entries(columns).filter(([, { state }]) => state.primaryKey);
   if (declared === undefined) {
     if (single.length > 1) {
       throw new Error(
-        `Columns ${single.map((n) => `"${n}"`).join(", ")} each call primaryKey(); declare a composite key in the table's second callback instead`,
+        `Columns ${single.map(([n]) => `"${n}"`).join(", ")} each call primaryKey(); declare a composite key in the table's second callback instead`,
       );
     }
-    return single;
+    return { columns: single.map(([n]) => n), name: single[0]?.[1].state.constraintName };
   }
   if (single.length > 0) {
     throw new Error(
-      `Column "${single[0]}" calls primaryKey() and the table's second callback also declares a primary key; use one`,
+      `Column "${single[0]?.[0]}" calls primaryKey() and the table's second callback also declares a primary key; use one`,
     );
   }
+  const entry = keyEntry(declared);
+  return { columns: keyColumns(own, entry.columns), name: entry.name };
+}
+
+function keyEntry(declared: unknown): { name: string | undefined; columns: unknown } {
+  if (Array.isArray(declared)) return { name: undefined, columns: declared };
+  if (typeof declared === "object" && declared !== null && "name" in declared) {
+    const { name } = declared;
+    if (typeof name === "string")
+      return { name, columns: "columns" in declared && declared.columns };
+  }
+  throw new TypeError("The table's primaryKey takes a list of columns or { name, columns }");
+}
+
+function keyColumns(own: RuntimeRefs, declared: unknown): string[] {
   const refs: unknown[] = Array.isArray(declared) ? declared : [];
   if (refs.length < 2) {
     throw new Error(
@@ -131,8 +157,18 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- refsOf builds one Ref per key; "~table" exists only in types.
   const declared = extras?.(own as unknown as Refs<C>);
   const primaryKey = primaryKeyOf(columns, own, declared?.primaryKey);
+  const both = Object.entries(columns).find(([, { state }]) => state.primaryKey && state.unique);
+  if (both !== undefined) {
+    throw new Error(
+      `Column "${both[0]}" calls both primaryKey() and unique(); a primary key is already unique`,
+    );
+  }
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the key names are checked above.
-  return { columns, primaryKey } as unknown as TableDefinition<C, KeyOf<C, Args>>;
+  return {
+    columns,
+    primaryKey: primaryKey.columns,
+    primaryKeyName: primaryKey.name,
+  } as unknown as TableDefinition<C, KeyOf<C, Args>>;
 }
 
 type Schemas = Record<string, Record<string, TableDefinition>>;
@@ -151,9 +187,9 @@ export function defineDatabase<S extends Schemas>(schemas: S): Database<S> {
     Object.entries(schemas).map(([schema, tables]) => [
       schema,
       Object.fromEntries(
-        Object.entries(tables).map(([name, { columns, primaryKey }]) => [
+        Object.entries(tables).map(([name, { columns, primaryKey, primaryKeyName }]) => [
           name,
-          { schema, name, columns, primaryKey },
+          { schema, name, columns, primaryKey, primaryKeyName },
         ]),
       ),
     ]),
