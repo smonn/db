@@ -162,6 +162,47 @@ describe("introspect", () => {
     ]);
   });
 
+  // Each variant has the row shape of a plain key but is an Unmodeled object (ADR-0005).
+  it.each([
+    ["NULLS NOT DISTINCT", "unique nulls not distinct (b)"],
+    ["DEFERRABLE", "unique (b) deferrable"],
+    ["DEFERRABLE INITIALLY DEFERRED", "unique (b) deferrable initially deferred"],
+    ["INCLUDE", "unique (b) include (c)"],
+  ])("skips a unique constraint with %s", async (_label, constraint) => {
+    await db.driver.execute(`
+      create table t (a text, b text, c text, d text);
+      alter table t add constraint a_uq unique (a);
+      alter table t add constraint b_uq ${constraint};
+    `);
+
+    const catalog = await introspect(db.driver);
+
+    const keys = [...catalog.values()]
+      .filter((fact) => fact.kind === "unique")
+      .map((fact) => namesOf(catalog, fact).join("."));
+    expect(keys).toStrictEqual(["public.t.a_uq"]);
+  });
+
+  it.each([
+    ["DEFERRABLE", "primary key (a) deferrable"],
+    ["INCLUDE", "primary key (a) include (b)"],
+    ["WITHOUT OVERLAPS", "primary key (a, during without overlaps)"],
+  ])("skips a primary key with %s", async (_label, constraint) => {
+    await db.driver.execute(`
+      create extension if not exists btree_gist;
+      create table t (a integer not null, b text, during daterange not null);
+      alter table t add constraint t_pk ${constraint};
+      create table plain (a integer primary key);
+    `);
+
+    const catalog = await introspect(db.driver);
+
+    const keys = [...catalog.values()]
+      .filter((fact) => fact.kind === "primary key")
+      .map((fact) => namesOf(catalog, fact).join("."));
+    expect(keys).toStrictEqual(["public.plain.plain_pkey"]);
+  });
+
   it("fetches no table or column of a skipped schema", async () => {
     await db.driver.execute(`
       create table kept (a text);
