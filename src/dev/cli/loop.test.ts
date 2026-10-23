@@ -90,6 +90,39 @@ describe("smonndb", () => {
     expect(output).toContain('hazard data_loss: drop table "public"."users";\n');
   });
 
+  it("commits a hand-edited Hazard only once --accept names its kind", async () => {
+    const devConfig = join(project, "dev.config.ts");
+    expect(await main(["generate", "--config", devConfig])).toBe(0);
+    const file = join(project, "db", "migrations", "current.sql");
+    await writeFile(
+      file,
+      `${await readFile(file, "utf8")}-- hazard: data_loss\ndrop table "public"."users";\n`,
+    );
+    expect(await main(["generate", "--config", devConfig])).toBe(0);
+    let stderr = "";
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      stderr += String(chunk);
+      return true;
+    });
+
+    expect(await main(["commit", "create-users", "--config", devConfig])).toBe(1);
+    expect(stderr).toBe(
+      [
+        "current.sql has Hazards that --accept doesn't name:",
+        '  data_loss: drop table "public"."users";',
+        "to commit anyway, pass --accept data_loss",
+        "",
+      ].join("\n"),
+    );
+    expect(await readFile(file, "utf8")).toContain("-- hazard: data_loss");
+
+    expect(
+      await main(["commit", "create-users", "--accept", "data_loss", "--config", devConfig]),
+    ).toBe(0);
+    const committed = join(project, "db", "migrations", "000001-create-users.sql");
+    expect(await readFile(committed, "utf8")).toContain("-- hazard: data_loss\n");
+  });
+
   it("tells whether generate reset the Dev database, and prints plain text", async () => {
     const devConfig = join(project, "dev.config.ts");
     const file = relative(process.cwd(), join(project, "db", "migrations", "current.sql"));

@@ -1,5 +1,4 @@
-import type { GenerateResult, ResetResult } from "../generate/index.ts";
-import { hazardsIn } from "./hazards.ts";
+import { hazardsIn, type GenerateResult, type ResetResult } from "../generate/index.ts";
 
 /** The lines `generate` prints: the file, each Hazard with its statement, and whether it reset. */
 export function generateReport(result: GenerateResult, path: string): string[] {

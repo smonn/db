@@ -10,7 +10,9 @@ import {
 } from "../../runtime/internal/index.ts";
 import { verify } from "../../runtime/migrator/index.ts";
 import type { Driver, FileSystem } from "../../runtime/ports/index.ts";
+import type { HazardKind } from "../diff/index.ts";
 import { withDevLock } from "./dev-lock.ts";
+import { hazardRefusal } from "./hazard-refusal.ts";
 
 export type CommitOptions = {
   /** The Dev database, which `generate` last replayed `current.sql` into. */
@@ -22,6 +24,8 @@ export type CommitOptions = {
   readonly slug: string;
   /** The schema `migrate` tracks into. Defaults to `smonn_db`. */
   readonly trackingSchema?: string;
+  /** The Hazard kinds the caller accepts (ADR-0015); `commit` refuses any other kind in the file. */
+  readonly accept: readonly HazardKind[];
 };
 
 export type CommitResult = {
@@ -34,8 +38,8 @@ const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 /**
  * Freezes `current.sql` into the next Committed migration, chained onto the tip (ADR-0008), then
  * records it and clears the tracking schema's `current` table in one Dev database transaction and
- * deletes `current.sql`. Refuses unless the Dev database holds `current.sql` as it reads now and
- * every Committed migration before it.
+ * deletes `current.sql`. Refuses while `current.sql` has a Hazard kind outside `accept`, and unless
+ * the Dev database holds `current.sql` as it reads now and every Committed migration before it.
  */
 export function commit(options: CommitOptions): Promise<CommitResult> {
   return withDevLock(options.driver, "commit", (driver) => commitLocked({ ...options, driver }));
@@ -51,6 +55,8 @@ async function commitLocked(options: CommitOptions): Promise<CommitResult> {
   const content = await fileSystem.readFile(currentPath);
   if (content === undefined) throw new Error(`${currentPath} doesn't exist; run generate first`);
   const { body } = await parseCurrent(content);
+  const refusal = hazardRefusal(body, options.accept);
+  if (refusal !== undefined) throw new Error(refusal);
 
   const committed = await readCommitted(fileSystem, migrations);
   await verify({ list: () => Promise.resolve(committed) });

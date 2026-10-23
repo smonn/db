@@ -42,6 +42,12 @@ describe("main", () => {
     [["migrate", "--url", "postgres://"], "Unknown option '--url'"],
     [["reset", "now"], "reset takes no arguments: now"],
     [["generate", "--erase"], "--erase applies only to reset"],
+    [["generate", "--accept", "rewrite"], "--accept applies only to commit"],
+    [
+      ["commit", "a", "--accept", "rewrite,drop"],
+      'unknown Hazard kind "drop"; the kinds are data_loss, rewrite, access_exclusive_lock',
+    ],
+    [["commit", "a", "--accept", ""], 'unknown Hazard kind ""'],
   ])("exits 2 with the usage for %j", async (argv, message) => {
     expect(await main(argv)).toBe(2);
     expect(stderr).toContain(message);

@@ -74,7 +74,13 @@ describe("Dev database catch-up", () => {
   it("resets when a pulled Committed migration moves the tip but leaves the Current migration as it was", async () => {
     const fileSystem = memoryFileSystem();
     await generateInto(fileSystem);
-    await commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "create-users" });
+    await commit({
+      driver: db.driver,
+      fileSystem,
+      migrations: MIGRATIONS,
+      slug: "create-users",
+      accept: [],
+    });
     await generateInto(fileSystem, withEmail);
     await db.driver.execute("create table public.junk (id int)");
     const [tip] = (await readCommitted(fileSystem, MIGRATIONS)).map((file) => parseMigration(file));
@@ -105,7 +111,13 @@ describe("Dev lock", () => {
       const run = {
         generate: () => generateInto(fileSystem),
         commit: () =>
-          commit({ driver: db.driver, fileSystem, migrations: MIGRATIONS, slug: "create-users" }),
+          commit({
+            driver: db.driver,
+            fileSystem,
+            migrations: MIGRATIONS,
+            slug: "create-users",
+            accept: [],
+          }),
         reset: () => reset({ driver: db.driver, fileSystem, migrations: MIGRATIONS }),
       }[command];
 
@@ -161,7 +173,7 @@ describe("dev commands on a one-connection pool", () => {
     const options = { driver: pool.driver, fileSystem, migrations: MIGRATIONS };
 
     await generate({ ...options, connect: db.connect, definition: users });
-    await commit({ ...options, slug: "create-users" });
+    await commit({ ...options, slug: "create-users", accept: [] });
     await reset(options);
 
     const { rows } = await pool.driver.query("select filename from smonn_db.migrations");
