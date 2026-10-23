@@ -8,16 +8,7 @@ describe("withDevLock", () => {
   // The first test times out while it holds the lock; the second runs after it.
   it.fails("keeps the lock while a test hangs", { timeout: 200 }, async () => {
     await expect(
-      withDevLock(
-        db.driver,
-        "generate",
-        () =>
-          new Promise<string>((resolve) => {
-            setTimeout(() => {
-              resolve("late");
-            }, 1000);
-          }),
-      ),
+      withDevLock(db.driver, "generate", () => new Promise<string>(() => {})),
     ).resolves.toBe("never");
   });
 

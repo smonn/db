@@ -35,6 +35,11 @@ export function explainConnectionError(error: unknown, serverUrl: string): unkno
   );
 }
 
+/**
+ * A test that times out leaves its session open, and a session advisory lock (the Dev lock) would
+ * fail every later test in the file (#286). The terminated connection never releases to the pool,
+ * so the pool must end with `timeout: 0` instead of waiting on it.
+ */
 async function endAdvisoryLockSessions(sql: Sql): Promise<void> {
   await sql.unsafe(
     "select pg_terminate_backend(pid) from pg_locks where locktype = 'advisory' and granted and database = (select oid from pg_database where datname = current_database()) and pid <> pg_backend_pid()",
@@ -69,11 +74,12 @@ export function useTestDatabase(): TestDatabase {
       throw explainConnectionError(error, serverUrl);
     });
   });
-  // A test that times out leaves its session open, and a session advisory lock (the Dev lock)
-  // would fail every later test in the file (#286).
   afterEach(() => endAdvisoryLockSessions(sql));
   afterAll(async () => {
-    await Promise.all([sql.end(), ...ownPools.map((pool) => pool.end({ timeout: 0 }))]);
+    await Promise.all([
+      sql.end({ timeout: 0 }),
+      ...ownPools.map((pool) => pool.end({ timeout: 0 })),
+    ]);
     await admin.unsafe(`drop database ${name} with (force)`).catch((error: unknown) => {
       throw explainConnectionError(error, serverUrl);
     });
