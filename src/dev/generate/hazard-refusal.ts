@@ -1,6 +1,6 @@
 import { CURRENT_FILENAME } from "../../runtime/internal/index.ts";
 import { HAZARD_KINDS } from "../diff/index.ts";
-import { hazardsIn } from "./hazards.ts";
+import { hazardsIn, strayHazardComments } from "./hazards.ts";
 
 const KNOWN: readonly string[] = HAZARD_KINDS;
 
@@ -8,7 +8,8 @@ const KNOWN: readonly string[] = HAZARD_KINDS;
  * Why `commit` refuses (ADR-0015), or undefined when `accepted` names every Hazard kind in the
  * Current migration's body. It groups the missing kinds by statement and prints the full
  * `--accept` flag to pass. A kind that isn't one of ours is a typo in a hand edit, so the refusal
- * names it apart from the flag, which could never accept it.
+ * names it apart from the flag, which could never accept it. A line that looks like a Hazard
+ * comment but isn't read as one would drop its gate by accident, so it refuses too.
  */
 export function hazardRefusal(body: string, accepted: readonly string[]): string | undefined {
   const missing = new Map<string, string[]>();
@@ -21,8 +22,14 @@ export function hazardRefusal(body: string, accepted: readonly string[]): string
       else kinds.push(kind);
     }
   }
-  if (missing.size === 0 && unknown.size === 0) return undefined;
+  const strays = strayHazardComments(body);
+  if (missing.size === 0 && unknown.size === 0 && strays.length === 0) return undefined;
   const lines: string[] = [];
+  for (const { line, text } of strays) {
+    lines.push(
+      `${CURRENT_FILENAME}:${line} looks like a Hazard comment but isn't one: ${JSON.stringify(text)}; use "-- hazard: <kind>" above a statement or delete the line`,
+    );
+  }
   if (missing.size > 0) {
     lines.push(`${CURRENT_FILENAME} has Hazards that --accept doesn't name:`);
     for (const [statement, kinds] of missing) lines.push(`  ${kinds.join(", ")}: ${statement}`);

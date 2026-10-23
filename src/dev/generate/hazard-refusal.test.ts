@@ -60,4 +60,38 @@ describe("hazardRefusal", () => {
       'unknown Hazard kind "dataloss" in current.sql; fix or delete the comment',
     );
   });
+
+  it.each([
+    ["indented", "  -- hazard: data_loss"],
+    ["unspaced", "--hazard: data_loss"],
+    ["recased", "-- Hazard: data_loss"],
+    ["triple dash", "--- hazard: data_loss"],
+  ])("refuses a %s comment, even when accept names every kind", (_name, comment) => {
+    expect(hazardRefusal(`${comment}\ndrop table a;\n`, ["data_loss"])).toBe(
+      `current.sql:1 looks like a Hazard comment but isn't one: ${JSON.stringify(comment)}; use "-- hazard: <kind>" above a statement or delete the line`,
+    );
+  });
+
+  it("refuses a trailing and a mid-statement comment with their line numbers", () => {
+    const body = [
+      "create table a (n int); -- hazard: data_loss",
+      "-- hazard: rewrite",
+      "alter table a",
+      "-- hazard: rewrite",
+      "  alter column n type bigint;",
+    ].join("\n");
+
+    expect(hazardRefusal(body, ["data_loss", "rewrite"])).toBe(
+      [
+        `current.sql:1 looks like a Hazard comment but isn't one: ${JSON.stringify(body.split("\n")[0])}; use "-- hazard: <kind>" above a statement or delete the line`,
+        `current.sql:4 looks like a Hazard comment but isn't one: "-- hazard: rewrite"; use "-- hazard: <kind>" above a statement or delete the line`,
+      ].join("\n"),
+    );
+  });
+
+  it("doesn't refuse a plural prose comment or a hazards table", () => {
+    expect(
+      hazardRefusal("-- hazards: none here\ncreate table hazards (n int);\n", []),
+    ).toBeUndefined();
+  });
 });
