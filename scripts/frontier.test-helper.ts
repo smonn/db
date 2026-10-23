@@ -1,5 +1,5 @@
-import { spawnSync } from "node:child_process";
-import { vi } from "vitest";
+import type { spawnSync } from "node:child_process";
+import type { MockedFunction } from "vitest";
 
 type Issue = {
   number: number;
@@ -24,12 +24,12 @@ export function issue(number: number, overrides: Partial<Issue> = {}): Issue {
   };
 }
 
-/**
- * Answers each `gh api` call from `responses`, keyed by the request path, and fails the rest.
- * The importing test file must mock `node:child_process`.
- */
-export function ghReturns(responses: Record<string, Issue[]>): void {
-  vi.mocked(spawnSync).mockImplementation((_command, args) => {
+/** Answers each `gh api` call to `spawn` from `responses`, keyed by the request path, and fails the rest. */
+export function ghReturns(
+  spawn: MockedFunction<typeof spawnSync>,
+  responses: Record<string, Issue[]>,
+): void {
+  spawn.mockImplementation((_command, args) => {
     const path = args?.at(-1) ?? "";
     const pages = responses[path];
     const result = { pid: 0, output: [], stdout: "", stderr: "", status: 0, signal: null };

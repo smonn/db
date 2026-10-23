@@ -5,6 +5,8 @@
  * - `smonn/sql-interpolation`: a `${...}` in a template literal passed straight to `query`,
  *   `unsafe`, or `execute` must be a `quoteIdentifier` call, a `const` set from one, or a
  *   module-level constant.
+ * - `smonn/error-message-qualifier`: a template literal passed to `new Error(...)`, or to a class
+ *   whose name ends in `Error`, has no `.` and identifier character directly after a `${...}`.
  * - `smonn/required-brand`: an exported type has no optional property whose key starts with `~`.
  */
 import type { RuleTester } from "oxlint/plugins-dev";
@@ -15,7 +17,9 @@ type Node = Parameters<Context["sourceCode"]["getScope"]>[0];
 type Scope = ReturnType<Context["sourceCode"]["getScope"]>;
 type Plugin = {
   readonly meta: { readonly name: string };
-  readonly rules: Readonly<Record<"sql-interpolation" | "required-brand", Rule>>;
+  readonly rules: Readonly<
+    Record<"sql-interpolation" | "required-brand" | "error-message-qualifier", Rule>
+  >;
 };
 
 const SQL_METHODS = new Set(["query", "unsafe", "execute"]);
@@ -135,8 +139,42 @@ const requiredBrand: Rule = {
   },
 };
 
+const DOTTED_NAME = /^\.[A-Za-z_$]/u;
+
+function isErrorConstructor(callee: Node): boolean {
+  return callee.type === "Identifier" && callee.name.endsWith("Error");
+}
+
+const errorMessageQualifier: Rule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Quote and qualify identifiers an error message names" },
+  },
+  create(context) {
+    return {
+      NewExpression(node) {
+        const [text] = node.arguments;
+        if (!isErrorConstructor(node.callee) || text?.type !== "TemplateLiteral") return;
+        for (const [index, expression] of text.expressions.entries()) {
+          const after = text.quasis[index + 1]?.value.raw ?? "";
+          if (!DOTTED_NAME.test(after)) continue;
+          context.report({
+            node: expression,
+            message:
+              "Quote and qualify the identifier this message names, such as `${quoteIdentifier(schema)}.${quoteIdentifier(table)}`: a dotted, unquoted name can spell two objects",
+          });
+        }
+      },
+    };
+  },
+};
+
 const plugin: Plugin = {
   meta: { name: "smonn" },
-  rules: { "sql-interpolation": sqlInterpolation, "required-brand": requiredBrand },
+  rules: {
+    "sql-interpolation": sqlInterpolation,
+    "required-brand": requiredBrand,
+    "error-message-qualifier": errorMessageQualifier,
+  },
 };
 export default plugin;
