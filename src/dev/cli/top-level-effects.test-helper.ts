@@ -11,6 +11,16 @@ const PURE_CONSTRUCTORS = new Set([
   "TextDecoder",
 ]);
 
+/** Node types that run code, or change state, whenever they are reached outside a function body. */
+const EFFECT_TYPES = new Set([
+  "TaggedTemplateExpression",
+  "AwaitExpression",
+  "AssignmentExpression",
+  "UpdateExpression",
+  "StaticBlock",
+  "ExpressionStatement",
+]);
+
 /** Nodes whose body runs only when called, not when the module loads. */
 const DEFERRED = new Set([
   "FunctionDeclaration",
@@ -47,21 +57,44 @@ function effectOf(node: object, local: ReadonlySet<string>): string | null {
     const name = calleeName(node);
     return name !== undefined && local.has(name) ? null : type;
   }
-  if (type === "TaggedTemplateExpression" || type === "AwaitExpression") return type;
-  if (type === "NewExpression" && !pureConstructor(node)) return type;
-  return null;
+  if (type === "NewExpression") return pureConstructor(node) ? null : type;
+  if (type === "ImportDeclaration") {
+    const specifiers: unknown = Reflect.get(node, "specifiers");
+    return Array.isArray(specifiers) && specifiers.length === 0 ? type : null;
+  }
+  if (type === "UnaryExpression") return Reflect.get(node, "operator") === "delete" ? type : null;
+  return EFFECT_TYPES.has(type) ? type : null;
 }
 
-function walk(node: unknown, local: ReadonlySet<string>, found: string[]): void {
+/** The node's source, collapsed to one line and cut to about 80 characters. */
+function snippet(node: object, bytes: Buffer, base: number): string {
+  const span: unknown = Reflect.get(node, "span");
+  const start: unknown = typeof span === "object" && span !== null ? Reflect.get(span, "start") : 0;
+  const end: unknown = typeof span === "object" && span !== null ? Reflect.get(span, "end") : 0;
+  if (typeof start !== "number" || typeof end !== "number") return "";
+  const text = bytes
+    .subarray(start - base, end - base)
+    .toString("utf8")
+    .replaceAll(/\s+/gu, " ")
+    .trim();
+  return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+}
+
+type Source = {
+  readonly bytes: Buffer;
+  readonly base: number;
+};
+
+function walk(node: unknown, local: ReadonlySet<string>, source: Source, found: string[]): void {
   if (typeof node !== "object" || node === null) return;
   if (Array.isArray(node)) {
-    for (const item of node) walk(item, local, found);
+    for (const item of node) walk(item, local, source, found);
     return;
   }
   if (DEFERRED.has(typeOf(node))) return;
   const effect = effectOf(node, local);
-  if (effect !== null) found.push(effect);
-  for (const value of Object.values(node)) walk(value, local, found);
+  if (effect !== null) found.push(`${effect}: ${snippet(node, source.bytes, source.base)}`);
+  for (const value of Object.values(node)) walk(value, local, source, found);
 }
 
 /** The names of the functions a module declares at its top level, exported or not. */
@@ -98,19 +131,18 @@ function localFunctions(body: readonly object[]): Set<string> {
 }
 
 /**
- * What a built module runs when it loads: an expression statement, or a `new`, tagged template,
- * `await`, or call outside a function body. Declarations, imports, exports, and literals run
- * nothing. A call to a function the module declares itself is allowed inside an initializer, such
- * as `const RULES = { drop: always("data_loss") }`; as a statement it still counts. This is a
- * static check, so it does not follow what a local function does.
+ * What a built module runs when it loads, each as `Type: source`: an expression statement at any
+ * depth, a bare `import "x"`, a class static block, an assignment, update, or `delete`, or a
+ * `new`, tagged template, `await`, or call outside a function body. Declarations, named imports,
+ * exports, and literals run nothing. A call to a function the module declares itself is allowed
+ * inside an initializer, such as `const RULES = { drop: always("data_loss") }`; as a statement it
+ * still counts. This is a static check, so it does not follow what a local function does.
  */
 export function topLevelEffects(source: string): string[] {
-  const { body } = parseSync(source, { syntax: "ecmascript", target: "es2022" });
-  const local = localFunctions(body);
+  const module = parseSync(source, { syntax: "ecmascript", target: "es2022" });
+  const local = localFunctions(module.body);
   const found: string[] = [];
-  for (const item of body) {
-    if (item.type === "ExpressionStatement") found.push("ExpressionStatement");
-    walk(item, local, found);
-  }
+  // swc's spans are byte offsets that start at the module's own span, not at zero.
+  walk(module.body, local, { bytes: Buffer.from(source), base: module.span.start }, found);
   return found;
 }
