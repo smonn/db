@@ -1,0 +1,26 @@
+name: Clear stale review
+
+on:
+  pull_request_target:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  clear:
+    name: Clear
+    if: github.event.label.name == 'review:needed'
+    runs-on: ubuntu-24.04
+    # Checks out the base branch only: pull_request_target holds a write token, so it never runs PR code.
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          cache: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm clear:review

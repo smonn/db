@@ -24,5 +24,15 @@ export function explainShadowError(error: unknown, handEdited = false): unknown 
       : "a type change is a plain ALTER COLUMN ... TYPE with no USING. Edit the Current migration by hand to add the USING clause.";
     return new Error(`${error.message}; ${fix}`, { cause: error });
   }
+  if (
+    code === "0A000" &&
+    error.message.startsWith("cannot alter type of a column used by a view")
+  ) {
+    const why = typeof detail === "string" ? `:\n  ${detail.split("\n").join("\n  ")}` : "";
+    const fix = handEdited
+      ? "drop or change the view by hand in the Current migration."
+      : "generate never alters a view. Drop or change the view by hand in the Current migration.";
+    return new Error(`${error.message}${why}\n${fix}`, { cause: error });
+  }
   return error;
 }

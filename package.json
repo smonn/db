@@ -28,6 +28,7 @@
     "check:parent": "node scripts/check-issue-parent.ts",
     "check:static": "node scripts/check.ts --static",
     "check:pr": "node scripts/check-pr.ts",
+    "clear:review": "node scripts/clear-stale-review.ts",
     "coverage": "vitest run --coverage",
     "deps": "rev-dep config run",
     "format": "oxfmt",

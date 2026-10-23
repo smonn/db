@@ -5,6 +5,8 @@ export type {
   Columns,
   ColumnState,
   Database,
+  Ref,
+  Refs,
   Row,
   Table,
   TableDefinition,
