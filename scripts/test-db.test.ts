@@ -59,6 +59,20 @@ describe("parsePort", () => {
   });
 });
 
+describe("compose.yaml", () => {
+  const compose = readFileSync(new URL("../compose.yaml", import.meta.url), "utf8");
+
+  test("turns off fsync, which drop database's checkpoint waits on (#169)", () => {
+    expect(compose).toMatch(/^\s+command: \["postgres", "-c", "fsync=off"\]$/mu);
+  });
+
+  test("checks readiness over TCP, which the image's init server doesn't listen on (#169)", () => {
+    expect(compose).toMatch(
+      /^\s+test: \["CMD", "pg_isready", "-h", "127\.0\.0\.1", "-U", "postgres"\]$/mu,
+    );
+  });
+});
+
 describe("main", () => {
   let root: string;
   let name: string;

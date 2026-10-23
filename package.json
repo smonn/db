@@ -3,14 +3,29 @@
   "version": "0.0.0",
   "private": true,
   "license": "Apache-2.0",
+  "bin": {
+    "smonndb": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./dev": "./dist/dev.mjs",
+    "./node": "./dist/node.mjs",
+    "./postgres-js": "./dist/postgres-js.mjs",
+    "./package.json": "./package.json"
+  },
   "scripts": {
+    "build": "tsdown",
     "check": "node scripts/check.ts",
     "check:docs": "node scripts/check-docs.ts",
     "check:imports": "node scripts/check-imports.ts",
     "check:index": "node scripts/check-index-exports.ts",
     "check:issue": "node scripts/check-issue-milestone.ts",
     "check:mermaid": "node scripts/check-mermaid.ts",
+    "check:parent": "node scripts/check-issue-parent.ts",
     "check:static": "node scripts/check.ts --static",
     "check:pr": "node scripts/check-pr.ts",
     "coverage": "vitest run --coverage",
@@ -22,6 +37,7 @@
     "knip": "knip",
     "lint": "oxlint",
     "lint:actions": "node scripts/actionlint.ts",
+    "prepack": "pnpm run build",
     "prepare": "lefthook install --reset-hooks-path",
     "test": "vitest run",
     "typecheck": "tsc"
@@ -40,6 +56,7 @@
     "oxlint-tsgolint": "^7.0.2004",
     "postgres": "^3.4.9",
     "rev-dep": "^3.3.0",
+    "tsdown": "^0.23.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   },

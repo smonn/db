@@ -27,7 +27,8 @@
     "typescript/prefer-readonly-parameter-types": "off",
     "unicorn/no-empty-file": "off",
     "smonn/sql-interpolation": "error",
-    "smonn/required-brand": "error"
+    "smonn/required-brand": "error",
+    "smonn/error-message-qualifier": "error"
   },
   "overrides": [
     {

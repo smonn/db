@@ -1,6 +1,6 @@
 import {
+  arePayloadsEqual,
   parentOf,
-  payloadsEqual,
   qualified,
   type Catalog,
   type Fact,
@@ -23,7 +23,7 @@ export function diff(from: Catalog, to: Catalog): Diff {
     const after = to.get(key);
     if (after === undefined) actions.push(...dropped(fact, to));
     // A key can't change in place: the old one drops here, and `altered` adds the new one.
-    else if (isKey(fact) && !payloadsEqual(fact.payload, after.payload))
+    else if (isKey(fact) && !arePayloadsEqual(fact.payload, after.payload))
       actions.push(...dropped(fact, to));
     // Postgres refuses to retype a column whose default can't be cast, so it goes first.
     else if (fact.kind === "default" && retyped(fact.parent, catalogs)) {
@@ -87,10 +87,11 @@ function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {
   }
   if (before.kind === "default" && after.kind === "default") {
     // A retyped column's default was dropped first, whether or not it changed.
-    if (payloadsEqual(before.payload, after.payload) && !retyped(after.parent, catalogs)) return [];
+    if (arePayloadsEqual(before.payload, after.payload) && !retyped(after.parent, catalogs))
+      return [];
     return [{ kind: "set default", fact: after }];
   }
-  if (payloadsEqual(before.payload, after.payload)) return [];
+  if (arePayloadsEqual(before.payload, after.payload)) return [];
   // The old key was dropped in the source pass.
   if (before.kind === "primary key" && after.kind === "primary key") {
     return [{ kind: "add primary key", fact: after }];
