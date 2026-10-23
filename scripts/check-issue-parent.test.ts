@@ -5,6 +5,7 @@ import {
   commentsRoute,
   event,
   fakeGh,
+  fetched,
   issueRoute,
   labelled,
   milestonePath,
@@ -38,7 +39,7 @@ describe("main", () => {
   test("names both parents when two area labels match two parents", () => {
     const labels = labelled("area:tooling", "area:diff");
     const gh = run(event({ labels }), {
-      [issueRoute]: orphan,
+      [issueRoute]: fetched({ labels }),
       [commentsRoute]: [[]],
       [milestonePath]: [[parentIssue(46, "area:diff"), parentIssue(44, "area:tooling")]],
     });
@@ -48,7 +49,7 @@ describe("main", () => {
   test("names a parent once when it shares two area labels", () => {
     const labels = labelled("area:definition", "area:diff");
     const gh = run(event({ labels }), {
-      [issueRoute]: orphan,
+      [issueRoute]: fetched({ labels }),
       [commentsRoute]: [[]],
       [milestonePath]: [[parentIssue(46, "area:definition", "area:diff")]],
     });
@@ -86,7 +87,7 @@ describe("main", () => {
   test("stays quiet when the issue is already a sub-issue", () => {
     const parentUrl = "https://api.github.com/repos/smonn/db/issues/45";
     const gh = run(event(), {
-      [issueRoute]: { number: 7, parent_issue_url: parentUrl },
+      [issueRoute]: fetched({ parent_issue_url: parentUrl }),
       [commentsRoute]: [[]],
       [milestonePath]: [[parentIssue(44, "area:tooling")]],
     });
@@ -95,7 +96,7 @@ describe("main", () => {
 
   test("treats a null parent_issue_url as no parent", () => {
     const gh = run(event(), {
-      [issueRoute]: { number: 7, parent_issue_url: null },
+      [issueRoute]: fetched({ parent_issue_url: null }),
       [commentsRoute]: [[]],
       [milestonePath]: [[parentIssue(44, "area:tooling")]],
     });
@@ -104,7 +105,7 @@ describe("main", () => {
 
   test("stays quiet when the issue has sub-issues itself", () => {
     const gh = run(event(), {
-      [issueRoute]: { number: 7, sub_issues_summary: { total: 2 } },
+      [issueRoute]: fetched({ sub_issues_summary: { total: 2 } }),
       [commentsRoute]: [[]],
       [milestonePath]: [[parentIssue(44, "area:tooling")]],
     });
@@ -117,6 +118,56 @@ describe("main", () => {
       [commentsRoute]: [[{ body: "Thanks" }], [{ body: `${MARKER}\nearlier` }]],
       [milestonePath]: [[parentIssue(44, "area:tooling")]],
     });
+    expect(posted(gh)).toEqual([]);
+  });
+
+  test("stays quiet when the fetched issue lost its milestone", () => {
+    const gh = run(event(), {
+      [issueRoute]: fetched({ milestone: null }),
+      [commentsRoute]: [[]],
+      [milestonePath]: [[parentIssue(44, "area:tooling")]],
+    });
+    expect(posted(gh)).toEqual([]);
+  });
+
+  test("stays quiet when the fetched issue lost its area label", () => {
+    const gh = run(event(), {
+      [issueRoute]: fetched({ labels: labelled("bug") }),
+      [commentsRoute]: [[]],
+      [milestonePath]: [[parentIssue(44, "area:tooling")]],
+    });
+    expect(posted(gh)).toEqual([]);
+  });
+
+  test("stays quiet when the fetched issue is closed", () => {
+    const gh = run(event(), {
+      [issueRoute]: fetched({ state: "closed" }),
+      [commentsRoute]: [[]],
+      [milestonePath]: [[parentIssue(44, "area:tooling")]],
+    });
+    expect(posted(gh)).toEqual([]);
+  });
+
+  test("matches parents by the fetched labels and milestone, not the event's", () => {
+    const route = "repos/smonn/db/issues?milestone=2&state=open&per_page=100";
+    const gh = run(event(), {
+      [issueRoute]: fetched({ milestone: { number: 2 }, labels: labelled("area:diff") }),
+      [commentsRoute]: [[]],
+      [route]: [[parentIssue(44, "area:tooling"), parentIssue(46, "area:diff")]],
+    });
+    expect(posted(gh)).toEqual([comment("#46")]);
+  });
+
+  test("fails when the fetched issue has neither parent field", () => {
+    const { parent_issue_url: _parent, sub_issues_summary: _summary, ...renamed } = fetched();
+    const gh = fakeGh({
+      [issueRoute]: renamed,
+      [commentsRoute]: [[]],
+      [milestonePath]: [[parentIssue(44, "area:tooling")]],
+    });
+    expect(() => {
+      main({ GITHUB_EVENT_PATH: writeEvent(event()) }, gh);
+    }).toThrow("$.parent_issue_url: expected");
     expect(posted(gh)).toEqual([]);
   });
 
