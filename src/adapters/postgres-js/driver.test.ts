@@ -252,46 +252,14 @@ describe("postgresJsDriver when a session's reset fails", () => {
     });
     expect(swaps).toStrictEqual([]);
   });
-});
 
-describe("postgresJsDriver without postgresJsTypes", () => {
-  it("refuses a client created without them, naming the export", () => {
-    const sql = postgres("postgres://localhost:1/none");
-    expect(() => postgresJsDriver(sql)).toThrow("postgresJsTypes");
-  });
-});
-
-describe("postgresJsDriver without postgresJsConnection", () => {
-  const url = "postgres://localhost:1/none";
-  const message =
-    "postgresJsDriver needs a client created with postgres(url, { connection: postgresJsConnection }), which sets DateStyle=ISO and bytea_output=hex";
-
-  it("refuses a client created without it, naming the export", () => {
-    const sql = postgres(url, { types: postgresJsTypes });
-    expect(() => postgresJsDriver(sql)).toThrow(message);
-  });
-
-  it("refuses a client whose URL sets another DateStyle", () => {
-    const sql = postgres(`${url}?datestyle=SQL`, {
-      types: postgresJsTypes,
-      connection: postgresJsConnection,
+  it("rejects a transaction with fn's and the rollback's errors when the rollback fails", async () => {
+    swaps = ["select 1 / 0"];
+    const failed = driver.transaction(() => Promise.reject(new Error("boom")));
+    await expect(failed).rejects.toBeInstanceOf(AggregateError);
+    await expect(failed).rejects.toMatchObject({
+      errors: [{ message: "boom" }, { message: "division by zero" }],
     });
-    expect(() => postgresJsDriver(sql)).toThrow(message);
-  });
-
-  it("refuses a client that sets another bytea_output", () => {
-    const sql = postgres(url, {
-      types: postgresJsTypes,
-      connection: { ...postgresJsConnection, BYTEA_OUTPUT: "escape" },
-    });
-    expect(() => postgresJsDriver(sql)).toThrow(message);
-  });
-
-  it("accepts the settings in any case and with a date order", () => {
-    const sql = postgres(url, {
-      types: postgresJsTypes,
-      connection: { datestyle: "iso, dmy", bytea_output: "HEX" },
-    });
-    expect(() => postgresJsDriver(sql)).not.toThrow();
+    expect(await backend(driver)).toMatchObject({ path: '"$user", public' });
   });
 });

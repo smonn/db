@@ -106,7 +106,9 @@ async function run(command: DatabaseCommand, project: Project): Promise<void> {
   try {
     await runOn(postgresJsDriver(sql), command, project);
   } finally {
-    await sql.end();
+    // Every statement has settled, and a graceful end() never settles once a backend ended
+    // mid-statement (porsager/postgres#1226), which would swallow the error.
+    await sql.end({ timeout: 0 });
   }
 }
 
