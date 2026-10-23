@@ -185,15 +185,49 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
     builder.schema(schema);
     for (const [table, { columns }] of Object.entries(tables)) {
       builder.table(schema, table);
-      for (const [column, { state }] of Object.entries(columns)) {
+      const entries = Object.entries(columns);
+      for (const [column, { state }] of entries) {
         builder.column(schema, table, column, {
           type: postgresType(state.sqlType),
-          notNull: state.notNull,
+          notNull: state.notNull || state.primaryKey || state.identity !== undefined,
         });
+        if (state.default !== undefined) {
+          // introspect reads the real volatility from the Definition database.
+          builder.columnDefault(schema, table, column, {
+            expression: state.default,
+            volatile: false,
+          });
+        }
+        if (state.identity !== undefined) {
+          builder.columnIdentity(schema, table, column, { generated: state.identity });
+        }
+      }
+      const keyColumns = entries.filter(([, { state }]) => state.primaryKey).map(([name]) => name);
+      if (keyColumns.length > 0) {
+        builder.primaryKey(schema, table, constraintName(table, "pkey"), { columns: keyColumns });
+      }
+      for (const [column, { state }] of entries) {
+        if (state.unique) {
+          builder.unique(schema, table, constraintName(table, `${column}_key`), { column });
+        }
       }
     }
   }
   return builder.build();
+}
+
+const MAX_NAME_BYTES = 63;
+
+/**
+ * Postgres's own default names (`users_pkey`, `users_email_key`), so a hand-written constraint
+ * introspects to the same name. Postgres truncates a longer name, which would not key back.
+ */
+function constraintName(table: string, suffix: string): string {
+  const name = `${table}_${suffix}`;
+  if (new TextEncoder().encode(name).length > MAX_NAME_BYTES) {
+    throw new Error(`the constraint name ${quoted([name])} is longer than ${MAX_NAME_BYTES} bytes`);
+  }
+  return name;
 }
 
 const TYPE_NAMES: Readonly<Record<string, string>> = {
