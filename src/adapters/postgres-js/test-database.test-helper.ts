@@ -25,6 +25,9 @@ export type TestDatabase = {
 
 const ignoreNotice = (): void => {};
 
+const missingServerUrl =
+  "Run `node scripts/test-db.ts` to start a Postgres 18 server for this checkout, or set DATABASE_URL to one";
+
 /** Explains a rejected login (SQLSTATE class 28), which most often means another project's Postgres holds the port. */
 export function explainConnectionError(error: unknown, serverUrl: string): unknown {
   if (!(error instanceof postgres.PostgresError) || !error.code.startsWith("28")) {
@@ -55,7 +58,7 @@ async function endAdvisoryLockSessions(sql: Sql): Promise<void> {
 export function useTestDatabase(): TestDatabase {
   const serverUrl = process.env["DATABASE_URL"];
   if (serverUrl === undefined || serverUrl === "") {
-    throw new Error("Set DATABASE_URL to a Postgres 18 server, such as the one compose.yaml runs");
+    throw new Error(missingServerUrl);
   }
   const name = `smonn_db_test_${randomUUID().replaceAll("-", "")}`;
   const url = new URL(serverUrl);
