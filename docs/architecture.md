@@ -260,14 +260,14 @@ Schemas, tables, columns (type, NOT NULL, default, identity), single and composi
 
 ### Pipeline
 
-1. The Definition converts to a catalog as written, and the diff renders it against the catalog of the freshly created Definition database, which holds only template0's `public` schema. That SQL builds the Definition database.
+1. The Definition converts to a catalog, spelling each type as `format_type` does, and the diff renders it against the catalog of the freshly created Definition database, which holds only template0's `public` schema. That SQL builds the Definition database.
 2. `introspect` reads each database in one `REPEATABLE READ READ ONLY` transaction with `search_path` pinned to `pg_catalog`, keyed by name, never by OID.
 3. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL.
 4. Generate verifies the SQL in the Shadow (ADR-0013), then writes the Current migration.
 
 ### Catalog
 
-A flat `Map<key, fact>`. A key is the chain of names from the schema down (`public`, `users`, `email`), joined with `\0`, which no Postgres name can hold, so a table named `users.email` keys apart from the column `email` on `users`. Only the catalog module builds keys: `definitionCatalog` and `introspect` add facts through its builder, and `diff` finds parents, children, and names through its lookups. Each fact carries its parent's key and a plain-data payload compared by deep equality. A default, a primary key, and a unique constraint are separate facts, so one changed default is one difference. Payloads leave out the fact's own name, so renames can be added later. NOT NULL is a column attribute; Postgres 18's `pg_constraint` NOT NULL rows are folded into it.
+A flat `Map<key, fact>`. A key is the chain of names from the schema down (`public`, `users`, `email`), joined with `\0`, which no Postgres name can hold, so a table named `users.email` keys apart from the column `email` on `users`. Only the catalog module builds keys: `definitionCatalog` and `introspect` add facts through its builder, and `diff` finds parents, children, and names through its lookups. Each fact carries its parent's key and a plain-data payload compared by deep equality. A default, a primary key, and a unique constraint are separate facts, so one changed default is one difference. Payloads leave out the fact's own name, so renames can be added later. A column's type is the spelling `format_type` gives (`character varying(20)`, `timestamp with time zone`), so `definitionCatalog` rewrites the Definition's `varchar(20)` and `timestamptz` to match what `introspect` reads. NOT NULL is a column attribute; Postgres 18's `pg_constraint` NOT NULL rows are folded into it.
 
 ### Ordering
 

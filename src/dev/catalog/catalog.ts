@@ -2,6 +2,7 @@ import type { Table } from "../../runtime/definition/index.ts";
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
 
 export type ColumnPayload = {
+  /** The type as `format_type` renders it, such as `character varying(20)`. */
   readonly type: string;
   readonly notNull: boolean;
 };
@@ -100,11 +101,31 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
     for (const [table, { columns }] of Object.entries(tables)) {
       builder.table(schema, table);
       for (const [column, { state }] of Object.entries(columns)) {
-        builder.column(schema, table, column, { type: state.sqlType, notNull: state.notNull });
+        builder.column(schema, table, column, {
+          type: postgresType(state.sqlType),
+          notNull: state.notNull,
+        });
       }
     }
   }
   return builder.build();
+}
+
+const TYPE_NAMES: Readonly<Record<string, string>> = {
+  varchar: "character varying",
+  timestamp: "timestamp without time zone",
+  timestamptz: "timestamp with time zone",
+};
+
+/** Rewrites the Definition's `sqlType` the way `format_type` renders it, so both catalogs agree. */
+function postgresType(sqlType: string): string {
+  const [name = sqlType, modifiers = ""] = sqlType.split(/(?=\()/u);
+  // Postgres reads `numeric(10)` back as `numeric(10,0)`.
+  const spelled =
+    name === "numeric" && /^\(\d+\)$/u.test(modifiers)
+      ? `(${modifiers.slice(1, -1)},0)`
+      : modifiers;
+  return `${TYPE_NAMES[name] ?? name}${spelled}`;
 }
 
 // No Postgres name can hold a NUL byte, so no two chains of names join to the same key.
