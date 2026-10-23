@@ -1,13 +1,44 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout } from "node:timers/promises";
 import { afterAll, beforeAll } from "vitest";
 
 export const repo: string = join(import.meta.dirname, "../../..");
 
 export function run(command: string, args: readonly string[], cwd: string): string {
   return execFileSync(command, args, { cwd, encoding: "utf8" });
+}
+
+/**
+ * Vitest runs test files in parallel workers, and a build rewrites dist/ and package.json under
+ * a concurrent build or pack. A directory is an atomic cross-process lock, one per checkout.
+ */
+async function acquire(lock: string): Promise<void> {
+  try {
+    await mkdir(lock);
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+    // A run killed mid-build leaves its lock behind; a build never takes this long.
+    const held = await stat(lock).catch(() => null);
+    if (held !== null && Date.now() - held.mtimeMs > 120_000) {
+      await rm(lock, { recursive: true, force: true });
+    }
+    await setTimeout(100);
+    await acquire(lock);
+  }
+}
+
+async function withBuildLock(action: () => void): Promise<void> {
+  const lock = join(tmpdir(), `smonn-db-build-${createHash("sha1").update(repo).digest("hex")}`);
+  await acquire(lock);
+  try {
+    action();
+  } finally {
+    await rm(lock, { recursive: true, force: true });
+  }
 }
 
 export type PackedPackage = {
@@ -29,9 +60,11 @@ export function usePackedPackage(): PackedPackage {
     dir = await mkdtemp(join(tmpdir(), "smonn-db-packed-"));
     tarball = join(dir, "package.tgz");
     packageJson = await readFile(join(repo, "package.json"), "utf8");
-    run("pnpm", ["run", "build"], repo);
-    // The build already ran, and prepare's hook install would touch git config.
-    run("pnpm", ["pack", "--ignore-scripts", "--out", tarball], repo);
+    await withBuildLock(() => {
+      run("pnpm", ["run", "build"], repo);
+      // The build already ran, and prepare's hook install would touch git config.
+      run("pnpm", ["pack", "--ignore-scripts", "--out", tarball], repo);
+    });
   }, 120_000);
 
   afterAll(async () => {
