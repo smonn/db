@@ -108,9 +108,9 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
 };
 
 /**
- * Sorts by phase. The sort is stable, so ties keep the order `diff` finds them in: drops in the
- * `from` catalog's order, and everything else in the `to` catalog's, so new columns follow the
- * Definition, since Postgres can't reorder columns later.
+ * Sorts by phase. The sort is stable, so ties keep catalog order, which `introspect` sorts by name
+ * for schemas, tables, and constraints and by position for columns, so new columns follow the
+ * Definition. Drops keep the `from` catalog's order and everything else the `to` catalog's.
  */
 export function order(actions: readonly Action[]): Action[] {
   return actions.toSorted((a, b) => STEPS[a.kind].phase - STEPS[b.kind].phase);
