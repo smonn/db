@@ -36,7 +36,7 @@
     "knip": "knip",
     "lint": "oxlint",
     "lint:actions": "node scripts/actionlint.ts",
-    "prepack": "tsdown",
+    "prepack": "pnpm run build",
     "prepare": "lefthook install --reset-hooks-path",
     "test": "vitest run",
     "typecheck": "tsc"
