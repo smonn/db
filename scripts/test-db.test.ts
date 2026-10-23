@@ -59,6 +59,14 @@ describe("parsePort", () => {
   });
 });
 
+describe("compose.yaml", () => {
+  const compose = readFileSync(new URL("../compose.yaml", import.meta.url), "utf8");
+
+  test("turns off fsync, which drop database's checkpoint waits on (#169)", () => {
+    expect(compose).toContain('command: ["postgres", "-c", "fsync=off"]');
+  });
+});
+
 describe("main", () => {
   let root: string;
   let name: string;

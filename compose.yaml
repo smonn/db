@@ -1,6 +1,9 @@
 services:
   postgres:
     image: postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+    # Every drop database waits on a checkpoint, whose fsyncs take seconds when other containers
+    # share the disk (#169). The server is throwaway, so it skips them.
+    command: ["postgres", "-c", "fsync=off"]
     environment:
       POSTGRES_PASSWORD: postgres
     ports:
