@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.0](https://github.com/smonn/db/compare/v0.1.0...v0.2.0) (2026-10-24)
+
+
+### Features
+
+* **definition:** reject a column reference from another table ([#342](https://github.com/smonn/db/issues/342)) ([0a2a6bc](https://github.com/smonn/db/commit/0a2a6bce7d2109324bd5019af10e4ea5f82746aa))
+* **migrator:** name a forked migration chain in verify ([#358](https://github.com/smonn/db/issues/358)) ([5ecfd49](https://github.com/smonn/db/commit/5ecfd498755aff966b21b4dd4a286cf6468050ed))
+* **tooling:** comment on ready issues that lack a priority or category label ([#341](https://github.com/smonn/db/issues/341)) ([4e16482](https://github.com/smonn/db/commit/4e1648287ac9c75c80521aec68cabbea94f61629))
+
+
+### Bug Fixes
+
+* **adapters:** bind Date arrays as arrays and each use of a Date param on its own ([#356](https://github.com/smonn/db/issues/356)) ([f1a649a](https://github.com/smonn/db/commit/f1a649aa2c2ca0e5978a5732101db1f83bf96fbe))
+* **ci:** refuse YAML forms that hide an id-token grant ([#387](https://github.com/smonn/db/issues/387)) ([bd99653](https://github.com/smonn/db/commit/bd996532f7e65a198a761df295b81e56d033048f))
+* **ci:** split PR metadata checks into their own workflow ([#361](https://github.com/smonn/db/issues/361)) ([78af517](https://github.com/smonn/db/commit/78af517aed2664526f473784984facefa08870be))
+* **definition:** name keys explicitly and refuse colliding constraint names ([#346](https://github.com/smonn/db/issues/346)) ([98076ff](https://github.com/smonn/db/commit/98076ff2f96e62efdd790da63ca371e06700681a))
+* **diff:** drop then add a fact that changes kind at the same key ([#383](https://github.com/smonn/db/issues/383)) ([0c044b0](https://github.com/smonn/db/commit/0c044b0a53a1fb62a88fdb6f48d1a34bc477d5dd))
+* **diff:** drop then add a key that changes kind at the same name ([#340](https://github.com/smonn/db/issues/340)) ([4ea0cbb](https://github.com/smonn/db/commit/4ea0cbbb3be9a4ee2b9f89cde50c9e27077364f8))
+* **diff:** read generation expressions into the catalog and diff them ([#362](https://github.com/smonn/db/issues/362)) ([67a80b3](https://github.com/smonn/db/commit/67a80b3d004408b63820c716d904a8a54790efde))
+* **diff:** switch an identity between always and by default in place ([#345](https://github.com/smonn/db/issues/345)) ([5576c89](https://github.com/smonn/db/commit/5576c89474cca7dfa165345bde992a4bef2d7d30))
+* **package:** skip instance fields and pure-annotated calls in the import side-effect check ([#385](https://github.com/smonn/db/issues/385)) ([fc74e6d](https://github.com/smonn/db/commit/fc74e6da4fff461e9cd8a07c64665d46435c40eb))
+* **reset:** roll back the wipe when the replay fails ([#360](https://github.com/smonn/db/issues/360)) ([3a08a48](https://github.com/smonn/db/commit/3a08a48d071df2141c0e64c4ef1b3a0eafb0f716))
+* **tooling:** read an absent parent_issue_url as no parent ([#354](https://github.com/smonn/db/issues/354)) ([a31bcd1](https://github.com/smonn/db/commit/a31bcd12a922dbc16ce5de44d7adf6bdd03557b2))
+
 ## 0.1.0 (2026-10-23)
 
 
