@@ -14,6 +14,9 @@ pre-push:
   jobs:
     - name: static checks
       run: pnpm run check:static
+    # The same branch rule CI's check:pr applies, so a bad name fails here, not after the PR opens.
+    - name: branch name
+      run: pnpm run check:branch
     # Only the unit project: the database project needs `node scripts/test-db.ts`, and CI runs it.
     # The first push has no origin/main to diff against, so it runs every unit test.
     - name: changed unit tests

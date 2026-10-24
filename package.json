@@ -29,6 +29,7 @@
   "scripts": {
     "build": "tsdown",
     "check": "node scripts/check.ts",
+    "check:branch": "node scripts/check-branch.ts",
     "check:docs": "node scripts/check-docs.ts",
     "check:imports": "node scripts/check-imports.ts",
     "check:index": "node scripts/check-index-exports.ts",
