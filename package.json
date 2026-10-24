@@ -36,6 +36,7 @@
     "check:labels": "node scripts/check-issue-labels.ts",
     "check:mermaid": "node scripts/check-mermaid.ts",
     "check:node-version": "node scripts/check-node-version.ts",
+    "check:oidc": "node scripts/check-oidc-jobs.ts",
     "check:parent": "node scripts/check-issue-parent.ts",
     "check:static": "node scripts/check.ts --static",
     "check:pr": "node scripts/check-pr.ts",
