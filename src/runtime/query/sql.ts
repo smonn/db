@@ -10,6 +10,7 @@ import { brand, type Query, type Statement } from "./from.ts";
  * the type from the other side of the comparison or assignment. That fits a column or an
  * `= any(${dates})` list. Where nothing names a type, write the cast: `${at} - interval '1 hour'`
  * fails, `${at}::timestamptz - interval '1 hour'` works, and `select ${at}` returns UTC text.
+ * Each use of a repeated `$n` is typed on its own, so `$n + interval` needs a cast on every use.
  */
 export function sql(strings: TemplateStringsArray, ...values: unknown[]): Statement;
 export function sql<R>(strings: TemplateStringsArray, ...values: unknown[]): Query<R>;

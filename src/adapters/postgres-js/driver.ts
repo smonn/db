@@ -151,9 +151,11 @@ async function returnToPool(reserved: ReservedSql): Promise<void> {
  * postgres.js's default values, or values in the database's DateStyle and bytea_output.
  *
  * A `Date` param, or an array of them, is bound without a type, so Postgres reads it as the
- * type of its column or other operand. Each use of the same `$n` is bound apart, so one `Date`
- * can meet a `timestamp` and a `timestamptz`. Where nothing names a type, such as
- * `$1 - interval '1 hour'`, write the cast: `$1::timestamptz - interval '1 hour'`.
+ * type of its column or other operand. Each use of a repeated `$n` is typed on its own, so one
+ * `Date` can meet a `timestamp` and a `timestamptz`. Where nothing names a type, such as
+ * `$1 - interval '1 hour'`, write the cast: `$1::timestamptz - interval '1 hour'`. That holds for
+ * every use of a repeated `$n`: `ts >= $1 and ts < $1 + interval '1 day'` fails, and it works
+ * with `$1::timestamptz` on both uses.
  */
 export function postgresJsDriver(sql: Sql): Driver {
   if (!hasPostgresJsTypes(sql.options.parsers)) {
