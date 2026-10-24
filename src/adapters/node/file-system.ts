@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import type { FileSystem } from "../../runtime/ports/index.ts";
 
 export function nodeFileSystem(): FileSystem {
@@ -32,6 +32,9 @@ export function nodeFileSystem(): FileSystem {
     },
     async remove(path) {
       await rm(path, { force: true });
+    },
+    async rename(from, to) {
+      await rename(from, to);
     },
   };
 }

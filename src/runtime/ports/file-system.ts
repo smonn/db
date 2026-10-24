@@ -9,4 +9,6 @@ export type FileSystem = {
   mkdir(directory: string): Promise<void>;
   /** Does nothing when the file doesn't exist. */
   remove(path: string): Promise<void>;
+  /** Moves a file to `to` in one step, replacing any file there. */
+  rename(from: string, to: string): Promise<void>;
 };
