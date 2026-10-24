@@ -31,6 +31,10 @@ function inTokyo<T>(fn: (session: Queryable) => Promise<T>): Promise<T> {
   });
 }
 
+function dayFrom(column: string, use: string): string {
+  return `select id from stamps where ${column} >= ${use} and ${column} < ${use} + interval '1 day'`;
+}
+
 describe("postgresJsDriver Date params in hand-written SQL", () => {
   it("compares one Date param with a timestamp and a timestamptz in any session zone", async () => {
     const { rows } = await inTokyo((session) =>
@@ -42,6 +46,20 @@ describe("postgresJsDriver Date params in hand-written SQL", () => {
   it("compares the timestamptz first, then the timestamp", async () => {
     const { rows } = await inTokyo((session) =>
       session.query("select id from stamps where tz <= $1 and ts >= $1", [at]),
+    );
+    expect(rows).toStrictEqual([{ id: 1 }]);
+  });
+
+  it("refuses interval arithmetic on a repeated Date param unless every use is cast", async () => {
+    const refused = /operator does not exist: timestamp.* < interval/u;
+    await expect(inTokyo((session) => session.query(dayFrom("ts", "$1"), [at]))).rejects.toThrow(
+      refused,
+    );
+    await expect(inTokyo((session) => session.query(dayFrom("tz", "$1"), [at]))).rejects.toThrow(
+      refused,
+    );
+    const { rows } = await inTokyo((session) =>
+      session.query(dayFrom("tz", "$1::timestamptz"), [at]),
     );
     expect(rows).toStrictEqual([{ id: 1 }]);
   });

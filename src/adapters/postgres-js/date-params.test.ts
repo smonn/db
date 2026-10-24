@@ -92,4 +92,36 @@ describe("bindDateParams", () => {
   it("does not take `$12` for `$1`", () => {
     expect(bindDateParams("select $12, $1", [at]).text).toBe("select $12, $1");
   });
+
+  it("reads `--` inside a string as text, not a comment", () => {
+    expect(bindDateParams("'-- ' $1 $1", [at]).text).toBe("'-- ' $1 $2");
+  });
+
+  it("ends an `E` string at a quote after an escaped backslash", () => {
+    expect(bindDateParams("E'a\\\\' $1 $1", [at]).text).toBe("E'a\\\\' $1 $2");
+    expect(bindDateParams("E'a\\' $1' $1 $1", [at]).text).toBe("E'a\\' $1' $1 $2");
+  });
+
+  it("closes a tagged dollar quote at its own tag, not at a nested one", () => {
+    const sql = "$a$ $b$ $1 $b$ $1 $a$";
+    expect(bindDateParams(sql, [at]).text).toBe(sql);
+    expect(bindDateParams(`${sql} $1 $1`, [at]).text).toBe(`${sql} $1 $2`);
+  });
+
+  it("numbers extra uses past a `$10` Date param", () => {
+    const params = [at, 1, 1, 1, 1, 1, 1, 1, 1, at];
+    const { text, values } = bindDateParams("$10 $1 $1", params);
+    expect(text).toBe("$10 $1 $11");
+    expect(values).toHaveLength(11);
+    expect(bindDateParams("$10 $10 $1", params).text).toBe("$10 $11 $1");
+  });
+
+  it("reads an unterminated block comment or dollar quote to the end as text", () => {
+    expect(bindDateParams("$1 /* $1 $1", [at]).text).toBe("$1 /* $1 $1");
+    expect(bindDateParams("$1 $x$ $1 $1", [at]).text).toBe("$1 $x$ $1 $1");
+  });
+
+  it("reads an unterminated string as a lone quote and keeps scanning", () => {
+    expect(bindDateParams("$1 ' $1 $1", [at]).text).toBe("$1 ' $2 $3");
+  });
 });
