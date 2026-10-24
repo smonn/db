@@ -1,25 +1,34 @@
 /**
- * Checks that the checked-out branch is a Conventional Branch, the rule CI's `check:pr` applies to a
- * PR's head branch, so a bad name fails on push instead of after the PR opens. A detached HEAD has
- * no branch name and passes.
+ * Checks that every branch a push creates or updates is a Conventional Branch, the rule CI's
+ * `check:pr` applies to a PR's head branch, so a bad name fails on push instead of after the PR
+ * opens. Reads git's pre-push stdin (`<local ref> <local sha> <remote ref> <remote sha>` per line).
+ * A delete and a ref outside `refs/heads/` (a tag) pass, so a bad branch can still be deleted.
  *
- * Run from the repo root with `pnpm check:branch`; lefthook runs it on pre-push.
+ * Run by lefthook on pre-push (`use_stdin`); `pnpm check:branch` by hand has no stdin and passes.
  */
-import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { checkBranch } from "./check-pr.ts";
 
-type CurrentBranch = () => string;
+const headsPrefix = "refs/heads/";
+const zeroSha = /^0+$/u;
 
-const gitCurrentBranch: CurrentBranch = () => {
-  const result = spawnSync("git", ["branch", "--show-current"], { encoding: "utf8" });
-  if (result.status !== 0) throw new Error(`git branch --show-current failed: ${result.stderr}`);
-  return result.stdout.trim();
-};
+export function parsePushedBranches(stdin: string): string[] {
+  const branches: string[] = [];
+  for (const line of stdin.split("\n")) {
+    const [, localSha, remoteRef] = line.trim().split(/\s+/u);
+    if (localSha === undefined || remoteRef === undefined) continue;
+    if (zeroSha.test(localSha) || !remoteRef.startsWith(headsPrefix)) continue;
+    branches.push(remoteRef.slice(headsPrefix.length));
+  }
+  return branches;
+}
 
-export function main(currentBranch: CurrentBranch = gitCurrentBranch): void {
-  const branch = currentBranch();
-  if (branch === "") return;
-  const problems = checkBranch(branch);
+function readStdin(): string {
+  return process.stdin.isTTY ? "" : readFileSync(0, "utf8");
+}
+
+export function main(stdin: string = readStdin()): void {
+  const problems = parsePushedBranches(stdin).flatMap((branch) => checkBranch(branch));
   for (const problem of problems) console.error(problem);
   if (problems.length > 0) process.exitCode = 1;
 }

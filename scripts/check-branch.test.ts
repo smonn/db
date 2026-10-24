@@ -1,18 +1,12 @@
-import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { main } from "./check-branch.ts";
+import { main, parsePushedBranches } from "./check-branch.ts";
 
-vi.mock("node:child_process", () => ({ spawnSync: vi.fn<typeof spawnSync>() }));
+const zeros = "0".repeat(40);
+const sha = "a".repeat(40);
 
-const spawn = vi.mocked(spawnSync);
-const result: SpawnSyncReturns<string> = {
-  pid: 0,
-  output: [],
-  stdout: "",
-  stderr: "",
-  status: 0,
-  signal: null,
-};
+function line(localRef: string, localSha: string, remoteRef: string): string {
+  return `${localRef} ${localSha} ${remoteRef} ${zeros}\n`;
+}
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -24,46 +18,72 @@ afterEach(() => {
   process.exitCode = undefined;
 });
 
-describe("main with an injected branch", () => {
-  test("passes a Conventional Branch", () => {
-    main(() => "chore/pre-push-branch-check");
+describe("parsePushedBranches", () => {
+  test("returns the branch name of each pushed remote ref", () => {
+    const stdin =
+      line("refs/heads/a", sha, "refs/heads/feature/a") + line("HEAD", sha, "refs/heads/docs/z");
+    expect(parsePushedBranches(stdin)).toEqual(["feature/a", "docs/z"]);
+  });
+
+  test("skips a delete, whose local sha is all zeros", () => {
+    expect(parsePushedBranches(line("(delete)", zeros, "refs/heads/docs/bad"))).toEqual([]);
+  });
+
+  test("skips a tag and any other ref outside refs/heads/", () => {
+    const stdin =
+      line("refs/tags/v1", sha, "refs/tags/v1") + line("refs/heads/a", sha, "refs/notes/commits");
+    expect(parsePushedBranches(stdin)).toEqual([]);
+  });
+
+  test("returns nothing for empty stdin", () => {
+    expect(parsePushedBranches("")).toEqual([]);
+    expect(parsePushedBranches("\n")).toEqual([]);
+  });
+
+  test("ignores a line that does not have four fields", () => {
+    expect(parsePushedBranches("garbage\n")).toEqual([]);
+  });
+});
+
+describe("main", () => {
+  test("passes a pushed Conventional Branch", () => {
+    main(line("refs/heads/a", sha, "refs/heads/chore/pre-push-branch-check"));
     expect(console.error).not.toHaveBeenCalled();
     expect(process.exitCode).toBeUndefined();
   });
 
-  test("fails a branch the CI rule rejects", () => {
-    main(() => "docs/config-and-cli");
+  test("fails a pushed branch the CI rule rejects, whatever the local branch", () => {
+    main(line("HEAD", sha, "refs/heads/docs/z"));
     expect(console.error).toHaveBeenCalledWith(
-      'Branch "docs/config-and-cli" is not a Conventional Branch: feature|bugfix|hotfix|release|chore/<lowercase-kebab>',
+      'Branch "docs/z" is not a Conventional Branch: feature|bugfix|hotfix|release|chore/<lowercase-kebab>',
     );
     expect(process.exitCode).toBe(1);
   });
 
-  test("passes a detached HEAD, which has no branch name", () => {
-    main(() => "");
-    expect(console.error).not.toHaveBeenCalled();
-    expect(process.exitCode).toBeUndefined();
-  });
-});
-
-describe("main reading git", () => {
-  test("asks git for the current branch and checks it", () => {
-    spawn.mockReturnValue({ ...result, stdout: "docs/x\n" });
-    main();
-    expect(spawn).toHaveBeenCalledWith("git", ["branch", "--show-current"], { encoding: "utf8" });
+  test("reports every bad branch in one push", () => {
+    main(
+      line("a", sha, "refs/heads/docs/y") +
+        line("b", sha, "refs/heads/feature/ok") +
+        line("c", sha, "refs/heads/docs/z"),
+    );
+    expect(console.error).toHaveBeenCalledTimes(2);
     expect(process.exitCode).toBe(1);
   });
 
-  test("treats empty git output as a detached HEAD", () => {
-    spawn.mockReturnValue({ ...result, stdout: "\n" });
-    main();
+  test("passes the delete of a bad branch, the recovery path", () => {
+    main(line("(delete)", zeros, "refs/heads/docs/bad"));
+    expect(console.error).not.toHaveBeenCalled();
     expect(process.exitCode).toBeUndefined();
   });
 
-  test("throws when git fails", () => {
-    spawn.mockReturnValue({ ...result, status: 128, stderr: "fatal: not a git repository" });
-    expect(() => {
-      main();
-    }).toThrow("git branch --show-current failed: fatal: not a git repository");
+  test("passes a tag push", () => {
+    main(line("refs/tags/v1", sha, "refs/tags/v1"));
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  test("passes empty stdin", () => {
+    main("");
+    expect(console.error).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
   });
 });
