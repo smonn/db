@@ -14,6 +14,15 @@
       "depNameTemplate": "rhysd/actionlint",
       "datasourceTemplate": "github-releases",
       "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "description": "scripts/check-oidc-jobs.ts pins the Publish job's action SHAs, so a bump in release.yml lands in the same PR: same depName, same branch.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^scripts/check-oidc-jobs\\.ts$/"],
+      "matchStrings": [
+        "// (?<currentValue>v\\S+)\\n\\s*\"\\s*- uses: (?<depName>[\\w.-]+/[\\w.-]+)@(?<currentDigest>[0-9a-f]{40})\""
+      ],
+      "datasourceTemplate": "github-tags"
     }
   ],
   "packageRules": [
