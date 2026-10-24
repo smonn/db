@@ -209,6 +209,25 @@ sequenceDiagram
   Gen->>DB: replay them as written
 ```
 
+### rebase
+
+Restates ADR-0008.
+
+```mermaid
+sequenceDiagram
+  participant CLI as dev/cli
+  participant Gen as dev/generate
+  participant Git as git
+  participant FS as FileSystem port
+
+  CLI->>Git: resolve --onto, or the remote's default branch
+  CLI->>Gen: rebase, the base ref's Committed migrations as a MigrationSource
+  Gen->>Git: read the base ref's Committed migrations
+  Gen->>FS: read the Committed migrations
+  Gen->>Gen: require every base file, check the moving files' chain, rewrite them onto the base tip, verify the result
+  Gen->>FS: write the moved files, remove their old names
+```
+
 ## CLI
 
 The `smonndb` binary (a working name) and its config for v0.1. ADR-0014, ADR-0015, and ADR-0016 give the reasons; the rest can change without an ADR.
@@ -235,6 +254,7 @@ export default defineConfig({
 | `migrate`       | Runs the runtime migrator against `url`. The migrator refuses when `smonn_db.current` holds a row and Committed migrations are pending (ADR-0016).                                                                                                                                                                                                                                                                                                                 |
 | `reset`         | Drops the extensions that live outside `pg_catalog` or own a schema, and every non-system schema, then replays the Committed migrations and `current.sql` as written, without regenerating. `--erase` lets it run on an unmarked Database (ADR-0016).                                                                                                                                                                                                              |
 | `verify`        | Checks the hash chain of the Committed migration files offline, with no database.                                                                                                                                                                                                                                                                                                                                                                                  |
+| `rebase`        | Moves the Committed migrations that the base ref lacks onto its tip, rewriting their sequence and headers, offline and with no database (ADR-0008). `--onto <ref>` names the ref, by default `refs/remotes/origin/HEAD`. `dev/cli` reads the ref's files with `git ls-tree` and `git cat-file`. Refuses, writing nothing, when the folder lacks a base file, a moving file no longer matches its Hash, or the moving files don't chain from a base file.           |
 
 Every command takes `--config`. Arguments are parsed with `util.parseArgs`. There is no `--url` flag: point a command at another Database through the environment the config reads. Watch mode waits for v0.4.
 
