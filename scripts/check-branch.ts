@@ -11,8 +11,9 @@ import { readFileSync } from "node:fs";
 import { checkBranch } from "./check-pr.ts";
 
 const headsPrefix = "refs/heads/";
-// docs/agents/issue-tracker.md: research notes and prototypes live on branches that never open a PR.
-const throwawayPrefixes = ["research/", "prototype/"];
+// Pushed but never opened as a PR: research notes (docs/agents/issue-tracker.md) and prototypes
+// (the prototype skill).
+const throwawayPattern = /^(research|prototype)\/[a-z0-9]+([.-][a-z0-9]+)*$/u;
 const zeroSha = /^0+$/u;
 
 export function parsePushedBranches(stdin: string): string[] {
@@ -32,7 +33,7 @@ function readStdin(): string {
 
 export function main(stdin: string = readStdin()): void {
   const problems = parsePushedBranches(stdin)
-    .filter((branch) => !throwawayPrefixes.some((prefix) => branch.startsWith(prefix)))
+    .filter((branch) => !throwawayPattern.test(branch))
     .flatMap((branch) => checkBranch(branch));
   for (const problem of problems) console.error(problem);
   if (problems.length > 0) process.exitCode = 1;

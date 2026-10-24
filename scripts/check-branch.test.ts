@@ -61,6 +61,12 @@ describe("main", () => {
     expect(process.exitCode).toBeUndefined();
   });
 
+  test("fails a research or prototype branch whose slug isn't lowercase kebab", () => {
+    main(line("a", sha, "refs/heads/research/Bad_Name"));
+    expect(console.error).toHaveBeenCalledTimes(1);
+    expect(process.exitCode).toBe(1);
+  });
+
   test("fails a pushed branch the CI rule rejects, whatever the local branch", () => {
     main(line("HEAD", sha, "refs/heads/docs/z"));
     expect(console.error).toHaveBeenCalledWith(
