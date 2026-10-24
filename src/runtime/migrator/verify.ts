@@ -5,14 +5,15 @@ import {
   type RecordedMigration,
 } from "../internal/index.ts";
 import type { MigrationSource } from "../ports/index.ts";
+import { findForks, type Fork } from "./fork.ts";
 
 export type VerifyResult = {
   readonly verified: readonly string[];
 };
 
 /**
- * Checks the Committed migrations' hash chain without a database. Throws, naming the file, on a
- * gap or repeat in the sequence, a Previous that isn't the prior file's Hash, or a changed body.
+ * Checks the Committed migrations' hash chain without a database. Throws, naming the files, on a
+ * fork, or naming the file on a gap or repeat in the sequence, a Previous that isn't the prior file's Hash, or a changed body.
  */
 export async function verify(source: MigrationSource): Promise<VerifyResult> {
   const migrations = await loadVerifiedMigrations(source);
@@ -49,6 +50,9 @@ export async function loadVerifiedMigrations(source: MigrationSource): Promise<P
     .map((file) => parseMigration(file))
     .toSorted((a, b) => a.sequence - b.sequence);
 
+  const [fork] = findForks(migrations);
+  if (fork !== undefined) throw new Error(describeFork(fork));
+
   const actualHashes = await Promise.all(
     migrations.map((migration) => migrationHash(migration.previous, migration.body)),
   );
@@ -74,4 +78,13 @@ export async function loadVerifiedMigrations(source: MigrationSource): Promise<P
     }
   });
   return migrations;
+}
+
+function describeFork({ parent, previous, successors }: Fork): string {
+  const names = successors.map(({ filename }) => filename);
+  const last = names.pop();
+  const files = `${names.join(", ")} and ${last}`;
+  const verb = successors.length === 2 ? "both" : "all";
+  if (previous === undefined) return `forked chain: ${files} ${verb} start the chain`;
+  return `forked chain: ${files} ${verb} follow ${parent?.filename ?? previous}`;
 }
