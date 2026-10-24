@@ -66,13 +66,16 @@ function flowEnd(text: string, at: number, keys: string[]): number {
     refuseEnd(index);
     const start = index;
     index = skipSpaces(text, flowNodeEnd(text, index, keys));
-    if (text[index] === ":") {
+    // A key with no colon is still a key in a flow map: `{a, b}` reads as `{a: null, b: null}`.
+    if (text[index] === ":" || (close === "}" && (text[index] === "," || text[index] === close))) {
       keys.push(
         text
           .slice(start, index)
           .trim()
           .replace(/^(["'])(.*)\1$/u, "$2"),
       );
+    }
+    if (text[index] === ":") {
       index = skipSpaces(text, index + 1);
       refuseEnd(index);
       if (text[index] !== "," && text[index] !== close)
@@ -85,8 +88,8 @@ function flowEnd(text: string, at: number, keys: string[]): number {
   return index + 1;
 }
 
-function refuseTrailing(text: string, at: number): void {
-  if (!endsLine(text, skipSpaces(text, at))) throw new Unreadable("text after a quoted scalar");
+function refuseTrailing(text: string, at: number, after: string): void {
+  if (!endsLine(text, skipSpaces(text, at))) throw new Unreadable(`text after ${after}`);
 }
 
 // Returns whether the value starts a block scalar.
@@ -95,11 +98,13 @@ function readValue(text: string, at: number, flowKeys: string[]): boolean {
   const char = text[at];
   if (char === "|" || char === ">") {
     if (!/^[|>][-+0-9]*\s*(?:#.*)?$/u.test(text.slice(at)))
-      throw new Unreadable("a block scalar header this check can't read");
+      throw new Unreadable("a block scalar header");
     return true;
   }
-  if (char === "{" || char === "[") refuseTrailing(text, flowEnd(text, at, flowKeys));
-  else if (char === '"' || char === "'") refuseTrailing(text, quotedEnd(text, at));
+  if (char === "{" || char === "[")
+    refuseTrailing(text, flowEnd(text, at, flowKeys), "a flow collection");
+  else if (char === '"' || char === "'")
+    refuseTrailing(text, quotedEnd(text, at), "a quoted scalar");
   return false;
 }
 

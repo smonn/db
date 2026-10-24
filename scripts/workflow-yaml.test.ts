@@ -12,6 +12,7 @@ const broken = (line: number): string =>
 describe("workflowYamlProblems", () => {
   test.each([
     ["flow sequences", "on:\n  push:\n    branches: [main, 'release/*', \"v1\"]\n"],
+    ["a permissions word in a flow sequence", "x: [permissions, {a: [permissions]}]\n"],
     ["a flow map with an empty value", "x: {a: , b: [c, {d: e}]}\n"],
     ["comments", "# top\nname: CI # trailing\nx: 'a # b' # c\n"],
     ["expressions and URLs", "group: ${{ github.ref }}-x\nimage: docker://alpine:3.20\n"],
@@ -47,8 +48,9 @@ describe("workflowYamlProblems", () => {
     ["a flow collection across lines", "a: {b:\n"],
     ["a malformed flow collection", "a: {b: c: d}\n"],
     ["text after a quoted scalar", "a: 'b' c\n"],
-    ["text after a quoted scalar", "a: [b] c\n"],
-    ["a block scalar header this check can't read", "a: |x\n"],
+    ["text after a flow collection", "a: [b] c\n"],
+    ["text after a flow collection", "a: {b: c} d\n"],
+    ["a block scalar header", "a: |x\n"],
     ["a document marker or directive", "---\na: b\n"],
     ["a document marker or directive", "%YAML 1.2\n"],
   ])("refuses %s", (form, text) => {
@@ -88,6 +90,9 @@ describe("workflowYamlProblems", () => {
   test.each([
     "jobs:\n  pack: { 'PERMISSIONS': { id-token: write } }\n",
     "jobs:\n  - { permissions: { id-token: write } }\n",
+    "jobs:\n  pack: { runs-on: ubuntu-24.04, permissions, steps: [{ run: echo }] }\n",
+    "jobs:\n  pack: { 'permissions' , x: y }\n",
+    "jobs:\n  pack: { permissions }\n",
   ])("refuses permissions inside a flow map in %j", (text) => {
     expect(problems(text)).toEqual([
       `w.yml line 2 sets permissions inside a flow map; ${permissionsForm}`,
