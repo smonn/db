@@ -33,6 +33,7 @@
     "check:imports": "node scripts/check-imports.ts",
     "check:index": "node scripts/check-index-exports.ts",
     "check:issue": "node scripts/check-issue-milestone.ts",
+    "check:labels": "node scripts/check-issue-labels.ts",
     "check:mermaid": "node scripts/check-mermaid.ts",
     "check:node-version": "node scripts/check-node-version.ts",
     "check:parent": "node scripts/check-issue-parent.ts",
