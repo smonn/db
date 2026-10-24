@@ -153,8 +153,32 @@ describe("main rebase", () => {
     );
   });
 
-  it("exits 1 outside a git repository", async () => {
+  it.each([[["--onto", "HEAD"]], [[]]])(
+    "exits 1 naming a missing folder as verify does, given %j",
+    async (onto) => {
+      git("init", "-q", "-b", "main");
+      git("commit", "-q", "--allow-empty", "-m", "empty");
+      await rm(join(cli.dir, "migrations"), { recursive: true });
+
+      expect(await main(["rebase", ...onto, "--config", config])).toBe(1);
+      expect(cli.stderr).toBe(`the folder ${join(cli.dir, "migrations")} doesn't exist\n`);
+    },
+  );
+
+  it.each([
+    [["--onto", "main"], "rev-parse"],
+    [[], "symbolic-ref"],
+  ])("exits 1 with git's own error outside a git repository, given %j", async (onto, command) => {
+    expect(await main(["rebase", ...onto, "--config", config])).toBe(1);
+    expect(cli.stderr).toMatch(
+      new RegExp(`^git ${command} failed: fatal: not a git repository\\b.*\\n$`, "u"),
+    );
+  });
+
+  it("exits 1 saying git can't run when it isn't on PATH", async () => {
+    vi.stubEnv("PATH", "");
+
     expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
-    expect(cli.stderr).toBe("main doesn't name a commit here; fetch it first\n");
+    expect(cli.stderr).toBe("can't run git: it isn't installed or isn't on PATH\n");
   });
 });

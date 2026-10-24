@@ -61,9 +61,12 @@ async function runOffline(command: OfflineCommand): Promise<string[]> {
     const { verified } = await verify(nodeMigrationSource(migrations));
     return [`verified ${verified.length} ${verified.length === 1 ? "migration" : "migrations"}`];
   }
+  const fileSystem = nodeFileSystem();
+  // Git can't run in a missing folder; listing it first fails the way verify does.
+  await fileSystem.list(migrations);
   const onto = command.onto ?? (await defaultBaseRef(migrations));
   const base = gitMigrationSource(migrations, onto);
-  return rebaseReport(await rebase({ fileSystem: nodeFileSystem(), migrations, base, onto }), onto);
+  return rebaseReport(await rebase({ fileSystem, migrations, base, onto }), onto);
 }
 
 function parseAccept(value: string | undefined): HazardKind[] {
