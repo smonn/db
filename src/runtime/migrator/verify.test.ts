@@ -58,10 +58,61 @@ describe("verify", () => {
   });
 
   it("refuses a repeated sequence, naming the second file", async () => {
+    await expect(verify(source([A, B, renamed(C, "000002-c.sql")]))).rejects.toThrow(
+      "000002-c.sql: repeats sequence 2",
+    );
+  });
+
+  it("names a fork: both files and the parent they share", async () => {
     const other = await writeMigration("000002-other.sql", A.hash, "create table other (n int);\n");
 
-    await expect(verify(source([A, B, other]))).rejects.toThrow(
-      "000002-other.sql: repeats sequence 2",
+    await expect(verify(source([A, other, B]))).rejects.toThrow(
+      "forked chain: 000002-b.sql and 000002-other.sql both follow 000001-a.sql",
+    );
+  });
+
+  it("names every file of a three-way fork", async () => {
+    const x = await writeMigration("000002-x.sql", A.hash, "create table x (n int);\n");
+    const y = await writeMigration("000002-y.sql", A.hash, "create table y (n int);\n");
+
+    await expect(verify(source([y, A, x, B]))).rejects.toThrow(
+      "forked chain: 000002-b.sql, 000002-x.sql and 000002-y.sql all follow 000001-a.sql",
+    );
+  });
+
+  it("names a fork whose branches have grown past the shared parent", async () => {
+    const x = await writeMigration("000002-x.sql", A.hash, "create table x (n int);\n");
+    const x3 = await writeMigration("000003-x3.sql", x.hash, "create table x3 (n int);\n");
+
+    await expect(verify(source([A, B, C, x, x3]))).rejects.toThrow(
+      "forked chain: 000002-b.sql and 000002-x.sql both follow 000001-a.sql",
+    );
+  });
+
+  it("names a fork at the start of the chain", async () => {
+    const root = await writeMigration("000001-root.sql", undefined, "create table r (n int);\n");
+
+    await expect(verify(source([A, root]))).rejects.toThrow(
+      "forked chain: 000001-a.sql and 000001-root.sql both start the chain",
+    );
+  });
+
+  it("names the parent's hash when no file holds it", async () => {
+    const other = await writeMigration("000002-other.sql", A.hash, "create table other (n int);\n");
+
+    await expect(verify(source([B, other]))).rejects.toThrow(
+      `forked chain: 000002-b.sql and 000002-other.sql both follow ${A.hash}`,
+    );
+  });
+
+  it("names the fork nearest the start when several exist", async () => {
+    const gone = await writeMigration("000004-gone.sql", A.hash, "create table gone (n int);\n");
+    const m1 = await writeMigration("000005-m1.sql", gone.hash, "create table m1 (n int);\n");
+    const m2 = await writeMigration("000005-m2.sql", gone.hash, "create table m2 (n int);\n");
+    const other = await writeMigration("000002-other.sql", A.hash, "create table other (n int);\n");
+
+    await expect(verify(source([m1, m2, A, other, B]))).rejects.toThrow(
+      "forked chain: 000002-b.sql and 000002-other.sql both follow 000001-a.sql",
     );
   });
 
@@ -71,7 +122,7 @@ describe("verify", () => {
     );
   });
 
-  it("refuses a file inserted into the chain, naming the file it displaced", async () => {
+  it("refuses a file inserted into the chain, naming it and the file it displaced", async () => {
     const inserted = await writeMigration(
       "000002-inserted.sql",
       A.hash,
@@ -80,7 +131,9 @@ describe("verify", () => {
 
     await expect(
       verify(source([A, inserted, renamed(B, "000003-b.sql"), renamed(C, "000004-c.sql")])),
-    ).rejects.toThrow(/^000003-b\.sql: --! Previous should be sha256:\w+, not sha256:\w+$/u);
+    ).rejects.toThrow(
+      "forked chain: 000002-inserted.sql and 000003-b.sql both follow 000001-a.sql",
+    );
   });
 
   it("refuses reordered files, naming the first one out of place", async () => {
