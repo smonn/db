@@ -1,4 +1,11 @@
-import { arePayloadsEqual, type Catalog, type Fact, type Key } from "../catalog/index.ts";
+import {
+  arePayloadsEqual,
+  childrenOf,
+  type Catalog,
+  type Fact,
+  type GeneratedPayload,
+  type Key,
+} from "../catalog/index.ts";
 import { hazardsOf, order, render, type Action, type Catalogs } from "./actions.ts";
 import type { Hazard } from "./hazards.ts";
 
@@ -11,21 +18,28 @@ export type Diff = {
 /** The SQL that turns a database with catalog `from` into one with catalog `to`. */
 export function diff(from: Catalog, to: Catalog): Diff {
   const catalogs = { from, to };
+  // A column Postgres can't convert in place drops and adds back, so each side sees it, what it
+  // holds, and the keys on it as absent from the other.
+  const rebuilt = rebuiltColumns(catalogs);
+  const keptFrom = without(from, rebuilt);
+  const keptTo = without(to, rebuilt);
   const actions: Action[] = [];
   for (const [key, fact] of from) {
-    const after = to.get(key);
-    if (after === undefined) actions.push(...dropped(fact, to));
+    const after = keptTo.get(key);
+    if (after === undefined) actions.push(...dropped(fact, keptTo));
     // A key can't change in place: the old one drops here, and `altered` adds the new one.
     else if (isKey(fact) && !arePayloadsEqual(fact.payload, after.payload))
-      actions.push(...dropped(fact, to));
+      actions.push(...dropped(fact, keptTo));
     // Postgres refuses to retype a column whose default can't be cast, so it goes first.
     else if (fact.kind === "default" && retyped(fact.parent, catalogs)) {
       actions.push({ kind: "drop default", fact });
     }
   }
   for (const [key, fact] of to) {
-    const before = from.get(key);
-    actions.push(...(before === undefined ? created(fact, from) : altered(before, fact, catalogs)));
+    const before = keptFrom.get(key);
+    actions.push(
+      ...(before === undefined ? created(fact, keptFrom) : altered(before, fact, catalogs)),
+    );
   }
   const hazards: Hazard[] = [];
   const sql = order(actions)
@@ -50,6 +64,8 @@ function dropped(fact: Fact, to: Catalog): Action[] {
   if (fact.kind === "column") return [{ kind: "drop column", fact }];
   if (fact.kind === "default") return [{ kind: "drop default", fact }];
   if (fact.kind === "identity") return [{ kind: "drop identity", fact }];
+  // Only a stored column converts in place; `rebuiltColumns` sends the rest to `drop column`.
+  if (fact.kind === "generated") return [{ kind: "drop expression", fact }];
   if (fact.kind === "primary key") return [{ kind: "drop primary key", fact }];
   return [{ kind: "drop unique", fact }];
 }
@@ -60,6 +76,9 @@ function created(fact: Fact, from: Catalog): Action[] {
   // Never inline: CREATE TABLE silently drops a unique that duplicates the primary key.
   if (fact.kind === "primary key") return [{ kind: "add primary key", fact }];
   if (fact.kind === "unique") return [{ kind: "add unique", fact }];
+  // Postgres can't make a plain column generated, so a new expression is on a rebuilt column,
+  // which `add column` renders whole.
+  if (fact.kind === "generated") return [];
   // A new table or column creates its other children inline.
   if (!from.has(fact.parent)) return [];
   if (fact.kind === "column") return [{ kind: "add column", fact }];
@@ -84,6 +103,11 @@ function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {
       return [];
     return [{ kind: "set default", fact: after }];
   }
+  if (before.kind === "generated" && after.kind === "generated") {
+    return arePayloadsEqual(before.payload, after.payload)
+      ? []
+      : [{ kind: "set expression", fact: after }];
+  }
   if (before.kind === "identity" && after.kind === "identity") {
     return arePayloadsEqual(before.payload, after.payload)
       ? []
@@ -97,6 +121,54 @@ function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {
 
 function isKey(fact: Fact): fact is Extract<Fact, { readonly kind: "primary key" | "unique" }> {
   return fact.kind === "primary key" || fact.kind === "unique";
+}
+
+/**
+ * The columns `ALTER COLUMN` can't convert: Postgres can't make a plain column generated, switch
+ * a column between stored and virtual, or drop the expression of a virtual one.
+ */
+function rebuiltColumns({ from, to }: Catalogs): ReadonlyMap<Key, Fact> {
+  const rebuilt = new Map<Key, Fact>();
+  for (const [key, before] of from) {
+    const after = to.get(key);
+    if (before.kind !== "column" || after?.kind !== "column") continue;
+    const was = generation(from, before);
+    const now = generation(to, after);
+    if (was?.storage === now?.storage) continue;
+    if (now === undefined && was?.storage === "stored") continue;
+    rebuilt.set(key, after);
+  }
+  return rebuilt;
+}
+
+function generation(catalog: Catalog, column: Fact): GeneratedPayload | undefined {
+  const child = childrenOf(catalog, column).find((fact) => fact.kind === "generated");
+  return child?.kind === "generated" ? child.payload : undefined;
+}
+
+/** `catalog` without the rebuilt columns, the facts under them, and the keys that name them. */
+function without(catalog: Catalog, rebuilt: ReadonlyMap<Key, Fact>): Catalog {
+  const columns = [...rebuilt.values()];
+  return new Map(
+    [...catalog].filter(
+      ([key, fact]) =>
+        !rebuilt.has(key) &&
+        !(fact.parent !== undefined && rebuilt.has(fact.parent)) &&
+        !(
+          isKey(fact) &&
+          columns.some((column) => column.parent === fact.parent && namesColumn(fact, column.name))
+        ),
+    ),
+  );
+}
+
+function namesColumn(
+  key: Extract<Fact, { readonly kind: "primary key" | "unique" }>,
+  column: string,
+): boolean {
+  return key.kind === "unique"
+    ? key.payload.column === column
+    : key.payload.columns.includes(column);
 }
 
 function retyped(column: Key, { from, to }: Catalogs): boolean {

@@ -3,8 +3,14 @@ import {
   trackingSchema,
   type TrackingSchema,
 } from "../../runtime/internal/index.ts";
-import type { Queryable, Session } from "../../runtime/ports/index.ts";
-import { catalogBuilder, type Catalog, type IdentityPayload } from "../catalog/index.ts";
+import type { DriverRow, Queryable, Session } from "../../runtime/ports/index.ts";
+import {
+  catalogBuilder,
+  type Catalog,
+  type CatalogBuilder,
+  type GeneratedPayload,
+  type IdentityPayload,
+} from "../catalog/index.ts";
 
 const NOT_EXTENSION_MEMBER = (catalog: string, alias: string): string => `not exists (
   select from pg_depend d
@@ -40,7 +46,8 @@ order by c.relname`;
 const COLUMNS = `
 select n.nspname as schema, c.relname as table, a.attname as name,
   format_type(a.atttypid, a.atttypmod) as type, a.attnotnull as not_null,
-  a.attidentity as identity,
+  a.attidentity as identity, a.attgenerated as generated,
+  case when a.attgenerated <> '' then pg_get_expr(d.adbin, d.adrelid) end as generation_expression,
   case when a.attgenerated = '' then pg_get_expr(d.adbin, d.adrelid) end as default_expression,
   case when a.attgenerated = '' then exists (
     select from regexp_matches(
@@ -83,6 +90,12 @@ order by k.conname`;
 const IDENTITY_KINDS: Readonly<Record<string, IdentityPayload["generated"]>> = {
   a: "always",
   d: "by default",
+};
+
+/** The `pg_attribute.attgenerated` codes; an empty string means not generated. */
+const GENERATED_STORAGE: Readonly<Record<string, GeneratedPayload["storage"]>> = {
+  s: "stored",
+  v: "virtual",
 };
 
 /**
@@ -131,22 +144,7 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
       builder.table(schema, tableName);
       for (const column of columns) {
         if (column["schema"] !== schema || column["table"] !== tableName) continue;
-        const columnName = String(column["name"]);
-        // `attnotnull` is true for every Postgres 18 NOT NULL constraint row, valid or not.
-        builder.column(schema, tableName, columnName, {
-          type: String(column["type"]),
-          notNull: column["not_null"] === true,
-        });
-        const generated = IDENTITY_KINDS[String(column["identity"])];
-        if (generated !== undefined) {
-          builder.columnIdentity(schema, tableName, columnName, { generated });
-        }
-        if (typeof column["default_expression"] === "string") {
-          builder.columnDefault(schema, tableName, columnName, {
-            expression: column["default_expression"],
-            volatile: column["default_volatile"] === true,
-          });
-        }
+        addColumn(builder, schema, tableName, column);
       }
       for (const row of constraints) {
         if (row["schema"] !== schema || row["table"] !== tableName) continue;
@@ -159,4 +157,35 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
     }
   }
   return builder.build();
+}
+
+function addColumn(
+  builder: CatalogBuilder,
+  schema: string,
+  tableName: string,
+  column: DriverRow,
+): void {
+  const columnName = String(column["name"]);
+  // `attnotnull` is true for every Postgres 18 NOT NULL constraint row, valid or not.
+  builder.column(schema, tableName, columnName, {
+    type: String(column["type"]),
+    notNull: column["not_null"] === true,
+  });
+  const identity = IDENTITY_KINDS[String(column["identity"])];
+  if (identity !== undefined) {
+    builder.columnIdentity(schema, tableName, columnName, { generated: identity });
+  }
+  const storage = GENERATED_STORAGE[String(column["generated"])];
+  if (storage !== undefined) {
+    builder.columnGenerated(schema, tableName, columnName, {
+      expression: String(column["generation_expression"]),
+      storage,
+    });
+  }
+  if (typeof column["default_expression"] === "string") {
+    builder.columnDefault(schema, tableName, columnName, {
+      expression: column["default_expression"],
+      volatile: column["default_volatile"] === true,
+    });
+  }
 }
