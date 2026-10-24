@@ -27,8 +27,12 @@ export function diff(from: Catalog, to: Catalog): Diff {
   for (const [key, fact] of from) {
     const after = keptTo.get(key);
     if (after === undefined) actions.push(...dropped(fact, keptTo));
-    // A key can't change in place: the old one drops here, and `altered` adds the new one.
-    else if (isKey(fact) && !arePayloadsEqual(fact.payload, after.payload))
+    // A key can't change in place, nor can a fact change kind: the old one drops here, and
+    // `altered` adds the new one.
+    else if (
+      fact.kind !== after.kind ||
+      (isKey(fact) && !arePayloadsEqual(fact.payload, after.payload))
+    )
       actions.push(...dropped(fact, keptTo));
     // Postgres refuses to retype a column whose default can't be cast, so it goes first.
     else if (fact.kind === "default" && retyped(fact.parent, catalogs)) {
@@ -67,7 +71,8 @@ function dropped(fact: Fact, to: Catalog): Action[] {
   // Only a stored column converts in place; `rebuiltColumns` sends the rest to `drop column`.
   if (fact.kind === "generated") return [{ kind: "drop expression", fact }];
   if (fact.kind === "primary key") return [{ kind: "drop primary key", fact }];
-  return [{ kind: "drop unique", fact }];
+  if (fact.kind === "unique") return [{ kind: "drop unique", fact }];
+  return unhandled(fact);
 }
 
 function created(fact: Fact, from: Catalog): Action[] {
@@ -83,10 +88,13 @@ function created(fact: Fact, from: Catalog): Action[] {
   if (!from.has(fact.parent)) return [];
   if (fact.kind === "column") return [{ kind: "add column", fact }];
   if (fact.kind === "default") return [{ kind: "set default", fact }];
-  return [{ kind: "add identity", fact }];
+  if (fact.kind === "identity") return [{ kind: "add identity", fact }];
+  return unhandled(fact);
 }
 
 function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {
+  // The old kind was dropped in the source pass, whatever the payloads say.
+  if (before.kind !== after.kind) return created(after, catalogs.from);
   if (before.kind === "column" && after.kind === "column") {
     const actions: Action[] = [];
     if (before.payload.type !== after.payload.type) {
@@ -113,10 +121,23 @@ function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {
       ? []
       : [{ kind: "set identity mode", fact: after }];
   }
-  if (arePayloadsEqual(before.payload, after.payload)) return [];
-  // Schemas and tables carry no payload and an identity is handled above, so only keys are left.
-  // The old key was dropped in the source pass, even when it was the other kind.
-  return created(after, catalogs.from);
+  return alteredByPayload(before, after, catalogs);
+}
+
+/** The kinds with no in-place change: schemas and tables carry no payload, and a key re-adds. */
+function alteredByPayload(before: Fact, after: Fact, { from }: Catalogs): Action[] {
+  if (before.kind === "schema" || before.kind === "table") return [];
+  if (!isKey(before) || !isKey(after)) {
+    // A new kind needs its own comparison above; guessing from its payload could emit a duplicate.
+    throw new Error(`Unhandled fact kind ${JSON.stringify(after.kind)}`);
+  }
+  // The old key was dropped in the source pass.
+  return arePayloadsEqual(before.payload, after.payload) ? [] : created(after, from);
+}
+
+/** Compile-time proof that every kind has an action; at run time, a kind this diff predates. */
+function unhandled(fact: never): never {
+  throw new Error(`Unhandled fact kind ${JSON.stringify((fact as Fact).kind)}`);
 }
 
 function isKey(fact: Fact): fact is Extract<Fact, { readonly kind: "primary key" | "unique" }> {
