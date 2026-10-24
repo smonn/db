@@ -1,6 +1,7 @@
 import postgres, { type ParameterOrJSON, type ReservedSql, type Sql } from "postgres";
 import type { Driver, Queryable, Session } from "../../runtime/ports/index.ts";
-import { formatTimestamp, hasPostgresJsConnection, hasPostgresJsTypes } from "./value-types.ts";
+import { bindDateParams } from "./date-params.ts";
+import { hasPostgresJsConnection, hasPostgresJsTypes } from "./value-types.ts";
 
 // Without params, postgres.js switches to the simple protocol unless `simple` is false, which its
 // types leave out of UnsafeQueryOptions.
@@ -9,21 +10,53 @@ const prepared = { prepare: true, simple: false };
 const inFailedTransaction = "25P02";
 const queryCanceled = "57014";
 
-const connectionGone = new Set(["CONNECTION_CLOSED", "CONNECTION_DESTROYED"]);
+// A FATAL from the server reaches the statement as CONNECTION_CLOSED once the socket closes. A
+// socket error reaches it as the plain Node error.
+const connectionGone = new Set([
+  "CONNECTION_CLOSED",
+  "CONNECTION_DESTROYED",
+  "ECONNRESET",
+  "EPIPE",
+  "ETIMEDOUT",
+]);
 
-// postgres.js throws an uncaught TypeError on any statement sent to a connection whose backend has
-// ended (#154), so after one of these errors the session sends nothing more. A FATAL from the
-// server reaches the statement as CONNECTION_CLOSED once the socket closes. Not !backendAlive,
-// which also holds for an error `fn` throws itself.
-function backendEnded(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
+function connectionError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && connectionGone.has(String(error.code));
+}
+
+type ReservedConnection = {
+  readonly statements: Queryable;
+  /** Whether a statement on this connection failed because its connection is gone. */
+  readonly ended: () => boolean;
+};
+
+// postgres.js crashes or never settles on a statement sent to a connection whose backend has ended
+// (#154), so once one of its statements fails that way, later ones reject unsent with that error.
+// Only the connection's own statements judge this: `fn` may throw a socket error from its own I/O,
+// or rethrow another connection's (#221).
+function reservedConnection(reserved: ReservedSql): ReservedConnection {
+  const connection = queryable(reserved);
+  let lost: { readonly error: unknown } | undefined;
+  async function send<T>(statement: () => Promise<T>): Promise<T> {
+    if (lost !== undefined) {
+      throw lost.error;
+    }
+    try {
+      return await statement();
+    } catch (error) {
+      if (connectionError(error)) {
+        lost ??= { error };
+      }
+      throw error;
+    }
   }
-  // A failed rollback wraps the dead connection's error as the cause of an AggregateError.
-  return (
-    ("code" in error && connectionGone.has(String(error.code))) ||
-    (error.cause !== undefined && backendEnded(error.cause))
-  );
+  return {
+    statements: {
+      query: (text, params) => send(() => connection.query(text, params)),
+      execute: (script) => send(() => connection.execute(script)),
+    },
+    ended: () => lost !== undefined,
+  };
 }
 
 function queryable(connection: ReservedSql | Sql): Queryable {
@@ -31,11 +64,10 @@ function queryable(connection: ReservedSql | Sql): Queryable {
     async query(text, params = []) {
       // postgres.js types a Date param as timestamptz, which Postgres converts to a timestamp in
       // the session's zone. Sent as untyped UTC text, it takes its column's type instead.
+      const bound = bindDateParams(text, params);
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- postgres.js serializes any param value.
-      const values = params.map((value) =>
-        value instanceof Date ? formatTimestamp(value) : value,
-      ) as ParameterOrJSON<never>[];
-      const result = await connection.unsafe(text, values, prepared);
+      const values = bound.values as ParameterOrJSON<never>[];
+      const result = await connection.unsafe(bound.text, values, prepared);
       return { rows: [...result], count: result.count ?? 0 };
     },
     async execute(script) {
@@ -45,8 +77,8 @@ function queryable(connection: ReservedSql | Sql): Queryable {
 }
 
 // postgres.js gives a reserved connection no `begin`, so the session sends the statements itself.
-function reservedSession(reserved: ReservedSql): Session {
-  const session = queryable(reserved);
+function reservedSession(connection: ReservedConnection): Session {
+  const session = connection.statements;
   return {
     ...session,
     async transaction(fn) {
@@ -56,7 +88,7 @@ function reservedSession(reserved: ReservedSql): Session {
         await session.execute("commit");
         return result;
       } catch (error) {
-        if (backendEnded(error)) {
+        if (connection.ended()) {
           throw error;
         }
         try {
@@ -149,6 +181,13 @@ async function returnToPool(reserved: ReservedSql): Promise<void> {
  * The caller owns `sql` and ends it. Create it with
  * `postgres(url, { types: postgresJsTypes, connection: postgresJsConnection })`, or rows hold
  * postgres.js's default values, or values in the database's DateStyle and bytea_output.
+ *
+ * A `Date` param, or an array of them, is bound without a type, so Postgres reads it as the
+ * type of its column or other operand. Each use of a repeated `$n` is typed on its own, so one
+ * `Date` can meet a `timestamp` and a `timestamptz`. Where nothing names a type, such as
+ * `$1 - interval '1 hour'`, write the cast: `$1::timestamptz - interval '1 hour'`. That holds for
+ * every use of a repeated `$n`: `ts >= $1 and ts < $1 + interval '1 day'` fails, and it works
+ * with `$1::timestamptz` on both uses.
  */
 export function postgresJsDriver(sql: Sql): Driver {
   if (!hasPostgresJsTypes(sql.options.parsers)) {
@@ -168,13 +207,14 @@ export function postgresJsDriver(sql: Sql): Driver {
     },
     async session(fn) {
       const reserved = await sql.reserve();
+      const connection = reservedConnection(reserved);
       let result;
       try {
-        result = await fn(reservedSession(reserved));
+        result = await fn(reservedSession(connection));
       } catch (error) {
-        // postgres.js already moved the connection to its closed queue, and releasing it would
-        // hand the dead connection to the next query.
-        if (backendEnded(error)) {
+        // A recorded-dead connection is never released: postgres.js closes it, and releasing it
+        // would hand the dead connection to the next query.
+        if (connection.ended()) {
           throw error;
         }
         try {
@@ -188,7 +228,9 @@ export function postgresJsDriver(sql: Sql): Driver {
         }
         throw error;
       }
-      await returnToPool(reserved);
+      if (!connection.ended()) {
+        await returnToPool(reserved);
+      }
       return result;
     },
   };
