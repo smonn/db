@@ -1,8 +1,11 @@
 import { parseArgs } from "node:util";
-import { nodeMigrationSource } from "../../adapters/node/index.ts";
+import { nodeFileSystem, nodeMigrationSource } from "../../adapters/node/index.ts";
 import { verify } from "../../runtime/migrator/index.ts";
 import { HAZARD_KINDS, type HazardKind } from "../diff/index.ts";
+import { rebase } from "../generate/index.ts";
+import { defaultBaseRef, gitMigrationSource } from "./git.ts";
 import { loadMigrationsFolder, loadProject } from "./project.ts";
+import { rebaseReport } from "./report.ts";
 import { print, run, type DatabaseCommand } from "./run.ts";
 
 const USAGE = `usage: smonndb <command> [--config <path>]
@@ -14,23 +17,28 @@ commands:
                   the Hazard kinds to allow (data_loss, rewrite, access_exclusive_lock)
   reset [--erase] rebuild the Dev database from the migration files
   migrate         apply the pending Committed migrations
-  verify          check the Committed migrations' hash chain, with no database`;
+  verify          check the Committed migrations' hash chain, with no database
+  rebase [--onto <ref>]
+                  move the Committed migrations <ref> lacks onto its tip; <ref> defaults
+                  to the remote's default branch`;
 
 const DEFAULT_CONFIG = "smonndb.config.ts";
 
 class UsageError extends Error {}
 
-type Command = DatabaseCommand | { readonly config: string; readonly name: "verify" };
+type OfflineCommand = { readonly config: string } & (
+  | { readonly name: "verify" }
+  | { readonly name: "rebase"; readonly onto: string | undefined }
+);
+
+type Command = DatabaseCommand | OfflineCommand;
 
 /** Runs one `smonndb` command and resolves to its exit code: 0, 1 on failure, 2 on misuse. */
 export async function main(argv: readonly string[]): Promise<number> {
   try {
     const command = parseCommand(argv);
-    if (command.name === "verify") {
-      const { verified } = await verify(
-        nodeMigrationSource(await loadMigrationsFolder(command.config)),
-      );
-      print(`verified ${verified.length} ${verified.length === 1 ? "migration" : "migrations"}`);
+    if (command.name === "verify" || command.name === "rebase") {
+      for (const line of await runOffline(command)) print(line);
       return 0;
     }
     const project = await loadProject(command.config);
@@ -44,6 +52,21 @@ export async function main(argv: readonly string[]): Promise<number> {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
   }
+}
+
+/** Runs a command that reads the migrations folder and no database, and returns its lines. */
+async function runOffline(command: OfflineCommand): Promise<string[]> {
+  const migrations = await loadMigrationsFolder(command.config);
+  if (command.name === "verify") {
+    const { verified } = await verify(nodeMigrationSource(migrations));
+    return [`verified ${verified.length} ${verified.length === 1 ? "migration" : "migrations"}`];
+  }
+  const fileSystem = nodeFileSystem();
+  // Git can't run in a missing folder; listing it first fails the way verify does.
+  await fileSystem.list(migrations);
+  const onto = command.onto ?? (await defaultBaseRef(migrations));
+  const base = gitMigrationSource(migrations, onto);
+  return rebaseReport(await rebase({ fileSystem, migrations, base, onto }), onto);
 }
 
 function parseAccept(value: string | undefined): HazardKind[] {
@@ -60,6 +83,13 @@ function parseAccept(value: string | undefined): HazardKind[] {
   return accepted;
 }
 
+/** Each flag that only one command takes, and that command. */
+const FLAG_COMMANDS = { accept: "commit", erase: "reset", onto: "rebase" } as const;
+
+function checkNoArguments(name: string, args: readonly string[]): void {
+  if (args.length > 0) throw new UsageError(`${name} takes no arguments: ${args.join(" ")}`);
+}
+
 function parseCommand(argv: readonly string[]): Command {
   let parsed;
   try {
@@ -70,6 +100,7 @@ function parseCommand(argv: readonly string[]): Command {
         accept: { type: "string" },
         config: { type: "string" },
         erase: { type: "boolean" },
+        onto: { type: "string" },
       },
     });
   } catch (error) {
@@ -77,19 +108,22 @@ function parseCommand(argv: readonly string[]): Command {
   }
   const [name, ...args] = parsed.positionals;
   const config = parsed.values.config ?? DEFAULT_CONFIG;
-  const erase = parsed.values.erase === true;
-  if (erase && name !== "reset") throw new UsageError("--erase applies only to reset");
-  if (parsed.values.accept !== undefined && name !== "commit") {
-    throw new UsageError("--accept applies only to commit");
+  for (const [flag, command] of Object.entries(FLAG_COMMANDS)) {
+    if (Object.hasOwn(parsed.values, flag) && name !== command) {
+      throw new UsageError(`--${flag} applies only to ${command}`);
+    }
   }
   switch (name) {
     case "reset":
-      if (args.length > 0) throw new UsageError(`reset takes no arguments: ${args.join(" ")}`);
-      return { name, erase, config };
+      checkNoArguments(name, args);
+      return { name, erase: parsed.values.erase === true, config };
+    case "rebase":
+      checkNoArguments(name, args);
+      return { name, config, onto: parsed.values.onto };
     case "generate":
     case "migrate":
     case "verify":
-      if (args.length > 0) throw new UsageError(`${name} takes no arguments: ${args.join(" ")}`);
+      checkNoArguments(name, args);
       return { name, config };
     case "commit": {
       const [slug] = args;
