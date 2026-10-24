@@ -16,12 +16,14 @@ type Target = {
   "add column": "column";
   "drop default": "default";
   "drop identity": "identity";
+  "drop expression": "generated";
   "alter type": "column";
   "set not null": "column";
   "drop not null": "column";
   "set default": "default";
   "add identity": "identity";
   "set identity mode": "identity";
+  "set expression": "generated";
   "add primary key": "primary key";
   "add unique": "unique";
 };
@@ -99,11 +101,14 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
     phase: 7,
     render: (column, { to }) =>
       `${alterTable(column, to)} add column ${columnDefinition(column, to)};`,
-    // An identity fills each row from its sequence, as a volatile default does.
+    // An identity fills each row from its sequence, as a volatile default does, and a stored
+    // expression computes every row.
     hazards: ({ fact }, { to }) =>
       childrenOf(to, fact).some(
         (child) =>
-          child.kind === "identity" || (child.kind === "default" && child.payload.volatile),
+          child.kind === "identity" ||
+          (child.kind === "default" && child.payload.volatile) ||
+          (child.kind === "generated" && child.payload.storage === "stored"),
       )
         ? REWRITE
         : [],
@@ -116,6 +121,12 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
   "drop identity": {
     phase: 9,
     render: (fact, { from }) => `${alterColumn(fact, from)} drop identity;`,
+    hazards: none,
+  },
+  // Keeps the stored values, so the table is not rewritten.
+  "drop expression": {
+    phase: 9,
+    render: (fact, { from }) => `${alterColumn(fact, from)} drop expression;`,
     hazards: none,
   },
   "alter type": {
@@ -138,6 +149,13 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
     phase: 12,
     render: (fact, { to }) => `${alterColumn(fact, to)} set default ${defaultClause(fact)};`,
     hazards: none,
+  },
+  // Recomputes a stored column under the lock; a virtual one computes on read.
+  "set expression": {
+    phase: 12,
+    render: (fact, { to }) =>
+      `${alterColumn(fact, to)} set expression as (${fact.payload.expression});`,
+    hazards: ({ fact }) => (fact.payload.storage === "stored" ? REWRITE : []),
   },
   "add identity": {
     phase: 13,
@@ -209,6 +227,9 @@ function columnDefinition(column: FactOf<"column">, to: Catalog): string {
   for (const child of childrenOf(to, column)) {
     if (child.kind === "identity") parts.push(identityClause(child));
     if (child.kind === "default") parts.push(`default ${defaultClause(child)}`);
+    if (child.kind === "generated") {
+      parts.push(`generated always as (${child.payload.expression}) ${child.payload.storage}`);
+    }
   }
   return parts.join(" ");
 }
@@ -233,7 +254,10 @@ function alterTable(fact: Fact, catalog: Catalog): string {
 }
 
 /** `alter column` for `fact`, a column or one of its attributes. */
-function alterColumn(fact: FactOf<"column" | "default" | "identity">, catalog: Catalog): string {
+function alterColumn(
+  fact: FactOf<"column" | "default" | "identity" | "generated">,
+  catalog: Catalog,
+): string {
   const column = fact.kind === "column" ? fact : parentOf(catalog, fact);
   return `${alterTable(column, catalog)} alter column ${quoteIdentifier(column.name)}`;
 }

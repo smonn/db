@@ -7,6 +7,7 @@ export type {
   DefaultPayload,
   DefinitionTables,
   Fact,
+  GeneratedPayload,
   IdentityPayload,
   Key,
   PrimaryKeyPayload,

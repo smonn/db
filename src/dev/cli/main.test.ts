@@ -118,6 +118,19 @@ describe("main verify", () => {
     expect(cli.stderr).toMatch(/^000002-b\.sql: --! Hash says /u);
   });
 
+  it("exits 1 naming a forked chain's two files and their shared parent", async () => {
+    const file = await writeVerifyConfig();
+    await commitChain();
+    const a = await writeMigration("000001-a.sql", undefined, "create table a (n int);\n");
+    const other = await writeMigration("000002-other.sql", a.hash, "create table o (n int);\n");
+    await writeFile(join(cli.dir, "migrations", other.filename), other.content);
+
+    expect(await main(["verify", "--config", file])).toBe(1);
+    expect(cli.stderr).toBe(
+      "forked chain: 000002-b.sql and 000002-other.sql both follow 000001-a.sql\n",
+    );
+  });
+
   it("exits 2 given an argument", async () => {
     expect(await main(["verify", "now"])).toBe(2);
     expect(cli.stderr).toContain("verify takes no arguments: now");

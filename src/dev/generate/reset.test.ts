@@ -2,9 +2,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import type { Driver } from "../../runtime/ports/index.ts";
+import { writeMigration } from "../../runtime/internal/index.ts";
 import { commit } from "./commit.ts";
 import { generate } from "./generate.ts";
-import { memoryFileSystem, type MemoryFileSystem } from "./memory-file-system.test-helper.ts";
+import {
+  filesIn,
+  memoryFileSystem,
+  type MemoryFileSystem,
+} from "./memory-file-system.test-helper.ts";
 import { reset } from "./reset.ts";
 
 const db = useTestDatabase();
@@ -38,6 +43,26 @@ async function tables(): Promise<unknown[]> {
     "select table_schema || '.' || table_name as name from information_schema.tables where table_schema not in ('pg_catalog', 'information_schema') order by 1",
   );
   return rows.map((row) => row["name"]);
+}
+
+async function markedDevDatabaseWithData(): Promise<void> {
+  await reset({ driver: db.driver, fileSystem: memoryFileSystem(), migrations: MIGRATIONS });
+  await db.driver.execute(
+    "create table public.keep (id int); insert into public.keep values (1), (2); create schema extra; create table extra.junk (id int)",
+  );
+}
+
+async function survives(): Promise<void> {
+  expect(await tables()).toStrictEqual([
+    "extra.junk",
+    "public.keep",
+    "smonn_db.current",
+    "smonn_db.migrations",
+  ]);
+  expect((await db.driver.query("select id from public.keep order by id")).rows).toStrictEqual([
+    { id: 1 },
+    { id: 2 },
+  ]);
 }
 
 describe("reset", () => {
@@ -116,6 +141,50 @@ describe("reset", () => {
 
     expect(await tables()).toStrictEqual(before);
     expect(before).toContain("extra.junk");
+  });
+
+  describe("when the replay fails", () => {
+    it("leaves the Dev database as it was when current.sql has a SQL error", async () => {
+      await markedDevDatabaseWithData();
+      const fileSystem = memoryFileSystem({
+        [CURRENT]: "create table public.notes (id int);\nselect * from public.missing;\n",
+      });
+
+      await expect(
+        reset({ driver: db.driver, fileSystem, migrations: MIGRATIONS }),
+      ).rejects.toThrow(`relation "public.missing" does not exist`);
+
+      await survives();
+    });
+
+    it("leaves the Dev database as it was when a Committed migration has a SQL error", async () => {
+      await markedDevDatabaseWithData();
+      const first = await writeMigration("000001-broken.sql", undefined, "select * from missing;");
+      const fileSystem = memoryFileSystem(filesIn(MIGRATIONS, [first]));
+
+      await expect(
+        reset({ driver: db.driver, fileSystem, migrations: MIGRATIONS }),
+      ).rejects.toThrow("000001-broken.sql");
+
+      await survives();
+    });
+
+    it("names the Committed migration that fails after an earlier one applied", async () => {
+      await markedDevDatabaseWithData();
+      const first = await writeMigration("000001-ok.sql", undefined, "create table ok (id int);");
+      const second = await writeMigration(
+        "000002-broken.sql",
+        first.hash,
+        "select * from missing;",
+      );
+      const fileSystem = memoryFileSystem(filesIn(MIGRATIONS, [first, second]));
+
+      await expect(
+        reset({ driver: db.driver, fileSystem, migrations: MIGRATIONS }),
+      ).rejects.toThrow("000002-broken.sql");
+
+      await survives();
+    });
   });
 
   it("runs on an empty Database and marks it", async () => {
