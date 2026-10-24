@@ -70,7 +70,6 @@ afterEach(() => {
 beforeEach(async () => {
   // A git hook running these tests exports GIT_DIR and friends, which would point git at this repo.
   for (const name of Object.keys(process.env).filter((key) => key.startsWith("GIT_"))) {
-    // oxlint-disable-next-line unicorn/no-useless-undefined -- stubEnv needs undefined to unset.
     vi.stubEnv(name, undefined);
   }
   stdout = "";
