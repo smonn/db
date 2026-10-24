@@ -66,6 +66,57 @@ class Box { run() { counter++; } }
     expect(topLevelEffects('import { a } from "./a.mjs";')).toEqual([]);
   });
 
+  it("skips an instance class field, public or private, which runs at construction", () => {
+    expect(topLevelEffects("class A { x = (a = 1); y = n++; z = new Foo(); }")).toEqual([]);
+    expect(topLevelEffects("class A { #x = (a = 1); #y = n++; #z = new Foo(); }")).toEqual([]);
+  });
+
+  it("flags a computed key of an instance field, which is evaluated at class definition", () => {
+    expect(topLevelEffects("class A { [n++] = 1; }")).toEqual(["UpdateExpression: n++"]);
+  });
+
+  it("flags a static class field, public or private, which runs at load", () => {
+    expect(topLevelEffects("class A { static x = n++; }")).toEqual(["UpdateExpression: n++"]);
+    expect(topLevelEffects("class A { static #x = new Foo(); }")).toEqual([
+      "NewExpression: new Foo()",
+    ]);
+  });
+
+  it("allows a call or construction marked as pure, in either annotation spelling", () => {
+    const source = `import { make } from "./make.mjs";
+const a = /* @__PURE__ */ make();
+const b = /*#__PURE__*/ new Foo();
+const c = (/* @__PURE__ */ make());
+`;
+
+    expect(topLevelEffects(source)).toEqual([]);
+  });
+
+  it("still flags an effect inside the arguments of a pure call", () => {
+    expect(topLevelEffects("const a = /* @__PURE__ */ make(n++);")).toEqual([
+      "UpdateExpression: n++",
+    ]);
+  });
+
+  it("flags a call that follows an ordinary comment rather than a pure annotation", () => {
+    expect(topLevelEffects("const a = /* note */ make();")).toEqual(["CallExpression: make()"]);
+    expect(topLevelEffects("const a = /* @__PURE__ */ 1, b = make();")).toEqual([
+      "CallExpression: make()",
+    ]);
+  });
+
+  it("flags a call to an imported function, since a static check cannot see what it does", () => {
+    expect(topLevelEffects('import { join } from "node:path";\nconst p = join("a", "b");')).toEqual(
+      ['CallExpression: join("a", "b")'],
+    );
+  });
+
+  it("flags a tagged template, since the tag runs at load", () => {
+    expect(topLevelEffects("const q = sql`select 1`;")).toEqual([
+      "TaggedTemplateExpression: sql`select 1`",
+    ]);
+  });
+
   it("allows a call to a local function in an initializer but not as a statement", () => {
     expect(topLevelEffects("const f = () => 1;\nconst x = f();")).toEqual([]);
     expect(topLevelEffects("const f = () => 1;\nf();")).toEqual(["ExpressionStatement: f();"]);

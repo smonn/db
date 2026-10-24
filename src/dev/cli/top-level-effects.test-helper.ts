@@ -34,6 +34,11 @@ const DEFERRED = new Set([
   "MethodProperty",
 ]);
 
+/** Class field nodes: a non-static one runs at construction, a static one when the class is defined. */
+const FIELDS = new Set(["ClassProperty", "PrivateProperty"]);
+
+const PURE_ANNOTATION = /\/\*\s*[@#]__PURE__\s*\*\/$/u;
+
 function typeOf(node: object): string {
   const type: unknown = Reflect.get(node, "type");
   return typeof type === "string" ? type : "";
@@ -51,13 +56,27 @@ function pureConstructor(node: object): boolean {
   return name !== undefined && PURE_CONSTRUCTORS.has(name);
 }
 
-function effectOf(node: object, local: ReadonlySet<string>): string | null {
+/** Whether a `/* @__PURE__ *\/` or `/*#__PURE__*\/` comment sits right before the node. */
+function markedPure(node: object, source: Source): boolean {
+  const span: unknown = Reflect.get(node, "span");
+  const start: unknown = typeof span === "object" && span !== null ? Reflect.get(span, "start") : 0;
+  if (typeof start !== "number") return false;
+  const before = source.bytes
+    .subarray(0, start - source.base)
+    .toString("utf8")
+    .trimEnd();
+  return PURE_ANNOTATION.test(before);
+}
+
+function effectOf(node: object, local: ReadonlySet<string>, source: Source): string | null {
   const type = typeOf(node);
   if (type === "CallExpression") {
     const name = calleeName(node);
-    return name !== undefined && local.has(name) ? null : type;
+    return (name !== undefined && local.has(name)) || markedPure(node, source) ? null : type;
   }
-  if (type === "NewExpression") return pureConstructor(node) ? null : type;
+  if (type === "NewExpression") {
+    return pureConstructor(node) || markedPure(node, source) ? null : type;
+  }
   if (type === "ImportDeclaration") {
     const specifiers: unknown = Reflect.get(node, "specifiers");
     return Array.isArray(specifiers) && specifiers.length === 0 ? type : null;
@@ -65,6 +84,11 @@ function effectOf(node: object, local: ReadonlySet<string>): string | null {
   if (type === "UnaryExpression") return Reflect.get(node, "operator") === "delete" ? type : null;
   return EFFECT_TYPES.has(type) ? type : null;
 }
+
+type Source = {
+  readonly bytes: Buffer;
+  readonly base: number;
+};
 
 /** The node's source, collapsed to one line and cut to about 80 characters. */
 function snippet(node: object, bytes: Buffer, base: number): string {
@@ -80,11 +104,6 @@ function snippet(node: object, bytes: Buffer, base: number): string {
   return text.length > 80 ? `${text.slice(0, 77)}...` : text;
 }
 
-type Source = {
-  readonly bytes: Buffer;
-  readonly base: number;
-};
-
 function walk(node: unknown, local: ReadonlySet<string>, source: Source, found: string[]): void {
   if (typeof node !== "object" || node === null) return;
   if (Array.isArray(node)) {
@@ -92,7 +111,12 @@ function walk(node: unknown, local: ReadonlySet<string>, source: Source, found: 
     return;
   }
   if (DEFERRED.has(typeOf(node))) return;
-  const effect = effectOf(node, local);
+  if (FIELDS.has(typeOf(node)) && Reflect.get(node, "isStatic") !== true) {
+    // The value runs at construction, but a computed key is evaluated when the class is defined.
+    walk(Reflect.get(node, "key"), local, source, found);
+    return;
+  }
+  const effect = effectOf(node, local, source);
   if (effect !== null) found.push(`${effect}: ${snippet(node, source.bytes, source.base)}`);
   for (const value of Object.values(node)) walk(value, local, source, found);
 }
@@ -137,6 +161,20 @@ function localFunctions(body: readonly object[]): Set<string> {
  * exports, and literals run nothing. A call to a function the module declares itself is allowed
  * inside an initializer, such as `const RULES = { drop: always("data_loss") }`; as a statement it
  * still counts. This is a static check, so it does not follow what a local function does.
+ *
+ * Skipped because it does not run at load: function, method, accessor, and constructor bodies, and
+ * the value of a non-static class field, public or private, which runs at construction. A computed
+ * key of such a field is evaluated when the class is defined, so it still counts. A call or `new`
+ * right after a `/* @__PURE__ *\/` or `/*#__PURE__*\/` comment passes, since the bundler writes that
+ * annotation only where it has proved the call free of effects. Its arguments still count.
+ *
+ * Still flagged, on purpose:
+ * - A static class field value, public or private. It runs when the class is defined.
+ * - A call to an imported function, such as `const p = join("a", "b")`. A static check cannot see
+ *   what the import does, and even a pure helper may move into a shared chunk. Mark it
+ *   `/* @__PURE__ *\/` where it is safe, or call it inside a function.
+ * - A tagged template, such as a constant `sql` template. The tag is a call, so it has the same
+ *   blind spot as an imported function.
  */
 export function topLevelEffects(source: string): string[] {
   const module = parseSync(source, { syntax: "ecmascript", target: "es2022" });
