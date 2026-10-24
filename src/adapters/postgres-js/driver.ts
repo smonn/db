@@ -1,6 +1,7 @@
 import postgres, { type ParameterOrJSON, type ReservedSql, type Sql } from "postgres";
 import type { Driver, Queryable, Session } from "../../runtime/ports/index.ts";
-import { formatTimestamp, hasPostgresJsConnection, hasPostgresJsTypes } from "./value-types.ts";
+import { bindDateParams } from "./date-params.ts";
+import { hasPostgresJsConnection, hasPostgresJsTypes } from "./value-types.ts";
 
 // Without params, postgres.js switches to the simple protocol unless `simple` is false, which its
 // types leave out of UnsafeQueryOptions.
@@ -31,11 +32,10 @@ function queryable(connection: ReservedSql | Sql): Queryable {
     async query(text, params = []) {
       // postgres.js types a Date param as timestamptz, which Postgres converts to a timestamp in
       // the session's zone. Sent as untyped UTC text, it takes its column's type instead.
+      const bound = bindDateParams(text, params);
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- postgres.js serializes any param value.
-      const values = params.map((value) =>
-        value instanceof Date ? formatTimestamp(value) : value,
-      ) as ParameterOrJSON<never>[];
-      const result = await connection.unsafe(text, values, prepared);
+      const values = bound.values as ParameterOrJSON<never>[];
+      const result = await connection.unsafe(bound.text, values, prepared);
       return { rows: [...result], count: result.count ?? 0 };
     },
     async execute(script) {
@@ -149,6 +149,11 @@ async function returnToPool(reserved: ReservedSql): Promise<void> {
  * The caller owns `sql` and ends it. Create it with
  * `postgres(url, { types: postgresJsTypes, connection: postgresJsConnection })`, or rows hold
  * postgres.js's default values, or values in the database's DateStyle and bytea_output.
+ *
+ * A `Date` param, or an array of them, is bound without a type, so Postgres reads it as the
+ * type of its column or other operand. Each use of the same `$n` is bound apart, so one `Date`
+ * can meet a `timestamp` and a `timestamptz`. Where nothing names a type, such as
+ * `$1 - interval '1 hour'`, write the cast: `$1::timestamptz - interval '1 hour'`.
  */
 export function postgresJsDriver(sql: Sql): Driver {
   if (!hasPostgresJsTypes(sql.options.parsers)) {
