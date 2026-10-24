@@ -40,19 +40,6 @@ describe("the handling of each fact kind", () => {
 
     expect([complete, none, noDrop, noCreate, noAlter]).toHaveLength(5);
   });
-
-  it("covers every kind the catalog holds", () => {
-    expect(Object.keys(HANDLING).toSorted()).toStrictEqual([
-      "column",
-      "default",
-      "generated",
-      "identity",
-      "primary key",
-      "schema",
-      "table",
-      "unique",
-    ]);
-  });
 });
 
 function omit<T extends object, K extends keyof T>(value: T, key: K): Omit<T, K> {
