@@ -1,5 +1,6 @@
 import type { Table } from "../../runtime/definition/index.ts";
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
+import { constraintNames } from "./constraint-names.ts";
 
 export type ColumnPayload = {
   /** The type as `format_type` renders it, such as `character varying(20)`. */
@@ -183,7 +184,8 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
   const builder = catalogBuilder();
   for (const [schema, tables] of Object.entries(definition)) {
     builder.schema(schema);
-    for (const [table, { columns, primaryKey }] of Object.entries(tables)) {
+    const names = constraintNames(schema, tables);
+    for (const [table, { columns, primaryKey, primaryKeyName }] of Object.entries(tables)) {
       builder.table(schema, table);
       const entries = Object.entries(columns);
       for (const [column, { state }] of entries) {
@@ -203,32 +205,19 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
         }
       }
       if (primaryKey.length > 0) {
-        builder.primaryKey(schema, table, constraintName(table, "pkey"), {
+        builder.primaryKey(schema, table, names.primaryKey(table, primaryKey, primaryKeyName), {
           columns: [...primaryKey],
         });
       }
       for (const [column, { state }] of entries) {
         if (state.unique) {
-          builder.unique(schema, table, constraintName(table, `${column}_key`), { column });
+          const name = names.unique(table, column, state.constraintName);
+          builder.unique(schema, table, name, { column });
         }
       }
     }
   }
   return builder.build();
-}
-
-const MAX_NAME_BYTES = 63;
-
-/**
- * Postgres's own default names (`users_pkey`, `users_email_key`), so a hand-written constraint
- * introspects to the same name. Postgres truncates a longer name, which would not key back.
- */
-function constraintName(table: string, suffix: string): string {
-  const name = `${table}_${suffix}`;
-  if (new TextEncoder().encode(name).length > MAX_NAME_BYTES) {
-    throw new Error(`the constraint name ${quoted([name])} is longer than ${MAX_NAME_BYTES} bytes`);
-  }
-  return name;
 }
 
 const TYPE_NAMES: Readonly<Record<string, string>> = {

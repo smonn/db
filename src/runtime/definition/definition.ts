@@ -1,138 +1,12 @@
-type Identity = "always" | "by default";
-
-export type ColumnState = {
-  readonly sqlType: string;
-  /** True for a primary key or identity column too, as Postgres makes them. */
-  readonly notNull: boolean;
-  /** A SQL expression, written as it would follow `default` in DDL. */
-  readonly default: string | undefined;
-  readonly identity: Identity | undefined;
-  /** True when `.primaryKey()` made this column the table's whole primary key. */
-  readonly primaryKey: boolean;
-  readonly unique: boolean;
-};
-
-/**
- * `Int` is true for the types Postgres allows an identity on. `Gen` is true once the column has a
- * default or an identity, which Postgres allows only one of. `Pk` is true once `.primaryKey()` ran.
- */
-export type Column<
-  V,
-  N extends boolean = false,
-  Int extends boolean = false,
-  Gen extends boolean = false,
-  Pk extends boolean = false,
-> = {
-  readonly state: ColumnState;
-  /** Type-only: the value a row holds, whether the column is NOT NULL, and whether it is the primary key. */
-  readonly "~types": { readonly value: V; readonly notNull: N; readonly primaryKey: Pk };
-  notNull(): Column<V, true, Int, Gen, Pk>;
-  /** A unique constraint on this column alone. */
-  unique(): Column<V, N, Int, Gen, Pk>;
-} & (Pk extends true
-  ? unknown
-  : {
-      /** The table's whole primary key. A composite key goes in `defineTable`'s second callback. */
-      primaryKey(): Column<V, true, Int, Gen, true>;
-    }) &
-  (Gen extends true
-    ? unknown
-    : {
-        /** Takes a SQL expression, such as `now()`; a string literal needs its quotes (`"'new'"`). */
-        default(expression: string): Column<V, N, Int, true, Pk>;
-      } & (Int extends true
-        ? {
-            /** Generates the value from a sequence. */
-            identity(generated?: Identity): Column<V, true, Int, true, Pk>;
-          }
-        : unknown));
-
-/** A column of any kind, which is all a table needs to read. */
-type AnyColumn = {
-  readonly state: ColumnState;
-  readonly "~types": {
-    readonly value: unknown;
-    readonly notNull: boolean;
-    readonly primaryKey: boolean;
-  };
-};
-
-function column<V, N extends boolean, Int extends boolean, Gen extends boolean, Pk extends boolean>(
-  state: ColumnState,
-): Column<V, N, Int, Gen, Pk> {
-  const parts = {
-    state,
-    notNull: () => column({ ...state, notNull: true }),
-    default: (expression: string) => column({ ...state, default: expression }),
-    identity: (generated: Identity = "by default") =>
-      column({ ...state, notNull: true, identity: generated }),
-    primaryKey: () => column({ ...state, notNull: true, primaryKey: true }),
-    unique: () => column({ ...state, unique: true }),
-  };
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- "~types" exists only in types, so `parts` doesn't overlap `Column` enough for a direct cast (TS2352); it goes through `unknown`.
-  return parts as unknown as Column<V, N, Int, Gen, Pk>;
-}
-
-export type ColumnFactories = {
-  readonly text: () => Column<string>;
-  readonly varchar: (length: number) => Column<string>;
-  readonly smallint: () => Column<number, false, true>;
-  readonly integer: () => Column<number, false, true>;
-  readonly bigint: () => Column<bigint, false, true>;
-  /** Without a precision the column holds any number of digits. */
-  readonly numeric: (precision?: number, scale?: number) => Column<string>;
-  readonly real: () => Column<number>;
-  readonly doublePrecision: () => Column<number>;
-  readonly boolean: () => Column<boolean>;
-  readonly uuid: () => Column<string>;
-  readonly date: () => Column<string>;
-  readonly timestamp: () => Column<Date>;
-  readonly timestamptz: () => Column<Date>;
-  readonly jsonb: <T = unknown>() => Column<T>;
-  readonly bytea: () => Column<Uint8Array>;
-};
-
-function of<V, Int extends boolean = false>(sqlType: string): Column<V, false, Int> {
-  return column<V, false, Int, false, false>({
-    sqlType,
-    notNull: false,
-    default: undefined,
-    identity: undefined,
-    primaryKey: false,
-    unique: false,
-  });
-}
-
-function numericType(precision?: number, scale?: number): string {
-  if (precision === undefined) return "numeric";
-  return scale === undefined ? `numeric(${precision})` : `numeric(${precision},${scale})`;
-}
-
-const factories: ColumnFactories = {
-  text: () => of("text"),
-  varchar: (length) => of(`varchar(${length})`),
-  smallint: () => of("smallint"),
-  integer: () => of("integer"),
-  bigint: () => of("bigint"),
-  numeric: (precision, scale) => of(numericType(precision, scale)),
-  real: () => of("real"),
-  doublePrecision: () => of("double precision"),
-  boolean: () => of("boolean"),
-  uuid: () => of("uuid"),
-  date: () => of("date"),
-  timestamp: () => of("timestamp"),
-  timestamptz: () => of("timestamptz"),
-  jsonb: () => of("jsonb"),
-  bytea: () => of("bytea"),
-};
-
-export type Columns = Record<string, AnyColumn>;
+import { type ColumnFactories, type Columns, factories } from "./column.ts";
 
 /** A table without its name or schema, which `defineDatabase` gives it. */
 export type TableDefinition<C extends Columns = Columns, K extends string = string> = {
   readonly columns: C;
   /** The primary key's columns in key order, empty without one. */
   readonly primaryKey: readonly K[];
+  /** The primary key's constraint name when the Definition gives one; the catalog derives it otherwise. */
+  readonly primaryKeyName: string | undefined;
 };
 
 export type Table<C extends Columns = Columns, K extends string = string> = TableDefinition<
@@ -155,21 +29,31 @@ type IsUnion<T, U = T> = [T] extends [never]
       : true
     : never;
 
-/** A reference to a column of the table being defined, which table-level entries name instead of a string. */
-export type Ref<K extends string = string> = { readonly "~ref": K };
+/**
+ * A reference to column `K` of the table with columns `C`, which table-level entries name instead of
+ * a string. `"~table"` exists only in types; its function type holds `C` invariant, so a reference
+ * from a table with other columns fails to compile.
+ */
+export type Ref<K extends string = string, C extends Columns = Columns> = {
+  readonly "~ref": K;
+  readonly "~table": (columns: C) => C;
+};
 
 /** The column references handed to a table's second callback, one per column key. */
-export type Refs<C extends Columns> = { readonly [K in keyof C & string]: Ref<K> };
+export type Refs<C extends Columns> = { readonly [K in keyof C & string]: Ref<K, C> };
 
-type KeyRefs<C extends Columns> = readonly [
-  Ref<keyof C & string>,
-  Ref<keyof C & string>,
-  ...Ref<keyof C & string>[],
-];
+type OwnRef<C extends Columns> = Ref<keyof C & string, C>;
+
+type KeyRefs<C extends Columns> = readonly [OwnRef<C>, OwnRef<C>, ...OwnRef<C>[]];
+
+/** A composite key's columns, or its columns and the constraint name that replaces the derived one. */
+type KeyEntry<C extends Columns> =
+  | KeyRefs<C>
+  | { readonly name: string; readonly columns: KeyRefs<C> };
 
 /** The table-level entries, keyed by kind. Later kinds (indexes, checks) join here. */
 type TableExtras<C extends Columns> = [KeyedColumns<C>] extends [never]
-  ? { readonly primaryKey?: KeyRefs<C> }
+  ? { readonly primaryKey?: KeyEntry<C> }
   : { readonly primaryKey?: never };
 
 /** The arguments after the columns; a misuse of the primary key leaves no argument list that fits. */
@@ -183,33 +67,69 @@ type ExtrasArgs<C extends Columns> =
       ]
     : [extras?: (t: Refs<C>) => TableExtras<C>];
 
+type ListedRefs<Entry> = Entry extends { readonly columns: infer Listed } ? Listed : Entry;
+
 type KeyOf<C extends Columns, Args extends unknown[]> = Args extends [
-  (t: never) => { readonly primaryKey: readonly Ref<infer K>[] },
+  (t: never) => { readonly primaryKey: infer Entry },
 ]
-  ? K
+  ? ListedRefs<Entry> extends readonly Ref<infer K, C>[]
+    ? K
+    : never
   : KeyedColumns<C>;
 
-function refsOf(columns: Columns): Record<string, Ref> {
+/** A `Ref` as it exists at runtime; one table's references are told from another's by identity. */
+type RuntimeRefs = Readonly<Record<string, { readonly "~ref": string }>>;
+
+function refsOf(columns: Columns): RuntimeRefs {
   return Object.fromEntries(Object.keys(columns).map((name) => [name, { "~ref": name }]));
 }
 
-function primaryKeyOf(columns: Columns, declared: unknown): string[] {
-  const single = Object.entries(columns)
-    .filter(([, { state }]) => state.primaryKey)
-    .map(([name]) => name);
+/** The column key `ref` names, once it proves to be one of this table's own references. */
+function columnOf(own: RuntimeRefs, ref: unknown, entry: string): string {
+  const name = typeof ref === "object" && ref !== null && "~ref" in ref ? ref["~ref"] : undefined;
+  if (typeof name !== "string") {
+    throw new TypeError(`The table's ${entry} names something that is not one of its columns`);
+  }
+  if (own[name] !== ref) {
+    throw new Error(
+      `The table's ${entry} takes "${name}" from another table; name columns through the references its own second callback receives`,
+    );
+  }
+  return name;
+}
+
+type PrimaryKey = { readonly columns: string[]; readonly name: string | undefined };
+
+function primaryKeyOf(columns: Columns, own: RuntimeRefs, declared: unknown): PrimaryKey {
+  const single = Object.entries(columns).filter(([, { state }]) => state.primaryKey);
   if (declared === undefined) {
     if (single.length > 1) {
       throw new Error(
-        `Columns ${single.map((n) => `"${n}"`).join(", ")} each call primaryKey(); declare a composite key in the table's second callback instead`,
+        `Columns ${single.map(([n]) => `"${n}"`).join(", ")} each call primaryKey(); declare a composite key in the table's second callback instead`,
       );
     }
-    return single;
+    return { columns: single.map(([n]) => n), name: single[0]?.[1].state.constraintName };
   }
   if (single.length > 0) {
     throw new Error(
-      `Column "${single[0]}" calls primaryKey() and the table's second callback also declares a primary key; use one`,
+      `Column "${single[0]?.[0]}" calls primaryKey() and the table's second callback also declares a primary key; use one`,
     );
   }
+  const entry = keyEntry(declared);
+  return { columns: keyColumns(own, entry.columns), name: entry.name };
+}
+
+function keyEntry(declared: unknown): { name: string | undefined; columns: unknown } {
+  if (Array.isArray(declared)) return { name: undefined, columns: declared };
+  if (typeof declared === "object" && declared !== null && "name" in declared) {
+    const { name } = declared;
+    if (typeof name === "string")
+      return { name, columns: "columns" in declared && declared.columns };
+  }
+  throw new TypeError("The table's primaryKey takes a list of columns or { name, columns }");
+}
+
+function keyColumns(own: RuntimeRefs, declared: unknown): string[] {
   const refs: unknown[] = Array.isArray(declared) ? declared : [];
   if (refs.length < 2) {
     throw new Error(
@@ -218,10 +138,7 @@ function primaryKeyOf(columns: Columns, declared: unknown): string[] {
   }
   const keys: string[] = [];
   for (const ref of refs) {
-    const name = typeof ref === "object" && ref !== null && "~ref" in ref ? ref["~ref"] : undefined;
-    if (typeof name !== "string" || !Object.hasOwn(columns, name)) {
-      throw new Error("The table's primaryKey names something that is not one of its columns");
-    }
+    const name = columnOf(own, ref, "primaryKey");
     if (keys.includes(name)) {
       throw new Error(`The table's primaryKey lists "${name}" twice`);
     }
@@ -236,11 +153,22 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
 ): TableDefinition<C, KeyOf<C, Args>> {
   const columns = define(factories);
   const extras: ((t: Refs<C>) => { readonly primaryKey?: unknown }) | undefined = args[0];
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- refsOf builds one Ref per key.
-  const declared = extras?.(refsOf(columns) as Refs<C>);
-  const primaryKey = primaryKeyOf(columns, declared?.primaryKey);
+  const own = refsOf(columns);
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- refsOf builds one Ref per key; "~table" exists only in types.
+  const declared = extras?.(own as unknown as Refs<C>);
+  const primaryKey = primaryKeyOf(columns, own, declared?.primaryKey);
+  const both = Object.entries(columns).find(([, { state }]) => state.primaryKey && state.unique);
+  if (both !== undefined) {
+    throw new Error(
+      `Column "${both[0]}" calls both primaryKey() and unique(); a primary key is already unique`,
+    );
+  }
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the key names are checked above.
-  return { columns, primaryKey } as unknown as TableDefinition<C, KeyOf<C, Args>>;
+  return {
+    columns,
+    primaryKey: primaryKey.columns,
+    primaryKeyName: primaryKey.name,
+  } as unknown as TableDefinition<C, KeyOf<C, Args>>;
 }
 
 type Schemas = Record<string, Record<string, TableDefinition>>;
@@ -259,9 +187,9 @@ export function defineDatabase<S extends Schemas>(schemas: S): Database<S> {
     Object.entries(schemas).map(([schema, tables]) => [
       schema,
       Object.fromEntries(
-        Object.entries(tables).map(([name, { columns, primaryKey }]) => [
+        Object.entries(tables).map(([name, { columns, primaryKey, primaryKeyName }]) => [
           name,
-          { schema, name, columns, primaryKey },
+          { schema, name, columns, primaryKey, primaryKeyName },
         ]),
       ),
     ]),
