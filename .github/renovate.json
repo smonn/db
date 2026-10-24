@@ -22,7 +22,8 @@
       "matchStrings": [
         "// (?<currentValue>v\\S+)\\n\\s*\"\\s*- uses: (?<depName>[\\w.-]+/[\\w.-]+)@(?<currentDigest>[0-9a-f]{40})\""
       ],
-      "datasourceTemplate": "github-tags"
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "github-actions"
     }
   ],
   "packageRules": [
@@ -36,6 +37,12 @@
       "matchDepTypes": ["devDependencies"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "devDependencies (non-major)"
+    },
+    {
+      "description": "One PR bumps the pnpm/setup version pin in release.yml and the lockfile's pnpm, which scripts/check-oidc-jobs.ts holds equal.",
+      "matchManagers": ["github-actions", "npm"],
+      "matchDepNames": ["pnpm"],
+      "groupName": "pnpm"
     }
   ]
 }
