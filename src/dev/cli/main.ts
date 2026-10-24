@@ -60,6 +60,13 @@ function parseAccept(value: string | undefined): HazardKind[] {
   return accepted;
 }
 
+/** Each flag that only one command takes, and that command. */
+const FLAG_COMMANDS = { accept: "commit", erase: "reset" } as const;
+
+function checkNoArguments(name: string, args: readonly string[]): void {
+  if (args.length > 0) throw new UsageError(`${name} takes no arguments: ${args.join(" ")}`);
+}
+
 function parseCommand(argv: readonly string[]): Command {
   let parsed;
   try {
@@ -77,19 +84,19 @@ function parseCommand(argv: readonly string[]): Command {
   }
   const [name, ...args] = parsed.positionals;
   const config = parsed.values.config ?? DEFAULT_CONFIG;
-  const erase = parsed.values.erase === true;
-  if (erase && name !== "reset") throw new UsageError("--erase applies only to reset");
-  if (parsed.values.accept !== undefined && name !== "commit") {
-    throw new UsageError("--accept applies only to commit");
+  for (const [flag, command] of Object.entries(FLAG_COMMANDS)) {
+    if (Object.hasOwn(parsed.values, flag) && name !== command) {
+      throw new UsageError(`--${flag} applies only to ${command}`);
+    }
   }
   switch (name) {
     case "reset":
-      if (args.length > 0) throw new UsageError(`reset takes no arguments: ${args.join(" ")}`);
-      return { name, erase, config };
+      checkNoArguments(name, args);
+      return { name, erase: parsed.values.erase === true, config };
     case "generate":
     case "migrate":
     case "verify":
-      if (args.length > 0) throw new UsageError(`${name} takes no arguments: ${args.join(" ")}`);
+      checkNoArguments(name, args);
       return { name, config };
     case "commit": {
       const [slug] = args;
