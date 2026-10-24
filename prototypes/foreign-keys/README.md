@@ -42,4 +42,7 @@ Every variant declares the same five tables: `users` and `orders` point at each 
 
 ## Outcome
 
-Pending the maintainer's pick.
+The maintainer picked **[C both](c-both/db.ts)**: it follows ADR-0010's primary key rule (one column on the column, a composite key in the second callback), and the common case reads like SQL's `references users (id)`. Two diff decisions came with it:
+
+- Adding a foreign key to an existing table gets a new Hazard kind for the write lock. Splitting it into `NOT VALID` then `VALIDATE` waits on [Migrations can't opt out of a transaction](https://github.com/smonn/db/issues/375).
+- `introspect` treats a `NOT VALID` foreign key as the same fact. That ticket revisits whether diff should emit `VALIDATE` for one.
