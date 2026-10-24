@@ -75,6 +75,39 @@ class Box { run() { counter++; } }
     expect(topLevelEffects("class A { [n++] = 1; }")).toEqual(["UpdateExpression: n++"]);
   });
 
+  it("flags a computed key of a class method, static, getter, or setter, but not its body", () => {
+    expect(topLevelEffects("class A { [n++]() {} }")).toEqual(["UpdateExpression: n++"]);
+    expect(topLevelEffects("class A { static [n++]() {} }")).toEqual(["UpdateExpression: n++"]);
+    expect(topLevelEffects("class A { get [n++]() { return 1; } }")).toEqual([
+      "UpdateExpression: n++",
+    ]);
+    expect(topLevelEffects("class A { set [n++](v) {} }")).toEqual(["UpdateExpression: n++"]);
+  });
+
+  it("skips the body and parameters of a class method, static, getter, or setter", () => {
+    const source = `class A {
+  m(a = n++) { n++; init(); }
+  static s() { n++; }
+  get g() { return n++; }
+  set g(v) { n++; }
+  #p() { n++; }
+  constructor() { n++; }
+}`;
+
+    expect(topLevelEffects(source)).toEqual([]);
+  });
+
+  it("flags a computed key of an object literal method, getter, or setter, but not its body", () => {
+    expect(topLevelEffects("const o = { [n++]() { n++; } };")).toEqual(["UpdateExpression: n++"]);
+    expect(topLevelEffects("const o = { get [n++]() { return 1; } };")).toEqual([
+      "UpdateExpression: n++",
+    ]);
+    expect(topLevelEffects("const o = { set [n++](v) { n++; } };")).toEqual([
+      "UpdateExpression: n++",
+    ]);
+    expect(topLevelEffects("const o = { m() { n++; }, get g() { return n++; } };")).toEqual([]);
+  });
+
   it("flags a static class field, public or private, which runs at load", () => {
     expect(topLevelEffects("class A { static x = n++; }")).toEqual(["UpdateExpression: n++"]);
     expect(topLevelEffects("class A { static #x = new Foo(); }")).toEqual([
