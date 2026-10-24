@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    # edited re-runs the PR job when the title changes.
+    # edited re-runs CI when the title or base changes. A body-only edit skips every job.
     types: [opened, edited, synchronize, reopened]
   push:
     branches: [main]
@@ -11,12 +11,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # A body-only edit gets its own group, so it can't cancel the run on the PR's head.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base && 'body-edit' || 'ci' }}
   cancel-in-progress: true
 
 jobs:
   docs:
     name: Docs
+    if: ${{ !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
     runs-on: ubuntu-24.04
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
@@ -30,6 +32,7 @@ jobs:
 
   mermaid:
     name: Mermaid
+    if: ${{ !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,6 +43,7 @@ jobs:
 
   typecheck:
     name: Typecheck
+    if: ${{ !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
     runs-on: ubuntu-24.04
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
@@ -52,6 +56,7 @@ jobs:
 
   lint:
     name: Lint
+    if: ${{ !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
     runs-on: ubuntu-24.04
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
@@ -71,6 +76,7 @@ jobs:
 
   test:
     name: Test
+    if: ${{ !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -96,6 +102,7 @@ jobs:
 
   pr:
     name: PR
+    if: ${{ !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
     runs-on: ubuntu-24.04
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
@@ -114,7 +121,7 @@ jobs:
   # The main ruleset requires only this job, so adding or renaming a job needs no ruleset change.
   required:
     name: Required
-    if: ${{ always() }}
+    if: ${{ always() && !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
     needs: [docs, mermaid, typecheck, lint, test, pr]
     runs-on: ubuntu-24.04
     steps:
