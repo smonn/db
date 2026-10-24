@@ -1,0 +1,33 @@
+# Checks that read pull request metadata (title, branch, and so on) rather than code. They run on
+# `edited`, which a title or body edit fires, so they stay out of ci.yml: an edit there would restart
+# the full CI run. Put a new metadata check here, as a step in Metadata or as a job of its own that
+# the ruleset also requires.
+name: PR
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  # Every run judges the same PR state, so a newer one may cancel an older one.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  metadata:
+    name: Metadata
+    runs-on: ubuntu-24.04
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          cache: true
+      - env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BRANCH: ${{ github.head_ref }}
+        run: pnpm check:pr
