@@ -94,6 +94,15 @@ describe("main", () => {
     expect(posted(gh)).toEqual([]);
   });
 
+  test("treats an absent parent_issue_url as no parent", () => {
+    const gh = run(event(), {
+      [issueRoute]: fetched(),
+      [commentsRoute]: [[]],
+      [milestonePath]: [[parentIssue(44, "area:tooling")]],
+    });
+    expect(posted(gh)).toEqual([comment("#44")]);
+  });
+
   test("treats a null parent_issue_url as no parent", () => {
     const gh = run(event(), {
       [issueRoute]: fetched({ parent_issue_url: null }),
@@ -158,19 +167,6 @@ describe("main", () => {
     expect(posted(gh)).toEqual([comment("#46")]);
   });
 
-  test("fails when the fetched issue has neither parent field", () => {
-    const { parent_issue_url: _parent, sub_issues_summary: _summary, ...renamed } = fetched();
-    const gh = fakeGh({
-      [issueRoute]: renamed,
-      [commentsRoute]: [[]],
-      [milestonePath]: [[parentIssue(44, "area:tooling")]],
-    });
-    expect(() => {
-      main({ GITHUB_EVENT_PATH: writeEvent(event()) }, gh);
-    }).toThrow("$.parent_issue_url: expected");
-    expect(posted(gh)).toEqual([]);
-  });
-
   test("fails when the fetched issue lacks sub_issues_summary", () => {
     const { sub_issues_summary: _summary, ...partial } = fetched();
     const gh = fakeGh({
@@ -184,11 +180,12 @@ describe("main", () => {
     expect(posted(gh)).toEqual([]);
   });
 
-  // GitHub returns both parent fields as null for a pull request. The check throws on that shape
-  // today; it is unreachable while the workflow reacts only to `issues` events.
-  test("fails when both parent fields are null, as GitHub returns them for a pull request", () => {
+  // GitHub sends a pull request with no `parent_issue_url` and a null `sub_issues_summary` (#331).
+  // The check throws on that shape; it is unreachable while the workflow reacts only to `issues`
+  // events.
+  test("fails on a pull request's null sub_issues_summary", () => {
     const gh = fakeGh({
-      [issueRoute]: fetched({ parent_issue_url: null, sub_issues_summary: null }),
+      [issueRoute]: fetched({ sub_issues_summary: null }),
       [commentsRoute]: [[]],
       [milestonePath]: [[parentIssue(44, "area:tooling")]],
     });
