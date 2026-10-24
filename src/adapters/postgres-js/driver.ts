@@ -212,8 +212,8 @@ export function postgresJsDriver(sql: Sql): Driver {
       try {
         result = await fn(reservedSession(connection));
       } catch (error) {
-        // postgres.js already moved the connection to its closed queue, and releasing it would
-        // hand the dead connection to the next query.
+        // A recorded-dead connection is never released: postgres.js closes it, and releasing it
+        // would hand the dead connection to the next query.
         if (connection.ended()) {
           throw error;
         }

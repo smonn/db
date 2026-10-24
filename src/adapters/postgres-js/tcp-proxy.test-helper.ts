@@ -9,8 +9,8 @@ export type TcpProxy = {
   readonly close: () => Promise<void>;
 };
 
-/** Forwards TCP from `port` on localhost to the server `url` names. */
-export async function startTcpProxy(url: string, port: number): Promise<TcpProxy> {
+/** Forwards TCP from a free port on localhost to the server `url` names. */
+export async function startTcpProxy(url: string): Promise<TcpProxy> {
   const target = new URL(url);
   const pairs = new Set<readonly [Socket, Socket]>();
   const server = createServer((client) => {
@@ -28,12 +28,16 @@ export async function startTcpProxy(url: string, port: number): Promise<TcpProxy
     client.pipe(upstream);
     upstream.pipe(client);
   });
-  server.listen(port, "127.0.0.1");
+  server.listen(0, "127.0.0.1");
   await once(server, "listening");
 
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("the proxy did not bind a TCP port");
+  }
   const proxied = new URL(url);
   proxied.hostname = "127.0.0.1";
-  proxied.port = String(port);
+  proxied.port = String(address.port);
   return {
     url: proxied.href,
     resetAll() {

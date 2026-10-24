@@ -8,7 +8,6 @@ import {
 } from "./test-database.test-helper.ts";
 
 const db = useTestDatabase();
-const proxyPort = 55470;
 
 // postgres.js throws an uncaught TypeError when a statement goes to a connection whose backend
 // has ended (#154), which fails the run.
@@ -53,25 +52,28 @@ describe("postgresJsDriver when the backend ends during a rollback", () => {
 describe("postgresJsDriver when the reserved connection's socket resets mid-statement", () => {
   const reset = { code: "ECONNRESET" };
   const served = { rows: [{ one: 1 }] };
-  let proxy: TcpProxy;
+  let proxy: TcpProxy | undefined;
   let pool: Driver;
   let doomed: string;
   let tests = 0;
 
   beforeAll(async () => {
-    proxy = await startTcpProxy(db.url, proxyPort);
+    proxy = await startTcpProxy(db.url);
   });
   beforeEach(() => {
     // The backend outlives the reset, so each test waits on a statement of its own.
     tests += 1;
     doomed = `select pg_sleep(30) as reset_${tests}`;
+    if (proxy === undefined) {
+      throw new Error("the proxy did not start");
+    }
     pool = db.ownPool({ url: proxy.url });
   });
-  afterAll(() => proxy.close());
+  afterAll(() => proxy?.close());
 
   async function resetOnceRunning(): Promise<void> {
     await backendRunning(db.driver, doomed);
-    proxy.resetAll();
+    proxy?.resetAll();
     await terminateBackendRunning(db.driver, doomed);
   }
 
