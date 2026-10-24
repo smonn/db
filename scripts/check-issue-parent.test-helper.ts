@@ -12,14 +12,16 @@ export const milestonePath = "repos/smonn/db/issues?milestone=1&state=open&per_p
 export const issueRoute = "repos/smonn/db/issues/7";
 export const commentsRoute = "repos/smonn/db/issues/7/comments?per_page=100";
 
-/** An issue as `GET /repos/{repo}/issues/{n}` returns it: both parent fields are always present. */
+/**
+ * An issue as `GET /repos/{repo}/issues/{n}` returns it when it has no parent: GitHub leaves
+ * `parent_issue_url` out entirely (#89) and sends it only once a parent exists (#325).
+ */
 export function fetched(overrides: ApiIssue = {}): ApiIssue {
   return {
     number: 7,
     state: "open",
     milestone: { number: 1 },
     labels: labelled("area:tooling"),
-    parent_issue_url: null,
     sub_issues_summary: { total: 0 },
     ...overrides,
   };
@@ -34,6 +36,16 @@ const dir = mkdtempSync(join(tmpdir(), "check-issue-parent-"));
 const fixture = new URL("./fixtures/issue-parent/milestone-v0.1.json", import.meta.url);
 export const recorded: ApiIssue[][] = array(array(record))(
   parseJson(readFileSync(fixture, "utf8"), "fixture"),
+  "$",
+);
+
+// `GET /repos/smonn/db/issues/89`, an issue with no parent, trimmed to the fields the check reads.
+const parentlessFixture = new URL(
+  "./fixtures/issue-parent/issue-89-parentless.json",
+  import.meta.url,
+);
+export const recordedParentless: ApiIssue = record(
+  parseJson(readFileSync(parentlessFixture, "utf8"), "fixture"),
   "$",
 );
 
