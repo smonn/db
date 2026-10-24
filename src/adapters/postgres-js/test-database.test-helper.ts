@@ -7,6 +7,12 @@ import { postgresJsConnect } from "./connect.ts";
 import { postgresJsDriver } from "./driver.ts";
 import { postgresJsConnection, postgresJsTypes } from "./value-types.ts";
 
+type OwnPoolOptions = {
+  /** Defaults to this database's `url`. */
+  readonly url?: string;
+  readonly max?: number;
+};
+
 export type TestDatabase = {
   readonly name: string;
   /** The connection URL of this database. */
@@ -16,7 +22,7 @@ export type TestDatabase = {
    * Opens a pool of its own on this database, for a test that breaks a connection. postgres.js
    * hands a connection whose backend ended mid-statement a stale error and never ends it (#154).
    */
-  readonly ownPool: () => Driver;
+  readonly ownPool: (options?: OwnPoolOptions) => Driver;
   /** Opens another database on the same server; the caller closes it. */
   readonly connect: Connect;
   /** Like `connect`, with a pool of one connection, so a second connection would wait forever. */
@@ -65,8 +71,9 @@ export function useTestDatabase(): TestDatabase {
   url.pathname = `/${name}`;
 
   const admin = postgres(serverUrl, { max: 1, onnotice: ignoreNotice });
-  const client = (): Sql =>
-    postgres(url.href, {
+  const client = ({ url: clientUrl = url.href, max = 10 }: OwnPoolOptions = {}): Sql =>
+    postgres(clientUrl, {
+      max,
       onnotice: ignoreNotice,
       types: postgresJsTypes,
       connection: postgresJsConnection,
@@ -95,8 +102,8 @@ export function useTestDatabase(): TestDatabase {
     name,
     url: url.href,
     driver: postgresJsDriver(sql),
-    ownPool: () => {
-      const pool = client();
+    ownPool: (options) => {
+      const pool = client(options);
       ownPools.push(pool);
       return postgresJsDriver(pool);
     },
@@ -105,18 +112,28 @@ export function useTestDatabase(): TestDatabase {
   };
 }
 
+const activeBackends =
+  "from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and state = 'active' and strpos(query, $1) > 0";
+
+async function untilActiveBackend(driver: Driver, select: string, fragment: string): Promise<void> {
+  const statement = `select ${select} as hit ${activeBackends}`;
+  const { rows } = await driver.query(statement, [fragment]);
+  if (!rows.some((row) => row["hit"] === true)) {
+    await setTimeout(10);
+    await untilActiveBackend(driver, select, fragment);
+  }
+}
+
 /**
  * Waits until another backend in this database runs a statement containing `fragment`, then
  * terminates it. Other test files' databases are out of reach, and a backend that ends first
  * doesn't count as terminated.
  */
-export async function terminateBackendRunning(driver: Driver, fragment: string): Promise<void> {
-  const { rows } = await driver.query(
-    "select pg_terminate_backend(pid) as terminated from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and state = 'active' and strpos(query, $1) > 0",
-    [fragment],
-  );
-  if (!rows.some((row) => row["terminated"] === true)) {
-    await setTimeout(10);
-    await terminateBackendRunning(driver, fragment);
-  }
+export function terminateBackendRunning(driver: Driver, fragment: string): Promise<void> {
+  return untilActiveBackend(driver, "pg_terminate_backend(pid)", fragment);
+}
+
+/** Waits until another backend in this database runs a statement containing `fragment`. */
+export function backendRunning(driver: Driver, fragment: string): Promise<void> {
+  return untilActiveBackend(driver, "true", fragment);
 }

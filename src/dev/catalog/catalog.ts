@@ -23,6 +23,13 @@ export type IdentityPayload = {
   readonly generated: "always" | "by default";
 };
 
+export type GeneratedPayload = {
+  /** The expression as `pg_get_expr` renders it, such as `(a * 2)`. */
+  readonly expression: string;
+  /** Postgres 18 defaults to `virtual`; only `stored` keeps its values on disk. */
+  readonly storage: "stored" | "virtual";
+};
+
 export type PrimaryKeyPayload = {
   /** In key order, which is the order the index sorts by. */
   readonly columns: readonly string[];
@@ -70,6 +77,12 @@ export type Fact =
       readonly payload: IdentityPayload;
     }
   | {
+      readonly kind: "generated";
+      readonly name: typeof GENERATED_NAME;
+      readonly parent: Key;
+      readonly payload: GeneratedPayload;
+    }
+  | {
       /** Named by its constraint, since a drop must say which one. */
       readonly kind: "primary key";
       readonly name: string;
@@ -83,9 +96,17 @@ export type Fact =
       readonly payload: UniquePayload;
     };
 
-/** A column has at most one default and one identity, so their names are fixed. */
+/** A fact on a column, before the builder gives it its parent. */
+type ColumnAttribute = Fact extends infer F
+  ? F extends { readonly kind: "default" | "identity" | "generated" }
+    ? Omit<F, "parent">
+    : never
+  : never;
+
+/** A column has at most one default, identity, and generation expression, so their names are fixed. */
 const DEFAULT_NAME = "default";
 const IDENTITY_NAME = "identity";
+const GENERATED_NAME = "generated";
 
 /**
  * Every modeled object, keyed by the chain of names from its schema down. The payload leaves out
@@ -99,6 +120,7 @@ export type CatalogBuilder = {
   column(schema: string, table: string, name: string, payload: ColumnPayload): void;
   columnDefault(schema: string, table: string, column: string, payload: DefaultPayload): void;
   columnIdentity(schema: string, table: string, column: string, payload: IdentityPayload): void;
+  columnGenerated(schema: string, table: string, column: string, payload: GeneratedPayload): void;
   primaryKey(schema: string, table: string, name: string, payload: PrimaryKeyPayload): void;
   unique(schema: string, table: string, name: string, payload: UniquePayload): void;
   build(): Catalog;
@@ -111,6 +133,10 @@ export function catalogBuilder(): CatalogBuilder {
     const existing = key(...names);
     if (!catalog.has(existing)) throw new Error(`${kind} ${quoted(names)} isn't in the catalog`);
     return existing;
+  };
+  const attribute = (schema: string, table: string, column: string, fact: ColumnAttribute) => {
+    const parent = added("column", schema, table, column);
+    catalog.set(key(schema, table, column, fact.name), { ...fact, parent });
   };
   return {
     schema(name) {
@@ -125,22 +151,13 @@ export function catalogBuilder(): CatalogBuilder {
       catalog.set(key(schema, table, name), { kind: "column", name, parent, payload });
     },
     columnDefault(schema, table, column, payload) {
-      const parent = added("column", schema, table, column);
-      catalog.set(key(schema, table, column, DEFAULT_NAME), {
-        kind: "default",
-        name: DEFAULT_NAME,
-        parent,
-        payload,
-      });
+      attribute(schema, table, column, { kind: "default", name: DEFAULT_NAME, payload });
     },
     columnIdentity(schema, table, column, payload) {
-      const parent = added("column", schema, table, column);
-      catalog.set(key(schema, table, column, IDENTITY_NAME), {
-        kind: "identity",
-        name: IDENTITY_NAME,
-        parent,
-        payload,
-      });
+      attribute(schema, table, column, { kind: "identity", name: IDENTITY_NAME, payload });
+    },
+    columnGenerated(schema, table, column, payload) {
+      attribute(schema, table, column, { kind: "generated", name: GENERATED_NAME, payload });
     },
     primaryKey(schema, table, name, payload) {
       const parent = added("table", schema, table);

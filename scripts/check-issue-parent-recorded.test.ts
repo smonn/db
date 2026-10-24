@@ -13,6 +13,7 @@ import {
   posted,
   recorded,
   recordedIssue,
+  recordedParentless,
   run,
 } from "./check-issue-parent.test-helper.ts";
 
@@ -35,6 +36,16 @@ describe("against the recorded v0.1 milestone", () => {
     expect(
       onRecorded({ labels: labelled("area:cli") }, fetched({ labels: labelled("area:cli") })),
     ).toEqual([]);
+  });
+
+  test("a recorded parentless payload, with no parent_issue_url key, is pointed at #44", () => {
+    expect(recordedParentless).not.toHaveProperty("parent_issue_url");
+    const current = {
+      ...recordedParentless,
+      milestone: { number: 1 },
+      labels: labelled("area:tooling"),
+    };
+    expect(onRecorded({}, current)).toEqual([comment("#44")]);
   });
 
   test("a recorded sub-issue passes because the API reports its parent", () => {
