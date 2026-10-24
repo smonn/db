@@ -109,15 +109,20 @@ DATABASE_URL=postgres://localhost/app_prod node query.ts
 
 Run each as `smonndb <command>`, with `--config <path>` to pick a config file other than `smonndb.config.ts`.
 
-| Command           | What it does                                                                                             |
-| ----------------- | -------------------------------------------------------------------------------------------------------- |
-| `generate`        | Writes `current.sql` and replays it into the Dev database, resetting that database if behind             |
-| `commit <slug>`   | Freezes `current.sql` into the next Committed migration                                                  |
-| `reset [--erase]` | Rebuilds the Dev database from the migration files; `--erase` also wipes an unmarked, non-empty database |
-| `migrate`         | Applies the pending Committed migrations                                                                 |
-| `verify`          | Checks the Committed migrations' hash chain, with no database                                            |
+| Command                 | What it does                                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| `generate`              | Writes `current.sql` and replays it into the Dev database, resetting that database if behind             |
+| `commit <slug>`         | Freezes `current.sql` into the next Committed migration                                                  |
+| `reset [--erase]`       | Rebuilds the Dev database from the migration files; `--erase` also wipes an unmarked, non-empty database |
+| `migrate`               | Applies the pending Committed migrations                                                                 |
+| `verify`                | Checks the Committed migrations' hash chain, with no database                                            |
+| `rebase [--onto <ref>]` | Moves the Committed migrations `<ref>` lacks onto its tip, with no database                              |
 
 Results go to stdout and errors to stderr, as plain text with no colors. `generate` prints the file it wrote, each Hazard with its statement, and whether it reset the Dev database. Exit codes: 0 on success, 1 on a refusal or failure (a missing folder, a held Dev lock, a bad hash chain), 2 on a usage error.
+
+### Rebasing a Forked chain
+
+When two branches each commit a Migration on the same tip, `migrate` and `verify` refuse the pair as a Forked chain. Merge the base branch into yours, then run `smonndb rebase`: it renumbers and rehashes each Committed migration the base branch lacks onto the base branch's tip, and leaves every other file as it is. `--onto <ref>` names the base branch, which defaults to the remote's default branch (`origin/HEAD`). It needs no database, does nothing on a straight chain, and can run unattended in CI. `actions/checkout` clones at depth 1 without `origin/HEAD`, so a CI job must fetch the base branch and pass `--onto`. If a write fails partway, the folder may be half-rewritten; restore it with `git checkout -- <migrations>`. A Dev database that applied a moved file no longer matches the files, so run `smonndb reset` afterward.
 
 ## Goals
 
