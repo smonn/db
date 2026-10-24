@@ -2,11 +2,7 @@ name: CI
 
 on:
   pull_request:
-    # edited re-runs CI when the title or base changes. A body-only edit skips every job. A skipped
-    # check named like a required one would count as passing, so each name holds a `${{ }}`
-    # expression. GitHub doesn't evaluate it in a skipped job, and the raw text keeps the name
-    # apart from `Required`. This is undocumented GitHub behaviour.
-    types: [opened, edited, synchronize, reopened]
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
 
@@ -14,14 +10,12 @@ permissions:
   contents: read
 
 concurrency:
-  # A body-only edit gets its own group, so it can't cancel the run on the PR's head.
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base && 'body-edit' || 'ci' }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   docs:
-    name: "Docs${{ github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base && ' (body edit)' || '' }}"
-    if: ${{ !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
+    name: Docs
     runs-on: ubuntu-24.04
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
@@ -34,8 +28,7 @@ jobs:
       - run: pnpm check:docs
 
   mermaid:
-    name: "Mermaid${{ github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base && ' (body edit)' || '' }}"
-    if: ${{ !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
+    name: Mermaid
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,8 +38,7 @@ jobs:
       - run: pnpm check:mermaid
 
   typecheck:
-    name: "Typecheck${{ github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base && ' (body edit)' || '' }}"
-    if: ${{ !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
+    name: Typecheck
     runs-on: ubuntu-24.04
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
@@ -58,8 +50,7 @@ jobs:
       - run: pnpm typecheck
 
   lint:
-    name: "Lint${{ github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base && ' (body edit)' || '' }}"
-    if: ${{ !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
+    name: Lint
     runs-on: ubuntu-24.04
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
@@ -78,8 +69,7 @@ jobs:
       - run: pnpm fta
 
   test:
-    name: "Test${{ github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base && ' (body edit)' || '' }}"
-    if: ${{ !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
+    name: Test
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -103,29 +93,11 @@ jobs:
           cache: true
       - run: pnpm coverage
 
-  pr:
-    name: "PR${{ github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base && ' (body edit)' || '' }}"
-    if: ${{ !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
-    runs-on: ubuntu-24.04
-    env:
-      PUPPETEER_SKIP_DOWNLOAD: "true"
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
-        with:
-          cache: true
-      # Skips the step, not the job, so Required still sees success on pushes to main.
-      - if: ${{ github.event_name == 'pull_request' }}
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BRANCH: ${{ github.head_ref }}
-        run: pnpm check:pr
-
-  # The main ruleset requires only this job, so adding or renaming a job needs no ruleset change.
+  # The main ruleset requires this job and Metadata (pr.yml), so adding or renaming a code job needs no ruleset change.
   required:
-    name: "Required${{ github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base && ' (body edit)' || '' }}"
-    if: ${{ always() && !(github.event.action == 'edited' && !github.event.changes.title && !github.event.changes.base) }}
-    needs: [docs, mermaid, typecheck, lint, test, pr]
+    name: Required
+    if: ${{ always() }}
+    needs: [docs, mermaid, typecheck, lint, test]
     runs-on: ubuntu-24.04
     steps:
       - env:

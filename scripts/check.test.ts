@@ -58,10 +58,8 @@ test("main rejects an unknown argument by name", () => {
   }).toThrow('Unknown argument "--statc"');
 });
 
-test("checks cover every pnpm script a CI job runs, except the PR-only check", () => {
+test("checks cover every pnpm script a CI job runs", () => {
   const ci = readFileSync(".github/workflows/ci.yml", "utf8");
   const inCi = Array.from(ci.matchAll(/run: pnpm (\S+)/gu), (match) => String(match[1]));
-  expect(inCi.filter((script) => script !== "check:pr").toSorted(byName)).toEqual(
-    [...checks].toSorted(byName),
-  );
+  expect(inCi.toSorted(byName)).toEqual([...checks].toSorted(byName));
 });
