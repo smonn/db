@@ -52,6 +52,15 @@ describe("main", () => {
     expect(process.exitCode).toBeUndefined();
   });
 
+  test("passes a research or prototype branch, which is pushed but never opens a PR", () => {
+    main(
+      line("a", sha, "refs/heads/research/pg-depend-scan") +
+        line("b", sha, "refs/heads/prototype/foreign-keys"),
+    );
+    expect(console.error).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
+  });
+
   test("fails a pushed branch the CI rule rejects, whatever the local branch", () => {
     main(line("HEAD", sha, "refs/heads/docs/z"));
     expect(console.error).toHaveBeenCalledWith(
