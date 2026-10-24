@@ -15,12 +15,14 @@ export { defineConfig, parseConfig, parseOfflineConfig } from "./config/index.ts
 export type { Config, LoadedConfig } from "./config/index.ts";
 export { diff, HAZARD_KINDS } from "./diff/index.ts";
 export type { Diff, Hazard, HazardKind } from "./diff/index.ts";
-export { commit, generate, reset } from "./generate/index.ts";
+export { commit, generate, rebase, reset } from "./generate/index.ts";
 export type {
   CommitOptions,
   CommitResult,
   GenerateOptions,
   GenerateResult,
+  RebaseOptions,
+  RebaseResult,
   ResetOptions,
   ResetResult,
 } from "./generate/index.ts";

@@ -33,6 +33,8 @@ describe("main", () => {
       'unknown Hazard kind "drop"; the kinds are data_loss, rewrite, access_exclusive_lock',
     ],
     [["commit", "a", "--accept", ""], 'unknown Hazard kind ""'],
+    [["rebase", "main"], "rebase takes no arguments: main"],
+    [["verify", "--onto", "main"], "--onto applies only to rebase"],
   ])("exits 2 with the usage for %j", async (argv, message) => {
     expect(await main(argv)).toBe(2);
     expect(cli.stderr).toContain(message);
