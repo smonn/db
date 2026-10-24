@@ -34,6 +34,13 @@ const DEFERRED = new Set([
   "MethodProperty",
 ]);
 
+/** Class field nodes: a non-static one runs at construction, a static one when the class is defined. */
+const FIELDS = new Set(["ClassProperty", "PrivateProperty"]);
+
+const PURE_ANNOTATION = /\/\*\s*[@#]__PURE__\s*\*\/$/u;
+
+const STRING_LITERAL = /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/gu;
+
 function typeOf(node: object): string {
   const type: unknown = Reflect.get(node, "type");
   return typeof type === "string" ? type : "";
@@ -51,13 +58,36 @@ function pureConstructor(node: object): boolean {
   return name !== undefined && PURE_CONSTRUCTORS.has(name);
 }
 
-function effectOf(node: object, local: ReadonlySet<string>): string | null {
+/**
+ * Whether a `/* @__PURE__ *\/` or `/*#__PURE__*\/` block comment sits right before the node. A line
+ * comment that ends in the text does not count, nor does the node when it starts at the same
+ * offset as the call or `new` around it: bundlers honor the annotation on the outermost one only.
+ */
+function markedPure(node: object, source: Source, outerStart: number): boolean {
+  const span: unknown = Reflect.get(node, "span");
+  const start: unknown = typeof span === "object" && span !== null ? Reflect.get(span, "start") : 0;
+  if (typeof start !== "number" || start === outerStart) return false;
+  const before = source.bytes
+    .subarray(0, start - source.base)
+    .toString("utf8")
+    .trimEnd();
+  const match = PURE_ANNOTATION.exec(before);
+  if (match === null) return false;
+  const line = before.slice(before.lastIndexOf("\n", match.index) + 1, match.index);
+  return !line.replaceAll(STRING_LITERAL, "").includes("//");
+}
+
+function effectOf(node: object, source: Source, outerStart: number): string | null {
   const type = typeOf(node);
   if (type === "CallExpression") {
     const name = calleeName(node);
-    return name !== undefined && local.has(name) ? null : type;
+    return (name !== undefined && source.local.has(name)) || markedPure(node, source, outerStart)
+      ? null
+      : type;
   }
-  if (type === "NewExpression") return pureConstructor(node) ? null : type;
+  if (type === "NewExpression") {
+    return pureConstructor(node) || markedPure(node, source, outerStart) ? null : type;
+  }
   if (type === "ImportDeclaration") {
     const specifiers: unknown = Reflect.get(node, "specifiers");
     return Array.isArray(specifiers) && specifiers.length === 0 ? type : null;
@@ -65,6 +95,12 @@ function effectOf(node: object, local: ReadonlySet<string>): string | null {
   if (type === "UnaryExpression") return Reflect.get(node, "operator") === "delete" ? type : null;
   return EFFECT_TYPES.has(type) ? type : null;
 }
+
+type Source = {
+  readonly bytes: Buffer;
+  readonly base: number;
+  readonly local: ReadonlySet<string>;
+};
 
 /** The node's source, collapsed to one line and cut to about 80 characters. */
 function snippet(node: object, bytes: Buffer, base: number): string {
@@ -80,21 +116,31 @@ function snippet(node: object, bytes: Buffer, base: number): string {
   return text.length > 80 ? `${text.slice(0, 77)}...` : text;
 }
 
-type Source = {
-  readonly bytes: Buffer;
-  readonly base: number;
-};
+function startOf(node: object): number {
+  const span: unknown = Reflect.get(node, "span");
+  const start: unknown =
+    typeof span === "object" && span !== null ? Reflect.get(span, "start") : -1;
+  return typeof start === "number" ? start : -1;
+}
 
-function walk(node: unknown, local: ReadonlySet<string>, source: Source, found: string[]): void {
+/** `outerStart` is where the nearest enclosing call or `new` begins, or -1 outside one. */
+function walk(node: unknown, source: Source, found: string[], outerStart = -1): void {
   if (typeof node !== "object" || node === null) return;
   if (Array.isArray(node)) {
-    for (const item of node) walk(item, local, source, found);
+    for (const item of node) walk(item, source, found, outerStart);
     return;
   }
   if (DEFERRED.has(typeOf(node))) return;
-  const effect = effectOf(node, local);
+  if (FIELDS.has(typeOf(node)) && Reflect.get(node, "isStatic") !== true) {
+    // The value runs at construction, but a computed key is evaluated when the class is defined.
+    walk(Reflect.get(node, "key"), source, found, outerStart);
+    return;
+  }
+  const effect = effectOf(node, source, outerStart);
   if (effect !== null) found.push(`${effect}: ${snippet(node, source.bytes, source.base)}`);
-  for (const value of Object.values(node)) walk(value, local, source, found);
+  const type = typeOf(node);
+  const next = type === "CallExpression" || type === "NewExpression" ? startOf(node) : outerStart;
+  for (const value of Object.values(node)) walk(value, source, found, next);
 }
 
 /** The names of the functions a module declares at its top level, exported or not. */
@@ -137,12 +183,36 @@ function localFunctions(body: readonly object[]): Set<string> {
  * exports, and literals run nothing. A call to a function the module declares itself is allowed
  * inside an initializer, such as `const RULES = { drop: always("data_loss") }`; as a statement it
  * still counts. This is a static check, so it does not follow what a local function does.
+ *
+ * Skipped because it does not run at load: function, method, accessor, and constructor bodies, and
+ * the value of a non-static class field, public or private, which runs at construction. A computed
+ * key of such a field is evaluated when the class is defined, so it still counts. A call or `new`
+ * right after a `/* @__PURE__ *\/` or `/*#__PURE__*\/` block comment passes, since the bundler keeps
+ * that annotation as the author wrote it and may drop an unused call on its strength. The bundler
+ * proves nothing, so this trusts the author, not the compiler. Only the outermost call or `new` at
+ * that position is covered: in `/* @__PURE__ *\/ make()()` the inner `make()` still runs at load.
+ * Its arguments still count.
+ *
+ * Still flagged, on purpose:
+ * - A static class field value, public or private. It runs when the class is defined.
+ * - A call to an imported function, such as `const p = join("a", "b")`. A static check cannot see
+ *   what the import does, and even a pure helper may move into a shared chunk. Mark it
+ *   `/* @__PURE__ *\/` where it is safe, or call it inside a function.
+ * - A tagged template, such as a constant `sql` template. The tag is a call, so it has the same
+ *   blind spot as an imported function.
  */
 export function topLevelEffects(source: string): string[] {
-  const module = parseSync(source, { syntax: "ecmascript", target: "es2022" });
-  const local = localFunctions(module.body);
+  // swc's spans are byte offsets from a base that grows with each parse, and the module's span
+  // starts at its first token. A lead `;` is that token, so the base is where `prepared` begins. A
+  // shebang is only valid at the very start, so `//` takes its place at the same length.
+  const prepared = `;${source.replace(/^#!/u, "//")}`;
+  const module = parseSync(prepared, { syntax: "ecmascript", target: "es2022" });
   const found: string[] = [];
-  // swc's spans are byte offsets that start at the module's own span, not at zero.
-  walk(module.body, local, { bytes: Buffer.from(source), base: module.span.start }, found);
+  const context: Source = {
+    bytes: Buffer.from(prepared),
+    base: module.span.start,
+    local: localFunctions(module.body),
+  };
+  walk(module.body, context, found);
   return found;
 }
