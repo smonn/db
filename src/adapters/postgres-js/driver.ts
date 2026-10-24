@@ -10,21 +10,53 @@ const prepared = { prepare: true, simple: false };
 const inFailedTransaction = "25P02";
 const queryCanceled = "57014";
 
-const connectionGone = new Set(["CONNECTION_CLOSED", "CONNECTION_DESTROYED"]);
+// A FATAL from the server reaches the statement as CONNECTION_CLOSED once the socket closes. A
+// socket error reaches it as the plain Node error.
+const connectionGone = new Set([
+  "CONNECTION_CLOSED",
+  "CONNECTION_DESTROYED",
+  "ECONNRESET",
+  "EPIPE",
+  "ETIMEDOUT",
+]);
 
-// postgres.js throws an uncaught TypeError on any statement sent to a connection whose backend has
-// ended (#154), so after one of these errors the session sends nothing more. A FATAL from the
-// server reaches the statement as CONNECTION_CLOSED once the socket closes. Not !backendAlive,
-// which also holds for an error `fn` throws itself.
-function backendEnded(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
+function connectionError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && connectionGone.has(String(error.code));
+}
+
+type ReservedConnection = {
+  readonly statements: Queryable;
+  /** Whether a statement on this connection failed because its connection is gone. */
+  readonly ended: () => boolean;
+};
+
+// postgres.js crashes or never settles on a statement sent to a connection whose backend has ended
+// (#154), so once one of its statements fails that way, later ones reject unsent with that error.
+// Only the connection's own statements judge this: `fn` may throw a socket error from its own I/O,
+// or rethrow another connection's (#221).
+function reservedConnection(reserved: ReservedSql): ReservedConnection {
+  const connection = queryable(reserved);
+  let lost: { readonly error: unknown } | undefined;
+  async function send<T>(statement: () => Promise<T>): Promise<T> {
+    if (lost !== undefined) {
+      throw lost.error;
+    }
+    try {
+      return await statement();
+    } catch (error) {
+      if (connectionError(error)) {
+        lost ??= { error };
+      }
+      throw error;
+    }
   }
-  // A failed rollback wraps the dead connection's error as the cause of an AggregateError.
-  return (
-    ("code" in error && connectionGone.has(String(error.code))) ||
-    (error.cause !== undefined && backendEnded(error.cause))
-  );
+  return {
+    statements: {
+      query: (text, params) => send(() => connection.query(text, params)),
+      execute: (script) => send(() => connection.execute(script)),
+    },
+    ended: () => lost !== undefined,
+  };
 }
 
 function queryable(connection: ReservedSql | Sql): Queryable {
@@ -45,8 +77,8 @@ function queryable(connection: ReservedSql | Sql): Queryable {
 }
 
 // postgres.js gives a reserved connection no `begin`, so the session sends the statements itself.
-function reservedSession(reserved: ReservedSql): Session {
-  const session = queryable(reserved);
+function reservedSession(connection: ReservedConnection): Session {
+  const session = connection.statements;
   return {
     ...session,
     async transaction(fn) {
@@ -56,7 +88,7 @@ function reservedSession(reserved: ReservedSql): Session {
         await session.execute("commit");
         return result;
       } catch (error) {
-        if (backendEnded(error)) {
+        if (connection.ended()) {
           throw error;
         }
         try {
@@ -175,13 +207,14 @@ export function postgresJsDriver(sql: Sql): Driver {
     },
     async session(fn) {
       const reserved = await sql.reserve();
+      const connection = reservedConnection(reserved);
       let result;
       try {
-        result = await fn(reservedSession(reserved));
+        result = await fn(reservedSession(connection));
       } catch (error) {
         // postgres.js already moved the connection to its closed queue, and releasing it would
         // hand the dead connection to the next query.
-        if (backendEnded(error)) {
+        if (connection.ended()) {
           throw error;
         }
         try {
@@ -195,7 +228,9 @@ export function postgresJsDriver(sql: Sql): Driver {
         }
         throw error;
       }
-      await returnToPool(reserved);
+      if (!connection.ended()) {
+        await returnToPool(reserved);
+      }
       return result;
     },
   };
