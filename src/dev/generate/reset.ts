@@ -3,13 +3,14 @@ import {
   currentHash,
   DEFAULT_TRACKING_SCHEMA,
   parseCurrent,
+  parseMigration,
   quoteIdentifier,
   readCommitted,
   trackingSchema,
   type CurrentMigration,
   type TrackingSchema,
 } from "../../runtime/internal/index.ts";
-import { migrate, verify } from "../../runtime/migrator/index.ts";
+import { verify } from "../../runtime/migrator/index.ts";
 import type { Driver, FileSystem, MigrationSource } from "../../runtime/ports/index.ts";
 import { requireSupportedServer } from "../introspect/index.ts";
 import { withDevLock } from "./dev-lock.ts";
@@ -49,13 +50,23 @@ export async function requireDevDatabase(
   );
 }
 
-/** Drops every non-system schema, then replays the Committed migrations and the Current migration. */
+/**
+ * Drops every non-system schema, then replays the Committed migrations and the Current migration,
+ * all in one transaction: a SQL error rolls the wipe back and leaves the Dev database as it was.
+ * Every file is transactional (ADR-0008), so one outer transaction holds them all. A failure names
+ * the file that raised it.
+ */
 export async function resetDevDatabase(
   driver: Driver,
   committed: MigrationSource,
   tracking: TrackingSchema,
   current?: CurrentMigration,
 ): Promise<void> {
+  // A broken chain would otherwise fail the replay after the wipe.
+  await verify(committed);
+  const migrations = (await committed.list())
+    .map((file) => parseMigration(file))
+    .toSorted((a, b) => a.sequence - b.sequence);
   await driver.transaction(async (tx) => {
     const { rows: extensions } = await tx.query(EXTENSIONS);
     await tx.execute(
@@ -69,13 +80,29 @@ export async function resetDevDatabase(
     );
     await tx.execute([...drops, RECREATE_PUBLIC].join("\n"));
     await tracking.createCurrentTable(tx);
+    await tracking.ensureMigrationsTable(tx);
+    for (const migration of migrations) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
+      await replay(migration.filename, async () => {
+        await tx.execute(migration.body);
+        await tracking.recordMigration(tx, migration);
+      });
+    }
+    if (current === undefined) return;
+    await replay(CURRENT_FILENAME, async () => {
+      await tx.execute(current.body);
+      await tracking.recordCurrent(tx, current.hash);
+    });
   });
-  await migrate({ driver, source: committed, trackingSchema: tracking.name });
-  if (current === undefined) return;
-  await driver.transaction(async (tx) => {
-    await tx.execute(current.body);
-    await tracking.recordCurrent(tx, current.hash);
-  });
+}
+
+async function replay(filename: string, run: () => Promise<void>): Promise<void> {
+  try {
+    await run();
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    throw new Error(`${filename}: ${error.message}`, { cause: error });
+  }
 }
 
 export type ResetOptions = {
@@ -113,8 +140,6 @@ async function resetLocked(options: ResetOptions): Promise<ResetResult> {
   if (!erase) await requireDevDatabase(driver, tracking, "reset");
   const committed = await readCommitted(fileSystem, migrations);
   const source: MigrationSource = { list: () => Promise.resolve(committed) };
-  // A broken chain would otherwise fail the replay after the wipe and leave the Dev database empty.
-  await verify(source);
   const content = await fileSystem.readFile(`${migrations}/${CURRENT_FILENAME}`);
   let current: CurrentMigration | undefined;
   if (content !== undefined) {
