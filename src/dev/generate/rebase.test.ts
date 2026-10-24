@@ -140,9 +140,23 @@ describe("rebase", () => {
     await expect(
       rebaseFolder(fileSystem, [A, B], ["000002-x.sql", "000003-y.sql"]),
     ).rejects.toThrow(
-      `${MIGRATIONS} has uncommitted changes to 000002-x.sql, 000003-y.sql; set them aside with git -C ${MIGRATIONS} stash push --include-untracked -- 000002-x.sql 000003-y.sql, then rerun rebase`,
+      `${MIGRATIONS} has uncommitted changes to 000002-x.sql, 000003-y.sql; set them aside with git -C 'db/migrations' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase`,
     );
     expect(fileSystem.files).toStrictEqual(before);
+  });
+
+  it("single-quotes the folder in the step it prints, escaping an embedded quote", async () => {
+    await expect(
+      rebase({
+        fileSystem: memoryFileSystem({}),
+        migrations: "my db/it's",
+        base: source(),
+        onto: ONTO,
+        uncommitted: ["000002-x.sql"],
+      }),
+    ).rejects.toThrow(
+      "git -C 'my db/it'\\''s' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase",
+    );
   });
 
   it("moves files past an uncommitted current.sql", async () => {

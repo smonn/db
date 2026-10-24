@@ -82,9 +82,14 @@ export async function rebase(options: RebaseOptions): Promise<RebaseResult> {
 function checkCommitted(uncommitted: readonly string[], migrations: string): void {
   const paths = uncommitted.filter((path) => path !== CURRENT_FILENAME);
   if (paths.length === 0) return;
+  // Naming the files fails once one is deleted in the index: git stashes, then rejects the pathspec.
   throw new Error(
-    `${migrations} has uncommitted changes to ${paths.join(", ")}; set them aside with git -C ${migrations} stash push --include-untracked -- ${paths.join(" ")}, then rerun rebase`,
+    `${migrations} has uncommitted changes to ${paths.join(", ")}; set them aside with git -C ${shellQuote(migrations)} stash push --include-untracked -- . ':(exclude)${CURRENT_FILENAME}', then rerun rebase`,
   );
+}
+
+function shellQuote(text: string): string {
+  return `'${text.replaceAll("'", `'\\''`)}'`;
 }
 
 /**

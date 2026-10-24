@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { writeMigration } from "../../runtime/internal/index.ts";
 import { useCliProject } from "./cli-project.test-helper.ts";
 import { main } from "./main.ts";
+import { runPrintedStep } from "./printed-step.test-helper.ts";
 
 const defineConfigUrl = pathToFileURL(join(import.meta.dirname, "../config/index.ts")).href;
 
@@ -134,7 +135,7 @@ describe("main rebase", () => {
 
     expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
     expect(cli.stderr).toBe(
-      `${folder} has uncommitted changes to 000002-x.sql, 000003-y.sql; set them aside with git -C ${folder} stash push --include-untracked -- 000002-x.sql 000003-y.sql, then rerun rebase\n`,
+      `${folder} has uncommitted changes to 000002-x.sql, 000003-y.sql; set them aside with git -C '${folder}' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase\n`,
     );
     expect(await folderContents()).toStrictEqual(before);
   });
@@ -147,13 +148,41 @@ describe("main rebase", () => {
 
     expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
     expect(cli.stderr).toBe(
-      `${folder} has uncommitted changes to 000003-x.sql; set them aside with git -C ${folder} stash push --include-untracked -- 000003-x.sql, then rerun rebase\n`,
+      `${folder} has uncommitted changes to 000003-x.sql; set them aside with git -C '${folder}' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase\n`,
     );
-    git("-C", folder, "stash", "push", "--include-untracked", "--", "000003-x.sql");
+    runPrintedStep(cli.stderr, cli.dir);
 
     expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(0);
     expect(stdout).toBe(`rewrote 000002-x.sql as 000003-x.sql\n${RESET_HINT}\n`);
     expect(await migrationNames()).toStrictEqual(["000001-a.sql", "000002-b.sql", "000003-x.sql"]);
+  });
+
+  it("finishes on a rerun after the step it names when a migration is staged as deleted", async () => {
+    await forkedRepo();
+    const folder = join(cli.dir, "migrations");
+    const X3 = await writeMigration("000003-x.sql", B.hash, "create table x (n int);");
+    await writeFile(join(folder, X3.filename), X3.content);
+    await writeFile(join(folder, "current.sql"), "select 1;\n");
+    git("rm", "-q", join(folder, X.filename));
+
+    expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
+    expect(cli.stderr).toContain("000002-x.sql, 000003-x.sql;");
+    runPrintedStep(cli.stderr, cli.dir);
+
+    expect(await folderContents()).toStrictEqual({
+      [A.filename]: A.content,
+      [B.filename]: B.content,
+      [X.filename]: X.content,
+      "current.sql": "select 1;\n",
+    });
+    expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(0);
+    expect(stdout).toBe(`rewrote 000002-x.sql as 000003-x.sql\n${RESET_HINT}\n`);
+    expect(await migrationNames()).toStrictEqual([
+      "000001-a.sql",
+      "000002-b.sql",
+      "000003-x.sql",
+      "current.sql",
+    ]);
   });
 
   it("reads the base ref from git, not the working tree", async () => {
