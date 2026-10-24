@@ -209,6 +209,28 @@ sequenceDiagram
   Gen->>DB: replay them as written
 ```
 
+### rebase
+
+Restates ADR-0008.
+
+```mermaid
+sequenceDiagram
+  participant CLI as dev/cli
+  participant Gen as dev/generate
+  participant Src as MigrationSource port
+  participant Git as git
+  participant FS as FileSystem port
+
+  CLI->>FS: require the migrations folder
+  CLI->>Git: resolve --onto, or the remote's default branch
+  CLI->>Gen: rebase, with a MigrationSource that dev/cli builds over git
+  Gen->>Src: list the base ref's Committed migrations
+  Src->>Git: ls-tree and cat-file at the base ref
+  Gen->>FS: read the Committed migrations
+  Gen->>Gen: require every base file, check the moving files' chain, rewrite them onto the base tip, verify the result
+  Gen->>FS: write the moved files one at a time, each after any moving file at its new name, then remove their old names
+```
+
 ## CLI
 
 The `smonndb` binary (a working name) and its config for v0.1. ADR-0014, ADR-0015, and ADR-0016 give the reasons; the rest can change without an ADR.
@@ -228,13 +250,14 @@ export default defineConfig({
 
 ### Commands
 
-| Command         | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `generate`      | Writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database, refusing to reset an unmarked Database (ADR-0016). A hand-edited file is kept and replayed as written, generate runs the edit in the Shadow instead of the generated body, and it prints the diff to what it would have generated.                                                                                                                       |
-| `commit <slug>` | Freezes `current.sql` into `<next>-<slug>.sql`. The slug is kebab-case. Refuses with no `current.sql`, when dev hasn't replayed the file, for any Hazard kind missing from `--accept <kind,...>`, or for a near-miss Hazard comment. It runs no Shadow replay, because the user decides when dev resets, and the `smonn_db.current` check already shows dev replayed this same file. It records the new file and clears `smonn_db.current` in one dev transaction. |
-| `migrate`       | Runs the runtime migrator against `url`. The migrator refuses when `smonn_db.current` holds a row and Committed migrations are pending (ADR-0016).                                                                                                                                                                                                                                                                                                                 |
-| `reset`         | Drops the extensions that live outside `pg_catalog` or own a schema, and every non-system schema, then replays the Committed migrations and `current.sql` as written, without regenerating. `--erase` lets it run on an unmarked Database (ADR-0016).                                                                                                                                                                                                              |
-| `verify`        | Checks the hash chain of the Committed migration files offline, with no database.                                                                                                                                                                                                                                                                                                                                                                                  |
+| Command         | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `generate`      | Writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database, refusing to reset an unmarked Database (ADR-0016). A hand-edited file is kept and replayed as written, generate runs the edit in the Shadow instead of the generated body, and it prints the diff to what it would have generated.                                                                                                                                                                                                                                                         |
+| `commit <slug>` | Freezes `current.sql` into `<next>-<slug>.sql`. The slug is kebab-case. Refuses with no `current.sql`, when dev hasn't replayed the file, for any Hazard kind missing from `--accept <kind,...>`, or for a near-miss Hazard comment. It runs no Shadow replay, because the user decides when dev resets, and the `smonn_db.current` check already shows dev replayed this same file. It records the new file and clears `smonn_db.current` in one dev transaction.                                                                                                                                   |
+| `migrate`       | Runs the runtime migrator against `url`. The migrator refuses when `smonn_db.current` holds a row and Committed migrations are pending (ADR-0016).                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `reset`         | Drops the extensions that live outside `pg_catalog` or own a schema, and every non-system schema, then replays the Committed migrations and `current.sql` as written, without regenerating. `--erase` lets it run on an unmarked Database (ADR-0016).                                                                                                                                                                                                                                                                                                                                                |
+| `verify`        | Checks the hash chain of the Committed migration files offline, with no database.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `rebase`        | Moves the Committed migrations that the base ref lacks onto its tip, rewriting their sequence and headers, offline and with no database (ADR-0008). `--onto <ref>` names the ref, by default `refs/remotes/origin/HEAD`. `dev/cli` reads the ref's files with `git ls-tree` and `git cat-file`. Refuses, writing nothing, when the folder is missing, the base ref's chain is broken, the folder lacks a base file or holds a same-named file with different content, a moving file no longer matches its Hash, the moving files don't chain from a base file, or the result fails the final verify. |
 
 Every command takes `--config`. Arguments are parsed with `util.parseArgs`. There is no `--url` flag: point a command at another Database through the environment the config reads. Watch mode waits for v0.4.
 

@@ -33,6 +33,9 @@ _Avoid_: Applied migration
 The single in-progress Migration, regenerated from the Definition and reapplied to the Dev database while you iterate, until it is committed.
 _Avoid_: Draft, pending migration
 
+**Forked chain**:
+Two or more Committed migrations that follow the same file, naming its Hash in `--! Previous:`, or that each start the chain with `--! Previous: -`. Two branches that each commit a Migration on the same tip leave one; `verify` names it, and `rebase` moves the branch's files onto the base branch's tip.
+
 **Tracking schema**:
 The Schema where the migrator records Committed migrations in `migrations`, and where Dev code records the Current migration in `current`. It is `smonn_db` unless configured, and the Diff skips it.
 
