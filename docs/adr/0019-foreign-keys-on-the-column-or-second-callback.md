@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Foreign keys on the column, or in the second callback for composite and self references
