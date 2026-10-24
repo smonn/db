@@ -39,7 +39,6 @@ function git(cwd: string, ...args: string[]): string {
 // main()'s, at the real repository instead of the temp one.
 function isolateGitEnv(): void {
   for (const name of Object.keys(process.env)) {
-    // oxlint-disable-next-line unicorn/no-useless-undefined -- stubEnv requires a value; undefined unsets.
     if (name.startsWith("GIT_")) vi.stubEnv(name, undefined);
   }
   vi.stubEnv("GIT_AUTHOR_NAME", "t");

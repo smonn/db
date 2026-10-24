@@ -145,7 +145,7 @@ Tests need a Postgres 18 server. `docker compose up -d --wait` starts one on por
 
 `pnpm check` runs every check CI runs, keeps going after a failure, and exits non-zero if any failed. It needs the test database above. `pnpm check:static` runs all of them but the tests, and needs no database.
 
-`pnpm install` installs the [lefthook](https://lefthook.dev) hooks in `lefthook.yml`. The pre-commit hook runs `oxlint --fix` and `oxfmt` on the staged files and stages their fixes. The pre-push hook runs `pnpm check:static` and the unit tests changed since `origin/main`; the database tests run in CI.
+`pnpm install` installs the [lefthook](https://lefthook.dev) hooks in `lefthook.yml`. The pre-commit hook runs `oxlint --fix` and `oxfmt` on the staged files and stages their fixes. The pre-push hook runs `pnpm check:static`, a check that each pushed branch name is a Conventional Branch (`pnpm check:branch`), and the unit tests changed since `origin/main`; the database tests run in CI.
 
 ## Learn more
 
