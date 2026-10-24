@@ -66,7 +66,7 @@ jobs:
       # No package.json here, so pin the pnpm version pnpm-lock.yaml resolves, and install no runtime.
       - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with:
-          version: 12.14.0
+          version: 12.15.0
           install: false
       # Publish a regular file from an empty dir. Stays staged until a maintainer runs `pnpm stage approve` with 2FA. No repo is checked out, so skip the git checks.
       - run: |
