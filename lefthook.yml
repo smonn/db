@@ -3,7 +3,7 @@ pre-commit:
   jobs:
     - name: lint
       glob: "*.ts"
-      run: pnpm exec oxlint --fix {staged_files}
+      run: pnpm exec oxlint --fix --no-error-on-unmatched-pattern {staged_files}
       stage_fixed: true
     - name: format
       run: pnpm exec oxfmt --no-error-on-unmatched-pattern {staged_files}
