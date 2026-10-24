@@ -19,6 +19,12 @@ test("every ci.yml job skips on a body-only PR edit", () => {
   expect(ungated.map((job) => job.split(":")[0])).toEqual([]);
 });
 
+test("every ci.yml job renames itself on a body-only PR edit, so a skipped check can't mask a real one", () => {
+  const renamed = `name: "[^\\n]*\\$\\{\\{ ${bodyEdit} && ' \\(body edit\\)' \\|\\| '' \\}\\}"`;
+  const unrenamed = jobs.filter((job) => !new RegExp(renamed, "u").test(job));
+  expect(unrenamed.map((job) => job.split(":")[0])).toEqual([]);
+});
+
 test("a body-only PR edit gets its own concurrency group, so it can't cancel a running CI", () => {
   const concurrency = ci.slice(ci.indexOf("\nconcurrency:"), ci.indexOf("\njobs:"));
   expect(concurrency).toContain(`${bodyEdit} && 'body-edit' || 'ci'`);
