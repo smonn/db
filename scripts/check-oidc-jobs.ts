@@ -9,7 +9,9 @@
  * for `devEngines.packageManager`, which holds a range. A grant outside a job, `write-all`, and
  * workflow-level `env` or `defaults` are refused too. The grant is matched loosely (any quoting,
  * indent, trailing comment, or flow map), so a job that hides one still meets the template. Reads
- * lines rather than parsing YAML, to avoid a YAML dependency. Prints each problem and exits 1.
+ * lines rather than parsing YAML, to avoid a YAML dependency, so it first refuses, in every workflow,
+ * the YAML forms that scripts/workflow-yaml.ts can't read line by line. Prints each problem and
+ * exits 1.
  *
  * Changing the Publish job means changing `publishJob` in the same PR. A Renovate customManagers
  * entry bumps its SHAs with the workflow's, keyed on the `// vX.Y.Z` comment above each. Run from the repo
@@ -17,6 +19,7 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { workflowYamlProblems } from "./workflow-yaml.ts";
 
 const publishJob = (pnpm: string): string[] => [
   "publish:",
@@ -101,6 +104,8 @@ function checkJob(job: Job, file: string, pnpm: string): string[] {
 }
 
 export function checkOidcJobs(workflow: string, file: string, pnpm: string): string[] {
+  const unreadable = workflowYamlProblems(workflow, file);
+  if (unreadable.length > 0) return unreadable;
   const lines = readLines(workflow);
   const { header, jobs } = splitJobs(lines);
   const problems: string[] = [];
