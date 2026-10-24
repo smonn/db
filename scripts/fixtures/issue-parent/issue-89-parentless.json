@@ -1,0 +1,11 @@
+{
+  "number": 89,
+  "state": "open",
+  "milestone": null,
+  "labels": [],
+  "sub_issues_summary": {
+    "total": 0,
+    "completed": 0,
+    "percent_completed": 0
+  }
+}

@@ -112,8 +112,9 @@ const readMilestone: Reader<{ number: number }> = (value, path) => ({
   number: field(record(value, path), "number", number, path),
 });
 
-// `GET /repos/{repo}/issues/{n}` always sends both parent fields, `parent_issue_url` as null for
-// an orphan, so a missing one means GitHub changed the API. Fail rather than call it parentless.
+// `GET /repos/{repo}/issues/{n}` leaves `parent_issue_url` out of an issue with no parent, so an
+// absent one reads as no parent. It always sends `sub_issues_summary` for an issue, so a missing
+// one means GitHub changed the API: fail rather than call the issue childless.
 const readCurrent: Reader<Current> = (value, path) => {
   const issue = record(value, path);
   return {
@@ -121,7 +122,7 @@ const readCurrent: Reader<Current> = (value, path) => {
     state: field(issue, "state", string, path),
     milestone: field(issue, "milestone", nullable(readMilestone), path),
     labels: field(issue, "labels", array(readName), path),
-    parent_issue_url: field(issue, "parent_issue_url", nullable(string), path),
+    parent_issue_url: optionalField(issue, "parent_issue_url", nullable(string), path) ?? null,
     sub_issues_summary: field(issue, "sub_issues_summary", readSummary, path),
   };
 };
