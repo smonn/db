@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -37,6 +37,22 @@ describe("main", () => {
       expect.stringMatching(/^release\.yml job publish .*expected " {8}version: 99\.0\.0"/u),
     );
     expect(process.exitCode).toBe(1);
+  });
+
+  test("lets Renovate bump every action SHA that publishJob pins", () => {
+    const matchString = String.raw`// (?<currentValue>v\S+)\n\s*"\s*- uses: (?<depName>[\w.-]+/[\w.-]+)@(?<currentDigest>[0-9a-f]{40})"`;
+    const renovate = readFileSync(join(".github", "renovate.json"), "utf8");
+    expect(renovate).toContain(JSON.stringify([String.raw`/^scripts/check-oidc-jobs\.ts$/`]));
+    expect(renovate).toContain(
+      `"matchStrings": [\n        ${JSON.stringify(matchString)}\n      ]`,
+    );
+    const source = readFileSync(join("scripts", "check-oidc-jobs.ts"), "utf8");
+    const bumped = [...source.matchAll(new RegExp(matchString, "gu"))].map((match) =>
+      match.slice(2).join("@"),
+    );
+    const pinned = [...source.matchAll(/"\s*- uses: ([^"]+)"/gu)].map((match) => match[1]);
+    expect(pinned).toHaveLength(2);
+    expect(bumped).toEqual(pinned);
   });
 
   test("fails when the lockfile resolves no pnpm version", () => {

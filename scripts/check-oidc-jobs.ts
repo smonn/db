@@ -4,15 +4,16 @@
  * `shell:`, or a value taken from another job's outputs could publish under the package's name.
  *
  * Refuses by default: a job that grants id-token must match `publishJob` below line for line, after
- * dropping comments and blank lines and reading each pinned action SHA as `<sha>`. The pnpm version
- * it pins must equal the one pnpm-lock.yaml resolves for `devEngines.packageManager`, which holds a
- * range. A grant outside a job, `write-all`, and workflow-level `env` or `defaults` are refused too.
- * The grant is matched loosely (any quoting, indent, trailing comment, or flow map), so a job that
- * hides one still meets the template. Reads lines rather than parsing YAML, to avoid a YAML
- * dependency. Prints each problem and exits 1.
+ * dropping comments and blank lines. It pins exact action SHAs, since a SHA from a fork resolves
+ * under the parent repo's name. The pnpm version it pins must equal the one pnpm-lock.yaml resolves
+ * for `devEngines.packageManager`, which holds a range. A grant outside a job, `write-all`, and
+ * workflow-level `env` or `defaults` are refused too. The grant is matched loosely (any quoting,
+ * indent, trailing comment, or flow map), so a job that hides one still meets the template. Reads
+ * lines rather than parsing YAML, to avoid a YAML dependency. Prints each problem and exits 1.
  *
- * Changing the Publish job means changing `publishJob` in the same PR. Run from the repo root with
- * `pnpm check:oidc`; CI runs it in the Lint job.
+ * Changing the Publish job means changing `publishJob` in the same PR. A Renovate customManagers
+ * entry bumps its SHAs with the workflow's, keyed on the `// vX.Y.Z` comment above each. Run from the repo
+ * root with `pnpm check:oidc`; CI runs it in the Lint job.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -25,20 +26,27 @@ const publishJob = (pnpm: string): string[] => [
   "  permissions:",
   "    id-token: write",
   "  steps:",
-  "    - uses: actions/download-artifact@<sha>",
+  // v8.0.2
+  "    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
   "      with:",
   "        name: package",
-  "    - uses: pnpm/setup@<sha>",
+  "        path: ${{ runner.temp }}/pkg",
+  // v3.1.1
+  "    - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4",
   "      with:",
   `        version: ${pnpm}`,
   "        install: false",
-  "    - run: pnpm stage publish --ignore-scripts --no-git-checks package.tgz",
+  "    - run: |",
+  '        test -f "$RUNNER_TEMP/pkg/package.tgz"',
+  '        test ! -L "$RUNNER_TEMP/pkg/package.tgz"',
+  "        empty=$(mktemp -d)",
+  '        cd "$empty"',
+  '        pnpm stage publish --ignore-scripts --no-git-checks "$RUNNER_TEMP/pkg/package.tgz"',
 ];
 
 const grantsIdToken = /["']?id-token["']?\s*:\s*["']?write\b/u;
 const grantsAll = /:\s*["']?write-all\b/u;
 const workflowSetting = /^["']?(env|defaults)["']?\s*:/u;
-const pinnedAction = /^(\s*- uses: [\w.-]+\/[\w.-]+)@[0-9a-f]{40}$/u;
 
 type Line = { text: string; indent: number };
 type Job = { name: string; lines: Line[] };
@@ -68,15 +76,15 @@ function splitJobs(lines: Line[]): { header: Line[]; jobs: Job[] } {
   return { header, jobs };
 }
 
-// The template holds no quotes, so a line cut at a `#` inside quotes still differs from it.
+// Each template line ends outside any quote, so a line cut at a `#` inside quotes still differs
+// from it, and a ` #` after a whole line is a comment to YAML and to the run script's bash alike.
 function normalize(job: Job): string[] {
   const base = job.lines[0]?.indent ?? 0;
   return job.lines.map((line) =>
     line.text
       .slice(base)
       .replace(/(?:^|\s)#.*$/u, "")
-      .trimEnd()
-      .replace(pinnedAction, "$1@<sha>"),
+      .trimEnd(),
   );
 }
 

