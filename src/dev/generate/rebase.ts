@@ -66,7 +66,7 @@ export async function rebase(options: RebaseOptions): Promise<RebaseResult> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `${migrations} may be half-rewritten (${message}); restore it from git with git checkout -- ${migrations}`,
+      `${migrations} may be half-rewritten (${message}); restore it from git with git checkout -- ${migrations} and git clean -f -- ${migrations}`,
       { cause: error },
     );
   }

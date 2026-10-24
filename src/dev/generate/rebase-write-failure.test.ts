@@ -55,7 +55,7 @@ describe("rebase when a write fails partway", () => {
           onto: "origin/main",
         }),
       ).rejects.toThrow(
-        `${MIGRATIONS} may be half-rewritten (disk full); restore it from git with git checkout -- ${MIGRATIONS}`,
+        `${MIGRATIONS} may be half-rewritten (disk full); restore it from git with git checkout -- ${MIGRATIONS} and git clean -f -- ${MIGRATIONS}`,
       );
       const contents = [...fileSystem.files.values()].join("\n");
       for (const file of files) expect(contents).toContain(parseMigration(file).body);
