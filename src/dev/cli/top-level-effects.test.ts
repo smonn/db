@@ -105,6 +105,46 @@ const c = (/* @__PURE__ */ make());
     ]);
   });
 
+  it.each([
+    ["a leading //#region comment", "//#region x\n"],
+    ["a shebang", "#!/usr/bin/env node\n"],
+    ["a leading block comment", "/* banner */\n\n"],
+  ])("reads pure annotations and snippets right after %s", (_name, head) => {
+    const pure = `${head}import { make } from "./m.mjs";\nconst a = /* @__PURE__ */ make();`;
+    const unmarked = `${head}import { make } from "./m.mjs";\nconst a = make(1);`;
+
+    expect(topLevelEffects(pure)).toEqual([]);
+    expect(topLevelEffects(unmarked)).toEqual(["CallExpression: make(1)"]);
+  });
+
+  it("honors a pure annotation only on the outermost call at that position", () => {
+    expect(topLevelEffects("const a = /* @__PURE__ */ make()();")).toEqual([
+      "CallExpression: make()",
+    ]);
+    expect(topLevelEffects("const a = /* @__PURE__ */ make().x();")).toEqual([
+      "CallExpression: make()",
+    ]);
+    expect(topLevelEffects("const a = /* @__PURE__ */ new Foo().bar();")).toEqual([
+      "NewExpression: new Foo()",
+    ]);
+    expect(topLevelEffects("const a = /* @__PURE__ */ (make())();")).toEqual([
+      "CallExpression: make()",
+    ]);
+  });
+
+  it("does not take a pure annotation from the end of a line comment", () => {
+    expect(topLevelEffects("const a = // /* @__PURE__ */\n make();")).toEqual([
+      "CallExpression: make()",
+    ]);
+    expect(topLevelEffects("// note /* @__PURE__ */\nconst a = make();")).toEqual([
+      "CallExpression: make()",
+    ]);
+  });
+
+  it("still takes a pure annotation after a // inside a string on the same line", () => {
+    expect(topLevelEffects('const u = "http://x", a = /* @__PURE__ */ make();')).toEqual([]);
+  });
+
   it("flags a call to an imported function, since a static check cannot see what it does", () => {
     expect(topLevelEffects('import { join } from "node:path";\nconst p = join("a", "b");')).toEqual(
       ['CallExpression: join("a", "b")'],
