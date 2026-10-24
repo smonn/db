@@ -1,10 +1,13 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
-import { defineDatabase, defineTable, type Row } from "./definition.ts";
+import { assert, describe, expect, expectTypeOf, it } from "vitest";
+import type { ColumnFactories } from "./column.ts";
+import { defineDatabase, defineTable, type Refs, type Row } from "./definition.ts";
 
 const users = defineTable((c) => ({
   id: c.text().notNull(),
   email: c.text(),
 }));
+
+const pair = (c: ColumnFactories) => ({ a: c.integer(), b: c.integer() });
 
 const PLAIN = {
   sqlType: "",
@@ -122,6 +125,37 @@ describe("defineTable", () => {
         (r) => ({ primaryKey: [r.a] }),
       ),
     ).toThrow("fewer than two columns");
+  });
+
+  it("rejects another table's references, by type where the columns differ and at load always", () => {
+    const held: { refs?: Refs<ReturnType<typeof pair>> } = {};
+    defineTable(pair, (t) => {
+      held.refs = t;
+      return {};
+    });
+    const foreign = held.refs;
+    assert(foreign !== undefined);
+    expect(() =>
+      defineTable(
+        (c) => ({ a: c.integer(), b: c.integer(), n: c.text() }),
+        // @ts-expect-error -- "b" belongs to a table with other columns.
+        (r) => ({ primaryKey: [r.a, foreign.b] }),
+      ),
+    ).toThrow('The table\'s primaryKey takes "b" from another table');
+    expect(() =>
+      defineTable(
+        (c) => ({ a: c.integer(), b: c.text() }),
+        // @ts-expect-error -- "b" belongs to a table whose "b" has another type.
+        (r) => ({ primaryKey: [r.a, foreign.b] }),
+      ),
+    ).toThrow('takes "b" from another table');
+    // The types compare tables by their columns, so only the load check catches a table with the same ones.
+    expect(() =>
+      defineTable(
+        (c) => ({ a: c.integer(), b: c.integer() }),
+        (r) => ({ primaryKey: [r.a, foreign.b] }),
+      ),
+    ).toThrow('takes "b" from another table');
   });
 
   it("has no second primaryKey() on a column that already is the key", () => {
