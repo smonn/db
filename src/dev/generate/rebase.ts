@@ -56,16 +56,45 @@ export async function rebase(options: RebaseOptions): Promise<RebaseResult> {
   );
   if (changed.length === 0) return { moved: [] };
 
-  await Promise.all(
-    changed.map(({ to }) => fileSystem.writeFile(`${migrations}/${to.filename}`, to.content)),
-  );
-  const newNames = new Set(moves.map(({ to }) => to.filename));
-  await Promise.all(
-    moving
-      .filter(({ filename }) => !newNames.has(filename))
-      .map(({ filename }) => fileSystem.remove(`${migrations}/${filename}`)),
-  );
+  try {
+    await writeMoves(fileSystem, migrations, changed);
+    const newNames = new Set(moves.map(({ to }) => to.filename));
+    for (const { filename } of moving) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- one at a time, so a failure stops the rest.
+      if (!newNames.has(filename)) await fileSystem.remove(`${migrations}/${filename}`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${migrations} may be half-rewritten (${message}); restore it from git with git checkout -- ${migrations}`,
+      { cause: error },
+    );
+  }
   return { moved: moves.map(({ from, to }) => ({ from: from.filename, to: to.filename })) };
+}
+
+/**
+ * Writes each move one at a time. Before a move overwrites another moving file's old name, that
+ * file is written under its own new name, so a failed write never loses a body.
+ */
+async function writeMoves(
+  fileSystem: FileSystem,
+  migrations: string,
+  changed: readonly Move[],
+): Promise<void> {
+  const byOldName = new Map(changed.map((move) => [move.from.filename, move]));
+  const written = new Set<Move>();
+  const write = async (move: Move): Promise<void> => {
+    if (written.has(move)) return;
+    written.add(move);
+    const occupant = byOldName.get(move.to.filename);
+    if (occupant !== undefined) await write(occupant);
+    await fileSystem.writeFile(`${migrations}/${move.to.filename}`, move.to.content);
+  };
+  for (const move of changed) {
+    // oxlint-disable-next-line eslint/no-await-in-loop -- one at a time, in a safe order.
+    await write(move);
+  }
 }
 
 async function verifiedBase(source: MigrationSource, onto: string): Promise<ParsedMigration[]> {
