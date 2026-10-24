@@ -33,8 +33,6 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-    outputs:
-      pnpm: ${{ steps.pnpm.outputs.version }}
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
     steps:
@@ -43,8 +41,6 @@ jobs:
           persist-credentials: false
       # No dependency cache (no pnpm store restore). pnpm/setup still restores and saves its lockfile verification cache, whatever the cache input says.
       - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
-      - id: pnpm
-        run: echo "version=$(pnpm --version)" >> "$GITHUB_OUTPUT"
       # prepack builds dist/.
       - run: pnpm pack --out "$RUNNER_TEMP/package.tgz"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -53,7 +49,7 @@ jobs:
           path: ${{ runner.temp }}/package.tgz
           if-no-files-found: error
 
-  # scripts/check-oidc-jobs.ts holds this job to these steps: no checkout, no install, no scripts.
+  # scripts/check-oidc-jobs.ts holds this job to this exact text: no checkout, no install, no scripts, no outputs from Pack.
   publish:
     name: Publish
     needs: pack
@@ -65,10 +61,10 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: package
-      # No package.json here, so pnpm/setup takes Pack's pnpm version and installs no runtime.
+      # No package.json here, so pin the pnpm version pnpm-lock.yaml resolves, and install no runtime.
       - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with:
-          version: ${{ needs.pack.outputs.pnpm }}
+          version: 12.14.0
           install: false
       # Stays staged until a maintainer runs `pnpm stage approve` with 2FA. No repo is checked out, so skip the git checks.
       - run: pnpm stage publish --ignore-scripts --no-git-checks package.tgz
