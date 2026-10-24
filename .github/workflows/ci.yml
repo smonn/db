@@ -2,9 +2,10 @@ name: CI
 
 on:
   pull_request:
-    # edited re-runs CI when the title or base changes. A body-only edit skips every job, and each
-    # job's name gains a suffix then: a skipped check that shared its name would count as passing
-    # and hide a red or running one, so Required would read green on a failing head.
+    # edited re-runs CI when the title or base changes. A body-only edit skips every job. A skipped
+    # check named like a required one would count as passing, so each name holds a `${{ }}`
+    # expression. GitHub doesn't evaluate it in a skipped job, and the raw text keeps the name
+    # apart from `Required`. This is undocumented GitHub behaviour.
     types: [opened, edited, synchronize, reopened]
   push:
     branches: [main]

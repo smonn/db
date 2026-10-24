@@ -19,7 +19,7 @@ test("every ci.yml job skips on a body-only PR edit", () => {
   expect(ungated.map((job) => job.split(":")[0])).toEqual([]);
 });
 
-test("every ci.yml job renames itself on a body-only PR edit, so a skipped check can't mask a real one", () => {
+test("every ci.yml job name holds the body-edit expression, so a skipped check can't share a required name", () => {
   const renamed = `name: "[^\\n]*\\$\\{\\{ ${bodyEdit} && ' \\(body edit\\)' \\|\\| '' \\}\\}"`;
   const unrenamed = jobs.filter((job) => !new RegExp(renamed, "u").test(job));
   expect(unrenamed.map((job) => job.split(":")[0])).toEqual([]);
