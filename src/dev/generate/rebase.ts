@@ -1,4 +1,5 @@
 import {
+  CURRENT_FILENAME,
   migrationHash,
   parseMigration,
   readCommitted,
@@ -16,6 +17,8 @@ export type RebaseOptions = {
   readonly base: MigrationSource;
   /** The base ref's name, for messages, such as `origin/main`. */
   readonly onto: string;
+  /** The paths under `migrations` that differ from the last commit or that git doesn't track. */
+  readonly uncommitted: readonly string[];
 };
 
 export type RebaseResult = {
@@ -32,10 +35,12 @@ type Move = {
  * Moves the Committed migrations the base ref lacks onto its tip, in chain order, rewriting each
  * file's sequence and headers (ADR-0008). Files the base ref holds stay byte for byte. Refuses,
  * writing nothing, unless the folder holds every base file, each moving file still matches its
- * Hash, and the moving files chain onto each other from a file the base ref holds.
+ * Hash, and the moving files chain onto each other from a file the base ref holds. Refuses first
+ * when git doesn't hold the folder as committed, so git can always restore what it overwrites.
  */
 export async function rebase(options: RebaseOptions): Promise<RebaseResult> {
   const { fileSystem, migrations, onto } = options;
+  checkCommitted(options.uncommitted, migrations);
   const base = await verifiedBase(options.base, onto);
   const local = await readCommitted(fileSystem, migrations);
   const parsed = local
@@ -66,16 +71,26 @@ export async function rebase(options: RebaseOptions): Promise<RebaseResult> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `${migrations} may be half-rewritten (${message}); restore it from git with git checkout -- ${migrations} and git clean -f -- ${migrations}`,
+      `${migrations} may be half-rewritten (${message}); rerun rebase to finish, or to list the files to set aside`,
       { cause: error },
     );
   }
   return { moved: moves.map(({ from, to }) => ({ from: from.filename, to: to.filename })) };
 }
 
+/** current.sql doesn't count: rebase never reads or writes it. */
+function checkCommitted(uncommitted: readonly string[], migrations: string): void {
+  const paths = uncommitted.filter((path) => path !== CURRENT_FILENAME);
+  if (paths.length === 0) return;
+  throw new Error(
+    `${migrations} has uncommitted changes to ${paths.join(", ")}; set them aside with git -C ${migrations} stash push --include-untracked -- ${paths.join(" ")}, then rerun rebase`,
+  );
+}
+
 /**
- * Writes each move one at a time. Before a move overwrites another moving file's old name, that
- * file is written under its own new name, so a failed write never loses a body.
+ * Writes each move to a temporary name, then renames it into place, so a failed write never
+ * truncates a file. Before a move replaces another moving file's old name, that file is moved to
+ * its own new name, so every body stays under a migration's name throughout.
  */
 async function writeMoves(
   fileSystem: FileSystem,
@@ -89,7 +104,9 @@ async function writeMoves(
     written.add(move);
     const occupant = byOldName.get(move.to.filename);
     if (occupant !== undefined) await write(occupant);
-    await fileSystem.writeFile(`${migrations}/${move.to.filename}`, move.to.content);
+    const path = `${migrations}/${move.to.filename}`;
+    await fileSystem.writeFile(`${path}.tmp`, move.to.content);
+    await fileSystem.rename(`${path}.tmp`, path);
   };
   for (const move of changed) {
     // oxlint-disable-next-line eslint/no-await-in-loop -- one at a time, in a safe order.

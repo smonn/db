@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -63,6 +63,15 @@ function migrationNames(): Promise<string[]> {
   return readdir(join(cli.dir, "migrations")).then((names) => names.toSorted());
 }
 
+async function folderContents(): Promise<Record<string, string>> {
+  const entries = await Promise.all(
+    (await migrationNames()).map(
+      async (name) => [name, await readFile(join(cli.dir, "migrations", name), "utf8")] as const,
+    ),
+  );
+  return Object.fromEntries(entries);
+}
+
 afterEach(() => {
   vi.unstubAllEnvs();
 });
@@ -114,10 +123,45 @@ describe("main rebase", () => {
     expect(stdout).toBe("nothing to rebase onto main\n");
   });
 
+  it("refuses, writing nothing, naming an untracked and a modified migration", async () => {
+    await forkedRepo();
+    const folder = join(cli.dir, "migrations");
+    const Y = await writeMigration("000003-y.sql", X.hash, "create table y (n int);");
+    await writeFile(join(folder, Y.filename), Y.content);
+    await writeFile(join(folder, X.filename), `${X.content}-- edited\n`);
+    await writeFile(join(folder, "current.sql"), "select 1;\n");
+    const before = await folderContents();
+
+    expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
+    expect(cli.stderr).toBe(
+      `${folder} has uncommitted changes to 000002-x.sql, 000003-y.sql; set them aside with git -C ${folder} stash push --include-untracked -- 000002-x.sql 000003-y.sql, then rerun rebase\n`,
+    );
+    expect(await folderContents()).toStrictEqual(before);
+  });
+
+  it("finishes on a rerun after the step it names when a run stopped before its removes", async () => {
+    await forkedRepo();
+    const folder = join(cli.dir, "migrations");
+    const X3 = await writeMigration("000003-x.sql", B.hash, "create table x (n int);");
+    await writeFile(join(folder, X3.filename), X3.content);
+
+    expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
+    expect(cli.stderr).toBe(
+      `${folder} has uncommitted changes to 000003-x.sql; set them aside with git -C ${folder} stash push --include-untracked -- 000003-x.sql, then rerun rebase\n`,
+    );
+    git("-C", folder, "stash", "push", "--include-untracked", "--", "000003-x.sql");
+
+    expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(0);
+    expect(stdout).toBe(`rewrote 000002-x.sql as 000003-x.sql\n${RESET_HINT}\n`);
+    expect(await migrationNames()).toStrictEqual(["000001-a.sql", "000002-b.sql", "000003-x.sql"]);
+  });
+
   it("reads the base ref from git, not the working tree", async () => {
     git("init", "-q", "-b", "main");
     await commitFiles("a and b", A, B);
+    git("switch", "-q", "-c", "feature");
     await rm(join(cli.dir, "migrations", B.filename));
+    await commitFiles("drop b");
 
     expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
     expect(cli.stderr).toBe(

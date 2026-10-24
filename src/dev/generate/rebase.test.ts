@@ -30,8 +30,18 @@ function folder(...files: MigrationFile[]): MemoryFileSystem {
   return memoryFileSystem(filesIn(MIGRATIONS, files));
 }
 
-function rebaseFolder(fileSystem: MemoryFileSystem, base: MigrationFile[]): Promise<RebaseResult> {
-  return rebase({ fileSystem, migrations: MIGRATIONS, base: source(...base), onto: ONTO });
+function rebaseFolder(
+  fileSystem: MemoryFileSystem,
+  base: MigrationFile[],
+  uncommitted: string[] = [],
+): Promise<RebaseResult> {
+  return rebase({
+    fileSystem,
+    migrations: MIGRATIONS,
+    base: source(...base),
+    onto: ONTO,
+    uncommitted,
+  });
 }
 
 describe("rebase", () => {
@@ -121,6 +131,26 @@ describe("rebase", () => {
     await rebaseFolder(fileSystem, [A, B]);
 
     expect(fileSystem.files.get(`${MIGRATIONS}/current.sql`)).toBe("select 1;\n");
+  });
+
+  it("refuses, writing nothing, naming each file git doesn't hold as committed", async () => {
+    const fileSystem = folder(A, B, X, Y);
+    const before = new Map(fileSystem.files);
+
+    await expect(
+      rebaseFolder(fileSystem, [A, B], ["000002-x.sql", "000003-y.sql"]),
+    ).rejects.toThrow(
+      `${MIGRATIONS} has uncommitted changes to 000002-x.sql, 000003-y.sql; set them aside with git -C ${MIGRATIONS} stash push --include-untracked -- 000002-x.sql 000003-y.sql, then rerun rebase`,
+    );
+    expect(fileSystem.files).toStrictEqual(before);
+  });
+
+  it("moves files past an uncommitted current.sql", async () => {
+    const fileSystem = folder(A, B, X);
+
+    const result = await rebaseFolder(fileSystem, [A, B], ["current.sql"]);
+
+    expect(result).toStrictEqual({ moved: [{ from: "000002-x.sql", to: "000003-x.sql" }] });
   });
 
   it("refuses, naming the file, when a base file is missing from the folder", async () => {
