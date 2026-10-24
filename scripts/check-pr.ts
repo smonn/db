@@ -3,6 +3,7 @@
  * from squash-merged titles (ADR-0018), and that its head branch is a Conventional Branch.
  *
  * Run with `PR_TITLE` and `PR_BRANCH` set, as `pnpm check:pr`; CI runs it in the Metadata job (`.github/workflows/pr.yml`).
+ * `check-branch.ts` applies the branch rule to the checked-out branch before a push.
  */
 
 const types = [
@@ -23,17 +24,20 @@ const titlePattern = new RegExp(`^(${types.join("|")})(\\([a-z0-9-]+\\))?!?: \\S
 const branchPattern = /^(feature|bugfix|hotfix|release|chore)\/[a-z0-9]+([.-][a-z0-9]+)*$/u;
 const botBranchPrefixes = ["renovate/", "release-please--"];
 
+export function checkBranch(branch: string): string[] {
+  const isBot = botBranchPrefixes.some((prefix) => branch.startsWith(prefix));
+  if (isBot || branchPattern.test(branch)) return [];
+  return [
+    `Branch "${branch}" is not a Conventional Branch: feature|bugfix|hotfix|release|chore/<lowercase-kebab>`,
+  ];
+}
+
 export function checkPr(title: string, branch: string): string[] {
   const problems: string[] = [];
   if (!titlePattern.test(title)) {
     problems.push(`PR title "${title}" is not a Conventional Commit: type(scope): summary`);
   }
-  const isBot = botBranchPrefixes.some((prefix) => branch.startsWith(prefix));
-  if (!isBot && !branchPattern.test(branch)) {
-    problems.push(
-      `Branch "${branch}" is not a Conventional Branch: feature|bugfix|hotfix|release|chore/<lowercase-kebab>`,
-    );
-  }
+  problems.push(...checkBranch(branch));
   return problems;
 }
 
