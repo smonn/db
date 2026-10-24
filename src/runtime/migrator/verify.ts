@@ -12,8 +12,9 @@ export type VerifyResult = {
 };
 
 /**
- * Checks the Committed migrations' hash chain without a database. Throws, naming the files, on a
- * fork, or naming the file on a gap or repeat in the sequence, a Previous that isn't the prior file's Hash, or a changed body.
+ * Checks the Committed migrations' hash chain without a database. Throws on the first problem.
+ * A fork names its files. A gap or repeat in the sequence names the file. So does a Previous that
+ * isn't the prior file's Hash, and so does a changed body.
  */
 export async function verify(source: MigrationSource): Promise<VerifyResult> {
   const migrations = await loadVerifiedMigrations(source);

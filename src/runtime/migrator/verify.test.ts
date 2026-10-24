@@ -105,6 +105,17 @@ describe("verify", () => {
     );
   });
 
+  it("names the fork nearest the start when several exist", async () => {
+    const gone = await writeMigration("000004-gone.sql", A.hash, "create table gone (n int);\n");
+    const m1 = await writeMigration("000005-m1.sql", gone.hash, "create table m1 (n int);\n");
+    const m2 = await writeMigration("000005-m2.sql", gone.hash, "create table m2 (n int);\n");
+    const other = await writeMigration("000002-other.sql", A.hash, "create table other (n int);\n");
+
+    await expect(verify(source([m1, m2, A, other, B]))).rejects.toThrow(
+      "forked chain: 000002-b.sql and 000002-other.sql both follow 000001-a.sql",
+    );
+  });
+
   it("refuses a file numbered 0, saying sequences start at 1", async () => {
     await expect(verify(source([renamed(A, "000000-zero.sql"), B]))).rejects.toThrow(
       "000000-zero.sql: sequences start at 1, not 0",
