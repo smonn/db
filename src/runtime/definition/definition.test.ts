@@ -16,6 +16,7 @@ const PLAIN = {
   identity: undefined,
   primaryKey: false,
   unique: false,
+  constraintName: undefined,
 };
 
 describe("defineTable", () => {
@@ -269,12 +270,14 @@ describe("defineDatabase", () => {
       name: "users",
       columns: users.columns,
       primaryKey: [],
+      primaryKeyName: undefined,
     });
     expect(db.auth.sessions).toStrictEqual({
       schema: "auth",
       name: "sessions",
       columns: sessions.columns,
       primaryKey: [],
+      primaryKeyName: undefined,
     });
   });
 
