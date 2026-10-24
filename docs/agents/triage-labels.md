@@ -25,12 +25,14 @@ Every issue that reaches `ready-for-agent` or `ready-for-human` carries exactly 
 
 ## Category labels
 
-Every triaged issue also carries exactly one category label. Issues filed before this rule carry none until they are next triaged.
+Every triaged issue also carries exactly one category label.
 
 | Category      | Label in our tracker | Meaning                    |
 | ------------- | -------------------- | -------------------------- |
 | `bug`         | `bug`                | Something is broken        |
 | `enhancement` | `enhancement`        | New feature or improvement |
+
+`pnpm check:labels` runs on each `labeled` and `unlabeled` event for a ready, priority, or category label. When an open, human-opened `ready-for-agent` or `ready-for-human` issue does not have exactly one `priority:*` label and exactly one category label, it posts one comment naming the gap, and a marker stops it from posting a second.
 
 ## Area labels
 
