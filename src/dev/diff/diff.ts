@@ -1,11 +1,4 @@
-import {
-  arePayloadsEqual,
-  parentOf,
-  qualified,
-  type Catalog,
-  type Fact,
-  type Key,
-} from "../catalog/index.ts";
+import { arePayloadsEqual, type Catalog, type Fact, type Key } from "../catalog/index.ts";
 import { hazardsOf, order, render, type Action, type Catalogs } from "./actions.ts";
 import type { Hazard } from "./hazards.ts";
 
@@ -91,13 +84,15 @@ function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {
       return [];
     return [{ kind: "set default", fact: after }];
   }
+  if (before.kind === "identity" && after.kind === "identity") {
+    return arePayloadsEqual(before.payload, after.payload)
+      ? []
+      : [{ kind: "set identity mode", fact: after }];
+  }
   if (arePayloadsEqual(before.payload, after.payload)) return [];
+  // Schemas and tables carry no payload and an identity is handled above, so only keys are left.
   // The old key was dropped in the source pass, even when it was the other kind.
-  if (isKey(before) && isKey(after)) return created(after, catalogs.from);
-  // Schemas and tables carry no payload, so only an identity is left.
-  throw new Error(
-    `Can't alter identity of column ${qualified(parentOf(catalogs.to, after), catalogs.to)} yet`,
-  );
+  return created(after, catalogs.from);
 }
 
 function isKey(fact: Fact): fact is Extract<Fact, { readonly kind: "primary key" | "unique" }> {
