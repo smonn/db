@@ -6,7 +6,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 - **Create an issue**: write the body to a file, then `gh issue create --title "..." --milestone "<title>" --body-file <file>`.
 - **Write an issue body**: link the spec the work follows in Problem: an ADR, an issue comment, or a prototype file as `<branch>:<path>`. When issues split an ADR's consequences, give each consequence an owning issue, so none falls between them. Back each claim about the code or a tool with the file path or installed version you checked.
-- **Read an issue**: `gh issue view <number> --json number,title,body,labels,comments`.
+- **Read an issue**: `issue-read <number>`. To edit a body, fetch the raw text with `gh api repos/smonn/db/issues/<number> --jq .body`.
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
 - **Make an issue a sub-issue of a parent**: `gh issue create --parent <parent> ...`, or `gh issue edit <parent> --add-sub-issue <child>` afterwards (`gh` 2.94+). Older `gh`: `gh api --method POST repos/<owner>/<repo>/issues/<parent>/sub_issues -F sub_issue_id=<child-db-id>` (database id, as in **Blocking** below). Without sub-issues, put `Part of #<parent>` at the top of the child body.
 - **Claim an issue**: `gh issue edit <number> --add-assignee @me`, before starting work on it.
