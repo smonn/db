@@ -1,3 +1,8 @@
+# Passing jobs print only their summary line, so an agent's push doesn't fill its context.
+output:
+  - summary
+  - failure
+
 pre-commit:
   # Sequential: oxlint --fix and oxfmt both rewrite the same files.
   jobs:
