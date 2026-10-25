@@ -2,6 +2,8 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "vitest"],
   "jsPlugins": ["./scripts/lint-plugin.ts"],
+  // Prototypes live only on never-merged `prototype/` branches (docs/agents/issue-tracker.md).
+  "ignorePatterns": ["prototypes/**"],
   "categories": {
     "correctness": "error",
     "suspicious": "error",

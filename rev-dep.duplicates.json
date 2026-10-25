@@ -11,7 +11,11 @@
     "minDepth": 2,
     "minStatements": 0,
     "minDuplicates": 2,
-    "skipObjects": false
+    "skipObjects": false,
+    "configLevelSettings": {
+      "configPath": "rev-dep.config.jsonc",
+      "ignoreFiles": ["prototypes/**"]
+    }
   },
   "duplications": []
 }
