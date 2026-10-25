@@ -63,8 +63,19 @@ export function gitMigrationSource(directory: string, ref: string): MigrationSou
   };
 }
 
+/** The paths under `directory`, relative to it, that differ from the last commit or aren't tracked. */
+export async function uncommittedPaths(directory: string): Promise<string[]> {
+  const prefix = (await git(directory, ["rev-parse", "--show-prefix"])).trim();
+  const args = ["status", "--porcelain", "-z", "--untracked-files=all", "--no-renames", "--", "."];
+  return (await git(directory, args))
+    .split("\0")
+    .filter((entry) => entry !== "")
+    .map((entry) => entry.slice("XY ".length + prefix.length));
+}
+
 async function resolveCommit(directory: string, ref: string): Promise<string> {
   try {
+    // rev-parse takes --end-of-options from git 2.30: https://github.com/git/git/blob/master/Documentation/RelNotes/2.30.0.adoc
     const args = ["rev-parse", "--verify", "--quiet", "--end-of-options", `${ref}^{commit}`];
     return (await git(directory, args)).trim();
   } catch (error) {

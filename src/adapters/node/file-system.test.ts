@@ -60,6 +60,16 @@ describe("nodeFileSystem", () => {
     expect(await fileSystem.list(`${directory}/db/migrations`)).toStrictEqual([]);
   });
 
+  it("renames a file, replacing what the target held", async () => {
+    await writeFile(join(directory, "a.sql.tmp"), "select 'å';\n");
+    await writeFile(join(directory, "a.sql"), "select 1;\n");
+
+    await fileSystem.rename(`${directory}/a.sql.tmp`, `${directory}/a.sql`);
+
+    expect(await fileSystem.list(directory)).toStrictEqual(["a.sql"]);
+    expect(await readFile(join(directory, "a.sql"), "utf8")).toBe("select 'å';\n");
+  });
+
   it("removes a file, and does nothing when it is missing", async () => {
     await writeFile(join(directory, "a.sql"), "");
 

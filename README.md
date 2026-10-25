@@ -122,7 +122,7 @@ Results go to stdout and errors to stderr, as plain text with no colors. `genera
 
 ### Rebasing a Forked chain
 
-When two branches each commit a Migration on the same tip, `migrate` and `verify` refuse the pair as a Forked chain. Merge the base branch into yours, then run `smonndb rebase`: it renumbers and rehashes each Committed migration the base branch lacks onto the base branch's tip, and leaves every other file as it is. `--onto <ref>` names the base branch, which defaults to the remote's default branch (`origin/HEAD`). It needs no database, does nothing on a straight chain, and can run unattended in CI. `actions/checkout` clones at depth 1 without `origin/HEAD`, so a CI job must fetch the base branch and pass `--onto`. If a write fails partway, the folder may be half-rewritten; restore it with `git checkout -- <migrations>` and `git clean -f -- <migrations>`. A Dev database that applied a moved file no longer matches the files, so run `smonndb reset` afterward.
+When two branches each commit a Migration on the same tip, `migrate` and `verify` refuse the pair as a Forked chain. Merge the base branch into yours, then run `smonndb rebase`: it renumbers and rehashes each Committed migration the base branch lacks onto the base branch's tip, and leaves every other file as it is. `--onto <ref>` names the base branch, which defaults to the remote's default branch (`origin/HEAD`). It needs no database, does nothing on a straight chain, and can run unattended in CI. `actions/checkout` clones at depth 1 without `origin/HEAD`, so a CI job must fetch the base branch and pass `--onto`. It needs git 2.30 or newer, and refuses while the migrations folder holds uncommitted or untracked changes other than `current.sql`, so git always holds what it rewrites. Each file is written under a temporary name and then renamed into place. If a run fails or stops partway, run `smonndb rebase` again: it names the files to set aside with `git stash`, and the run after that finishes. A Dev database that applied a moved file no longer matches the files, so run `smonndb reset` afterward.
 
 ## Goals
 
@@ -145,7 +145,7 @@ Tests need a Postgres 18 server. `docker compose up -d --wait` starts one on por
 
 `pnpm check` runs every check CI runs, keeps going after a failure, and exits non-zero if any failed. It needs the test database above. `pnpm check:static` runs all of them but the tests, and needs no database.
 
-`pnpm install` installs the [lefthook](https://lefthook.dev) hooks in `lefthook.yml`. The pre-commit hook runs `oxlint --fix` and `oxfmt` on the staged files and stages their fixes. The pre-push hook runs `pnpm check:static`, a check that each pushed branch name is a Conventional Branch (`pnpm check:branch`), and the unit tests changed since `origin/main`; the database tests run in CI.
+`pnpm install` installs the [lefthook](https://lefthook.dev) hooks in `lefthook.yml`. The pre-commit hook runs `oxlint --fix` and `oxfmt` on the staged files and stages their fixes. The pre-push hook runs `pnpm check:static`, a check that each pushed branch name is a Conventional Branch or a never-merged `research/` or `prototype/` branch (`pnpm check:branch`), and the unit tests changed since `origin/main`; the database tests run in CI.
 
 ## Learn more
 

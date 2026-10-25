@@ -39,9 +39,10 @@
       "groupName": "devDependencies (non-major)"
     },
     {
-      "description": "One PR bumps the pnpm/setup version pin in release.yml and the lockfile's pnpm, which scripts/check-oidc-jobs.ts holds equal.",
+      "description": "One PR bumps the pnpm/setup version pin in release.yml and the lockfile's pnpm, which scripts/check-oidc-jobs.ts holds equal. Renovate reads no locked version for devEngines.packageManager, so an in-range release has no npm update; bump moves the range, and pnpm regenerates the lockfile entry.",
       "matchManagers": ["github-actions", "npm"],
       "matchDepNames": ["pnpm"],
+      "rangeStrategy": "bump",
       "groupName": "pnpm"
     }
   ]
