@@ -1,0 +1,33 @@
+---
+status: proposed
+---
+
+# Enums and domains beside tables, arrays with `.array()`
+
+`defineEnum(["sad", "ok"])` and `defineDomain((c) => c.integer(), { notNull, default, checks })` are nameless values that sit in a schema's object beside its tables, named by their key, and a column takes the value itself: `c.enum(mood)`, `c.domain(posint)`. Postgres gives a type and a table in one schema the same pool of names, so one object key per name rules out a type clashing with a table, and `definitionCatalog` resolves a type's name from the rollup the way it resolves a `.references()` target (ADR-0019). Any fresh column becomes a one-dimensional array with `.array()`, called before any modifier, so `.notNull()` and `.default()` always mean the whole column, since Postgres can't make elements NOT NULL.
+
+## Considered Options
+
+- **A separate `types` key in `defineDatabase`**: changes the v0.1 shape and needs its own clash check against tables.
+- **Type names as strings** (`c.enum("public.mood")`): magic strings ADR-0010 already rejected.
+- **`c.array(c.integer())` or `.array(dimensions)`**: a wrapper makes the inner column's modifiers ambiguous, and Postgres treats declared dimensions as documentation, never enforcing them or showing them in `format_type`.
+- **Elements typed `V[]`**: easier to use, but wrong whenever a row holds a NULL element, which nothing short of a CHECK prevents.
+- **Ignoring label order on an existing enum**: comparisons, `ORDER BY`, `min`, and `max` follow the declared order, so the database would silently sort unlike the Definition. A removal needs the type swap anyway, since Postgres can't drop a label, so ignoring order saves no SQL.
+- **Per-label enum facts**: an add is one difference either way, but order is awkward to express across facts.
+- **Domains built with column modifiers**: reuses chaining, but the types would have to keep `.primaryKey()` and `.identity()` away from a domain.
+- **Registering enum and domain parsers by OID with the driver**: their OIDs differ in every database, and postgres.js learns array types once per connection, so the map would need a catalog read and still go stale (ADR-0022).
+
+## Consequences
+
+- An array element types as `V | null`, so a column reads `(V | null)[]`. A CHECK-backed opt-in for `V[]` waits for a later milestone.
+- `c.text<"open" | "closed">()` and `c.varchar<T>(length)` narrow the TypeScript type only, like `jsonb<T>()`: no catalog effect and no runtime check. Enforcing the values is a separate CHECK constraint.
+- Enum labels are non-empty, unique, and at most 63 bytes, which `definitionCatalog` checks; a zero-label enum is allowed, as Postgres allows it.
+- A domain's base is a factory type or an enum, not an array or another domain. Checks are keyed by name, since unnamed ones would all derive `<domain>_check`. A domain column takes its base's TypeScript value and codecs, and a NOT NULL domain makes the column non-null in `Row`.
+- An `enum` fact sits under its schema, keyed like a table, with its ordered labels. A `domain` fact carries its base type as `format_type` spells it, NOT NULL (folding `typnotnull` and its `pg_constraint` row, as a column's NOT NULL folds), and its default as `pg_get_expr` renders it. Each check is a child `domain check` fact named by its constraint, with the expression `pg_get_constraintdef` renders, and a `NOT VALID` check is the same fact. A column names its type as `format_type` spells it under `search_path = pg_catalog` (`public.mood`, `public.mood[]`), quoting included, so `definitionCatalog` must spell it the same way. `attndims` is not read, so `int[][]` diffs as `int[]`.
+- An added label is one `ALTER TYPE ... ADD VALUE ... BEFORE|AFTER` at its declared position, with no Hazard. A removed or reordered label swaps the type: rename the old one, create the new one, retype each column using it or its array with `USING col::text::new` (dropping and re-setting defaults around it), and drop the old one. Each retype carries `rewrite` and `access_exclusive_lock`, plus `data_loss` when a label is removed. That swap is the only place generate writes `USING`. Generate refuses it, naming the domain, when a domain depends on the enum.
+- A new label can't be used before its transaction commits (`55P04`), and one migration file is one transaction (ADR-0008). Generate rethrows that Shadow error with the fix: commit the label, then use it in the next migration. A type created in the same migration is exempt.
+- Creating or dropping a domain, setting or dropping its default, dropping NOT NULL, and dropping a check carry no Hazard. `SET NOT NULL` and adding a check scan every table using the domain under SHARE, so they carry `share_lock` (ADR-0021); a changed check is a drop and an add. Generate emits a plain `ADD CONSTRAINT`, never a `NOT VALID` and `VALIDATE` pair, which inside one transaction only adds a step. Both fail while an array column uses the domain, and generate explains that Shadow error. A changed base type has no `ALTER DOMAIN`, so generate refuses it, naming the domain.
+- `retypeHazards` classifies the new pairs. Retyping to an unconstrained domain over the same base, or from a domain to its base, carries none. Retyping to a constrained domain, between text and an enum, or between two enums carries `rewrite` and `access_exclusive_lock`. A violating row fails the statement, so it loses no data. Any change to an array's element type rewrites, even `varchar(20)[]` to `varchar(40)[]`, and keeps the element pair's `data_loss` rule. Scalar to array and back carries every Hazard. Adding a column of a constrained domain rewrites. A pair it doesn't recognize keeps every Hazard.
+- `introspect` skips as Unmodeled (ADR-0005) types an extension owns, domains over a domain or an array, domains with a non-default collation, and arrays of composite or range types.
+- The postgres.js adapter turns off `fetch_types` and registers NULL-aware array parsers for the built-in array OIDs, following ADR-0010's scalar mapping, so `bigint[]` is `bigint[]`. Enum and domain arrays arrive as array text, and the query layer parses them from the Definition column's element type. The query layer sends array parameters as array-literal text, which both drivers let the server type. `hasPostgresJsTypes` keeps its identity check, now over the built-in array parsers too. A raw `sql` template gets built-in arrays parsed and enum or domain arrays as text.
+- Ordering type creates and drops around tables belongs to the diff ordering decision, and renaming a label or a type belongs to the renames decision. Until renames land, a renamed label diffs as a removal and an add.
