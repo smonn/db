@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Codecs on columns, applied by the query layer
