@@ -57,87 +57,152 @@ export function diff(from: Catalog, to: Catalog): Diff {
   return { sql, hazards };
 }
 
+type Kind = Fact["kind"];
+type FactOf<K extends Kind> = Extract<Fact, { readonly kind: K }>;
+type KeyFact = FactOf<"primary key" | "unique">;
+
+/**
+ * What the diff does with one kind of fact. Every field is required, so a new `Fact` kind fails to
+ * compile until its author states each decision.
+ */
+export type Handling<F extends { readonly kind: string }> = {
+  /** Whether dropping the parent drops this fact too, so it needs no action of its own. */
+  readonly parentDropCovers: boolean;
+  readonly drop: (fact: F) => Action[];
+  /** Whether creating the parent creates this fact inline, so it needs no action of its own. */
+  readonly parentCreateCovers: boolean;
+  readonly create: (fact: F) => Action[];
+  /** Compares two facts of this kind at one key, after the source pass dropped any other kind. */
+  readonly alter: (before: F, after: F, catalogs: Catalogs) => Action[];
+};
+
+/** One `Handling` per kind of `F`; the test widens `F` to prove a new kind has to fill each field. */
+export type HandlingTable<F extends { readonly kind: string }> = {
+  readonly [K in F["kind"]]: Handling<Extract<F, { readonly kind: K }>>;
+};
+
+export const HANDLING: HandlingTable<Fact> = {
+  // A schema drop without CASCADE refuses to drop what it holds, so its tables drop on their own.
+  schema: {
+    parentDropCovers: false,
+    drop: (fact) => [{ kind: "drop schema", fact }],
+    parentCreateCovers: false,
+    create: (fact) => [{ kind: "create schema", fact }],
+    alter: () => [],
+  },
+  table: {
+    parentDropCovers: false,
+    drop: (fact) => [{ kind: "drop table", fact }],
+    parentCreateCovers: false,
+    create: (fact) => [{ kind: "create table", fact }],
+    alter: () => [],
+  },
+  column: {
+    parentDropCovers: true,
+    drop: (fact) => [{ kind: "drop column", fact }],
+    parentCreateCovers: true,
+    create: (fact) => [{ kind: "add column", fact }],
+    alter: (before, after) => {
+      const actions: Action[] = [];
+      if (before.payload.type !== after.payload.type) {
+        actions.push({ kind: "alter type", fact: after, before });
+      }
+      if (before.payload.notNull !== after.payload.notNull) {
+        actions.push({
+          kind: after.payload.notNull ? "set not null" : "drop not null",
+          fact: after,
+        });
+      }
+      return actions;
+    },
+  },
+  default: {
+    parentDropCovers: true,
+    drop: (fact) => [{ kind: "drop default", fact }],
+    parentCreateCovers: true,
+    create: (fact) => [{ kind: "set default", fact }],
+    alter: (before, after, catalogs) =>
+      // A retyped column's default was dropped first, whether or not it changed.
+      arePayloadsEqual(before.payload, after.payload) && !retyped(after.parent, catalogs)
+        ? []
+        : [{ kind: "set default", fact: after }],
+  },
+  identity: {
+    parentDropCovers: true,
+    drop: (fact) => [{ kind: "drop identity", fact }],
+    parentCreateCovers: true,
+    create: (fact) => [{ kind: "add identity", fact }],
+    alter: (before, after) =>
+      arePayloadsEqual(before.payload, after.payload)
+        ? []
+        : [{ kind: "set identity mode", fact: after }],
+  },
+  generated: {
+    parentDropCovers: true,
+    // Only a stored column converts in place; `rebuiltColumns` sends the rest to `drop column`.
+    drop: (fact) => [{ kind: "drop expression", fact }],
+    parentCreateCovers: true,
+    // Postgres can't make a plain column generated, so a new expression is on a rebuilt column,
+    // which `add column` renders whole.
+    create: () => [],
+    alter: (before, after) =>
+      arePayloadsEqual(before.payload, after.payload)
+        ? []
+        : [{ kind: "set expression", fact: after }],
+  },
+  "primary key": {
+    parentDropCovers: true,
+    drop: (fact) => [{ kind: "drop primary key", fact }],
+    // Never inline: CREATE TABLE silently drops a unique that duplicates the primary key.
+    parentCreateCovers: false,
+    create: (fact) => [{ kind: "add primary key", fact }],
+    alter: alteredKey,
+  },
+  unique: {
+    parentDropCovers: true,
+    drop: (fact) => [{ kind: "drop unique", fact }],
+    parentCreateCovers: false,
+    create: (fact) => [{ kind: "add unique", fact }],
+    alter: alteredKey,
+  },
+};
+
+/** A key can't change in place: a new payload re-adds it, after the source pass dropped the old one. */
+function alteredKey(before: KeyFact, after: KeyFact, { from }: Catalogs): Action[] {
+  return arePayloadsEqual(before.payload, after.payload) ? [] : created(after, from);
+}
+
+function handlingOf<K extends Kind>(fact: FactOf<K>): Handling<FactOf<K>> {
+  // The types prove every kind has handling; at run time, a kind this diff predates has none.
+  if (!Object.hasOwn(HANDLING, fact.kind)) {
+    throw new Error(`Unhandled fact kind ${JSON.stringify(fact.kind)}`);
+  }
+  return HANDLING[fact.kind];
+}
+
 /**
  * Dropping a table or column drops what it holds, so its children emit nothing. A schema drop
  * without CASCADE refuses to drop what it holds, so its tables drop on their own first.
  */
 function dropped(fact: Fact, to: Catalog): Action[] {
-  if (fact.kind === "schema") return [{ kind: "drop schema", fact }];
-  if (fact.kind === "table") return [{ kind: "drop table", fact }];
-  if (!to.has(fact.parent)) return [];
-  if (fact.kind === "column") return [{ kind: "drop column", fact }];
-  if (fact.kind === "default") return [{ kind: "drop default", fact }];
-  if (fact.kind === "identity") return [{ kind: "drop identity", fact }];
-  // Only a stored column converts in place; `rebuiltColumns` sends the rest to `drop column`.
-  if (fact.kind === "generated") return [{ kind: "drop expression", fact }];
-  if (fact.kind === "primary key") return [{ kind: "drop primary key", fact }];
-  if (fact.kind === "unique") return [{ kind: "drop unique", fact }];
-  return unhandled(fact);
+  const handling = handlingOf(fact);
+  return handling.parentDropCovers && parentAbsent(fact, to) ? [] : handling.drop(fact);
 }
 
 function created(fact: Fact, from: Catalog): Action[] {
-  if (fact.kind === "schema") return [{ kind: "create schema", fact }];
-  if (fact.kind === "table") return [{ kind: "create table", fact }];
-  // Never inline: CREATE TABLE silently drops a unique that duplicates the primary key.
-  if (fact.kind === "primary key") return [{ kind: "add primary key", fact }];
-  if (fact.kind === "unique") return [{ kind: "add unique", fact }];
-  // Postgres can't make a plain column generated, so a new expression is on a rebuilt column,
-  // which `add column` renders whole.
-  if (fact.kind === "generated") return [];
-  // A new table or column creates its other children inline.
-  if (!from.has(fact.parent)) return [];
-  if (fact.kind === "column") return [{ kind: "add column", fact }];
-  if (fact.kind === "default") return [{ kind: "set default", fact }];
-  if (fact.kind === "identity") return [{ kind: "add identity", fact }];
-  return unhandled(fact);
+  const handling = handlingOf(fact);
+  return handling.parentCreateCovers && parentAbsent(fact, from) ? [] : handling.create(fact);
+}
+
+/** Whether `fact` has a parent that `catalog` lacks: the parent was dropped, or is new. */
+function parentAbsent(fact: Fact, catalog: Catalog): boolean {
+  return fact.parent !== undefined && !catalog.has(fact.parent);
 }
 
 function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {
   // The old kind was dropped in the source pass, whatever the payloads say.
   if (before.kind !== after.kind) return created(after, catalogs.from);
-  if (before.kind === "column" && after.kind === "column") {
-    const actions: Action[] = [];
-    if (before.payload.type !== after.payload.type) {
-      actions.push({ kind: "alter type", fact: after, before });
-    }
-    if (before.payload.notNull !== after.payload.notNull) {
-      actions.push({ kind: after.payload.notNull ? "set not null" : "drop not null", fact: after });
-    }
-    return actions;
-  }
-  if (before.kind === "default" && after.kind === "default") {
-    // A retyped column's default was dropped first, whether or not it changed.
-    if (arePayloadsEqual(before.payload, after.payload) && !retyped(after.parent, catalogs))
-      return [];
-    return [{ kind: "set default", fact: after }];
-  }
-  if (before.kind === "generated" && after.kind === "generated") {
-    return arePayloadsEqual(before.payload, after.payload)
-      ? []
-      : [{ kind: "set expression", fact: after }];
-  }
-  if (before.kind === "identity" && after.kind === "identity") {
-    return arePayloadsEqual(before.payload, after.payload)
-      ? []
-      : [{ kind: "set identity mode", fact: after }];
-  }
-  return alteredByPayload(before, after, catalogs);
-}
-
-/** The kinds with no in-place change: schemas and tables carry no payload, and a key re-adds. */
-function alteredByPayload(before: Fact, after: Fact, { from }: Catalogs): Action[] {
-  if (before.kind === "schema" || before.kind === "table") return [];
-  if (!isKey(before) || !isKey(after)) {
-    // A new kind needs its own comparison above; guessing from its payload could emit a duplicate.
-    throw new Error(`Unhandled fact kind ${JSON.stringify(after.kind)}`);
-  }
-  // The old key was dropped in the source pass.
-  return arePayloadsEqual(before.payload, after.payload) ? [] : created(after, from);
-}
-
-/** Compile-time proof that every kind has an action; at run time, a kind this diff predates. */
-function unhandled(fact: never): never {
-  throw new Error(`Unhandled fact kind ${JSON.stringify((fact as Fact).kind)}`);
+  return handlingOf(before).alter(before, after, catalogs);
 }
 
 function isKey(fact: Fact): fact is Extract<Fact, { readonly kind: "primary key" | "unique" }> {
