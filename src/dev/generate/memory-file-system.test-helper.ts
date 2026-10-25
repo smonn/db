@@ -26,6 +26,13 @@ export function memoryFileSystem(initial: Record<string, string> = {}): MemoryFi
       files.delete(path);
       return Promise.resolve();
     },
+    rename: (from, to) => {
+      const content = files.get(from);
+      if (content === undefined) return Promise.reject(new Error(`${from} doesn't exist`));
+      files.delete(from);
+      files.set(to, content);
+      return Promise.resolve();
+    },
   };
 }
 
