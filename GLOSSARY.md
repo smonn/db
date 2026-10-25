@@ -71,3 +71,7 @@ A row of a table as the Definition types it: each column maps to its value type,
 **Driver row**:
 A row exactly as a driver returns it, with unknown values. Not the Row, which the Definition types.
 _Avoid_: Raw row
+
+**Codec**:
+A pair of functions on a column that decode its base value into the value a Row holds and encode it back, such as a `date` string to a `Temporal.PlainDate`. The query layer runs it; the driver never sees it.
+_Avoid_: Serializer, transformer
