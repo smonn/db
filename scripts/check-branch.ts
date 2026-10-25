@@ -2,7 +2,8 @@
  * Checks that every branch a push creates or updates is a Conventional Branch, the rule CI's
  * `check:pr` applies to a PR's head branch, so a bad name fails on push instead of after the PR
  * opens. Reads git's pre-push stdin (`<local ref> <local sha> <remote ref> <remote sha>` per line).
- * A delete and a ref outside `refs/heads/` (a tag) pass, so a bad branch can still be deleted.
+ * A delete and a ref outside `refs/heads/` (a tag) pass, so a bad branch can still be deleted. A
+ * `research/` or `prototype/` branch passes too; `check:pr` still refuses one as a PR head.
  *
  * Run by lefthook on pre-push (`use_stdin`); `pnpm check:branch` by hand has no stdin and passes.
  */
@@ -10,6 +11,9 @@ import { readFileSync } from "node:fs";
 import { checkBranch } from "./check-pr.ts";
 
 const headsPrefix = "refs/heads/";
+// Pushed but never opened as a PR: research notes (docs/agents/issue-tracker.md) and prototypes
+// (the prototype skill).
+const throwawayPattern = /^(research|prototype)\/[a-z0-9]+([.-][a-z0-9]+)*$/u;
 const zeroSha = /^0+$/u;
 
 export function parsePushedBranches(stdin: string): string[] {
@@ -28,7 +32,9 @@ function readStdin(): string {
 }
 
 export function main(stdin: string = readStdin()): void {
-  const problems = parsePushedBranches(stdin).flatMap((branch) => checkBranch(branch));
+  const problems = parsePushedBranches(stdin)
+    .filter((branch) => !throwawayPattern.test(branch))
+    .flatMap((branch) => checkBranch(branch));
   for (const problem of problems) console.error(problem);
   if (problems.length > 0) process.exitCode = 1;
 }
