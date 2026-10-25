@@ -124,7 +124,7 @@ flowchart TB
 | MigrationSource | migrator (read-only, so migrations can be bundled or in memory)                   | `node`                                              |
 | FileSystem      | generate, commit, and rebase (read, write, list, mkdir, remove, rename)           | `node`                                              |
 
-All port types live in `runtime/ports` as type-only exports, so adapters depend on `runtime/` alone. Logger, Codec, Clock, and randomness will become ports after v0.1. Hashing uses a small `sha256` helper over the Web Crypto global rather than a port; ADR-0009 says why. It lives in `runtime/internal`, which holds shared helpers that are never public API.
+All port types live in `runtime/ports` as type-only exports, so adapters depend on `runtime/` alone. Logger, Clock, and randomness will become ports after v0.1. A Codec is not a port: the query layer applies it, and no adapter supplies one (ADR-0022). Hashing uses a small `sha256` helper over the Web Crypto global rather than a port; ADR-0009 says why. It lives in `runtime/internal`, which holds shared helpers that are never public API.
 
 ## Migration flow
 
