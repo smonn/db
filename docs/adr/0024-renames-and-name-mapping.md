@@ -16,6 +16,8 @@ A column takes `.renamedFrom("old_name")` and a table takes `renamedFrom: "old_n
 - **Mapping result keys with a transform over every row (Kysely's `CamelCasePlugin`)**: covers raw `sql`, but rewrites keys inside user aliases and nested JSON. An alias helper for raw `sql` is deferred.
 - **A marker on every renamed constraint and index**: explicit, but a renamed table would need one for each derived name.
 - **Leaving derived names stale, as Postgres and pgroll do**: the catalog keys constraints by name, so a stale `users_pkey` on a renamed table shows as a diff on every generate.
+- **Deferring enum renames**: a label rename is the common, cheap case, such as a typo fix. `RENAME VALUE` runs in place and locks no table, while without it the fix becomes the type swap, rewriting every table that uses the enum under `data_loss`.
+- **Label markers inline in the list** (`["sad", { label: "great", renamedFrom: "good" }]`): `defineEnum` infers its union from a const string tuple, and objects in it would complicate that and the label check for a temporary marker.
 - **Zero-downtime renames through two-version views (pgroll)**: out of scope for v0.2 and left for a later milestone.
 
 ## Consequences
@@ -30,5 +32,5 @@ A column takes `.renamedFrom("old_name")` and a table takes `renamedFrom: "old_n
 - A column takes `.name("sql_name")` and a table takes `name: "sql_name"` in its second callback, for a name casing can't produce. An explicit name always wins over casing, and constraint and index names given with `{ name }` stay verbatim.
 - Derived names, such as `<table>_pkey`, `<table>_<columns>_key`, `_fkey`, `_idx`, and an identity's `_seq`, come from the mapped SQL names.
 - Builder queries alias each output back to its key (`"email_address" as "emailAddress"`), as `select` already does for a picked alias. Raw `sql` returns the SQL names Postgres sends, typed as Driver rows.
-- Enums and domains get `renamedFrom` only if the enums decision adds it. Schemas don't rename.
+- `defineEnum` takes a second argument, `{ renamedFrom: "old_mood", renamedLabels: { great: "good" } }`, keyed new to old like `renamedFrom`, and `defineDomain` takes `renamedFrom` in its existing options. They emit `ALTER TYPE ... RENAME TO`, `ALTER TYPE ... RENAME VALUE`, and `ALTER DOMAIN ... RENAME TO`, each with the `rename` Hazard, since raw `::mood` casts and code writing `'good'` break too. Their markers follow the same ignore-or-throw rule as a column's. Domain checks rename by payload match with no Hazard, like constraints. Schemas don't rename.
 - Turning casing on for an existing database renames every name it changes, so each one needs its own marker.
