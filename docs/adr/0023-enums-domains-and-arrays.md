@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Enums and domains beside tables, arrays with `.array()`
