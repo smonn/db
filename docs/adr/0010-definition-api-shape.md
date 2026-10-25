@@ -12,7 +12,7 @@ A Definition is one file, named in config, whose default export `defineDatabase(
 - **One object literal holding every column**: shows everything in one place but grows into one very large file.
 - **Names passed to defineTable** (`defineTable("users", ...)` or `"auth.users"`): magic strings that can drift from the rollup or collide, where object keys cannot.
 - **NOT NULL by default with `.nullable()`**: friendlier to TypeScript and catches a forgotten marker early, but the project stays close to SQL and accepts that a missing `.notNull()` goes unnoticed.
-- **camelCase keys mapped to snake_case**: idiomatic TypeScript, but every query, raw `sql` template, and error deals with two names. Left open as a later mapping layer, decided together with renames.
+- **camelCase keys mapped to snake_case**: idiomatic TypeScript, but every query, raw `sql` template, and error deals with two names. ADR-0024 adds it as an opt-in casing, with verbatim keys still the default.
 - **A plain options object with string column names** (`{ primaryKey: ["a", "b"] }`): a misspelled name is caught only by a check, editor renames skip the strings, and a later index or check could not point at a column inside a SQL expression.
 - **A Drizzle-style array of builders** (`(t) => [primaryKey({ columns: [t.a, t.b] })]`): it has the same typed references, but one primary key per table becomes a runtime check where an object keyed by kind lets the type enforce it.
 - **`table` and `database`**: shorter, but too generic for the two core calls. A verb plus a noun follows the `defineConfig` convention.
@@ -26,7 +26,9 @@ A Definition is one file, named in config, whose default export `defineDatabase(
 - A key in the second callback lists at least two columns; a single column goes on the column.
 - The references make a column name checked by the type, so an editor rename follows it. Later table-level entries (multi-column indexes, checks, triggers) can name columns through the same references, including inside SQL expressions, under their own keys of the returned object.
 - `.identity()` without an argument means `"by default"`. `"always"` refuses explicit values unless the insert says `OVERRIDING SYSTEM VALUE`, which surprises anyone seeding or copying data, so `"by default"` is the less hostile default.
-- Until renames land after v0.1, renaming a key generates a drop and create, flagged as data loss.
+- Renaming a key generates a drop and create, flagged as data loss, unless the column or table declares `renamedFrom` (ADR-0024).
+- A column reference belongs to its table. A reference from another table fails to compile, or fails at load when the two tables have the same shape.
+- A key takes an explicit name with `.primaryKey({ name })`, `.unique({ name })`, or `{ name, columns }` in the second callback. Without one, Postgres derives the name.
 - A shared column helper is a function of the factories, such as `(c) => ({ created_at: c.timestamptz().notNull() })`, and the exported `ColumnFactories` type lets the helper declare its parameter.
 - `Row<typeof t>` types a query result and `NewRow<typeof t>` an insert's input, for a standalone or a rolled-up table.
 - Column values map to TypeScript as `bigint` for `bigint`, `string` for `numeric` and `date`, `Date` for `timestamp` and `timestamptz`, `T` for `jsonb<T>()`, and `Uint8Array` for `bytea`. A column overrides the mapping with a codec (ADR-0022).
