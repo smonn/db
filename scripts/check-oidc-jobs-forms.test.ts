@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { checkOidcJobs } from "./check-oidc-jobs.ts";
+import { checkOidcJobs, lockedPnpm } from "./check-oidc-jobs.ts";
 
 const release = readFileSync(".github/workflows/release.yml", "utf8");
-const check = (text: string): string[] => checkOidcJobs(text, "release.yml", "12.14.0");
+const pnpm = lockedPnpm(readFileSync("pnpm-lock.yaml", "utf8")) ?? "";
+const check = (text: string): string[] => checkOidcJobs(text, "release.yml", pnpm);
 
 function variant(from: string, to: string, text = release): string {
   const parts = text.split(from);
