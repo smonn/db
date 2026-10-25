@@ -26,9 +26,13 @@ const DEFERRED = new Set([
   "FunctionDeclaration",
   "FunctionExpression",
   "ArrowFunctionExpression",
+  "Constructor",
+]);
+
+/** Method nodes, in a class or an object literal: the body is deferred, but a computed key is not. */
+const METHODS = new Set([
   "ClassMethod",
   "PrivateMethod",
-  "Constructor",
   "GetterProperty",
   "SetterProperty",
   "MethodProperty",
@@ -131,6 +135,10 @@ function walk(node: unknown, source: Source, found: string[], outerStart = -1): 
     return;
   }
   if (DEFERRED.has(typeOf(node))) return;
+  if (METHODS.has(typeOf(node))) {
+    walk(Reflect.get(node, "key"), source, found, outerStart);
+    return;
+  }
   if (FIELDS.has(typeOf(node)) && Reflect.get(node, "isStatic") !== true) {
     // The value runs at construction, but a computed key is evaluated when the class is defined.
     walk(Reflect.get(node, "key"), source, found, outerStart);
@@ -186,7 +194,8 @@ function localFunctions(body: readonly object[]): Set<string> {
  *
  * Skipped because it does not run at load: function, method, accessor, and constructor bodies, and
  * the value of a non-static class field, public or private, which runs at construction. A computed
- * key of such a field is evaluated when the class is defined, so it still counts. A call or `new`
+ * key of such a field or method, in a class or an object literal, is evaluated when the class or
+ * object is defined, so it still counts. A call or `new`
  * right after a `/* @__PURE__ *\/` or `/*#__PURE__*\/` block comment passes, since the bundler keeps
  * that annotation as the author wrote it and may drop an unused call on its strength. The bundler
  * proves nothing, so this trusts the author, not the compiler. Only the outermost call or `new` at
