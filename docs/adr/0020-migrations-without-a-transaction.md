@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Migrations without a transaction
