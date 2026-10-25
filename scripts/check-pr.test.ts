@@ -54,6 +54,8 @@ describe("checkPr branch", () => {
     "feature/typed-",
     "feature/typed--query",
     "feature/typed/query",
+    "research/pg-depend-scan",
+    "prototype/foreign-keys",
     "main",
   ])("rejects %s", (branch) => {
     expect(checkPr(title, branch)).toEqual([

@@ -3,7 +3,7 @@ pre-commit:
   jobs:
     - name: lint
       glob: "*.ts"
-      run: pnpm exec oxlint --fix {staged_files}
+      run: pnpm exec oxlint --fix --no-error-on-unmatched-pattern {staged_files}
       stage_fixed: true
     - name: format
       run: pnpm exec oxfmt --no-error-on-unmatched-pattern {staged_files}
@@ -15,7 +15,8 @@ pre-push:
     - name: static checks
       run: pnpm run check:static
     # The same branch rule CI's check:pr applies to the refs being pushed, so a bad name fails here,
-    # not after the PR opens. It reads git's pre-push lines on stdin; deletes and tags pass.
+    # not after the PR opens; research/ and prototype/ branches, which never open a PR, also pass.
+    # It reads git's pre-push lines on stdin; deletes and tags pass.
     - name: branch name
       use_stdin: true
       run: pnpm run check:branch
