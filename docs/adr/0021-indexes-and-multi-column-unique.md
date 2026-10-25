@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Indexes and multi-column unique in the second callback, with a small `.index()` on the column
