@@ -3,6 +3,8 @@
   "configVersion": "2.2",
   // rev-dep runs only duplicated-code detection. scripts/check-imports.ts owns boundaries, cycles,
   // and unresolved imports; knip owns unused files, exports, and dependencies.
+  // Prototypes live only on never-merged `prototype/` branches (docs/agents/issue-tracker.md).
+  "ignoreFiles": ["prototypes/**"],
   "workspaces": [
     {
       "path": ".",
