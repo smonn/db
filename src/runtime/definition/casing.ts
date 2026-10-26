@@ -29,7 +29,9 @@ export function casingOf(options: unknown): (key: string) => string {
 /**
  * `userId` to `user_id`, `HTTPServer` to `http_server`, `line2Text` to `line2_text`: an underscore
  * goes before each capital that follows a lowercase letter or digit, or that starts a word after
- * capitals, and then everything lowercases. A key already in snake_case stays as it is.
+ * capitals, and then everything lowercases. A key already in snake_case stays as it is. A
+ * plural acronym splits before its last capital, so `userIDs` maps to `user_i_ds`; give such a
+ * key its own name.
  */
 export function snakeCase(key: string): string {
   return key

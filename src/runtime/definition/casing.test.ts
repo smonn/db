@@ -13,6 +13,7 @@ describe("snakeCase", () => {
   it.each([
     ["userId", "user_id"],
     ["userID", "user_id"],
+    ["userIDs", "user_i_ds"],
     ["HTTPServer", "http_server"],
     ["line2Text", "line2_text"],
     ["address2", "address2"],
