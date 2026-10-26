@@ -137,6 +137,11 @@ function keyEntry(declared: unknown): { name: string | undefined; columns: unkno
   throw new TypeError("The table's primaryKey takes a list of columns or { name, columns }");
 }
 
+function renamedFromOf(declared: unknown): string | undefined {
+  if (declared === undefined || typeof declared === "string") return declared;
+  throw new TypeError("The table's renamedFrom takes the old SQL name as a string");
+}
+
 export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
   define: (c: ColumnFactories) => C,
   ...args: Args
@@ -154,10 +159,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
   const declared = extras?.(own as unknown as ColumnRefs<C>);
   const primaryKey = primaryKeyOf(columns, own, declared?.primaryKey);
   const uniques = uniquesOf(own, declared?.unique);
-  const renamedFrom = declared?.renamedFrom;
-  if (renamedFrom !== undefined && typeof renamedFrom !== "string") {
-    throw new TypeError("The table's renamedFrom takes the old SQL name as a string");
-  }
+  const renamedFrom = renamedFromOf(declared?.renamedFrom);
   const both = Object.entries(columns).find(([, { state }]) => state.primaryKey && state.unique);
   if (both !== undefined) {
     throw new Error(
