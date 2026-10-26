@@ -32,20 +32,24 @@ export function table(columns: Readonly<Record<string, Column>>, keys: Keys = {}
       notNull: column.notNull ?? false,
     };
     builder.column("public", "t", name, payload);
-    if (column.identity !== undefined) builder.columnIdentity("public", "t", name, column.identity);
-    if (column.generated !== undefined) {
-      builder.columnGenerated("public", "t", name, column.generated);
-    }
-    const { default: defaultPayload } = column;
-    if (defaultPayload !== undefined) {
-      builder.columnDefault("public", "t", name, { ...defaultPayload, volatile: false });
-    }
+    addAttributes(builder, name, column);
   }
   if (keys.primary !== undefined) {
     builder.primaryKey("public", "t", "t_pkey", { columns: keys.primary });
   }
   if (keys.unique !== undefined) builder.unique("public", "t", keys.unique.name, keys.unique);
   return builder.build();
+}
+
+function addAttributes(builder: CatalogBuilder, name: string, column: Column): void {
+  if (column.identity !== undefined) builder.columnIdentity("public", "t", name, column.identity);
+  if (column.generated !== undefined) {
+    builder.columnGenerated("public", "t", name, column.generated);
+  }
+  const { default: defaultPayload } = column;
+  if (defaultPayload !== undefined) {
+    builder.columnDefault("public", "t", name, { ...defaultPayload, volatile: false });
+  }
 }
 
 export const always = { generated: "always" } as const;
