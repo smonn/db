@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defineDatabase, defineTable } from "./definition.ts";
+import type { ColumnFactories } from "./factories.ts";
 import type { Target } from "./references.ts";
 
 const shipments = defineTable(
@@ -12,6 +13,12 @@ const users = defineTable((c) => ({
   email: c.text().unique(),
   name: c.text(),
 }));
+
+const three = (c: ColumnFactories) => ({
+  id: c.integer().primaryKey(),
+  parent: c.integer(),
+  label: c.text(),
+});
 
 describe("foreignKeys in the second callback", () => {
   it("declares a composite foreign key to another table's primary key", () => {
@@ -204,6 +211,48 @@ describe("foreignKeys types", () => {
       ),
     ];
     expect(rejected).toHaveLength(6);
+  });
+
+  it("checks each entry on its own when the list holds several", () => {
+    const rejected = [
+      defineTable(
+        three,
+        // @ts-expect-error -- a text column can't point at another table's integer key.
+        (t) => ({
+          foreignKeys: [
+            { columns: [t.parent], references: [t.id] },
+            { columns: [t.label], references: () => [users.columns.id] },
+          ],
+        }),
+      ),
+      defineTable(
+        three,
+        // @ts-expect-error -- a text column can't point at its own table's integer key.
+        (t) => ({
+          foreignKeys: [
+            { columns: [t.parent], references: [t.id] },
+            { columns: [t.label], references: [t.id] },
+          ],
+        }),
+      ),
+      defineTable(
+        three,
+        // @ts-expect-error -- two columns can't point at one.
+        (t) => ({
+          foreignKeys: [
+            { columns: [t.parent], references: [t.id] },
+            { columns: [t.parent, t.label], references: () => [users.columns.id] },
+          ],
+        }),
+      ),
+    ];
+    const accepted = defineTable(three, (t) => ({
+      foreignKeys: [
+        { columns: [t.parent], references: [t.id] },
+        { columns: [t.label], references: () => [users.columns.email] },
+      ],
+    }));
+    expect([...rejected, accepted]).toHaveLength(4);
   });
 
   it("accepts one column to a key, a composite pair, and a self reference with no annotation", () => {

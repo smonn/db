@@ -7,12 +7,20 @@ import type { OwnRef, Ref } from "./refs.ts";
  * references for a self reference, or a thunk of another table's columns, so tables in an import
  * cycle load in either order.
  */
-export type ForeignKeyEntry<C extends Columns> = TableForeignKeyOptions & {
+type ForeignKeyEntry<C extends Columns> = TableForeignKeyOptions & {
   readonly columns: readonly [OwnRef<C>, ...OwnRef<C>[]];
   readonly references:
     | readonly [OwnRef<C>, ...OwnRef<C>[]]
     | (() => readonly [KeyPart, ...KeyPart[]]);
 };
+
+/**
+ * The second callback's foreign keys. The tuple member makes a literal list infer as a tuple, so
+ * `CheckedForeignKeys` checks each entry on its own rather than a union of them all.
+ */
+export type ForeignKeyEntries<C extends Columns> =
+  | readonly ForeignKeyEntry<C>[]
+  | readonly [ForeignKeyEntry<C>, ...ForeignKeyEntry<C>[]];
 
 type ValueAt<C extends Columns, R> = R extends Ref<infer K, C> ? C[K]["~types"]["value"] : never;
 

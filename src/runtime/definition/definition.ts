@@ -8,7 +8,7 @@ import {
   placesOf,
   type Places,
 } from "./foreign-keys.ts";
-import type { CheckedForeignKeys, ForeignKeyEntry } from "./foreign-key-entries.ts";
+import type { CheckedForeignKeys, ForeignKeyEntries } from "./foreign-key-entries.ts";
 import type { DeclaredForeignKey } from "./references.ts";
 import type { ColumnRefs, OwnRef, Ref } from "./refs.ts";
 import {
@@ -77,7 +77,7 @@ type TableExtras<C extends Columns> = {
   /** The table's SQL name before this change; generate ignores it once the old name is gone. */
   readonly renamedFrom?: string;
   readonly unique?: readonly UniqueEntry<C>[];
-  readonly foreignKeys?: readonly ForeignKeyEntry<C>[];
+  readonly foreignKeys?: ForeignKeyEntries<C>;
 } & ([KeyedColumns<C>] extends [never]
   ? { readonly primaryKey?: KeyEntry<C> }
   : { readonly primaryKey?: never });
