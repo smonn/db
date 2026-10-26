@@ -158,6 +158,8 @@ export async function backendPid(queryable: Queryable): Promise<number> {
   return Number(rows[0]?.["pid"]);
 }
 
+const never = (): boolean => false;
+
 type AttemptOptions = {
   /** The backend that holds the lock, which also ran an attempt. */
   readonly holderPid?: number;
@@ -173,20 +175,27 @@ type AttemptOptions = {
  */
 export async function untilMigrationLockAttempted(
   driver: Driver,
-  { holderPid = 0, gaveUp = () => false }: AttemptOptions = {},
+  { holderPid = 0, gaveUp = never }: AttemptOptions = {},
 ): Promise<void> {
+  await pollUntil(() => gaveUp() || lockAttempted(driver, holderPid));
+}
+
+async function pollUntil(done: () => boolean | Promise<boolean>): Promise<void> {
   for (let attempt = 0; attempt < 500; attempt += 1) {
-    if (gaveUp()) return;
     // oxlint-disable-next-line eslint/no-await-in-loop -- each poll waits on the one before it.
-    const { rows } = await driver.query(
-      "select exists (select from pg_stat_activity where pid <> pg_backend_pid() and pid <> $1::int and datname = current_database() and (state <> 'active' or wait_event_type = 'Lock') and (strpos(query, $2) > 0 or strpos(query, $3) > 0)) as hit",
-      [holderPid, ...lockAttempts],
-    );
-    if (rows[0]?.["hit"] === true) return;
+    if (await done()) return;
     // oxlint-disable-next-line eslint/no-await-in-loop -- see above.
     await setTimeout(10);
   }
   throw new Error("nothing tried to take the migration lock");
+}
+
+async function lockAttempted(driver: Driver, holderPid: number): Promise<boolean> {
+  const { rows } = await driver.query(
+    "select exists (select from pg_stat_activity where pid <> pg_backend_pid() and pid <> $1::int and datname = current_database() and (state <> 'active' or wait_event_type = 'Lock') and (strpos(query, $2) > 0 or strpos(query, $3) > 0)) as hit",
+    [holderPid, ...lockAttempts],
+  );
+  return rows[0]?.["hit"] === true;
 }
 
 /** How many advisory locks sessions of this database hold, the migrator's and the Dev lock among them. */

@@ -30,12 +30,16 @@ function table(columns: Readonly<Record<string, Column>>, keys: Keys = {}): Cata
     });
     addAttributes(builder, name, column);
   }
+  addKeys(builder, keys);
+  return builder.build();
+}
+
+function addKeys(builder: ReturnType<typeof catalogBuilder>, keys: Keys): void {
   if (keys.primary !== undefined) {
     builder.primaryKey("public", "t", "t_pkey", { columns: keys.primary });
   }
   if (keys.unique !== undefined)
     builder.unique("public", "t", "t_u_key", { columns: [keys.unique], nullsNotDistinct: false });
-  return builder.build();
 }
 
 const empty = catalogBuilder().build();

@@ -20,20 +20,27 @@ type Shape = {
 export function database({ orders = true, users = true, foreignKeys = {} }: Shape): Catalog {
   const builder = catalogBuilder();
   builder.schema("public");
-  if (users) {
-    builder.table("public", "users");
-    builder.column("public", "users", "id", { type: "integer", notNull: true });
-    builder.primaryKey("public", "users", "users_pkey", { columns: ["id"] });
-  }
-  if (orders) {
-    builder.table("public", "orders");
-    builder.column("public", "orders", "id", { type: "integer", notNull: true });
-    builder.column("public", "orders", "user_id", { type: "integer", notNull: false });
-    for (const [name, payload] of Object.entries(foreignKeys)) {
-      builder.foreignKey("public", "orders", name, { ...PLAIN, ...payload });
-    }
-  }
+  if (users) addUsers(builder);
+  if (orders) addOrders(builder, foreignKeys);
   return builder.build();
+}
+
+function addUsers(builder: ReturnType<typeof catalogBuilder>): void {
+  builder.table("public", "users");
+  builder.column("public", "users", "id", { type: "integer", notNull: true });
+  builder.primaryKey("public", "users", "users_pkey", { columns: ["id"] });
+}
+
+function addOrders(
+  builder: ReturnType<typeof catalogBuilder>,
+  foreignKeys: NonNullable<Shape["foreignKeys"]>,
+): void {
+  builder.table("public", "orders");
+  builder.column("public", "orders", "id", { type: "integer", notNull: true });
+  builder.column("public", "orders", "user_id", { type: "integer", notNull: false });
+  for (const [name, payload] of Object.entries(foreignKeys)) {
+    builder.foreignKey("public", "orders", name, { ...PLAIN, ...payload });
+  }
 }
 
 export const FK = "orders_user_id_fkey";

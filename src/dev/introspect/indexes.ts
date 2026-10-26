@@ -19,13 +19,9 @@ export function addIndex(
   }
   const orders = texts(row["orders"]);
   const expressions = texts(row["expressions"]);
-  const keys = texts(row["columns"]).map((column, at): IndexKeyPayload => {
-    const descending = orders[at]?.startsWith("desc") ?? false;
-    const nullsFirst = orders[at]?.endsWith("first") ?? false;
-    return column === ""
-      ? { expression: bare(expressions[at] ?? ""), descending, nullsFirst }
-      : { column, descending, nullsFirst };
-  });
+  const keys = texts(row["columns"]).map((column, at) =>
+    keyOf(column, expressions[at], orders[at]),
+  );
   builder.index(schema, tableName, String(row["name"]), {
     unique: row["is_unique"] === true,
     method,
@@ -34,6 +30,17 @@ export function addIndex(
     where: typeof row["predicate"] === "string" ? row["predicate"] : undefined,
     nullsNotDistinct: row["nulls_not_distinct"] === true,
   });
+}
+
+function keyOf(
+  column: string,
+  expression: string | undefined,
+  order: string | undefined,
+): IndexKeyPayload {
+  const descending = order?.startsWith("desc") === true;
+  const nullsFirst = order?.endsWith("first") === true;
+  if (column !== "") return { column, descending, nullsFirst };
+  return { expression: bare(expression ?? ""), descending, nullsFirst };
 }
 
 /**
