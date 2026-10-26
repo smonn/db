@@ -10,6 +10,7 @@ import { SWAP_STEPS, type Swap } from "./enum-swap.ts";
 import { enumTypes, labelPosition, quoteLiteral } from "./enums.ts";
 import {
   HAZARD_KINDS,
+  INDEX_LOCK,
   LONG_LOCK,
   REWRITE,
   WRITE_LOCK,
@@ -17,13 +18,16 @@ import {
   type HazardKind,
 } from "./hazards.ts";
 import { renameSql } from "./rename-sql.ts";
+import { createIndex, dropIndex } from "./index-statements.ts";
 import {
   addConstraint,
+  addForeignKey,
   alterColumn,
   alterTable,
   columnDefinition,
-  columnList,
+  createTable,
   defaultClause,
+  dropConstraint,
   identityClause,
   type FactOf,
 } from "./statements.ts";
@@ -34,6 +38,7 @@ type Target = {
   "rename column": "column";
   "drop foreign key": "foreign key";
   "drop unique": "unique";
+  "drop index": "index";
   "drop primary key": "primary key";
   "drop column": "column";
   "drop table": "table";
@@ -59,6 +64,7 @@ type Target = {
   "set expression": "generated";
   "add primary key": "primary key";
   "add unique": "unique";
+  "add index": "index";
   "add foreign key": "foreign key";
 };
 
@@ -115,6 +121,8 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
   "rename column": { render: renameStatement, hazards: always("rename") },
   "drop foreign key": { render: dropConstraint, hazards: none },
   "drop unique": { render: dropConstraint, hazards: none },
+  // Only the catalog changes, like dropping a key.
+  "drop index": { render: dropIndex, hazards: none },
   "drop primary key": { render: dropConstraint, hazards: none },
   "drop column": {
     render: (column, { from }) =>
@@ -225,6 +233,11 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
       ),
     hazards: indexBuild,
   },
+  "add index": {
+    render: (index, { to }) => createIndex(index, to),
+    // A table created in the same migration is empty, so only an existing table has rows to read.
+    hazards: ({ fact }, { from }) => (from.has(fact.parent) ? INDEX_LOCK : []),
+  },
   "add foreign key": {
     render: addForeignKey,
     // A table created in the same migration is empty, so only an existing table has rows to scan.
@@ -262,32 +275,4 @@ function indexBuild(
   { from }: Catalogs,
 ): readonly HazardKind[] {
   return from.has(fact.parent) ? LONG_LOCK : [];
-}
-
-function createTable(table: FactOf<"table">, { to }: Catalogs): string {
-  const columns = childrenOf(to, table).flatMap((child) =>
-    child.kind === "column" ? [`  ${columnDefinition(child, to)}`] : [],
-  );
-  const body = columns.length === 0 ? "()" : `(\n${columns.join(",\n")}\n)`;
-  return `create table ${qualified(table, to)} ${body};`;
-}
-
-function dropConstraint(
-  key: FactOf<"primary key" | "unique" | "foreign key">,
-  { from }: Catalogs,
-): string {
-  return `${alterTable(key, from)} drop constraint ${quoteIdentifier(key.name)};`;
-}
-
-/** Leaves out the clauses at Postgres's defaults, so the statement reads like the SQL one writes. */
-function addForeignKey(key: FactOf<"foreign key">, { to }: Catalogs): string {
-  const { columns, target, onDelete, onUpdate, match, deferrable } = key.payload;
-  const clauses = [
-    match === "full" ? "match full" : "",
-    onDelete === "no action" ? "" : `on delete ${onDelete}`,
-    onUpdate === "no action" ? "" : `on update ${onUpdate}`,
-    deferrable === "not deferrable" ? "" : `deferrable initially ${deferrable}`,
-  ].filter((clause) => clause !== "");
-  const references = `${quoteIdentifier(target.schema)}.${quoteIdentifier(target.table)} (${columnList(target.columns)})`;
-  return `${alterTable(key, to)} add constraint ${quoteIdentifier(key.name)} foreign key (${columnList(columns)}) references ${[references, ...clauses].join(" ")};`;
 }

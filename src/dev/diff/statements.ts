@@ -52,3 +52,34 @@ export function identityClause(identity: FactOf<"identity">): string {
 export function defaultClause(fact: FactOf<"default">): string {
   return `(${fact.payload.expression})`;
 }
+
+export function createTable(table: FactOf<"table">, { to }: { readonly to: Catalog }): string {
+  const columns = childrenOf(to, table).flatMap((child) =>
+    child.kind === "column" ? [`  ${columnDefinition(child, to)}`] : [],
+  );
+  const body = columns.length === 0 ? "()" : `(\n${columns.join(",\n")}\n)`;
+  return `create table ${qualified(table, to)} ${body};`;
+}
+
+export function dropConstraint(
+  key: FactOf<"primary key" | "unique" | "foreign key">,
+  { from }: { readonly from: Catalog },
+): string {
+  return `${alterTable(key, from)} drop constraint ${quoteIdentifier(key.name)};`;
+}
+
+/** Leaves out the clauses at Postgres's defaults, so the statement reads like the SQL one writes. */
+export function addForeignKey(
+  key: FactOf<"foreign key">,
+  { to }: { readonly to: Catalog },
+): string {
+  const { columns, target, onDelete, onUpdate, match, deferrable } = key.payload;
+  const clauses = [
+    match === "full" ? "match full" : "",
+    onDelete === "no action" ? "" : `on delete ${onDelete}`,
+    onUpdate === "no action" ? "" : `on update ${onUpdate}`,
+    deferrable === "not deferrable" ? "" : `deferrable initially ${deferrable}`,
+  ].filter((clause) => clause !== "");
+  const references = `${quoteIdentifier(target.schema)}.${quoteIdentifier(target.table)} (${columnList(target.columns)})`;
+  return `${alterTable(key, to)} add constraint ${quoteIdentifier(key.name)} foreign key (${columnList(columns)}) references ${[references, ...clauses].join(" ")};`;
+}

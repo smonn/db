@@ -37,7 +37,7 @@ type TableContext = {
 function addDefinitionTable(
   builder: CatalogBuilder,
   context: TableContext,
-  { columns, primaryKey, primaryKeyName, uniques, foreignKeys }: Table,
+  { columns, primaryKey, primaryKeyName, uniques, indexes, foreignKeys }: Table,
 ): void {
   const { schema, table, names } = context;
   builder.table(schema, table);
@@ -62,10 +62,40 @@ function addDefinitionTable(
       nullsNotDistinct,
     });
   }
+  addIndexes(builder, context, columns, indexes);
   for (const { name, columns: from, ...payload } of foreignKeys) {
     builder.foreignKey(schema, table, names.foreignKey(table, from, name), {
       columns: from,
       ...payload,
+    });
+  }
+}
+
+/** A column's `.index()` calls come first, in column order, then the second callback's `indexes`. */
+function addIndexes(
+  builder: CatalogBuilder,
+  { schema, table, names }: TableContext,
+  columns: Table["columns"],
+  indexes: Table["indexes"],
+): void {
+  for (const [column, { state }] of Object.entries(columns)) {
+    for (const { name, method } of state.indexes) {
+      const key = { column, descending: false, nullsFirst: false };
+      builder.index(schema, table, names.index(table, [column], name), {
+        unique: false,
+        method,
+        keys: [key],
+        include: [],
+        nullsNotDistinct: false,
+      });
+    }
+  }
+  for (const { name, keys, include, ...payload } of indexes) {
+    const listed = keys.map(({ column }) => column);
+    builder.index(schema, table, names.index(table, listed, name), {
+      ...payload,
+      keys: [...keys],
+      include: [...include],
     });
   }
 }

@@ -10,6 +10,8 @@ export type {
   ForeignKey,
   ForeignKeyAction,
   ForeignKeyOptions,
+  IndexMethod,
+  IndexOptions,
   PlainDate,
   Row,
   Table,
