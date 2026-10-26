@@ -40,7 +40,7 @@ export type Ref<K extends string = string, C extends Columns = Columns> = {
 };
 
 /** The column references handed to a table's second callback, one per column key. */
-export type Refs<C extends Columns> = { readonly [K in keyof C & string]: Ref<K, C> };
+export type ColumnRefs<C extends Columns> = { readonly [K in keyof C & string]: Ref<K, C> };
 
 type OwnRef<C extends Columns> = Ref<keyof C & string, C>;
 
@@ -60,12 +60,12 @@ type TableExtras<C extends Columns> = [KeyedColumns<C>] extends [never]
 type ExtrasArgs<C extends Columns> =
   IsUnion<KeyedColumns<C>> extends true
     ? [
-        extras: (t: Refs<C>) => {
+        extras: (t: ColumnRefs<C>) => {
           readonly primaryKey?: never;
           readonly "several columns call primaryKey(); declare a composite key in the second callback": never;
         },
       ]
-    : [extras?: (t: Refs<C>) => TableExtras<C>];
+    : [extras?: (t: ColumnRefs<C>) => TableExtras<C>];
 
 type ListedRefs<Entry> = Entry extends { readonly columns: infer Listed } ? Listed : Entry;
 
@@ -152,10 +152,10 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
   ...args: Args
 ): TableDefinition<C, KeyOf<C, Args>> {
   const columns = define(factories);
-  const extras: ((t: Refs<C>) => { readonly primaryKey?: unknown }) | undefined = args[0];
+  const extras: ((t: ColumnRefs<C>) => { readonly primaryKey?: unknown }) | undefined = args[0];
   const own = refsOf(columns);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- refsOf builds one Ref per key; "~table" exists only in types.
-  const declared = extras?.(own as unknown as Refs<C>);
+  const declared = extras?.(own as unknown as ColumnRefs<C>);
   const primaryKey = primaryKeyOf(columns, own, declared?.primaryKey);
   const both = Object.entries(columns).find(([, { state }]) => state.primaryKey && state.unique);
   if (both !== undefined) {
