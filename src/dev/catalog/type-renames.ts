@@ -31,12 +31,19 @@ export function declaredTypeRenames(definition: DefinitionTables): TypeRenames {
 }
 
 function labelRenames(schema: string, name: string, def: Enum): LabelRename[] {
+  const olds = new Set<string>();
   return Object.entries(def.renamedLabels).map(([label, was]) => {
     if (!def.labels.includes(label)) {
       throw new Error(
         `enum ${quotedPath(schema, name)} has renamedLabels for ${JSON.stringify(label)}, which it doesn't list`,
       );
     }
+    if (olds.has(was)) {
+      throw new Error(
+        `enum ${quotedPath(schema, name)} renames the label ${JSON.stringify(was)} to more than one label`,
+      );
+    }
+    olds.add(was);
     return { kind: "enum label", schema, enum: name, name: label, was };
   });
 }
@@ -49,7 +56,12 @@ export function appliedTypeRenames(declared: TypeRenames, shadow: Catalog): Type
   // A label sits in the enum under its old name until the enum's own `RENAME` runs.
   const was = new Map(enums.map((rename) => [`${rename.schema}\0${rename.name}`, rename.was]));
   const labels = declared.labels.filter((rename) =>
-    labelApplies(shadow, rename, was.get(`${rename.schema}\0${rename.enum}`) ?? rename.enum),
+    labelApplies(
+      shadow,
+      rename,
+      was.get(`${rename.schema}\0${rename.enum}`) ?? rename.enum,
+      declared.labels,
+    ),
   );
   const domains = declared.domains.filter((rename) =>
     applies(shadow, "domain", [rename.schema, rename.name], rename.was),
@@ -57,11 +69,22 @@ export function appliedTypeRenames(declared: TypeRenames, shadow: Catalog): Type
   return { enums, labels, domains };
 }
 
-function labelApplies(shadow: Catalog, rename: LabelRename, enumName: string): boolean {
+function labelApplies(
+  shadow: Catalog,
+  rename: LabelRename,
+  enumName: string,
+  siblings: readonly LabelRename[],
+): boolean {
   const type = factAt(shadow, rename.schema, enumName);
   if (type?.kind !== "enum") return false;
   const { labels } = type.payload;
   const hasOld = labels.includes(rename.was);
+  if (hasOld && chainsOrSwaps(rename, siblings)) {
+    throw new Error(
+      `enum ${quotedPath(rename.schema, enumName)} chains or swaps the label ${JSON.stringify(rename.name)} ` +
+        "(it is both a new and an old label); split label chains and swaps across migrations",
+    );
+  }
   if (hasOld && labels.includes(rename.name)) {
     throw new Error(
       `enum ${quotedPath(rename.schema, enumName)} has renamedLabels ${JSON.stringify(rename.name)} from ` +
@@ -70,6 +93,13 @@ function labelApplies(shadow: Catalog, rename: LabelRename, enumName: string): b
     );
   }
   return hasOld;
+}
+
+function chainsOrSwaps(rename: LabelRename, siblings: readonly LabelRename[]): boolean {
+  return siblings.some(
+    (other) =>
+      other.schema === rename.schema && other.enum === rename.enum && other.was === rename.name,
+  );
 }
 
 function quotedPath(schema: string, name: string): string {

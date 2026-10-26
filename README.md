@@ -156,7 +156,7 @@ mood: defineEnum(["great", "bad"], {
 posint: defineDomain((c) => c.integer(), { renamedFrom: "old_posint" }),
 ```
 
-`generate` then writes `ALTER ... RENAME` in place of the drop and create, and keeps the data. Each rename carries the `rename` Hazard, because app code still on the old name breaks between `migrate` and its deploy.
+`generate` then writes `ALTER ... RENAME` in place of the drop and create, and keeps the data. Each table, column, enum, label, or domain rename carries the `rename` Hazard, because app code still on the old name breaks between `migrate` and its deploy.
 
 ```text
 hazard rename: alter table "public"."users" rename column "name" to "full_name";

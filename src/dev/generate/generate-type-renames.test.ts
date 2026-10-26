@@ -158,6 +158,38 @@ create table public.users (mood public.mood default 'good');\n`;
   });
 });
 
+describe("an enum rename beside a removed label", () => {
+  it("swaps the type under its new name, retyping a scalar and an array column", async () => {
+    const mood = defineEnum(["good"], { renamedFrom: "old_mood" });
+    const definition = defineDatabase({
+      public: {
+        mood,
+        users: defineTable((c) => ({ one: c.enum(mood), many: c.enum(mood).array() })),
+      },
+    });
+    const committed = `create type public.old_mood as enum ('good', 'bad');
+create table public.users (one public.old_mood, many public.old_mood[]);
+insert into public.users values ('good', '{good}');
+`;
+
+    const result = await generateFrom(definition, committed);
+
+    const hazards = "-- hazard: data_loss\n-- hazard: rewrite\n-- hazard: access_exclusive_lock";
+    const retype = (column: string, cast: string) =>
+      `${hazards}\nalter table "public"."users" alter column "${column}" type ${cast} using "${column}"::text::${cast};`;
+    expect(result.sql?.trimEnd().split("\n\n")).toStrictEqual([
+      `-- hazard: rename\nalter type "public"."old_mood" rename to "mood";`,
+      `alter type "public"."mood" rename to "mood_old";`,
+      `create type "public"."mood" as enum ('good');`,
+      retype("one", "public.mood"),
+      retype("many", "public.mood[]"),
+      `drop type "public"."mood_old";`,
+    ]);
+    const { rows } = await db.driver.query("select one::text as one from public.users");
+    expect(rows.map((row) => row["one"])).toStrictEqual(["good"]);
+  });
+});
+
 describe("the label rename hint", () => {
   const EMPTY = MOOD.split("insert")[0] ?? "";
 

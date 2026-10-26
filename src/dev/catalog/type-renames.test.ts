@@ -28,6 +28,24 @@ const renameDomain: DomainRename = {
   was: "old_posint",
 };
 
+function chainError(label: string): string {
+  return (
+    `enum "app"."mood" chains or swaps the label ${JSON.stringify(label)} ` +
+    "(it is both a new and an old label); split label chains and swaps across migrations"
+  );
+}
+
+function labelRename(name: string, was: string): LabelRename {
+  return { kind: "enum label", schema: "app", enum: "mood", name, was };
+}
+
+function moodHolding(labels: string[]): Catalog {
+  const builder = catalogBuilder();
+  builder.schema("app");
+  builder.enumType("app", "mood", { labels });
+  return builder.build();
+}
+
 describe("declaredRenames for types", () => {
   it("lists an enum's marker, then its labels', then each domain's", () => {
     const mood = defineEnum(["great", "bad"], {
@@ -42,6 +60,14 @@ describe("declaredRenames for types", () => {
       renameLabel,
       renameDomain,
     ]);
+  });
+
+  it("throws when two labels rename from the same old label", () => {
+    const mood = defineEnum(["x", "y"], { renamedLabels: { x: "b", y: "b" } });
+
+    expect(() => declaredRenames(defineDatabase({ app: { mood } }))).toThrow(
+      'enum "app"."mood" renames the label "b" to more than one label',
+    );
   });
 
   it("lists nothing without a marker", () => {
@@ -109,5 +135,17 @@ describe("appliedRenames for types", () => {
     expect(() => appliedRenames([renameLabel], builder.build())).toThrow(
       'enum "app"."mood" has renamedLabels "great" from "good", but the Shadow database holds both labels',
     );
+  });
+
+  it("throws on a chain of labels", () => {
+    const renames = [labelRename("a", "b"), labelRename("b", "c")];
+
+    expect(() => appliedRenames(renames, moodHolding(["b", "c"]))).toThrow(chainError("b"));
+  });
+
+  it("throws on a swap of labels", () => {
+    const renames = [labelRename("a", "b"), labelRename("b", "a")];
+
+    expect(() => appliedRenames(renames, moodHolding(["a", "b"]))).toThrow(chainError("a"));
   });
 });
