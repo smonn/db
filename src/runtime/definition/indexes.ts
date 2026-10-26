@@ -1,9 +1,9 @@
+import { expressionOf } from "./index-expressions.ts";
 import { indexNameOf, methodOf, type IndexMethod } from "./index-options.ts";
 import { keyColumns, type RuntimeRefs } from "./table-keys.ts";
 
 /** One key of an index. Postgres sorts NULLs last in an ascending key and first in a descending one. */
-type IndexKey = {
-  readonly column: string;
+type IndexKey = ({ readonly column: string } | { readonly expression: string }) & {
   readonly descending: boolean;
   readonly nullsFirst: boolean;
 };
@@ -18,12 +18,23 @@ export type TableIndex = {
   readonly method: IndexMethod;
   readonly unique: boolean;
   readonly nullsNotDistinct: boolean;
+  /** The predicate of a partial index, as DDL text; `undefined` indexes every row. */
+  readonly where: string | undefined;
 };
 
 const SHAPE =
-  "The table's indexes takes a list of { columns, include?, method?, unique?, nullsNotDistinct?, name? }";
-const ENTRY_KEYS = new Set(["columns", "include", "method", "unique", "nullsNotDistinct", "name"]);
-const WRAPPER_SHAPE = "A key in the table's indexes takes a column or { key, order?, nulls? }";
+  "The table's indexes takes a list of { columns, where?, include?, method?, unique?, nullsNotDistinct?, name? }";
+const ENTRY_KEYS = new Set([
+  "columns",
+  "where",
+  "include",
+  "method",
+  "unique",
+  "nullsNotDistinct",
+  "name",
+]);
+const WRAPPER_SHAPE =
+  "A key in the table's indexes takes a column, an sql expression, or { key, order?, nulls? }";
 const WRAPPER_KEYS = new Set(["key", "order", "nulls"]);
 
 export function indexesOf(own: RuntimeRefs, declared: unknown): TableIndex[] {
@@ -41,21 +52,49 @@ function indexOf(own: RuntimeRefs, entry: unknown): TableIndex {
   }
   const listed = listOf(entry, "columns").map((element) => keyOf(element));
   if (listed.length === 0) throw new Error("The table's indexes lists no columns");
-  const include = listOf(entry, "include");
-  // One pass checks every ref and refuses a column named twice, across keys and INCLUDE alike.
-  const columns = keyColumns(own, [...listed.map(({ ref }) => ref), ...include], "indexes");
+  const name = indexNameOf(get(entry, "name"), "The table's indexes entry");
+  const { keys, include } = keysOf(own, listed, listOf(entry, "include"));
+  requireNameForExpressions(name, keys);
   return {
-    name: indexNameOf(get(entry, "name"), "The table's indexes entry"),
-    keys: listed.map(({ descending, nullsFirst }, at) => ({
-      column: columns[at] ?? "",
-      descending,
-      nullsFirst,
-    })),
-    include: columns.slice(listed.length),
+    name,
+    keys,
+    include,
     method: methodOf(get(entry, "method"), "The table's indexes entry"),
     unique: flagOf(entry, "unique"),
     nullsNotDistinct: flagOf(entry, "nullsNotDistinct"),
+    where: whereOf(own, get(entry, "where")),
   };
+}
+
+function requireNameForExpressions(name: string | undefined, keys: readonly IndexKey[]): void {
+  if (name !== undefined || !keys.some((key) => "expression" in key)) return;
+  throw new Error(
+    "The table's indexes lists an expression key without a name; give the index its own name, since Postgres's default says nothing and collides",
+  );
+}
+
+function whereOf(own: RuntimeRefs, given: unknown): string | undefined {
+  if (given === undefined) return undefined;
+  const text = expressionOf(own, given);
+  if (text !== undefined) return text;
+  throw new TypeError("The table's indexes takes where as an sql expression");
+}
+
+/** An expression key keeps its text; one pass checks every column ref and refuses a column named twice, across plain keys and INCLUDE alike. */
+function keysOf(
+  own: RuntimeRefs,
+  listed: readonly ListedKey[],
+  given: readonly unknown[],
+): { keys: IndexKey[]; include: string[] } {
+  const expressions = listed.map(({ ref }) => expressionOf(own, ref));
+  const plain = listed.flatMap(({ ref }, at) => (expressions[at] === undefined ? [ref] : []));
+  const columns = keyColumns(own, [...plain, ...given], "indexes");
+  const keys = listed.map(({ descending, nullsFirst }, at): IndexKey => {
+    const expression = expressions[at];
+    const target = expression === undefined ? { column: columns.shift() ?? "" } : { expression };
+    return { ...target, descending, nullsFirst };
+  });
+  return { keys, include: columns };
 }
 
 function get(entry: object, key: string): unknown {
@@ -79,9 +118,13 @@ function flagOf(entry: object, key: "unique" | "nullsNotDistinct"): boolean {
 
 type ListedKey = { ref: unknown; descending: boolean; nullsFirst: boolean };
 
-/** A key is a column ref, or `{ key, order, nulls }` around one. */
+/** A key is a column ref or an sql expression, or `{ key, order, nulls }` around one. */
 function keyOf(element: unknown): ListedKey {
   if (!isWrapped(element)) return { ref: element, descending: false, nullsFirst: false };
+  return wrappedKeyOf(element);
+}
+
+function wrappedKeyOf(element: object): ListedKey {
   const unexpected = Object.keys(element).find((key) => !WRAPPER_KEYS.has(key));
   if (unexpected !== undefined) {
     throw new TypeError(
@@ -98,7 +141,7 @@ function keyOf(element: unknown): ListedKey {
 
 function isWrapped(element: unknown): element is object {
   if (typeof element !== "object" || element === null) return false;
-  return !("~ref" in element) && "key" in element;
+  return !("~ref" in element) && !("toSql" in element) && "key" in element;
 }
 
 function descendingOf(order: unknown): boolean {

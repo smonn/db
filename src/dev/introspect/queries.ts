@@ -5,6 +5,17 @@ const NOT_EXTENSION_MEMBER = (catalog: string, alias: string): string => `not ex
 
 const KEPT_SCHEMA = `n.nspname !~ '^pg_' and n.nspname not in ('information_schema', $1)`;
 
+// Whether `expression` calls a function `pg_proc` marks volatile, matched by name since
+// `pg_depend` omits built-in functions. String literals are stripped so `'f('` names no call.
+const CALLS_VOLATILE = (expression: string): string => `exists (
+    select from regexp_matches(
+      regexp_replace(${expression}, '''([^'']|'''')*''', '', 'g'),
+      '([A-Za-z_][A-Za-z0-9_$]*|"[^"]+")\\s*\\(', 'g'
+    ) as call(name)
+      join pg_proc p on p.proname = trim(both '"' from call.name[1])
+    where p.provolatile = 'v'
+  )`;
+
 export const SCHEMAS: string = `
 select n.nspname as name
 from pg_namespace n
@@ -29,6 +40,33 @@ where t.typtype = 'e' and ${KEPT_SCHEMA}
   and ${NOT_EXTENSION_MEMBER("pg_type", "t")}
 order by t.typname`;
 
+// A domain over a domain or an array, or with a collation other than its base's, is an Unmodeled
+// object (ADR-0023). NOT NULL folds `typnotnull` and a Postgres 18 `pg_constraint` NOT NULL row.
+export const DOMAINS: string = `
+select n.nspname as schema, t.typname as name, format_type(t.typbasetype, t.typtypmod) as base,
+  t.typnotnull or exists (
+    select from pg_constraint k where k.contypid = t.oid and k.contype = 'n'
+  ) as not_null,
+  pg_get_expr(t.typdefaultbin, 0) as default_expression,
+  ${CALLS_VOLATILE("pg_get_expr(t.typdefaultbin, 0)")} as default_volatile
+from pg_type t
+  join pg_namespace n on n.oid = t.typnamespace
+  join pg_type b on b.oid = t.typbasetype
+where t.typtype = 'd' and b.typtype <> 'd' and b.typcategory <> 'A'
+  and t.typcollation = b.typcollation and ${KEPT_SCHEMA}
+  and ${NOT_EXTENSION_MEMBER("pg_type", "t")}
+order by t.typname`;
+
+// The expression inside `CHECK (...)`, so a `NOT VALID` check reads like a valid one.
+export const DOMAIN_CHECKS: string = `
+select n.nspname as schema, t.typname as domain, k.conname as name,
+  regexp_replace(pg_get_constraintdef(k.oid), '^CHECK \\((.*)\\)( NOT VALID)?$', '\\1') as expression
+from pg_constraint k
+  join pg_type t on t.oid = k.contypid
+  join pg_namespace n on n.oid = t.typnamespace
+where k.contype = 'c' and t.typtype = 'd' and ${KEPT_SCHEMA}
+order by k.conname`;
+
 // A column of an array of a composite or range type is an Unmodeled object (ADR-0005, ADR-0023).
 export const COLUMNS: string = `
 select n.nspname as schema, c.relname as table, a.attname as name,
@@ -36,14 +74,8 @@ select n.nspname as schema, c.relname as table, a.attname as name,
   a.attidentity as identity, a.attgenerated as generated,
   case when a.attgenerated <> '' then pg_get_expr(d.adbin, d.adrelid) end as generation_expression,
   case when a.attgenerated = '' then pg_get_expr(d.adbin, d.adrelid) end as default_expression,
-  case when a.attgenerated = '' then exists (
-    select from regexp_matches(
-      regexp_replace(pg_get_expr(d.adbin, d.adrelid), '''([^'']|'''')*''', '', 'g'),
-      '([A-Za-z_][A-Za-z0-9_$]*|"[^"]+")\\s*\\(', 'g'
-    ) as call(name)
-      join pg_proc p on p.proname = trim(both '"' from call.name[1])
-    where p.provolatile = 'v'
-  ) end as default_volatile
+  case when a.attgenerated = '' then ${CALLS_VOLATILE("pg_get_expr(d.adbin, d.adrelid)")}
+  end as default_volatile
 from pg_attribute a
   join pg_class c on c.oid = a.attrelid
   join pg_namespace n on n.oid = c.relnamespace
@@ -80,22 +112,32 @@ where k.contype in ('p', 'u')
 order by k.conname`;
 
 // An index is Unmodeled (ADR-0005) when it has another method, an opclass or collation other than
-// the default, storage parameters, a tablespace, an expression key, or a predicate (expression
-// keys and WHERE wait for #442), or is invalid (a failed CREATE INDEX CONCURRENTLY leaves one
-// that the planner never uses). An index that backs a primary key, unique, or exclusion
-// constraint is the constraint's fact, so it is skipped too; a foreign key's `conindid` is the
-// referenced table's index, which stays an index. `orders` holds one `<asc|desc> nulls <first|last>`
-// per key, read from `indoption`.
+// the default, storage parameters, or a tablespace, or is invalid (a failed CREATE INDEX
+// CONCURRENTLY leaves one that the planner never uses). An index that backs a primary key,
+// unique, or exclusion constraint is the constraint's fact, so it is skipped too; a foreign
+// key's `conindid` is the referenced table's index, which stays an index. `columns` and
+// `expressions` hold one entry per key, empty where the key is the other kind (no name or
+// expression is empty, and the driver reads a NULL in a text array as the string "NULL"); `orders`
+// holds one `<asc|desc> nulls <first|last>` per key, read from `indoption`. Postgres deparses an
+// expression key as `pg_get_indexdef` does, with the predicate through `pg_get_expr`, so a
+// spacing or cast difference in the source reads the same on both sides, as a default does.
 export const INDEXES: string = `
 select n.nspname as schema, c.relname as table, ic.relname as name, am.amname as method,
   i.indisunique as is_unique, i.indnullsnotdistinct as nulls_not_distinct,
   array(
-    select a.attname::text
+    select coalesce(a.attname::text, '')
     from unnest(i.indkey::int2[]) with ordinality as key(attnum, position)
-      join pg_attribute a on a.attrelid = i.indrelid and a.attnum = key.attnum
+      left join pg_attribute a on a.attrelid = i.indrelid and a.attnum = key.attnum
     where key.position <= i.indnkeyatts
     order by key.position
   ) as columns,
+  array(
+    select case when key.attnum = 0 then pg_get_indexdef(i.indexrelid, key.position::int, true) else '' end
+    from unnest(i.indkey::int2[]) with ordinality as key(attnum, position)
+    where key.position <= i.indnkeyatts
+    order by key.position
+  ) as expressions,
+  pg_get_expr(i.indpred, i.indrelid, true) as predicate,
   array(
     select case when (o.option & 1) = 1 then 'desc' else 'asc' end
       || case when (o.option & 2) = 2 then ' nulls first' else ' nulls last' end
@@ -116,7 +158,7 @@ from pg_index i
   join pg_class c on c.oid = i.indrelid
   join pg_namespace n on n.oid = c.relnamespace
 where am.amname in ('btree', 'hash', 'gin', 'gist', 'brin')
-  and i.indisvalid and i.indexprs is null and i.indpred is null
+  and i.indisvalid
   and ic.reloptions is null and ic.reltablespace = 0
   and not exists (
     select from pg_constraint k
@@ -130,8 +172,12 @@ where am.amname in ('btree', 'hash', 'gin', 'gist', 'brin')
   and not exists (
     select from unnest(i.indkey::int2[], i.indcollation::oid[]) with ordinality
         as k(attnum, coll, position)
-      join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
-    where k.position <= i.indnkeyatts and k.coll <> a.attcollation
+      left join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
+      join pg_attribute ia on ia.attrelid = i.indexrelid and ia.attnum = k.position
+      join pg_type t on t.oid = ia.atttypid
+    where k.position <= i.indnkeyatts
+      -- an expression key has no table column (attnum 0), so it compares to its type's collation
+      and k.coll <> case when k.attnum = 0 then t.typcollation else a.attcollation end
   )
   and c.relkind = 'r' and not c.relispartition and ${KEPT_SCHEMA}
   and ${NOT_EXTENSION_MEMBER("pg_class", "c")}

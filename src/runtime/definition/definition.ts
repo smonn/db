@@ -1,4 +1,5 @@
 import type { Columns } from "./column.ts";
+import { isDomain, type Domain } from "./domain.ts";
 import { isEnum, type Enum } from "./enum.ts";
 import { type ColumnFactories, factories } from "./factories.ts";
 import {
@@ -127,8 +128,8 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>
   } as unknown as TableDefinition<C, KeyOf<C, Args>>;
 }
 
-/** What a schema holds: tables and enums, which share one pool of names in Postgres. */
-type SchemaEntry = TableDefinition | Enum;
+/** What a schema holds: tables, enums, and domains, which share one pool of names in Postgres. */
+type SchemaEntry = TableDefinition | Enum | Domain;
 
 type Schemas = Record<string, Record<string, SchemaEntry>>;
 
@@ -176,8 +177,8 @@ export function defineDatabase<S extends Schemas>(schemas: S): Database<S> {
       Object.fromEntries(
         Object.entries(tables).map(([name, entry]) => [
           name,
-          // An enum stays the value its columns hold, since the catalog finds its name by identity.
-          isEnum(entry) ? entry : tableOf(places, schema, name, entry),
+          // A type stays the value its columns hold, since the catalog finds its name by identity.
+          isEnum(entry) || isDomain(entry) ? entry : tableOf(places, schema, name, entry),
         ]),
       ),
     ]),
