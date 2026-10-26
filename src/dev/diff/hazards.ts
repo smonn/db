@@ -3,6 +3,7 @@ export const HAZARD_KINDS = [
   "rewrite",
   "access_exclusive_lock",
   "share_row_exclusive_lock",
+  "rename",
 ] as const;
 
 export type HazardKind = (typeof HAZARD_KINDS)[number];

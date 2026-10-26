@@ -1,1 +1,6 @@
-export { introspect, requireSupportedServer, skippedSchemaReason } from "./introspect.ts";
+export {
+  introspect,
+  introspectIn,
+  requireSupportedServer,
+  skippedSchemaReason,
+} from "./introspect.ts";

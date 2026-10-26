@@ -1,5 +1,11 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
-import { childrenOf, parentOf, qualified, type Catalog, type Fact } from "../catalog/index.ts";
+import {
+  childrenOf,
+  qualified,
+  type Catalog,
+  type ColumnRename,
+  type TableRename,
+} from "../catalog/index.ts";
 import { enumTypes, labelPosition, quoteLiteral } from "./enums.ts";
 import {
   HAZARD_KINDS,
@@ -9,11 +15,22 @@ import {
   retypeHazards,
   type HazardKind,
 } from "./hazards.ts";
-
-type FactOf<K extends Fact["kind"]> = Extract<Fact, { readonly kind: K }>;
+import { renameSql } from "./rename-sql.ts";
+import {
+  addConstraint,
+  alterColumn,
+  alterTable,
+  columnDefinition,
+  columnList,
+  defaultClause,
+  identityClause,
+  type FactOf,
+} from "./statements.ts";
 
 /** The kind of fact each action acts on. */
 type Target = {
+  "rename table": "table";
+  "rename column": "column";
   "drop foreign key": "foreign key";
   "drop unique": "unique";
   "drop primary key": "primary key";
@@ -47,6 +64,9 @@ export type ActionKind = keyof Target;
 type Carries = {
   /** The column as the `from` catalog has it, since a type change's hazards depend on both types. */
   "alter type": { readonly before: FactOf<"column"> };
+  /** The renamed object's fact is the `from` catalog's, which already holds the renamed object. */
+  "rename table": { readonly rename: TableRename };
+  "rename column": { readonly rename: ColumnRename };
   /** The enum as the `from` catalog has it, and the label to add to it. */
   "add enum value": { readonly before: FactOf<"enum">; readonly label: string };
 };
@@ -83,6 +103,9 @@ const always =
  * created in the same migration is empty, so only changes to a table `from` has can be slow.
  */
 const STEPS: { readonly [A in ActionKind]: Step<A> } = {
+  // Only the catalog changes, but app code on the old name breaks until it deploys (ADR-0024).
+  "rename table": { render: renameStatement, hazards: always("rename") },
+  "rename column": { render: renameStatement, hazards: always("rename") },
   "drop foreign key": { render: dropConstraint, hazards: none },
   "drop unique": { render: dropConstraint, hazards: none },
   "drop primary key": { render: dropConstraint, hazards: none },
@@ -199,6 +222,14 @@ export function render<A extends ActionKind>(action: Action<A>, catalogs: Catalo
   return STEPS[action.kind].render(action.fact, catalogs, action);
 }
 
+function renameStatement(
+  _fact: unknown,
+  _catalogs: Catalogs,
+  { rename }: Action<"rename table" | "rename column">,
+): string {
+  return renameSql(rename);
+}
+
 /** In `HAZARD_KINDS` order, so the `-- hazard:` comments above a statement always read alike. */
 export function hazardsOf<A extends ActionKind>(
   action: Action<A>,
@@ -227,38 +258,11 @@ function createTable(table: FactOf<"table">, { to }: Catalogs): string {
   return `create table ${qualified(table, to)} ${body};`;
 }
 
-function columnDefinition(column: FactOf<"column">, to: Catalog): string {
-  const { type, notNull } = column.payload;
-  const parts = [quoteIdentifier(column.name), type];
-  if (notNull) parts.push("not null");
-  for (const child of childrenOf(to, column)) {
-    if (child.kind === "identity") parts.push(identityClause(child));
-    if (child.kind === "default") parts.push(`default ${defaultClause(child)}`);
-    if (child.kind === "generated") {
-      parts.push(`generated always as (${child.payload.expression}) ${child.payload.storage}`);
-    }
-  }
-  return parts.join(" ");
-}
-
 function dropConstraint(
   key: FactOf<"primary key" | "unique" | "foreign key">,
   { from }: Catalogs,
 ): string {
   return `${alterTable(key, from)} drop constraint ${quoteIdentifier(key.name)};`;
-}
-
-function addConstraint(
-  key: FactOf<"primary key" | "unique">,
-  clause: string,
-  columns: readonly string[],
-  to: Catalog,
-): string {
-  return `${alterTable(key, to)} add constraint ${quoteIdentifier(key.name)} ${clause} (${columnList(columns)});`;
-}
-
-function columnList(names: readonly string[]): string {
-  return names.map((name) => quoteIdentifier(name)).join(", ");
 }
 
 /** Leaves out the clauses at Postgres's defaults, so the statement reads like the SQL one writes. */
@@ -272,27 +276,4 @@ function addForeignKey(key: FactOf<"foreign key">, { to }: Catalogs): string {
   ].filter((clause) => clause !== "");
   const references = `${quoteIdentifier(target.schema)}.${quoteIdentifier(target.table)} (${columnList(target.columns)})`;
   return `${alterTable(key, to)} add constraint ${quoteIdentifier(key.name)} foreign key (${columnList(columns)}) references ${[references, ...clauses].join(" ")};`;
-}
-
-/** `alter table` for the table that holds `fact`, a column or key. */
-function alterTable(fact: Fact, catalog: Catalog): string {
-  return `alter table ${qualified(parentOf(catalog, fact), catalog)}`;
-}
-
-/** `alter column` for `fact`, a column or one of its attributes. */
-function alterColumn(
-  fact: FactOf<"column" | "default" | "identity" | "generated">,
-  catalog: Catalog,
-): string {
-  const column = fact.kind === "column" ? fact : parentOf(catalog, fact);
-  return `${alterTable(column, catalog)} alter column ${quoteIdentifier(column.name)}`;
-}
-
-function identityClause(identity: FactOf<"identity">): string {
-  return `generated ${identity.payload.generated} as identity`;
-}
-
-/** Parenthesized, so any expression the Definition writes parses as a default. */
-function defaultClause(fact: FactOf<"default">): string {
-  return `(${fact.payload.expression})`;
 }

@@ -62,6 +62,7 @@ describe("generate with a hand-edited current.sql", () => {
       leftover: LEFTOVER,
       reset: true,
       hazards: [],
+      hints: [],
     });
     const { rows: tables } = await db.driver.query(
       "select table_name from information_schema.tables where table_schema = 'public'",

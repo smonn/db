@@ -36,6 +36,7 @@ function of<V, Int extends boolean = false>(
     primaryKey: false,
     unique: false,
     constraintName: undefined,
+    renamedFrom: undefined,
     references: undefined,
   });
 }
