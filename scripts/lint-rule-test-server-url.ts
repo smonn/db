@@ -31,7 +31,7 @@ function isDatabaseUrlKey(key: Node, computed: boolean): boolean {
 const MESSAGE =
   "Call testServerUrl() from test-database.test-helper.ts: a missing server then fails with the `node scripts/test-db.ts` hint instead of `Invalid URL`";
 
-export const testServerUrl: Rule = {
+export const testServerUrlRule: Rule = {
   meta: {
     type: "problem",
     docs: { description: "Read the test server's DATABASE_URL through testServerUrl()" },

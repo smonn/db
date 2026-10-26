@@ -9,12 +9,17 @@ import { parseEnv } from "node:util";
 
 const envFile = fileURLToPath(new URL("../.env.test", import.meta.url));
 
+/** An empty `DATABASE_URL` (`DATABASE_URL=` in a shell or direnv file) counts as unset. */
+function nonEmpty(value: string | undefined): string | undefined {
+  return value === undefined || value === "" ? undefined : value;
+}
+
 /** The variables vitest injects into the tests: those of `.env.test`, unless `DATABASE_URL` is set. */
 export function testEnv(
   processEnv: NodeJS.ProcessEnv = process.env,
   file: string = envFile,
 ): NodeJS.Dict<string> {
-  return processEnv["DATABASE_URL"] === undefined && existsSync(file)
+  return nonEmpty(processEnv["DATABASE_URL"]) === undefined && existsSync(file)
     ? parseEnv(readFileSync(file, "utf8"))
     : {};
 }
@@ -23,7 +28,9 @@ export function testDatabaseUrl(
   processEnv: NodeJS.ProcessEnv = process.env,
   file: string = envFile,
 ): string | undefined {
-  return processEnv["DATABASE_URL"] ?? testEnv(processEnv, file)["DATABASE_URL"];
+  return (
+    nonEmpty(processEnv["DATABASE_URL"]) ?? nonEmpty(testEnv(processEnv, file)["DATABASE_URL"])
+  );
 }
 
 type Connect = (port: number, host: string) => Pick<Socket, "once" | "setTimeout" | "destroy">;

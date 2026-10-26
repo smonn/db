@@ -34,6 +34,10 @@ function scanLine(state: ScanState, line: string, index: number): void {
   }
   if (HAZARD_LOOKING.test(line)) state.strays.push({ line: index + 1, text: line });
   if (state.kinds.length > 0) state.statement.push(line.trim());
+  trackStatement(state, line);
+}
+
+function trackStatement(state: ScanState, line: string): void {
   const code = line.replace(TRAILING_COMMENT, "").trim();
   if (code !== "") state.inStatement = true;
   if (state.inStatement && code.endsWith(";")) {
