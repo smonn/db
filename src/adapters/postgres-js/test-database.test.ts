@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { MIGRATION_LOCK_KEY } from "../../runtime/internal/index.ts";
 import {
   explainConnectionError,
+  testServerUrl,
   useTestDatabase,
   whileMigrationLockHeld,
 } from "./test-database.test-helper.ts";
@@ -39,7 +40,7 @@ async function connectError(url: string): Promise<unknown> {
 
 describe("explainConnectionError", () => {
   it("names DATABASE_URL's host and port when the server rejects the login", async () => {
-    const url = new URL(String(process.env["DATABASE_URL"]));
+    const url = new URL(testServerUrl());
     url.password = "wrong-password";
     const error = await connectError(url.href);
 

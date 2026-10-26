@@ -28,7 +28,7 @@ type Target = {
   "add unique": "unique";
 };
 
-type ActionKind = keyof Target;
+export type ActionKind = keyof Target;
 
 /** What an action needs beyond its fact. */
 type Carries = {
@@ -49,7 +49,6 @@ export type Action<A extends ActionKind = ActionKind> = {
 export type Catalogs = { readonly from: Catalog; readonly to: Catalog };
 
 type Step<A extends ActionKind> = {
-  readonly phase: number;
   readonly render: (fact: FactOf<Target[A]>, catalogs: Catalogs) => string;
   /** Classified from the catalogs the action reads, never from the SQL it renders. */
   readonly hazards: (action: Action<A>, catalogs: Catalogs) => readonly HazardKind[];
@@ -62,43 +61,33 @@ const always =
     kinds;
 
 /**
- * Every action kind, with the phase `order` sorts it into and the SQL it renders.
- *
- * Postgres refuses to add an identity to a column that has a default or isn't NOT NULL, to drop
- * NOT NULL from an identity column, and to retype a column whose default can't be cast, so each
- * drop runs before the changes it would block. Keys drop first and add last, so a changed key is
- * rebuilt around the column changes it spans.
+ * Every action kind, with the SQL it renders.
  *
  * Each kind also declares its Hazards, so a new kind can't compile without a decision. A table
  * created in the same migration is empty, so only changes to a table `from` has can be slow.
  */
 const STEPS: { readonly [A in ActionKind]: Step<A> } = {
-  "drop unique": { phase: 0, render: dropConstraint, hazards: none },
-  "drop primary key": { phase: 1, render: dropConstraint, hazards: none },
+  "drop unique": { render: dropConstraint, hazards: none },
+  "drop primary key": { render: dropConstraint, hazards: none },
   "drop column": {
-    phase: 2,
     render: (column, { from }) =>
       `${alterTable(column, from)} drop column ${quoteIdentifier(column.name)};`,
     hazards: always("data_loss"),
   },
   "drop table": {
-    phase: 3,
     render: (table, { from }) => `drop table ${qualified(table, from)};`,
     hazards: always("data_loss"),
   },
   "drop schema": {
-    phase: 4,
     render: (schema) => `drop schema ${quoteIdentifier(schema.name)};`,
     hazards: none,
   },
   "create schema": {
-    phase: 5,
     render: (schema) => `create schema ${quoteIdentifier(schema.name)};`,
     hazards: none,
   },
-  "create table": { phase: 6, render: createTable, hazards: none },
+  "create table": { render: createTable, hazards: none },
   "add column": {
-    phase: 7,
     render: (column, { to }) =>
       `${alterTable(column, to)} add column ${columnDefinition(column, to)};`,
     // An identity fills each row from its sequence, as a volatile default does, and a stored
@@ -114,79 +103,58 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
         : [],
   },
   "drop default": {
-    phase: 8,
     render: (fact, { from }) => `${alterColumn(fact, from)} drop default;`,
     hazards: none,
   },
   "drop identity": {
-    phase: 9,
     render: (fact, { from }) => `${alterColumn(fact, from)} drop identity;`,
     hazards: none,
   },
   // Keeps the stored values, so the table is not rewritten.
   "drop expression": {
-    phase: 9,
     render: (fact, { from }) => `${alterColumn(fact, from)} drop expression;`,
     hazards: none,
   },
   "alter type": {
-    phase: 10,
     render: (column, { to }) => `${alterColumn(column, to)} type ${column.payload.type};`,
     hazards: ({ before, fact }) => retypeHazards(before.payload.type, fact.payload.type),
   },
   // Reads every row under the lock to prove none is null.
   "set not null": {
-    phase: 11,
     render: (column, { to }) => `${alterColumn(column, to)} set not null;`,
     hazards: always(...LONG_LOCK),
   },
   "drop not null": {
-    phase: 11,
     render: (column, { to }) => `${alterColumn(column, to)} drop not null;`,
     hazards: none,
   },
   "set default": {
-    phase: 12,
     render: (fact, { to }) => `${alterColumn(fact, to)} set default ${defaultClause(fact)};`,
     hazards: none,
   },
   // Recomputes a stored column under the lock; a virtual one computes on read.
   "set expression": {
-    phase: 12,
     render: (fact, { to }) =>
       `${alterColumn(fact, to)} set expression as (${fact.payload.expression});`,
     hazards: ({ fact }) => (fact.payload.storage === "stored" ? REWRITE : []),
   },
   "add identity": {
-    phase: 13,
     render: (fact, { to }) => `${alterColumn(fact, to)} add ${identityClause(fact)};`,
     hazards: none,
   },
   "set identity mode": {
-    phase: 13,
     render: (fact, { to }) => `${alterColumn(fact, to)} set generated ${fact.payload.generated};`,
     hazards: none,
   },
   "add primary key": {
-    phase: 14,
     render: (key, { to }) => addConstraint(key, "primary key", key.payload.columns, to),
     hazards: indexBuild,
   },
   "add unique": {
-    phase: 15,
     render: (key, { to }) => addConstraint(key, "unique", [key.payload.column], to),
     hazards: indexBuild,
   },
 };
-
-/**
- * Sorts by phase. The sort is stable, so ties keep catalog order, which `introspect` sorts by name
- * for schemas, tables, and constraints and by position for columns, so new columns follow the
- * Definition. Drops keep the `from` catalog's order and everything else the `to` catalog's.
- */
-export function order(actions: readonly Action[]): Action[] {
-  return actions.toSorted((a, b) => STEPS[a.kind].phase - STEPS[b.kind].phase);
-}
 
 export function render<A extends ActionKind>(action: Action<A>, catalogs: Catalogs): string {
   return STEPS[action.kind].render(action.fact, catalogs);

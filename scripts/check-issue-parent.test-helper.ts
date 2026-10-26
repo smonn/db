@@ -93,7 +93,7 @@ export function writeEvent(payload: unknown, name = "event.json"): string {
 
 export function run(payload: ParentEvent, routes: Record<string, unknown>): Gh {
   const gh = fakeGh(routes);
-  main({ GITHUB_EVENT_PATH: writeEvent(payload) }, gh);
+  main({ GITHUB_EVENT_PATH: writeEvent(payload) }, gh, () => {});
   return gh;
 }
 

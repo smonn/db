@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 import {
   terminateBackendRunning,
+  testServerUrl,
   useTestDatabase,
 } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { writeMigration } from "../../runtime/internal/index.ts";
@@ -18,7 +19,7 @@ const cli = useCliProject();
 // postgres.js's sql.end() never settles after a backend ended mid-statement (porsager/postgres#1226).
 // That left bin.ts's top-level await pending, so Node exited 13 without printing the error.
 it("exits 1 naming the error when the backend ends mid-migration", async () => {
-  const url = new URL(String(process.env["DATABASE_URL"]));
+  const url = new URL(testServerUrl());
   url.pathname = `/${db.name}`;
   const sleeping = await writeMigration("000001-sleep.sql", undefined, "select pg_sleep(30);\n");
   await mkdir(join(cli.dir, "migrations"));

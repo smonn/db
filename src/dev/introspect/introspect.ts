@@ -148,15 +148,24 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
       }
       for (const row of constraints) {
         if (row["schema"] !== schema || row["table"] !== tableName) continue;
-        const constraint = String(row["name"]);
-        const keyColumns = Array.isArray(row["columns"]) ? row["columns"].map(String) : [];
-        if (row["type"] === "p")
-          builder.primaryKey(schema, tableName, constraint, { columns: keyColumns });
-        else builder.unique(schema, tableName, constraint, { column: keyColumns[0] ?? "" });
+        addConstraint(builder, schema, tableName, row);
       }
     }
   }
   return builder.build();
+}
+
+function addConstraint(
+  builder: CatalogBuilder,
+  schema: string,
+  tableName: string,
+  row: DriverRow,
+): void {
+  const constraint = String(row["name"]);
+  const keyColumns = Array.isArray(row["columns"]) ? row["columns"].map(String) : [];
+  if (row["type"] === "p")
+    builder.primaryKey(schema, tableName, constraint, { columns: keyColumns });
+  else builder.unique(schema, tableName, constraint, { column: keyColumns[0] ?? "" });
 }
 
 function addColumn(

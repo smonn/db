@@ -5,7 +5,8 @@
  * sub-issue nor a parent itself, and shares an area label with an open parent in the same
  * milestone, it gets one comment naming the matching parents. Not every issue needs a parent, so
  * no match means no comment. The comment carries a marker, and an issue that already has one
- * gets no second comment.
+ * gets no second comment. It waits `GRACE_MS` and fetches the issue again before commenting, since
+ * a sliced issue is attached right after it opens.
  *
  * Run with `GITHUB_EVENT_PATH` set to an `issues` event payload and `gh` authenticated, as
  * `pnpm check:parent`; the Issue milestone workflow runs it on `opened`, `labeled`, and
@@ -27,6 +28,9 @@ import {
 } from "./github-json.ts";
 
 export const MARKER = "<!-- smonn-db:missing-parent -->";
+
+/** How long to wait before commenting, so a sliced issue attached right after filing is left alone (#489). */
+export const GRACE_MS = 30_000;
 
 const CHECKED_ACTIONS = new Set(["opened", "labeled", "milestoned"]);
 
@@ -136,6 +140,12 @@ type Gh = (args: string[]) => string;
 
 const runGh: Gh = (args) => execFileSync("gh", args, { encoding: "utf8" });
 
+type Wait = (ms: number) => void;
+
+const sleepSync: Wait = (ms) => {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+};
+
 function getOne(gh: Gh, path: string): Current {
   return readCurrent(parseJson(gh(["api", path]), `gh api ${path}`), "$");
 }
@@ -181,7 +191,40 @@ function matchingParents(self: Current, milestoneIssues: ApiIssue[]): number[] {
     .toSorted((a, b) => a - b);
 }
 
-export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void {
+function hasParentOrChildren(issue: Current): boolean {
+  return issue.parent_issue_url !== null || issue.sub_issues_summary.total > 0;
+}
+
+type Target = { repo: string; number: number };
+
+function parentsToName(gh: Gh, target: Target, current: Current, milestone: number): number[] {
+  const { repo, number: issueNumber } = target;
+  const issuePath = `repos/${repo}/issues/${issueNumber}`;
+  const comments = getAll(gh, `${issuePath}/comments?per_page=100`, readComment);
+  if (comments.some((comment) => comment.body.includes(MARKER))) return [];
+  const milestoneIssues = getAll(
+    gh,
+    `repos/${repo}/issues?milestone=${milestone}&state=open&per_page=100`,
+    readApiIssue,
+  );
+  return matchingParents(current, milestoneIssues);
+}
+
+// A sliced issue is attached right after it opens, so wait and look again before commenting (#489).
+function commentUnlessAttached(gh: Gh, target: Target, parents: number[], wait: Wait): void {
+  const { repo, number: issueNumber } = target;
+  wait(GRACE_MS);
+  if (hasParentOrChildren(getOne(gh, `repos/${repo}/issues/${issueNumber}`))) return;
+  const named = parents.map((parent) => `#${parent}`).join(", ");
+  const body = `${MARKER}\nThis issue has no parent, and its milestone has a parent for its area: ${named}. If it belongs there, attach it as a sub-issue (\`gh issue edit <parent> --add-sub-issue ${issueNumber}\`). Not every issue needs a parent, so ignore this if it doesn't.`;
+  gh(["issue", "comment", String(issueNumber), "--repo", repo, "--body", body]);
+}
+
+export function main(
+  env: NodeJS.ProcessEnv = process.env,
+  gh: Gh = runGh,
+  wait: Wait = sleepSync,
+): void {
   const { GITHUB_EVENT_PATH: eventPath } = env;
   if (eventPath === undefined) {
     console.error("Set GITHUB_EVENT_PATH");
@@ -194,19 +237,11 @@ export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void
   const issuePath = `repos/${repository.full_name}/issues/${issue.number}`;
   const current = getOne(gh, issuePath);
   if (!qualifies(current) || current.milestone === null) return;
-  if (current.parent_issue_url !== null || current.sub_issues_summary.total > 0) return;
-  const comments = getAll(gh, `${issuePath}/comments?per_page=100`, readComment);
-  if (comments.some((comment) => comment.body.includes(MARKER))) return;
-  const milestoneIssues = getAll(
-    gh,
-    `repos/${repository.full_name}/issues?milestone=${current.milestone.number}&state=open&per_page=100`,
-    readApiIssue,
-  );
-  const parents = matchingParents(current, milestoneIssues);
+  if (hasParentOrChildren(current)) return;
+  const target = { repo: repository.full_name, number: issue.number };
+  const parents = parentsToName(gh, target, current, current.milestone.number);
   if (parents.length === 0) return;
-  const named = parents.map((parent) => `#${parent}`).join(", ");
-  const body = `${MARKER}\nThis issue has no parent, and its milestone has a parent for its area: ${named}. If it belongs there, attach it as a sub-issue (\`gh issue edit <parent> --add-sub-issue ${issue.number}\`). Not every issue needs a parent, so ignore this if it doesn't.`;
-  gh(["issue", "comment", String(issue.number), "--repo", repository.full_name, "--body", body]);
+  commentUnlessAttached(gh, target, parents, wait);
 }
 
 if (import.meta.main) main();

@@ -12,16 +12,7 @@ const KNOWN: readonly string[] = HAZARD_KINDS;
  * comment but isn't read as one would drop its gate by accident, so it refuses too.
  */
 export function hazardRefusal(body: string, accepted: readonly string[]): string | undefined {
-  const missing = new Map<string, string[]>();
-  const unknown = new Set<string>();
-  for (const { kind, statement } of hazardsIn(body)) {
-    if (!KNOWN.includes(kind)) unknown.add(kind);
-    else if (!accepted.includes(kind)) {
-      const kinds = missing.get(statement);
-      if (kinds === undefined) missing.set(statement, [kind]);
-      else kinds.push(kind);
-    }
-  }
+  const { missing, unknown } = groupHazards(body, accepted);
   const strays = strayHazardComments(body);
   if (missing.size === 0 && unknown.size === 0 && strays.length === 0) return undefined;
   const lines: string[] = [];
@@ -39,9 +30,28 @@ export function hazardRefusal(body: string, accepted: readonly string[]): string
       `unknown Hazard kind ${JSON.stringify(kind)} in ${CURRENT_FILENAME}; fix or delete the comment`,
     );
   }
-  if (missing.size > 0) {
-    const flag = new Set([...accepted, ...[...missing.values()].flat()]);
-    lines.push(`to commit anyway, pass --accept ${[...flag].join(",")}`);
-  }
+  if (missing.size > 0) lines.push(acceptHint(accepted, missing));
   return lines.join("\n");
+}
+
+function acceptHint(accepted: readonly string[], missing: ReadonlyMap<string, string[]>): string {
+  const flag = new Set([...accepted, ...[...missing.values()].flat()]);
+  return `to commit anyway, pass --accept ${[...flag].join(",")}`;
+}
+
+function groupHazards(
+  body: string,
+  accepted: readonly string[],
+): { missing: Map<string, string[]>; unknown: Set<string> } {
+  const missing = new Map<string, string[]>();
+  const unknown = new Set<string>();
+  for (const { kind, statement } of hazardsIn(body)) {
+    if (!KNOWN.includes(kind)) unknown.add(kind);
+    else if (!accepted.includes(kind)) {
+      const kinds = missing.get(statement);
+      if (kinds === undefined) missing.set(statement, [kind]);
+      else kinds.push(kind);
+    }
+  }
+  return { missing, unknown };
 }
