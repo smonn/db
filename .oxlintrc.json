@@ -48,6 +48,18 @@
       }
     },
     {
+      "files": ["**/*.test.ts", "**/*.test-helper.ts"],
+      "rules": {
+        "smonn/test-server-url": "error"
+      }
+    },
+    {
+      "files": ["src/adapters/postgres-js/test-database.test-helper.ts"],
+      "rules": {
+        "smonn/test-server-url": "off"
+      }
+    },
+    {
       "files": ["scripts/**/*.test.ts"],
       "rules": {
         "smonn/mock-child-process": "error"
