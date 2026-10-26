@@ -172,7 +172,7 @@ describe("main rebase", () => {
     expect(cli.stderr).toContain("has changes git doesn't hold: 000003-x.sql;");
   });
 
-  it("refuses on a leftover .sql.tmp, tracked by git or not", async () => {
+  it("refuses on a gitignored leftover .sql.tmp", async () => {
     await forkedRepo();
     await writeFile(join(cli.dir, "migrations", "000003-x.sql.tmp"), "half");
     await writeFile(join(cli.dir, ".gitignore"), "*.tmp\n");
