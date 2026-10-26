@@ -189,7 +189,7 @@ function constraintMethods(
       }));
     },
     unique: (schema, table, name, payload) => {
-      add(schema, table, [payload.column], (parent) => ({
+      add(schema, table, payload.columns, (parent) => ({
         kind: "unique",
         name,
         parent,

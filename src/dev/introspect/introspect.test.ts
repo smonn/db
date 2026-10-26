@@ -146,7 +146,7 @@ describe("introspect", () => {
     expect([...catalog.values()].map((fact) => fact.kind)).not.toContain("constraint");
   });
 
-  it("reads primary keys in key order and single-column unique constraints, and no others", async () => {
+  it("reads primary keys and unique constraints in key order, and no unique index", async () => {
     await db.driver.execute(`
       create table t (
         a text not null, b text not null, c text, d text, e text, f text
@@ -154,7 +154,8 @@ describe("introspect", () => {
       alter table t add constraint pk primary key (b, a);
       alter table t add constraint c_uq unique (c);
       alter table t add constraint d_uq unique (d);
-      alter table t add constraint ef_uq unique (e, f);
+      alter table t add constraint fe_uq unique (f, e);
+      alter table t add constraint cd_nn unique nulls not distinct (c, d);
       alter table t add constraint f_check check (f <> '');
       create unique index d_index on t (d);
       create table keyless (a text);
@@ -168,18 +169,22 @@ describe("introspect", () => {
       .filter((fact) => ["primary key", "unique"].includes(fact.kind))
       .map((fact) => [fact.kind, namesOf(catalog, fact).join("."), fact.payload]);
     expect(keys).toStrictEqual([
-      ["unique", "public.t.c_uq", { column: "c" }],
-      ["unique", "public.t.d_uq", { column: "d" }],
+      ["unique", "public.t.c_uq", { columns: ["c"], nullsNotDistinct: false }],
+      ["unique", "public.t.cd_nn", { columns: ["c", "d"], nullsNotDistinct: true }],
+      ["unique", "public.t.d_uq", { columns: ["d"], nullsNotDistinct: false }],
+      ["unique", "public.t.fe_uq", { columns: ["f", "e"], nullsNotDistinct: false }],
       ["primary key", "public.t.pk", { columns: ["b", "a"] }],
     ]);
   });
 
   // Each variant has the row shape of a plain key but is an Unmodeled object (ADR-0005).
   it.each([
-    ["NULLS NOT DISTINCT", "unique nulls not distinct (b)"],
     ["DEFERRABLE", "unique (b) deferrable"],
+    ["a multi-column DEFERRABLE", "unique (b, c) deferrable"],
     ["DEFERRABLE INITIALLY DEFERRED", "unique (b) deferrable initially deferred"],
     ["INCLUDE", "unique (b) include (c)"],
+    ["a multi-column INCLUDE", "unique (b, c) include (d)"],
+    ["NULLS NOT DISTINCT on one column", "unique nulls not distinct (b)"],
   ])("skips a unique constraint with %s", async (_label, constraint) => {
     await db.driver.execute(`
       create table t (a text, b text, c text, d text);

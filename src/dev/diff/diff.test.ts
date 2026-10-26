@@ -112,7 +112,7 @@ create table "public"."users.archive" (
       b.columnDefault("public", "t", "b", { expression: "1", volatile: false });
       b.column("public", "t", "c", textNotNull);
       b.primaryKey("public", "t", "t_pkey", { columns: ["c"] });
-      b.unique("public", "t", "t_a_key", { column: "a" });
+      b.unique("public", "t", "t_a_key", { columns: ["a"], nullsNotDistinct: false });
     });
     const to = catalog((b) => {
       b.schema("app");
@@ -124,7 +124,7 @@ create table "public"."users.archive" (
       b.column("public", "t", "c", text);
       b.column("public", "t", "d", text);
       b.primaryKey("public", "t", "t_pkey", { columns: ["b"] });
-      b.unique("public", "t", "t_d_key", { column: "d" });
+      b.unique("public", "t", "t_d_key", { columns: ["d"], nullsNotDistinct: false });
     });
 
     expect(diff(from, to).split("\n\n")).toStrictEqual([
