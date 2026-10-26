@@ -88,8 +88,9 @@ function checkHeld(unheld: readonly string[], migrations: string): void {
   ].toSorted();
   if (paths.length === 0) return;
   // Naming the files fails once one is deleted in the index: git stashes, then rejects the pathspec.
+  // --all, since --include-untracked skips the gitignored files this guard also reports.
   throw new Error(
-    `${migrations} has changes git doesn't hold: ${paths.join(", ")}; set them aside with git -C ${shellQuote(migrations)} stash push --include-untracked -- . ':(exclude)${CURRENT_FILENAME}', then rerun rebase`,
+    `${migrations} has changes git doesn't hold: ${paths.join(", ")}; set them aside with git -C ${shellQuote(migrations)} stash push --all -- . ':(exclude)${CURRENT_FILENAME}', then rerun rebase`,
   );
 }
 
