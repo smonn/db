@@ -10,6 +10,7 @@ import {
   type Selection,
   type Statement,
 } from "./from.ts";
+import { decoderFor, encodeValue, withDecoder } from "./codecs.ts";
 
 type NullableKeys<R> = { [K in keyof R]: null extends R[K] ? K : never }[keyof R];
 
@@ -43,7 +44,7 @@ function insertInto(table: Table, rows: readonly Record<string, unknown>[]): Fra
   const names = given.length > 0 ? given : Object.keys(table.columns).slice(0, 1);
   const tuples = rows.map((row) => {
     const cells = names.map((name) =>
-      has(row, name) ? fragment`${row[name]}` : fragment`default`,
+      has(row, name) ? fragment`${encodeValue(table, name, row[name])}` : fragment`default`,
     );
     return fragment`(${join(cells, fragment`, `)})`;
   });
@@ -62,12 +63,16 @@ function insertStatement<T extends Table>(
     returning(pick) {
       const picked = Object.entries(pick(refsOf(table)));
       if (picked.length === 0) throw new Error("returning needs at least one column");
-      const outputs = picked.map(([alias, ref]) => renderOutput([alias, ref.name]));
-      return brand({
-        toSql() {
-          return fragment`${insertInto(table, rows)} returning ${join(outputs, fragment`, `)}`.toSql();
-        },
-      });
+      const named = picked.map(([alias, ref]): [string, string] => [alias, ref.name]);
+      const outputs = named.map((output) => renderOutput(output));
+      return withDecoder(
+        brand({
+          toSql() {
+            return fragment`${insertInto(table, rows)} returning ${join(outputs, fragment`, `)}`.toSql();
+          },
+        }),
+        decoderFor(table, named),
+      );
     },
     toSql() {
       return insertInto(table, rows).toSql();
