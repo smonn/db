@@ -45,7 +45,7 @@ comment on schema public is 'standard public schema';`;
 
 /** Refuses unless the Database is marked as a Dev database or holds nothing yet (ADR-0016). */
 export async function requireDevDatabase(
-  driver: Driver,
+  driver: Queryable,
   tracking: TrackingSchema,
   command: "generate" | "reset" = "generate",
 ): Promise<void> {
@@ -58,6 +58,12 @@ export async function requireDevDatabase(
   );
 }
 
+type ResetSteps = {
+  /** The Current migration to replay after the Committed ones. */
+  readonly current?: CurrentMigration;
+  readonly afterLock?: (session: Queryable) => Promise<void>;
+};
+
 /**
  * Drops every non-system schema, then replays the Committed migrations and the Current migration.
  * The wipe and the transactional files up to the first no-transaction file (ADR-0020) share one
@@ -69,17 +75,21 @@ export async function requireDevDatabase(
  * It holds the migrator's session lock, polled for, until its session ends, so a runtime `migrate`
  * waits instead of running on a Dev database mid-reset. A transaction-scoped lock wouldn't last
  * across the break.
+ *
+ * `afterLock` runs on the locked session before the wipe, so a check there sees the Database as a
+ * runtime `migrate` left it.
  */
 export async function resetDevDatabase(
   driver: Driver,
   committed: MigrationSource,
   tracking: TrackingSchema,
-  current?: CurrentMigration,
+  { current, afterLock }: ResetSteps = {},
 ): Promise<void> {
   // A broken chain would otherwise fail the replay after the wipe.
   const migrations = await loadVerifiedMigrations(committed);
   await driver.session(async (session) => {
     await acquireMigrationLock(session);
+    await afterLock?.(session);
     let rest = await session.transaction(async (tx) => {
       await wipe(tx, tracking);
       return replayInTransaction(session, tx, replaySteps(migrations, tracking, current));
@@ -205,7 +215,6 @@ export async function reset(options: ResetOptions): Promise<ResetResult> {
 async function resetLocked(options: ResetOptions): Promise<ResetResult> {
   const { driver, fileSystem, migrations, erase = false } = options;
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
-  if (!erase) await requireDevDatabase(driver, tracking, "reset");
   const committed = await readCommitted(fileSystem, migrations);
   const source: MigrationSource = { list: () => Promise.resolve(committed) };
   const content = await fileSystem.readFile(`${migrations}/${CURRENT_FILENAME}`);
@@ -214,6 +223,9 @@ async function resetLocked(options: ResetOptions): Promise<ResetResult> {
     const { body } = await parseCurrent(content);
     current = { body, hash: await currentHash(body) };
   }
-  await resetDevDatabase(driver, source, tracking, current);
+  await resetDevDatabase(driver, source, tracking, {
+    ...(current === undefined ? {} : { current }),
+    ...(erase ? {} : { afterLock: (session) => requireDevDatabase(session, tracking, "reset") }),
+  });
   return { committed: committed.length, current: current !== undefined };
 }
