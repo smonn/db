@@ -34,7 +34,7 @@ Each is a child fact of the table, named by its constraint, since a drop must sa
 
 `definitionCatalog` takes the name the Definition gives a key (`.primaryKey({ name })`, `.unique({ name })`, `{ name, columns }`, a `unique` entry's `name`) or derives Postgres's default (`users_pkey`, `users_email_key`, and `<table>_<columns joined by _>_key` for a multi-column unique). It refuses a name over 63 bytes, which Postgres would truncate, and two keys in one schema that take one name, since each key's index shares the schema's relation names. Only the second callback's `unique` entry declares a multi-column unique, with at least two columns of its own table, in key order, plus `name` and `nullsNotDistinct`.
 
-`introspect` reads a unique constraint over any number of columns, with its `NULLS NOT DISTINCT` setting. It skips as Unmodeled (ADR-0005) a key that is `DEFERRABLE`, has `INCLUDE` columns, or (primary key) `WITHOUT OVERLAPS`: each reads like a plain key but changes what the key means. A changed column list or setting is a drop and an add.
+`introspect` reads a unique constraint over any number of columns, with its `NULLS NOT DISTINCT` setting. It skips as Unmodeled (ADR-0005) a key that is `DEFERRABLE`, has `INCLUDE` columns, or (primary key) `WITHOUT OVERLAPS`, and a single-column `NULLS NOT DISTINCT` unique, which no Definition can declare (a `unique` entry needs two columns): each reads like a plain key but changes what the key means. A changed column list or setting is a drop and an add.
 
 ### Foreign keys
 

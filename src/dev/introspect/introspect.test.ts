@@ -184,6 +184,7 @@ describe("introspect", () => {
     ["DEFERRABLE INITIALLY DEFERRED", "unique (b) deferrable initially deferred"],
     ["INCLUDE", "unique (b) include (c)"],
     ["a multi-column INCLUDE", "unique (b, c) include (d)"],
+    ["NULLS NOT DISTINCT on one column", "unique nulls not distinct (b)"],
   ])("skips a unique constraint with %s", async (_label, constraint) => {
     await db.driver.execute(`
       create table t (a text, b text, c text, d text);
