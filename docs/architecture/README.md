@@ -2,8 +2,10 @@
 
 How the source is laid out for v0.1 and which imports are allowed. The reasons are in [ADR-0006](../adr/0006-zero-dependency-runtime.md) and [ADR-0009](../adr/0009-module-layout-and-ports.md).
 
-- [CLI and migration flow](cli.md): which modules and ports each command touches, and each command's rules.
+- [CLI](cli.md): config, output, and for each command the modules and ports it touches and its rules.
 - [Diff engine](diff-engine.md): how generate turns the Definition into the Current migration.
+
+These docs hold the shape of the code and the rules that cross modules. Behavior inside one module belongs in its TSDoc and a decision in an ADR. `scripts/check-docs.ts` caps each file's words.
 
 ## Module map
 
@@ -49,7 +51,7 @@ flowchart TB
     sql["<b>sql</b><br/>[module]<br/>SQL fragments, the sql template, rendering to text and params"]
     migrator["<b>migrator</b><br/>[module]<br/>Verifies the hash chain and applies Committed migrations under an advisory lock"]
     ports["<b>ports</b><br/>[types only]<br/>Driver, Connect, MigrationSource, FileSystem"]
-    internal["<b>internal</b><br/>[module, never exported]<br/>Shared helpers: sha256 and the migration file format"]
+    internal["<b>internal</b><br/>[module, never exported]<br/>Shared helpers: sha256, the migration file, folder, and lock, identifier quoting, and blocker errors"]
   end
 
   adapters["<b>adapters/</b><br/>[container]"]
@@ -142,22 +144,7 @@ The layer map is design intent: when code breaks it, fix the code, and change th
 
 Each folder under a group is a module: its `index.ts` is its only entry point, and any other module imports it through that file. To add a module, create the folder with an `index.ts` of named re-exports, then run `pnpm check`. The rules match folders by pattern, so a new module needs no config change.
 
-CI enforces the module boundaries:
-
-- `scripts/check-imports.ts` holds the dependency-cruiser rules, each with a one-line comment: `runtime/` stays self-contained and free of npm packages, an adapter imports only `runtime/ports`, `runtime/internal`, and its host package, only `dev/cli` wires in adapters, `node:*` stays in host code, cross-module imports go through `index.ts`, no `src/` file imports a group index such as `src/runtime/index.ts`, no other module's `index.ts` re-exports `runtime/internal`, no cycles, and only tests import `*.test.ts` files, `*.test-helper.ts` helpers, and `vitest`. Tests in any group may import `adapters/postgres-js/test-database.test-helper.ts`, which the group, adapter, and `index.ts` rules otherwise forbid. It fails when it scans 0 modules.
-- `.oxlintrc.json` bans the `process`, `Buffer`, and `__dirname` globals in `src/` outside `adapters/` and `dev/cli`.
-- `scripts/check-index-exports.ts` keeps each `index.ts` to named re-exports: no declarations, no `export *`. It also checks that `src/runtime/index.ts` and `src/dev/index.ts` exist and re-export only names their group's module indexes export, a value as a value and a type as a type, never from `runtime/internal` or `dev/cli`.
-
-oxfmt formats TypeScript and Markdown. knip reports unused files, exports, and dependencies.
-
-### Checks and baselines
-
-`pnpm check` runs every gate and the tests; `pnpm check:static` runs every gate but the tests. Each gate is also its own script: `format:check`, `check:docs`, `check:mermaid`, `typecheck`, `lint`, `lint:actions`, `check:imports`, `check:index`, `knip`, `deps` (rev-dep duplicated-code detection), `fta` (file maintainability), and `coverage`.
-
-Baselines recorded at adoption (2026-10-22), each lowered as code improves and never raised without the maintainer:
-
-- `complexity` sits above its target of 6. The comment beside it in `.oxlintrc.json` names the current cap and the worst function. `max-params` and `max-depth` are at their target of 4.
-- Every TypeScript strictness flag is on, so the compiler has no baseline.
+CI enforces the boundaries. `scripts/check-imports.ts` holds the dependency-cruiser rules, each with a comment saying what it guards; `.oxlintrc.json` bans the Node globals; and `scripts/check-index-exports.ts` keeps each `index.ts` to named re-exports and checks what the group indexes export.
 
 ## Package entry points
 
