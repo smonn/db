@@ -28,7 +28,7 @@ export type ColumnState = {
   /** The name `.primaryKey({ name })` or `.unique({ name })` gave its constraint. */
   readonly constraintName: string | undefined;
   /** The SQL name `.name()` gave, which wins over the casing `defineDatabase` maps keys with. */
-  readonly name: string | undefined;
+  readonly explicitName: string | undefined;
   /** The SQL name the column had before a rename, for generate to turn into a `RENAME`. */
   readonly renamedFrom: string | undefined;
   /** What `.references()` was given, apart from `constraintName`; `defineDatabase` resolves the target. */
@@ -161,7 +161,7 @@ export function column<
     array: () => column({ ...state, array: true }, codec),
     notNull: () => column({ ...state, notNull: true }, codec),
     renamedFrom: (oldName: string) => column({ ...state, renamedFrom: oldName }, codec),
-    name: (sqlName: string) => column({ ...state, name: sqlName }, codec),
+    name: (sqlName: string) => column({ ...state, explicitName: sqlName }, codec),
     index: (options?: IndexOptions) =>
       column({ ...state, indexes: [...state.indexes, columnIndexOf(options)] }, codec),
     default: (expression: string) => column({ ...state, default: expression }, codec),

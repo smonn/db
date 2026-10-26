@@ -42,7 +42,7 @@ function of<V, Int extends boolean = false, N extends boolean = false>(
     unique: false,
     indexes: [],
     constraintName: undefined,
-    name: undefined,
+    explicitName: undefined,
     renamedFrom: undefined,
     references: undefined,
   });

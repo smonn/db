@@ -1,7 +1,5 @@
 import { quoteIdentifier } from "../internal/index.ts";
 import type { Columns } from "./column.ts";
-import { isDomain } from "./domain.ts";
-import { isEnum } from "./enum.ts";
 
 type Schemas = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
 
@@ -31,11 +29,12 @@ function refuseClashes(named: ReadonlyMap<string, string>, owner: string, fix: s
   }
 }
 
-/** A table's own name wins over casing, as an enum's or a domain's does. */
+/** A table's, an enum's, or a domain's explicit name wins over casing. */
 function givenName(entry: unknown): string | undefined {
-  if (isEnum(entry) || isDomain(entry)) return entry.name;
   const name: unknown =
-    typeof entry === "object" && entry !== null && "sqlName" in entry ? entry.sqlName : undefined;
+    typeof entry === "object" && entry !== null && "explicitName" in entry
+      ? entry.explicitName
+      : undefined;
   return typeof name === "string" ? name : undefined;
 }
 
@@ -69,7 +68,7 @@ export function columnNamesOf(
   table: string,
 ): Record<string, string> {
   const named = new Map(
-    Object.entries(columns).map(([key, { state }]) => [key, state.name ?? cased(key)]),
+    Object.entries(columns).map(([key, { state }]) => [key, state.explicitName ?? cased(key)]),
   );
   refuseClashes(named, `The columns of ${table}`, "give one of them another name with .name()");
   return Object.fromEntries(named);

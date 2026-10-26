@@ -21,7 +21,7 @@ describe("an enum's renames", () => {
     expect(defineEnum(["a"])).toStrictEqual({
       kind: "enum",
       labels: ["a"],
-      name: undefined,
+      explicitName: undefined,
       renamedFrom: undefined,
       renamedLabels: {},
     });

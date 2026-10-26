@@ -22,7 +22,7 @@ const PLAIN = {
   unique: false,
   indexes: [],
   constraintName: undefined,
-  name: undefined,
+  explicitName: undefined,
   renamedFrom: undefined,
   references: undefined,
 };

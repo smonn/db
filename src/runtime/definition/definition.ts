@@ -80,7 +80,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>
   const declaredForeignKeys = declaredForeignKeysOf(own, declared?.foreignKeys);
   const indexes = indexesOf(own, declared?.indexes);
   const renamedFrom = renamedFromOf(declared?.renamedFrom);
-  const sqlName = sqlNameOf(declared?.name);
+  const explicitName = sqlNameOf(declared?.name);
   refuseKeyAndUnique(columns);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the key names are checked above.
   return {
@@ -90,7 +90,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>
     uniques,
     declaredForeignKeys,
     indexes,
-    sqlName,
+    explicitName,
     renamedFrom,
   } as unknown as TableDefinition<C, KeyOf<C, Args>>;
 }

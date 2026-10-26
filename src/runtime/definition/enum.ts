@@ -8,7 +8,7 @@ export type Enum<L extends readonly string[] = readonly string[]> = {
   /** In the order Postgres sorts them, which is the order the enum compares in. */
   readonly labels: L;
   /** The SQL name `options.name` gave, which wins over the casing `defineDatabase` maps keys with. */
-  readonly name: string | undefined;
+  readonly explicitName: string | undefined;
   /** The SQL name the enum had before a rename, for generate to turn into a `RENAME`. */
   readonly renamedFrom: string | undefined;
   /** The labels renamed since the last migration, keyed new to old. */
@@ -31,7 +31,7 @@ export function defineEnum<const L extends readonly string[]>(
   return {
     kind: "enum",
     labels,
-    name: options.name,
+    explicitName: options.name,
     renamedFrom: options.renamedFrom,
     renamedLabels: { ...options.renamedLabels },
   };
