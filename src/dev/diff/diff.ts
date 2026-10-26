@@ -6,7 +6,7 @@ import type { Hazard } from "./hazards.ts";
 import { renameHints } from "./hints.ts";
 import { order } from "./phases.ts";
 import { rebuiltColumns, retyped, without } from "./rebuilt.ts";
-import { renameAction } from "./renames.ts";
+import { renameAction, renameChecks } from "./renames.ts";
 import { TYPE_HANDLING } from "./type-handling.ts";
 
 export type Diff = {
@@ -38,7 +38,7 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
     );
   }
   const hazards: Hazard[] = [];
-  const sql = order(actions)
+  const sql = order(renameChecks(actions))
     .map((action) => {
       const statement = render(action, catalogs);
       const kinds = hazardsOf(action, catalogs);

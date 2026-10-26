@@ -6,7 +6,14 @@ export { definitionCatalog } from "./definition-catalog.ts";
 export type { DefinitionTables } from "./definition-catalog.ts";
 export { arePayloadsEqual, qualified } from "./compare.ts";
 export { appliedRenames, declaredRenames } from "./renames.ts";
-export type { ColumnRename, Rename, TableRename } from "./renames.ts";
+export type {
+  ColumnRename,
+  DomainRename,
+  EnumRename,
+  LabelRename,
+  Rename,
+  TableRename,
+} from "./rename-types.ts";
 export type {
   ColumnPayload,
   DefaultPayload,

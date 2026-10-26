@@ -1,7 +1,16 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
-import { childrenOf, parentOf, qualified, type Catalog } from "../catalog/index.ts";
+import {
+  childrenOf,
+  parentOf,
+  qualified,
+  type Catalog,
+  type DomainRename,
+  type EnumRename,
+  type LabelRename,
+} from "../catalog/index.ts";
 import { labelPosition, quoteLiteral } from "./enums.ts";
 import { DOMAIN_SCAN_LOCK, type HazardKind } from "./hazards.ts";
+import { renameSql } from "./rename-sql.ts";
 import type { FactOf } from "./statements.ts";
 
 type Catalogs = { readonly from: Catalog; readonly to: Catalog };
@@ -23,9 +32,25 @@ export type TypeTarget = {
   "add domain check": "domain check";
   "drop domain check": "domain check";
   "drop domain": "domain";
+  "rename enum": "enum";
+  "rename enum label": "enum";
+  "rename domain": "domain";
+  "rename domain check": "domain check";
+};
+
+/** What a type action needs beyond its fact. */
+export type TypeCarries = {
+  /** The renamed type's fact is the `from` catalog's, which already holds the renamed type. */
+  "rename enum": { readonly rename: EnumRename };
+  "rename enum label": { readonly rename: LabelRename };
+  "rename domain": { readonly rename: DomainRename };
+  /** The check's name before the rename; its fact is the `to` catalog's. */
+  "rename domain check": { readonly was: string };
 };
 
 const none = (): readonly HazardKind[] => [];
+// Only the catalog changes, but raw casts and code writing the old name break until they deploy.
+const renamed = (): readonly HazardKind[] => ["rename"];
 
 function checkClause(check: FactOf<"domain check">): string {
   return `constraint ${quoteIdentifier(check.name)} check (${check.payload.expression})`;
@@ -66,6 +91,13 @@ export const TYPE_STEPS: {
   readonly "add domain check": TypeStep<FactOf<"domain check">>;
   readonly "drop domain check": TypeStep<FactOf<"domain check">>;
   readonly "drop domain": TypeStep<FactOf<"domain">>;
+  readonly "rename enum": TypeStep<FactOf<"enum">, TypeCarries["rename enum"]>;
+  readonly "rename enum label": TypeStep<FactOf<"enum">, TypeCarries["rename enum label"]>;
+  readonly "rename domain": TypeStep<FactOf<"domain">, TypeCarries["rename domain"]>;
+  readonly "rename domain check": TypeStep<
+    FactOf<"domain check">,
+    TypeCarries["rename domain check"]
+  >;
 } = {
   "create enum": {
     render: (type, { to }) =>
@@ -107,6 +139,21 @@ export const TYPE_STEPS: {
   },
   "drop domain": {
     render: (domain, { from }) => `drop domain ${qualified(domain, from)};`,
+    hazards: none,
+  },
+  "rename enum": { render: (_type, _catalogs, { rename }) => renameSql(rename), hazards: renamed },
+  "rename enum label": {
+    render: (_type, _catalogs, { rename }) => renameSql(rename),
+    hazards: renamed,
+  },
+  "rename domain": {
+    render: (_domain, _catalogs, { rename }) => renameSql(rename),
+    hazards: renamed,
+  },
+  // A constraint's name is no API, so like a table's constraint it renames with no Hazard.
+  "rename domain check": {
+    render: (check, { to }, { was }) =>
+      `${alterDomain(check, to)} rename constraint ${quoteIdentifier(was)} to ${quoteIdentifier(check.name)};`,
     hazards: none,
   },
 };
