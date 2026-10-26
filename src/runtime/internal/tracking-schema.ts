@@ -34,6 +34,13 @@ export type TrackingSchema = {
   readRecorded(session: Queryable): Promise<RecordedMigration[]>;
   /** Records an applied migration. Run it in the transaction that applied the body. */
   recordMigration(tx: Queryable, migration: ParsedMigration): Promise<void>;
+  /**
+   * Records a no-transaction migration as `started`, before its statement runs. Run it in
+   * autocommit, so the row survives a failure of the statement (ADR-0020).
+   */
+  recordStarted(session: Queryable, migration: ParsedMigration): Promise<void>;
+  markApplied(session: Queryable, migration: ParsedMigration): Promise<void>;
+  markFailed(session: Queryable, migration: ParsedMigration, error: string): Promise<void>;
   /** Whether `current` holds a row, which marks a Dev database with an applied Current migration. */
   holdsCurrentMigration(session: Queryable): Promise<boolean>;
   /** Whether reset may drop everything: `current` exists, or nothing outside an empty public does. */
@@ -111,12 +118,7 @@ export function trackingSchema(name: string): TrackingSchema {
       return rows.map((row) => ({ filename: String(row["filename"]), hash: String(row["hash"]) }));
     },
 
-    async recordMigration(tx, migration) {
-      await tx.query(
-        `insert into ${schema}.migrations (sequence, filename, hash, previous_hash) values ($1, $2, $3, $4)`,
-        [migration.sequence, migration.filename, migration.hash, migration.previous ?? null],
-      );
-    },
+    ...migrationRows(schema),
 
     holdsCurrentMigration: async (session) => (await readCurrent(session)) !== undefined,
     isResettable: (session) => isResettable(session, current),
@@ -136,6 +138,43 @@ export function trackingSchema(name: string): TrackingSchema {
         `${schema}.${quoteIdentifier("migrations")}`,
         `select hash from ${schema}.migrations order by sequence desc limit 1`,
       ),
+  };
+}
+
+const INSERT_MIGRATION = (schema: string, status: "applied" | "started"): string =>
+  `insert into ${schema}.migrations (sequence, filename, hash, previous_hash, status) values ($1, $2, $3, $4, '${status}')`;
+
+const MARK_APPLIED = (schema: string): string =>
+  `update ${schema}.migrations set status = 'applied', error = null where sequence = $1`;
+
+const MARK_FAILED = (schema: string): string =>
+  `update ${schema}.migrations set status = 'failed', error = $2 where sequence = $1`;
+
+/** The writes to `migrations` rows; `schema` is the quoted schema name. */
+function migrationRows(
+  schema: string,
+): Pick<TrackingSchema, "recordMigration" | "recordStarted" | "markApplied" | "markFailed"> {
+  const insert =
+    (status: "applied" | "started") =>
+    async (session: Queryable, migration: ParsedMigration): Promise<void> => {
+      await session.query(INSERT_MIGRATION(schema, status), [
+        migration.sequence,
+        migration.filename,
+        migration.hash,
+        migration.previous ?? null,
+      ]);
+    };
+  return {
+    recordMigration: insert("applied"),
+    recordStarted: insert("started"),
+
+    async markApplied(session, migration) {
+      await session.query(MARK_APPLIED(schema), [migration.sequence]);
+    },
+
+    async markFailed(session, migration, error) {
+      await session.query(MARK_FAILED(schema), [migration.sequence, error]);
+    },
   };
 }
 

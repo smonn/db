@@ -65,6 +65,21 @@ describe("rebase", () => {
     expect((await verify(source(...committed))).verified).toHaveLength(5);
   });
 
+  it("keeps a moving no-transaction file's header and rehashes over it (ADR-0020)", async () => {
+    const index = "create index concurrently x_n on x (n);";
+    const XI = await writeMigration("000003-xi.sql", X.hash, index, { noTransaction: true });
+    const fileSystem = folder(A, B, C, X, XI);
+
+    await rebaseFolder(fileSystem, [A, B, C]);
+
+    const X4 = await writeMigration("000004-x.sql", C.hash, "create table x (n int);");
+    const XI5 = await writeMigration("000005-xi.sql", X4.hash, index, { noTransaction: true });
+    expect(Object.fromEntries(fileSystem.files)).toStrictEqual(
+      filesIn(MIGRATIONS, [A, B, C, X4, XI5]),
+    );
+    expect(fileSystem.files.get(`${MIGRATIONS}/000005-xi.sql`)).toContain("\n--! no-transaction\n");
+  });
+
   it("does nothing on a straight chain", async () => {
     const X3 = await writeMigration("000003-x.sql", B.hash, "create table x (n int);");
     const fileSystem = folder(A, B, X3);
@@ -140,7 +155,7 @@ describe("rebase", () => {
     await expect(
       rebaseFolder(fileSystem, [A, B], ["000002-x.sql", "000003-y.sql"]),
     ).rejects.toThrow(
-      `${MIGRATIONS} has changes git doesn't hold: 000002-x.sql, 000003-y.sql; set them aside with git -C 'db/migrations' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase`,
+      `${MIGRATIONS} has changes git doesn't hold: 000002-x.sql, 000003-y.sql; set them aside with git -C 'db/migrations' stash push --all -- . ':(exclude)current.sql', then rerun rebase`,
     );
     expect(fileSystem.files).toStrictEqual(before);
   });
@@ -155,7 +170,7 @@ describe("rebase", () => {
         unheld: ["000002-x.sql"],
       }),
     ).rejects.toThrow(
-      "git -C 'my db/it'\\''s' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase",
+      "git -C 'my db/it'\\''s' stash push --all -- . ':(exclude)current.sql', then rerun rebase",
     );
   });
 

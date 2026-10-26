@@ -1,7 +1,8 @@
 /**
  * Prints the frontier: open, unassigned tickets whose blockers are all closed, one per line. With a
  * wayfinder map number it lists the map's children in map order; without one, every open issue
- * oldest first. See "Wayfinding operations" in docs/agents/issue-tracker.md.
+ * oldest first. With a map it also warns on stderr for each closed child whose URL the map body
+ * lacks. See "Wayfinding operations" in docs/agents/issue-tracker.md.
  *
  * Run it with `node scripts/frontier.ts [map issue number]` from a clone with `gh` signed in.
  */
@@ -12,6 +13,7 @@ import {
   literal,
   number,
   optionalField,
+  nullable,
   parseJson,
   record,
   string,
@@ -21,6 +23,7 @@ import {
 export type Child = {
   number: number;
   title: string;
+  url: string;
   state: "open" | "closed";
   labels: string[];
   assignees: string[];
@@ -39,9 +42,28 @@ export function formatTicket(child: Child): string {
   return `#${child.number} ${child.title}${type === undefined ? "" : ` [${type}]`}`;
 }
 
+/** Closed children whose URL the map body lacks. Reads the body only when a child is closed. */
+export function unlinkedClosed(tickets: Child[], readBody: () => string): Child[] {
+  const closed = tickets.filter((child) => child.state === "closed");
+  if (closed.length === 0) return [];
+  const body = readBody();
+  // A URL followed by a digit is a longer issue number (issues/38 inside issues/380).
+  const links = (url: string) =>
+    body
+      .split(url)
+      .slice(1)
+      .some((rest) => !/^\d/u.test(rest));
+  return closed.filter((child) => !links(child.url));
+}
+
+export function formatUnlinked(child: Child): string {
+  return `warning: closed ${formatTicket(child)} is not linked in the map body (${child.url})`;
+}
+
 type ApiIssue = {
   number: number;
   title: string;
+  html_url: string;
   state: "open" | "closed";
   labels: { name: string }[];
   assignees: { login: string }[];
@@ -67,6 +89,7 @@ const readIssue: Reader<ApiIssue> = (value, path) => {
   return {
     number: field(issue, "number", number, path),
     title: field(issue, "title", string, path),
+    html_url: field(issue, "html_url", string, path),
     state: field(issue, "state", literal("open", "closed"), path),
     labels: field(issue, "labels", array(readName), path),
     assignees: field(issue, "assignees", array(readLogin), path),
@@ -86,10 +109,19 @@ function ghApi(path: string): ApiIssue[] {
   return parseIssuePages(result.stdout, `gh api ${path}`);
 }
 
+function mapBody(map: number): string {
+  const path = `repos/{owner}/{repo}/issues/${map}`;
+  const result = spawnSync("gh", ["api", path], { encoding: "utf8" });
+  if (result.status !== 0) throw new Error(`gh api ${path} failed:\n${result.stderr.trim()}`);
+  const issue = record(parseJson(result.stdout, `gh api ${path}`), "$");
+  return field(issue, "body", nullable(string), "$") ?? "";
+}
+
 function toChild(issue: ApiIssue): Child {
   return {
     number: issue.number,
     title: issue.title,
+    url: issue.html_url,
     state: issue.state,
     labels: issue.labels.map((label) => label.name),
     assignees: issue.assignees.map((assignee) => assignee.login),
@@ -129,15 +161,18 @@ export function main(arg: string | undefined = process.argv[2]): void {
     process.exit(2);
   }
   try {
-    const frontier = pickFrontier(
-      arg === undefined ? openTickets() : children(map),
-      hasOpenBlocker,
-    );
+    const tickets = arg === undefined ? openTickets() : children(map);
+    const frontier = pickFrontier(tickets, hasOpenBlocker);
     console.log(
       frontier.length > 0
         ? frontier.map((child) => formatTicket(child)).join("\n")
         : "No frontier tickets.",
     );
+    if (arg !== undefined) {
+      for (const child of unlinkedClosed(tickets, () => mapBody(map))) {
+        console.warn(formatUnlinked(child));
+      }
+    }
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);

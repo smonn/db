@@ -1,9 +1,18 @@
-import { describe, expect, test } from "vitest";
-import { type Child, formatTicket, isTakeable, parseIssuePages, pickFrontier } from "./frontier.ts";
+import { describe, expect, test, vi } from "vitest";
+import {
+  type Child,
+  formatTicket,
+  formatUnlinked,
+  isTakeable,
+  parseIssuePages,
+  pickFrontier,
+  unlinkedClosed,
+} from "./frontier.ts";
 
 const ticket: Child = {
   number: 11,
   title: "Config file and CLI for v0.1",
+  url: "https://github.com/smonn/db/issues/11",
   state: "open",
   labels: ["wayfinder:grilling"],
   assignees: [],
@@ -49,6 +58,7 @@ describe("parseIssuePages", () => {
   const valid = {
     number: 3,
     title: "T",
+    html_url: "https://github.com/smonn/db/issues/3",
     state: "open",
     labels: [{ name: "a" }],
     assignees: [],
@@ -74,6 +84,47 @@ describe("parseIssuePages", () => {
       "$[0]: expected array, got object",
     );
     expect(() => parseIssuePages("oops", "gh api x")).toThrow("gh api x: invalid JSON");
+  });
+});
+
+const closed = (number: number): Child => ({
+  ...ticket,
+  number,
+  url: `https://github.com/smonn/db/issues/${number}`,
+  state: "closed",
+});
+
+describe("unlinkedClosed", () => {
+  test("returns the closed children whose URL the body lacks", () => {
+    const body = "- [Linked](https://github.com/smonn/db/issues/8): done";
+    const missing = unlinkedClosed([closed(8), closed(9), ticket], () => body);
+    expect(missing.map((child) => child.number)).toEqual([9]);
+  });
+
+  test("does not count a longer issue number as a link", () => {
+    const body = "[x](https://github.com/smonn/db/issues/380)";
+    expect(unlinkedClosed([closed(38)], () => body)).toHaveLength(1);
+    expect(unlinkedClosed([closed(380)], () => body)).toHaveLength(0);
+  });
+
+  test("accepts a link that follows a longer one", () => {
+    const body =
+      "https://github.com/smonn/db/issues/380 and https://github.com/smonn/db/issues/38.";
+    expect(unlinkedClosed([closed(38)], () => body)).toHaveLength(0);
+  });
+
+  test("reads the body only when a child is closed", () => {
+    const readBody = vi.fn<() => string>(() => "");
+    expect(unlinkedClosed([ticket], readBody)).toEqual([]);
+    expect(readBody).not.toHaveBeenCalled();
+  });
+});
+
+describe("formatUnlinked", () => {
+  test("names the ticket and its URL", () => {
+    expect(formatUnlinked({ ...ticket, state: "closed" })).toBe(
+      "warning: closed #11 Config file and CLI for v0.1 [wayfinder:grilling] is not linked in the map body (https://github.com/smonn/db/issues/11)",
+    );
   });
 });
 

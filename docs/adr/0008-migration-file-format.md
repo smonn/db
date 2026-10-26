@@ -17,7 +17,7 @@ Each Committed migration is one file named with a fixed-width sequence and a slu
 ## Consequences
 
 - The hash is SHA-256 over the previous hash (empty for the first file, as Git's root commit has no parent), a newline, and the body below the headers with CRLF turned to LF, trimmed, plus a trailing newline.
-- The migrator records each run in `smonn_db.migrations (sequence integer primary key, filename text not null, hash text not null unique, previous_hash text references smonn_db.migrations (hash), applied_at timestamptz not null default now())`, creating the schema on first run. The schema name is configurable, and the Diff always skips it.
+- The migrator records each run in `smonn_db.migrations (sequence integer primary key, filename text not null, hash text not null unique, previous_hash text references smonn_db.migrations (hash), applied_at timestamptz not null default now())`, creating the schema on first run. The schema name is configurable, and the Diff always skips it. ADR-0020 adds `status` and `error` columns to `migrations`.
 - In the Dev database, a one-row `smonn_db.current (hash text not null, applied_at timestamptz not null default now())` records the Current migration last applied, so generate can skip an unchanged reapply and notice a Dev database out of step with the file.
 - Before applying anything, the migrator recomputes every hash, checks each Previous against the prior Hash, and requires the recorded rows to be a prefix of the file chain, refusing on any mismatch. There is no override for an edited Committed migration in v0.1.
 - Sequences start at 1 and run without gaps or repeats, and `verify` refuses otherwise.
