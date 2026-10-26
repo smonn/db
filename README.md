@@ -150,7 +150,7 @@ Tests need a Postgres 18 server. `docker compose up -d --wait` starts one on por
 ## Learn more
 
 - [Glossary](GLOSSARY.md): the project's vocabulary.
-- [Architecture](docs/architecture.md): modules, ports, and import rules.
+- [Architecture](docs/architecture/README.md): modules, ports, and import rules, with the CLI and the diff engine.
 - [Architecture decisions](docs/adr/): what was decided and why.
 
 ## License
