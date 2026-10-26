@@ -31,6 +31,18 @@ export function assetFor(platform: string, arch: string): { name: string; sha256
   return { name: `actionlint_${version}_${target}.tar.gz`, sha256 };
 }
 
+async function download(name: string, sha256: string): Promise<Buffer> {
+  const url = `https://github.com/rhysd/actionlint/releases/download/v${version}/${name}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`GET ${url} returned ${response.status}`);
+  const tarball = Buffer.from(await response.arrayBuffer());
+  const actual = createHash("sha256").update(tarball).digest("hex");
+  if (actual !== sha256) {
+    throw new Error(`${name} has sha256 ${actual}, which does not match the pinned ${sha256}`);
+  }
+  return tarball;
+}
+
 export async function install(
   cacheDir: string,
   platform: string = process.platform,
@@ -43,16 +55,7 @@ export async function install(
 
   const asset = assetFor(platform, arch);
   const { name } = asset;
-  const sha256 = pinned ?? asset.sha256;
-  const url = `https://github.com/rhysd/actionlint/releases/download/v${version}/${name}`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`GET ${url} returned ${response.status}`);
-  const tarball = Buffer.from(await response.arrayBuffer());
-  const actual = createHash("sha256").update(tarball).digest("hex");
-  if (actual !== sha256) {
-    throw new Error(`${name} has sha256 ${actual}, which does not match the pinned ${sha256}`);
-  }
-
+  const tarball = await download(name, pinned ?? asset.sha256);
   mkdirSync(dir, { recursive: true });
   const archive = join(dir, name);
   writeFileSync(archive, tarball);

@@ -18,15 +18,18 @@ const paths = ["src", "scripts"];
 const diagnostic =
   /^(.+?):(\d+):\d+: (?:[a-z]+ )*(?:function|method)(?: `([^`]+)`)? has a complexity of (\d+)\./u;
 
+function parseDiagnostic(text: string): Finding | undefined {
+  const match = diagnostic.exec(text);
+  if (match === null) return undefined;
+  const [, file = "", line = "", name, score = ""] = match;
+  return { score: Number(score), name: name ?? "<anonymous>", file, line: Number(line) };
+}
+
 export function parseDiagnostics(output: string): Finding[] {
-  const findings: Finding[] = [];
-  for (const text of output.split("\n")) {
-    const match = diagnostic.exec(text);
-    if (match === null) continue;
-    const [, file = "", line = "", name, score = ""] = match;
-    findings.push({ score: Number(score), name: name ?? "<anonymous>", file, line: Number(line) });
-  }
-  return findings;
+  return output
+    .split("\n")
+    .map((text) => parseDiagnostic(text))
+    .filter((finding) => finding !== undefined);
 }
 
 export function format(findings: readonly Finding[]): string[] {

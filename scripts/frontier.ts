@@ -132,15 +132,21 @@ function children(map: number): Child[] {
   return ghApi(`repos/{owner}/{repo}/issues/${map}/sub_issues`).map((issue) => toChild(issue));
 }
 
+function isGrouping(issue: ApiIssue): boolean {
+  return (
+    (issue.sub_issues_summary?.total ?? 0) > 0 ||
+    issue.labels.some((label) => label.name === "wayfinder:map")
+  );
+}
+
+function isDependencyDashboard(issue: ApiIssue): boolean {
+  return issue.user.login === "renovate[bot]" && issue.title === "Dependency Dashboard";
+}
+
 // The issues endpoint also returns pull requests. Maps and other parents group tickets rather
 // than being one. The dashboard title is Renovate's default; .github/renovate.json keeps it.
 function isTicket(issue: ApiIssue): boolean {
-  return (
-    issue.pull_request === undefined &&
-    (issue.sub_issues_summary?.total ?? 0) === 0 &&
-    !issue.labels.some((label) => label.name === "wayfinder:map") &&
-    !(issue.user.login === "renovate[bot]" && issue.title === "Dependency Dashboard")
-  );
+  return issue.pull_request === undefined && !isGrouping(issue) && !isDependencyDashboard(issue);
 }
 
 function openTickets(): Child[] {
@@ -169,9 +175,13 @@ function report(arg: string | undefined, map: number): void {
   }
 }
 
+function isMapNumber(map: number): boolean {
+  return Number.isInteger(map) && map > 0;
+}
+
 export function main(arg: string | undefined = process.argv[2]): void {
   const map = Number(arg);
-  if (arg !== undefined && (!Number.isInteger(map) || map <= 0)) {
+  if (arg !== undefined && !isMapNumber(map)) {
     console.error("Usage: node scripts/frontier.ts [map issue number]");
     process.exit(2);
   }

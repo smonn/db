@@ -54,11 +54,7 @@ function indexOf(own: RuntimeRefs, entry: unknown): TableIndex {
   if (listed.length === 0) throw new Error("The table's indexes lists no columns");
   const name = indexNameOf(get(entry, "name"), "The table's indexes entry");
   const { keys, include } = keysOf(own, listed, listOf(entry, "include"));
-  if (name === undefined && keys.some((key) => "expression" in key)) {
-    throw new Error(
-      "The table's indexes lists an expression key without a name; give the index its own name, since Postgres's default says nothing and collides",
-    );
-  }
+  requireNameForExpressions(name, keys);
   return {
     name,
     keys,
@@ -68,6 +64,13 @@ function indexOf(own: RuntimeRefs, entry: unknown): TableIndex {
     nullsNotDistinct: flagOf(entry, "nullsNotDistinct"),
     where: whereOf(own, get(entry, "where")),
   };
+}
+
+function requireNameForExpressions(name: string | undefined, keys: readonly IndexKey[]): void {
+  if (name !== undefined || !keys.some((key) => "expression" in key)) return;
+  throw new Error(
+    "The table's indexes lists an expression key without a name; give the index its own name, since Postgres's default says nothing and collides",
+  );
 }
 
 function whereOf(own: RuntimeRefs, given: unknown): string | undefined {
@@ -117,13 +120,11 @@ type ListedKey = { ref: unknown; descending: boolean; nullsFirst: boolean };
 
 /** A key is a column ref or an sql expression, or `{ key, order, nulls }` around one. */
 function keyOf(element: unknown): ListedKey {
-  const wrapped =
-    typeof element === "object" &&
-    element !== null &&
-    !("~ref" in element) &&
-    !("toSql" in element) &&
-    "key" in element;
-  if (!wrapped) return { ref: element, descending: false, nullsFirst: false };
+  if (!isWrapped(element)) return { ref: element, descending: false, nullsFirst: false };
+  return wrappedKeyOf(element);
+}
+
+function wrappedKeyOf(element: object): ListedKey {
   const unexpected = Object.keys(element).find((key) => !WRAPPER_KEYS.has(key));
   if (unexpected !== undefined) {
     throw new TypeError(
@@ -136,6 +137,11 @@ function keyOf(element: unknown): ListedKey {
     descending,
     nullsFirst: nullsFirstOf(get(element, "nulls")) ?? descending,
   };
+}
+
+function isWrapped(element: unknown): element is object {
+  if (typeof element !== "object" || element === null) return false;
+  return !("~ref" in element) && !("toSql" in element) && "key" in element;
 }
 
 function descendingOf(order: unknown): boolean {

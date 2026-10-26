@@ -62,6 +62,24 @@ export async function rebase(options: RebaseOptions): Promise<RebaseResult> {
   );
   if (changed.length === 0) return { moved: [] };
 
+  await applyMoves(fileSystem, migrations, { changed, moves, moving });
+  return { moved: moves.map(({ from, to }) => ({ from: from.filename, to: to.filename })) };
+}
+
+/** Writes the changed moves, then removes each old name no move reuses. */
+async function applyMoves(
+  fileSystem: FileSystem,
+  migrations: string,
+  {
+    changed,
+    moves,
+    moving,
+  }: {
+    readonly changed: readonly Move[];
+    readonly moves: readonly Move[];
+    readonly moving: readonly ParsedMigration[];
+  },
+): Promise<void> {
   try {
     await writeMoves(fileSystem, migrations, changed);
     const newNames = new Set(moves.map(({ to }) => to.filename));
@@ -76,7 +94,6 @@ export async function rebase(options: RebaseOptions): Promise<RebaseResult> {
       { cause: error },
     );
   }
-  return { moved: moves.map(({ from, to }) => ({ from: from.filename, to: to.filename })) };
 }
 
 /** Only the top-level files rebase reads or writes count: Committed migrations and leftover `.sql.tmp` files. */

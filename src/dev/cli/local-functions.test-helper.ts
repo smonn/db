@@ -10,13 +10,16 @@ function functionDeclarationName(node: object): string | undefined {
   return typeof name === "string" ? name : undefined;
 }
 
+function isFunctionValue(init: unknown): boolean {
+  const type = typeOf(init ?? {});
+  return type === "ArrowFunctionExpression" || type === "FunctionExpression";
+}
+
 function declaratorFunctionName(declarator: object): string | undefined {
-  const init: unknown = Reflect.get(declarator, "init");
+  if (!isFunctionValue(Reflect.get(declarator, "init"))) return undefined;
   const id: unknown = Reflect.get(declarator, "id");
-  const isFunction =
-    typeOf(init ?? {}) === "ArrowFunctionExpression" || typeOf(init ?? {}) === "FunctionExpression";
   const name: unknown = typeof id === "object" && id !== null ? Reflect.get(id, "value") : null;
-  return isFunction && typeof name === "string" ? name : undefined;
+  return typeof name === "string" ? name : undefined;
 }
 
 function variableFunctionNames(node: object): string[] {

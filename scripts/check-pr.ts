@@ -95,10 +95,26 @@ export function readChangedAdrs(base: string, cwd: string = process.cwd()): Chan
     const [letter, file] = line.split("\t");
     if (letter === undefined || file === undefined || !adrPathPattern.test(file)) return [];
     const status = parseAdrStatus(readFileSync(join(cwd, file), "utf8"));
-    if (letter === "A") return [{ file, status, added: true }];
-    const baseText = execFileSync("git", ["show", `${base}:${file}`], { cwd, encoding: "utf8" });
-    return [{ file, status, added: false, baseStatus: parseAdrStatus(baseText) }];
+    const baseStatus = letter === "A" ? undefined : readBaseStatus(base, file, cwd);
+    if (baseStatus === undefined) return [{ file, status, added: true }];
+    return [{ file, status, added: false, baseStatus }];
   });
+}
+
+// git show's wording when the path is absent on the base ref.
+const missingPathPattern = /path '.*' (does not exist in|exists on disk, but not in) '/u;
+
+// A file the base lacks (any status but M can leave one) counts as added.
+// Any other git failure propagates rather than reading as "added".
+function readBaseStatus(base: string, file: string, cwd: string): string | undefined {
+  try {
+    return parseAdrStatus(
+      execFileSync("git", ["show", `${base}:${file}`], { cwd, encoding: "utf8" }),
+    );
+  } catch (error) {
+    if (error instanceof Error && missingPathPattern.test(error.message)) return undefined;
+    throw error;
+  }
 }
 
 function clashProblems(
@@ -115,30 +131,33 @@ function report(problems: readonly string[]): void {
   if (problems.length > 0) process.exitCode = 1;
 }
 
+function allProblems(
+  env: NodeJS.ProcessEnv,
+  { title, branch }: { title: string; branch: string },
+  readAdrs: (base: string) => ChangedAdr[],
+  readOpenAdds: (exclude: string) => OpenPrAdd[],
+): string[] {
+  const { PR_DIFF_BASE: base, PR_NUMBER: number, PR_BODY: body } = env;
+  const adrs = base === undefined ? [] : readAdrs(base);
+  return [
+    ...checkPr(title, branch, adrs),
+    ...checkClosingKeywords(body ?? ""),
+    ...clashProblems(adrs, number, readOpenAdds),
+  ];
+}
+
 export function main(
   env: NodeJS.ProcessEnv = process.env,
   readAdrs: (base: string) => ChangedAdr[] = readChangedAdrs,
   readOpenAdds: (exclude: string) => OpenPrAdd[] = readOpenPrAdds,
 ): void {
-  const {
-    PR_TITLE: title,
-    PR_BRANCH: branch,
-    PR_DIFF_BASE: base,
-    PR_NUMBER: number,
-    PR_BODY: body,
-  } = env;
+  const { PR_TITLE: title, PR_BRANCH: branch } = env;
   if (title === undefined || branch === undefined) {
     console.error("Set PR_TITLE and PR_BRANCH");
     process.exitCode = 1;
     return;
   }
-  const adrs = base === undefined ? [] : readAdrs(base);
-  const problems = [
-    ...checkPr(title, branch, adrs),
-    ...checkClosingKeywords(body ?? ""),
-    ...clashProblems(adrs, number, readOpenAdds),
-  ];
-  report(problems);
+  report(allProblems(env, { title, branch }, readAdrs, readOpenAdds));
 }
 
 if (import.meta.main) main();

@@ -3,6 +3,7 @@ import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from "node:c
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isolateGitEnv } from "../src/dev/cli/git-env.test-helper.ts";
 import { readChangedAdrs } from "./check-pr.ts";
 
 // Real git against a temp repo; any other command (such as gh) is refused.
@@ -46,11 +47,7 @@ describe("readChangedAdrs against a real git repository", () => {
   };
 
   beforeEach(() => {
-    // A pre-push hook in a linked worktree exports GIT_DIR, which overrides cwd and would point
-    // every git call here, ours and readChangedAdrs's, at the pushing repository.
-    for (const name of Object.keys(process.env).filter((key) => key.startsWith("GIT_"))) {
-      vi.stubEnv(name, undefined);
-    }
+    isolateGitEnv();
     dir = mkdtempSync(join(tmpdir(), "check-pr-git-"));
     git("init", "--quiet");
     mkdirSync(join(dir, "docs", "adr"), { recursive: true });

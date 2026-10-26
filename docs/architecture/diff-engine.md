@@ -13,7 +13,7 @@ Both introspections skip the Tracking schema (`smonn_db` unless configured), `pg
 1. The Definition converts to a catalog, spelling each type as `format_type` does, and the diff renders it against the catalog of the freshly created Definition database, which holds only template0's `public` schema. That SQL builds the Definition database.
 2. `introspect` reads each database in one `REPEATABLE READ READ ONLY` transaction with `search_path` pinned to `pg_catalog`, keyed by name, never by OID.
 3. Generate runs the Definition's `renamedFrom` markers on the Shadow inside a transaction, introspects it, and rolls back (ADR-0024). Postgres follows a rename by OID, so every default and expression in that catalog already names the new object. A marker whose old name the Shadow lacks is skipped, and one whose old and new names both exist throws.
-4. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL. The renames that ran open the SQL, so the migration repeats them. It also returns hints, which generate prints but never writes into the SQL: the `renamedFrom` to add when a column or table looks dropped and added (`diff/hints.ts`).
+4. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL. The renames that ran open the SQL, so the migration repeats them. It also returns hints, which generate prints but never writes into the SQL: the `renamedFrom` to add when a column or table looks dropped and added, and the `renamedLabels` entry to add when an enum removes one label and adds one at the same position (`diff/hints.ts`).
 5. Generate verifies the SQL, or a [hand edit](cli.md#hand-edits), in the Shadow (ADR-0013), then writes the Current migration.
 
 ## Catalog
@@ -60,6 +60,8 @@ An enum is a fact under its schema, keyed like a table (a type and a table share
 
 A label added to an existing enum is one `ALTER TYPE ... ADD VALUE ... BEFORE|AFTER` at its declared position, with no Hazard. Using a new label in the same migration fails (`55P04`); `shadow-errors.ts` words the fix.
 
+A `renamedLabels` entry renames a label in place with `ALTER TYPE ... RENAME VALUE`, which keeps its position and locks no table, so it avoids the swap below.
+
 A removed or reordered label swaps the type (ADR-0023): phase 1 renames the old one aside, phase 5 creates the new one, phase 6 retypes each column of it or its array with `USING col::text::<type>`, dropping and setting its default around it, and phase 8 drops the old one. The diff refuses a swap while a domain fact in the catalog depends on the enum, naming the domain.
 
 ### Domains
@@ -96,6 +98,7 @@ Dropping a table or column drops what it holds, so no separate drop is emitted f
 - A new column appends; column order differences are ignored, since Postgres can't reorder columns.
 - A type change is a plain `ALTER COLUMN ... TYPE` with no `USING`, except an enum swap's retype. When a cast is needed, edit the Current migration by hand.
 - A table or column with a `renamedFrom` marker renames with `ALTER TABLE ... RENAME TO` or `ALTER TABLE ... RENAME COLUMN` in phase 1, tables first, so the column statements and every later statement use the new names. A rename combined with a retype emits the `RENAME` first. Without a marker, a renamed key drops and creates, flagged as data loss (ADR-0010, ADR-0024).
+- An enum or domain with `renamedFrom` renames with `ALTER TYPE ... RENAME TO` or `ALTER DOMAIN ... RENAME TO`, and an enum's `renamedLabels` entries with `ALTER TYPE ... RENAME VALUE`, keyed new to old. They run in phase 1 after the table and column renames, enum before labels, and the label statement names the enum as renamed. A domain check whose expression matches a dropped one under the same domain renames with `ALTER DOMAIN ... RENAME CONSTRAINT` in phase 2 and no Hazard; two candidates on either side stay a drop and an add (`diff/type-renames.ts`).
 
 ## Hazards
 
@@ -108,7 +111,7 @@ Each action kind declares its Hazards (`data_loss`, `rewrite`, `access_exclusive
 - `access_exclusive_lock`: a statement that holds the lock while it does work that grows with the table. Every `ALTER TABLE` takes that lock, but only a rewrite (which therefore carries both kinds), `SET NOT NULL` (a scan of every row), and adding a primary key or unique constraint (an index build) hold it past a catalog change. Adding a key to a table created in the same migration is empty, so it carries nothing.
 - `share_lock`: creating an index on a table that already exists. The build holds `SHARE` on the table, which blocks writes but not reads. An index on a table created in the same migration carries nothing, and dropping one carries none, since it only changes the catalog. A domain's `SET NOT NULL` or new check scans its columns under `SHARE` too.
 - `share_row_exclusive_lock`: adding a foreign key to a table that already exists. The statement scans the table while it holds `SHARE ROW EXCLUSIVE` on it and on the table it points at, which blocks writes but not reads. A foreign key on a table created in the same migration carries nothing. Generate doesn't split the add into `NOT VALID` then `VALIDATE CONSTRAINT` (ADR-0020), since the split only helps when the two commit separately.
-- `rename`: a table or column rename. The statement only changes the catalog, but app code still on the old name breaks between `migrate` and its deploy, so accepting it should be explicit (ADR-0024).
+- `rename`: a table, column, enum, label, or domain rename (a domain check's has none). The statement only changes the catalog, but app code still on the old name breaks between `migrate` and its deploy, so accepting it should be explicit (ADR-0024).
 
 A type v0.1 doesn't classify carries every Hazard, since only the gate can say it is safe.
 

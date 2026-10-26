@@ -15,6 +15,8 @@ export type DomainOptions<N extends boolean = boolean> = {
    * `<domain>_check`. `value` names the value checked, as in `value > 0`.
    */
   readonly checks?: Readonly<Record<string, string>>;
+  /** The domain's SQL name before this change; generate ignores it once the old name is gone. */
+  readonly renamedFrom?: string;
 };
 
 /** Whether `.array()` or a modifier ran on the base, which belongs on the domain's columns or options. */
@@ -59,6 +61,7 @@ export function defineDomain<V, Int extends boolean, N extends boolean = false>(
     notNull: options.notNull === true,
     default: options.default,
     checks: { ...options.checks },
+    renamedFrom: options.renamedFrom,
   };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- "~types" exists only in types, so `domain` doesn't overlap `Domain` enough for a direct cast (TS2352); it goes through `unknown`.
   return domain as unknown as Domain<V, N>;
