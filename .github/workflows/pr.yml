@@ -37,6 +37,7 @@ jobs:
           cache: true
       - env:
           PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
           PR_BRANCH: ${{ github.head_ref }}
           PR_DIFF_BASE: HEAD^1
           PR_NUMBER: ${{ github.event.pull_request.number }}

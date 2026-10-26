@@ -36,26 +36,14 @@ type TableContext = {
 
 function addDefinitionTable(
   builder: CatalogBuilder,
-  { schema, table, names, enums }: TableContext,
+  context: TableContext,
   { columns, primaryKey, primaryKeyName, foreignKeys }: Table,
 ): void {
+  const { schema, table, names } = context;
   builder.table(schema, table);
   const entries = Object.entries(columns);
-  for (const [column, { state }] of entries) {
-    builder.column(schema, table, column, {
-      type: columnType(state, enums, quoted([schema, table, column])),
-      notNull: state.notNull || primaryKey.includes(column) || state.identity !== undefined,
-    });
-    if (state.default !== undefined) {
-      // introspect reads the real volatility from the Definition database.
-      builder.columnDefault(schema, table, column, {
-        expression: state.default,
-        volatile: false,
-      });
-    }
-    if (state.identity !== undefined) {
-      builder.columnIdentity(schema, table, column, { generated: state.identity });
-    }
+  for (const entry of entries) {
+    addColumn(builder, context, entry, primaryKey.includes(entry[0]));
   }
   if (primaryKey.length > 0) {
     builder.primaryKey(schema, table, names.primaryKey(table, primaryKey, primaryKeyName), {
@@ -73,5 +61,27 @@ function addDefinitionTable(
       columns: from,
       ...payload,
     });
+  }
+}
+
+function addColumn(
+  builder: CatalogBuilder,
+  { schema, table, enums }: TableContext,
+  [column, { state }]: [string, Table["columns"][string]],
+  inPrimaryKey: boolean,
+): void {
+  builder.column(schema, table, column, {
+    type: columnType(state, enums, quoted([schema, table, column])),
+    notNull: state.notNull || inPrimaryKey || state.identity !== undefined,
+  });
+  if (state.default !== undefined) {
+    // introspect reads the real volatility from the Definition database.
+    builder.columnDefault(schema, table, column, {
+      expression: state.default,
+      volatile: false,
+    });
+  }
+  if (state.identity !== undefined) {
+    builder.columnIdentity(schema, table, column, { generated: state.identity });
   }
 }
