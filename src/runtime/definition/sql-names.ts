@@ -39,7 +39,7 @@ function refuseClashes(named: ReadonlyMap<string, string>, owner: string, fix: s
 
 const MAX_NAME_BYTES = 63;
 
-/** Refuses a name Postgres would reject or truncate, which `owner` gave or mapped. */
+/** Refuses a name Postgres would reject or truncate; `owner` starts the error. */
 function checkedName(name: unknown, owner: string): string {
   const bytes = typeof name === "string" ? new TextEncoder().encode(name).length : 0;
   if (typeof name === "string" && bytes > 0 && bytes <= MAX_NAME_BYTES) return name;

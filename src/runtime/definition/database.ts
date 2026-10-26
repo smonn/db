@@ -19,7 +19,7 @@ export type Database<S extends Schemas> = {
   };
 };
 
-/** `key` with the target `foreignKeysOf` named by keys named by SQL names. */
+/** `foreignKeysOf` names a target by keys; this names it in SQL. */
 function withSqlTarget(names: SqlNames, key: ForeignKey): ForeignKey {
   const { schema, table, columns } = key.target;
   const columnNames = names.columns(schema, table);
