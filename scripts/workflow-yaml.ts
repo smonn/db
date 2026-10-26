@@ -56,6 +56,16 @@ function flowNodeEnd(text: string, at: number, keys: string[]): number {
   return stop === null ? text.length : at + stop.index;
 }
 
+function flowKeyBefore(text: string, start: number, end: number, close: string): string | null {
+  // A key with no colon is still a key in a flow map: `{a, b}` reads as `{a: null, b: null}`.
+  const bare = close === "}" && (text[end] === "," || text[end] === close);
+  if (text[end] !== ":" && !bare) return null;
+  return text
+    .slice(start, end)
+    .trim()
+    .replace(/^(["'])(.*)\1$/u, "$2");
+}
+
 function flowEnd(text: string, at: number, keys: string[]): number {
   const close = text[at] === "{" ? "}" : "]";
   let index = skipSpaces(text, at + 1);
@@ -66,15 +76,8 @@ function flowEnd(text: string, at: number, keys: string[]): number {
     refuseEnd(index);
     const start = index;
     index = skipSpaces(text, flowNodeEnd(text, index, keys));
-    // A key with no colon is still a key in a flow map: `{a, b}` reads as `{a: null, b: null}`.
-    if (text[index] === ":" || (close === "}" && (text[index] === "," || text[index] === close))) {
-      keys.push(
-        text
-          .slice(start, index)
-          .trim()
-          .replace(/^(["'])(.*)\1$/u, "$2"),
-      );
-    }
+    const key = flowKeyBefore(text, start, index, close);
+    if (key !== null) keys.push(key);
     if (text[index] === ":") {
       index = skipSpaces(text, index + 1);
       refuseEnd(index);
@@ -125,17 +128,24 @@ function readKey(text: string, at: number): { key: Key; next: number } | undefin
   return { key: { name: match[1], column: at }, next: at + match[0].length };
 }
 
-type Read = { line: WorkflowLine; scalarAbove?: number };
-
-function readLine(number: number, text: string): Read {
-  if (/^(?:---|\.\.\.)(?:\s|$)|^%/u.test(text))
-    throw new Unreadable("a document marker or directive");
+function skipDashes(text: string): { at: number; dash: number } {
   let at = indentOf(text);
   let dash = -1;
   while (text[at] === "-" && (text[at + 1] === " " || at + 1 === text.length)) {
     dash = at;
     at = skipSpaces(text, at + 1);
   }
+  return { at, dash };
+}
+
+type Read = { line: WorkflowLine; scalarAbove?: number };
+
+function readLine(number: number, text: string): Read {
+  if (/^(?:---|\.\.\.)(?:\s|$)|^%/u.test(text))
+    throw new Unreadable("a document marker or directive");
+  const start = skipDashes(text);
+  let at = start.at;
+  const dash = start.dash;
   const line: WorkflowLine = { number, indent: indentOf(text), value: "", flowKeys: [] };
   if (endsLine(text, at)) return { line };
   refuseNodeStart(text, at);
@@ -153,18 +163,22 @@ function readLine(number: number, text: string): Read {
   return { line, scalarAbove: read?.key.column ?? (dash === -1 ? line.indent : dash) };
 }
 
+function outsideAsciiProblem(text: string, number: number, file: string): string | undefined {
+  const outside = /[^ -~]/u.exec(text)?.[0];
+  if (outside === undefined) return undefined;
+  const code = outside.codePointAt(0)?.toString(16).toUpperCase().padStart(4, "0");
+  return `${file} line ${number} holds U+${code}, outside printable ASCII; this check reads printable ASCII only`;
+}
+
 export function workflowYamlProblems(workflow: string, file: string): string[] {
   const problems: string[] = [];
   const lines: WorkflowLine[] = [];
   let scalarAbove: number | undefined;
   for (const [index, text] of workflow.split("\n").entries()) {
     const number = index + 1;
-    const outside = /[^ -~]/u.exec(text)?.[0];
+    const outside = outsideAsciiProblem(text, number, file);
     if (outside !== undefined) {
-      const code = outside.codePointAt(0)?.toString(16).toUpperCase().padStart(4, "0");
-      problems.push(
-        `${file} line ${number} holds U+${code}, outside printable ASCII; this check reads printable ASCII only`,
-      );
+      problems.push(outside);
       continue;
     }
     if (scalarAbove !== undefined && (text.trim() === "" || indentOf(text) > scalarAbove)) continue;

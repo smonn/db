@@ -183,6 +183,34 @@ describe("main", () => {
     expect(posted(gh)).toEqual([]);
   });
 
+  test("waits, then stays quiet when the issue is attached as a sub-issue meanwhile", () => {
+    const attached = fetched({
+      parent_issue_url: "https://api.github.com/repos/smonn/db/issues/45",
+    });
+    // Calls in order: the issue, its comments, the milestone, then the issue again after the wait.
+    const gh = vi.fn<(args: string[]) => string>();
+    gh.mockReturnValueOnce(JSON.stringify(orphan))
+      .mockReturnValueOnce(JSON.stringify([[]]))
+      .mockReturnValueOnce(JSON.stringify([[parentIssue(44, "area:tooling")]]))
+      .mockReturnValueOnce(JSON.stringify(attached));
+    const wait = vi.fn<(ms: number) => void>();
+    main({ GITHUB_EVENT_PATH: writeEvent(event()) }, gh, wait);
+    expect(wait).toHaveBeenCalledOnce();
+    expect(posted(gh)).toEqual([]);
+  });
+
+  test("posts after the wait when the issue is still unattached", () => {
+    const gh = fakeGh({
+      [issueRoute]: orphan,
+      [commentsRoute]: [[]],
+      [milestonePath]: [[parentIssue(44, "area:tooling")]],
+    });
+    const wait = vi.fn<(ms: number) => void>();
+    main({ GITHUB_EVENT_PATH: writeEvent(event()) }, gh, wait);
+    expect(wait).toHaveBeenCalledOnce();
+    expect(posted(gh)).toEqual([comment("#44")]);
+  });
+
   test("skips a bot issue without calling the API", () => {
     const gh = run(event({ user: { type: "Bot" } }), {});
     expect(gh).not.toHaveBeenCalled();
