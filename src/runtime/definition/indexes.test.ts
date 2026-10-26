@@ -1,6 +1,7 @@
 import { assert, describe, expect, expectTypeOf, it } from "vitest";
-import { defineDatabase, defineTable, type ColumnRefs, type Row } from "./definition.ts";
+import { defineDatabase, defineTable, type Row } from "./definition.ts";
 import type { ColumnFactories } from "./factories.ts";
+import type { ColumnRefs } from "./refs.ts";
 
 const columns = (c: ColumnFactories) => ({ a: c.integer(), b: c.integer(), c: c.text() });
 

@@ -125,7 +125,7 @@ describe("a foreign key name", () => {
     }));
 
     expect(() => definitionCatalog(defineDatabase({ public: { users, orders } }))).toThrow(
-      'the foreign key on "public"."orders" ("a") and the foreign key on "public"."orders" ("b") both take the constraint name "same"',
+      'the foreign key on "public"."orders" ("a") and the foreign key on "public"."orders" ("b") both take the constraint name "same"; give one of them another name with primaryKey({ name }), unique({ name }), references(target, { name }), { name, columns }, or a foreignKeys entry\'s name',
     );
   });
 

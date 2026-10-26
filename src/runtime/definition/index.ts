@@ -14,4 +14,5 @@ export type { BaseFactories, DomainOptions } from "./define-domain.ts";
 export { isDomain } from "./domain.ts";
 export type { Domain, DomainBase } from "./domain.ts";
 export type { Enum } from "./enum.ts";
-export type { Database, ColumnRefs, Ref, Row, Table, TableDefinition } from "./definition.ts";
+export type { Database, Row, Table, TableDefinition } from "./definition.ts";
+export type { ColumnRefs, Ref } from "./refs.ts";
