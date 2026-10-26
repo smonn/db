@@ -18,6 +18,7 @@
 - Write repo scripts in TypeScript under `scripts/`, run directly by Node. A shell file may only invoke one. Scripts get the same tests, lint, and formatting as `src/`.
 - Tests need Postgres: run `node scripts/test-db.ts` once per worktree, then plain `pnpm test`; `node scripts/test-db.ts stop` removes it.
 - Verify with `pnpm check`: it runs every check CI runs, continues past failures, and exits non-zero if any failed. Don't loop over the scripts by hand or pipe their output through `tail`.
+- A CI check can stay `in_progress` after its job finished (#172, a GitHub-side finalization lag; the workflows hold no cause). Suspect it when the Actions run's jobs are all `completed` but the PR check, and so the merge state, stays pending for over 10 minutes. Confirm with `gh api repos/smonn/db/actions/runs/<run-id>/jobs --jq '.jobs[]|[.name,.status,.conclusion]|@tsv'`, then run `gh run rerun <run-id> --job <job-id>`. Judge a run by its jobs, not its own status, which can lag by an hour.
 
 ## Coding standards
 
