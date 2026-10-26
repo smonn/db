@@ -16,31 +16,38 @@ type FactOf<K extends Fact["kind"]> = Extract<Fact, { readonly kind: K }>;
  */
 export function renameHints(from: Catalog, to: Catalog): string[] {
   const hints: string[] = [];
-  for (const [key, fact] of to) {
-    const before = from.get(key);
-    if (before?.kind === "table" && fact.kind === "table") {
-      hints.push(...columnHints(from, to, before, fact));
-    }
-    if (before?.kind === "schema" && fact.kind === "schema") {
-      hints.push(...tableHints(from, to, before, fact));
-    }
-  }
+  for (const [key, fact] of to) hints.push(...hintsFor(from, to, from.get(key), fact));
   return hints;
+}
+
+function hintsFor(from: Catalog, to: Catalog, before: Fact | undefined, fact: Fact): string[] {
+  if (fact.kind === "table") return columnHints(from, to, before, fact);
+  if (fact.kind === "schema") return tableHints(from, to, before, fact);
+  return [];
+}
+
+/** The one fact each side lost and gained, when exactly one of each. */
+function soleSwap<F extends Fact>(dropped: F[], added: F[]): [F, F] | undefined {
+  const drop = dropped[0];
+  const add = added[0];
+  if (dropped.length !== 1 || added.length !== 1 || drop === undefined || add === undefined) {
+    return undefined;
+  }
+  return [drop, add];
 }
 
 function columnHints(
   from: Catalog,
   to: Catalog,
-  before: FactOf<"table">,
+  before: Fact | undefined,
   after: FactOf<"table">,
 ): string[] {
+  if (before?.kind !== "table") return [];
   const dropped = missingFrom(from, to, columnsOf(from, before));
   const added = missingFrom(to, from, columnsOf(to, after));
-  const [drop, add] = [dropped[0], added[0]];
-  if (dropped.length !== 1 || added.length !== 1 || drop === undefined || add === undefined) {
-    return [];
-  }
-  if (drop.payload.type !== add.payload.type) return [];
+  const swap = soleSwap(dropped, added);
+  if (swap === undefined || swap[0].payload.type !== swap[1].payload.type) return [];
+  const [drop, add] = swap;
   return [
     `column ${qualified(add, to)} may be a rename of ${JSON.stringify(drop.name)}: add .renamedFrom(${JSON.stringify(drop.name)}) to it`,
   ];
@@ -49,15 +56,15 @@ function columnHints(
 function tableHints(
   from: Catalog,
   to: Catalog,
-  before: FactOf<"schema">,
+  before: Fact | undefined,
   after: FactOf<"schema">,
 ): string[] {
+  if (before?.kind !== "schema") return [];
   const dropped = missingFrom(from, to, tablesOf(from, before));
   const added = missingFrom(to, from, tablesOf(to, after));
-  const [drop, add] = [dropped[0], added[0]];
-  if (dropped.length !== 1 || added.length !== 1 || drop === undefined || add === undefined) {
-    return [];
-  }
+  const swap = soleSwap(dropped, added);
+  if (swap === undefined) return [];
+  const [drop, add] = swap;
   const columns = signature(columnsOf(from, drop));
   if (columns === "[]" || columns !== signature(columnsOf(to, add))) return [];
   return [

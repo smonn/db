@@ -19,6 +19,23 @@ export type MigrateResult = {
   readonly applied: readonly string[];
 };
 
+type Unfinished = {
+  readonly sequence: number;
+  readonly filename: string;
+  readonly status: string;
+  readonly error: string | null;
+};
+
+function describeUnfinished(unfinished: Unfinished, table: string): string {
+  const where = `where sequence = ${unfinished.sequence}`;
+  const stored = unfinished.error === null ? "" : `: ${unfinished.error}`;
+  return (
+    `${unfinished.filename} is recorded as ${unfinished.status}${stored}\n` +
+    `Clean up what it left, then delete its row to retry it:\n  delete from ${table} ${where};\n` +
+    `Or, when the statement did finish, mark it applied:\n  update ${table} set status = 'applied', error = null ${where};`
+  );
+}
+
 /**
  * Applies every Committed migration not yet recorded, each in its own transaction with its
  * tracking row, except a `--! no-transaction` file, which runs in autocommit between a `started`
@@ -43,14 +60,7 @@ export async function migrate({
     checkRecorded(migrations, recorded);
     const unfinished = await tracking.readUnfinished(session);
     if (unfinished !== undefined) {
-      const table = tracking.migrationsTable;
-      const where = `where sequence = ${unfinished.sequence}`;
-      const stored = unfinished.error === null ? "" : `: ${unfinished.error}`;
-      throw new Error(
-        `${unfinished.filename} is recorded as ${unfinished.status}${stored}\n` +
-          `Clean up what it left, then delete its row to retry it:\n  delete from ${table} ${where};\n` +
-          `Or, when the statement did finish, mark it applied:\n  update ${table} set status = 'applied', error = null ${where};`,
-      );
+      throw new Error(describeUnfinished(unfinished, tracking.migrationsTable));
     }
     const pending = migrations.slice(recorded.length);
     if (pending.length > 0 && (await tracking.holdsCurrentMigration(session))) {

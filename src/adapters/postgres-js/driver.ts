@@ -150,13 +150,16 @@ async function afterRollback(
   try {
     await reserved.unsafe(script).simple();
   } catch (error) {
-    const code = sqlState(error);
-    if (attempt === resetAttempts || (code !== inFailedTransaction && code !== queryCanceled)) {
-      throw error;
-    }
-    const next = code === inFailedTransaction ? scripts.plain : scripts.quiet;
+    const next = attempt === resetAttempts ? undefined : retryScript(sqlState(error), scripts);
+    if (next === undefined) throw error;
     await afterRollback(reserved, scripts, next, attempt + 1);
   }
+}
+
+function retryScript(code: string | undefined, scripts: AfterRollback): string | undefined {
+  if (code === inFailedTransaction) return scripts.plain;
+  if (code === queryCanceled) return scripts.quiet;
+  return undefined;
 }
 
 // Releases the connection once it's reset. If the reset fails, the connection never goes back:

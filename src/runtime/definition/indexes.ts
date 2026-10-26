@@ -81,9 +81,7 @@ type ListedKey = { ref: unknown; descending: boolean; nullsFirst: boolean };
 
 /** A key is a column ref, or `{ key, order, nulls }` around one. */
 function keyOf(element: unknown): ListedKey {
-  const wrapped =
-    typeof element === "object" && element !== null && !("~ref" in element) && "key" in element;
-  if (!wrapped) return { ref: element, descending: false, nullsFirst: false };
+  if (!isWrapped(element)) return { ref: element, descending: false, nullsFirst: false };
   const unexpected = Object.keys(element).find((key) => !WRAPPER_KEYS.has(key));
   if (unexpected !== undefined) {
     throw new TypeError(
@@ -96,6 +94,11 @@ function keyOf(element: unknown): ListedKey {
     descending,
     nullsFirst: nullsFirstOf(get(element, "nulls")) ?? descending,
   };
+}
+
+function isWrapped(element: unknown): element is object {
+  if (typeof element !== "object" || element === null) return false;
+  return !("~ref" in element) && "key" in element;
 }
 
 function descendingOf(order: unknown): boolean {
