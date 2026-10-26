@@ -5,6 +5,7 @@ import {
   trackingSchema,
 } from "../internal/index.ts";
 import type { Driver, MigrationSource } from "../ports/index.ts";
+import { applyInTransaction } from "./apply.ts";
 import { checkRecorded, loadVerifiedMigrations } from "./verify.ts";
 
 export type MigrateOptions = {
@@ -61,10 +62,7 @@ export async function migrate({
     for (const migration of pending) {
       try {
         // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
-        await session.transaction(async (tx) => {
-          await tx.execute(migration.body);
-          await tracking.recordMigration(tx, migration);
-        });
+        await session.transaction((tx) => applyInTransaction(tx, tracking, migration));
       } catch (error) {
         throw explainBlockerError(error, {
           source: { kind: "committed", filename: migration.filename },
