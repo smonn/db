@@ -35,7 +35,6 @@ export const PLACES: PlaceTable<ActionKind> = {
   "drop primary key": ["drop key or index", 1],
   "drop column": ["drop column or table", 0],
   "drop table": ["drop column or table", 1],
-  "drop schema": ["drop column or table", 2],
   "create schema": ["create schema or type", 0],
   "create table": ["create or alter table", 0],
   "add column": ["create or alter table", 1],
@@ -51,6 +50,7 @@ export const PLACES: PlaceTable<ActionKind> = {
   "set identity mode": ["create or alter table", 7],
   "add primary key": ["add key or index", 0],
   "add unique": ["add key or index", 1],
+  "drop schema": ["drop schema", 0],
 };
 
 /**
