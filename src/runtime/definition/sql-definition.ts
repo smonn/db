@@ -88,21 +88,41 @@ function viewTable(table: Table): Table {
           ? declared.references
           : declared.references.map(column),
     })),
-    indexes: table.indexes.map((index) => viewIndex(index, column)),
+    indexes: table.indexes.map((index) =>
+      viewIndex(index, column, (holder, text) => expressionText(table, holder, text)),
+    ),
     foreignKeys: table.foreignKeys.map((key) => ({ ...key, columns: key.columns.map(column) })),
   };
 }
 
-function viewIndex(index: TableIndex, column: (key: string) => string): TableIndex {
+type Rename = (key: string) => string;
+
+function viewIndex(
+  index: TableIndex,
+  column: Rename,
+  expression: (holder: object, text: string) => string,
+): TableIndex {
   return {
     ...index,
     keys: index.keys.map((key) =>
       "column" in key
         ? { ...key, column: column(key.column) }
-        : { ...key, expression: renamedExpression(key, column) ?? key.expression },
+        : { ...key, expression: expression(key, key.expression) },
     ),
     include: index.include.map(column),
-    where:
-      index.where === undefined ? undefined : (renamedExpression(index, column) ?? index.where),
+    where: index.where === undefined ? undefined : expression(index, index.where),
   };
+}
+
+/**
+ * The expression behind `holder` with each column named in SQL, from what `defineTable`
+ * remembered. Without that, `text` holds keys, so it stands only when no key changes its name.
+ */
+function expressionText(table: Table, holder: object, text: string): string {
+  const renamed = renamedExpression(holder, (key) => table.columnNames[key] ?? key);
+  if (renamed !== undefined) return renamed;
+  if (Object.entries(table.columnNames).every(([key, name]) => key === name)) return text;
+  throw new Error(
+    `An index of ${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)} holds an expression that another copy of @smonn/db built, so its columns can't take their SQL names; take defineTable and defineDatabase from one copy of the package`,
+  );
 }
