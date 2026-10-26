@@ -19,22 +19,44 @@ const FIXES: Readonly<Record<string, { readonly generated: string; readonly hand
     },
   };
 
+function fixFor(code: unknown): (typeof FIXES)[string] | undefined {
+  return typeof code === "string" && Object.hasOwn(FIXES, code) ? FIXES[code] : undefined;
+}
+
+/** The Shadow runs a file without the header in a transaction, which a statement such as CREATE INDEX CONCURRENTLY refuses. */
+function noTransactionHint(error: Error): Error {
+  return Object.assign(
+    new Error(
+      `${error.message}\nIf the statement can't run in a transaction, add \`--! no-transaction\` as the first line of the Current migration (ADR-0020).`,
+      { cause: error },
+    ),
+    { code: "25001" },
+  );
+}
+
 /**
  * Maps a Postgres error raised while applying SQL to the Shadow database to a message that names
  * what blocked it and what to do (ADR-0013). Other errors pass through unchanged. `handEdited`
- * words the hint for a hand-edited `current.sql`, which generate did not write.
+ * words the hint for a hand-edited `current.sql`, which generate did not write. `noTransaction`
+ * says the file carries the `--! no-transaction` header (ADR-0020).
  */
 export function explainShadowError(
   error: unknown,
-  options: { readonly handEdited?: boolean | undefined } = {},
+  options: {
+    readonly handEdited?: boolean | undefined;
+    readonly noTransaction?: boolean | undefined;
+  } = {},
 ): unknown {
   const handEdited = options.handEdited ?? false;
-  const code = error instanceof Error ? (error as Error & { code?: unknown }).code : undefined;
-  const fix = typeof code === "string" && Object.hasOwn(FIXES, code) ? FIXES[code] : undefined;
-  if (error instanceof Error && fix !== undefined) {
-    return new Error(`${error.message}\n${handEdited ? fix.handEdited : fix.generated}`, {
-      cause: error,
-    });
+  if (error instanceof Error) {
+    const code = (error as Error & { code?: unknown }).code;
+    if (code === "25001" && options.noTransaction !== true) return noTransactionHint(error);
+    const fix = fixFor(code);
+    if (fix !== undefined) {
+      return new Error(`${error.message}\n${handEdited ? fix.handEdited : fix.generated}`, {
+        cause: error,
+      });
+    }
   }
   return explainBlockerError(error, {
     source: { kind: handEdited ? "hand-edited" : "generated" },

@@ -3,13 +3,13 @@ import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import {
   catalogBuilder,
   childrenOf,
-  definitionCatalog,
   namesOf,
   parentOf,
   type Catalog,
   type CatalogBuilder,
   type Fact,
 } from "./catalog.ts";
+import { definitionCatalog } from "./definition-catalog.ts";
 
 describe("definitionCatalog", () => {
   it("has a fact per schema, table, and column, keyed by their chain of names", () => {

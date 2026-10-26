@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defineDatabase, defineEnum, defineTable } from "../../runtime/definition/index.ts";
-import { definitionCatalog } from "./catalog.ts";
+import { definitionCatalog } from "./definition-catalog.ts";
 
 const inApp =
   (...labels: string[]) =>

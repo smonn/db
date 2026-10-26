@@ -60,17 +60,25 @@ describe("generate and commit with a no-transaction hand edit (ADR-0020)", () =>
     ]);
   });
 
-  it.each([
-    ["the same statement without the header, which the Shadow runs in a transaction", INDEX],
-    [
-      "two statements under the header, which Postgres runs as one transaction",
-      `${EDIT}create index concurrently users_id2 on public.users (id);\n`,
-    ],
-  ])("refuses %s", async (_, current) => {
-    const fileSystem = folderWith(current);
+  it("names the no-transaction header as the fix when the headerless edit fails with 25001", async () => {
+    const fileSystem = folderWith(INDEX);
 
-    await expect(generate(generateOptions(db, fileSystem, definition))).rejects.toMatchObject({
-      code: "25001",
-    });
+    const failure = generate(generateOptions(db, fileSystem, definition));
+
+    await expect(failure).rejects.toMatchObject({ code: "25001" });
+    await expect(failure).rejects.toThrow(
+      /cannot run inside a transaction block\n.*--! no-transaction/su,
+    );
+  });
+
+  it("refuses two statements under the header, which Postgres runs as one transaction", async () => {
+    const fileSystem = folderWith(
+      `${EDIT}create index concurrently users_id2 on public.users (id);\n`,
+    );
+
+    const failure = generate(generateOptions(db, fileSystem, definition));
+
+    await expect(failure).rejects.toMatchObject({ code: "25001" });
+    await expect(failure).rejects.not.toThrow(/--! no-transaction/u);
   });
 });

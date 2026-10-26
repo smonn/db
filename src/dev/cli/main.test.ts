@@ -30,7 +30,7 @@ describe("main", () => {
     [["generate", "--accept", "rewrite"], "--accept applies only to commit"],
     [
       ["commit", "a", "--accept", "rewrite,drop"],
-      'unknown Hazard kind "drop"; the kinds are data_loss, rewrite, access_exclusive_lock',
+      'unknown Hazard kind "drop"; the kinds are data_loss, rewrite, access_exclusive_lock, share_row_exclusive_lock',
     ],
     [["commit", "a", "--accept", ""], 'unknown Hazard kind ""'],
     [["rebase", "main"], "rebase takes no arguments: main"],

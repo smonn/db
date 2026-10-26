@@ -1,12 +1,20 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
 import { childrenOf, parentOf, qualified, type Catalog, type Fact } from "../catalog/index.ts";
 import { enumTypes, labelPosition, quoteLiteral } from "./enums.ts";
-import { HAZARD_KINDS, LONG_LOCK, REWRITE, retypeHazards, type HazardKind } from "./hazards.ts";
+import {
+  HAZARD_KINDS,
+  LONG_LOCK,
+  REWRITE,
+  WRITE_LOCK,
+  retypeHazards,
+  type HazardKind,
+} from "./hazards.ts";
 
 type FactOf<K extends Fact["kind"]> = Extract<Fact, { readonly kind: K }>;
 
 /** The kind of fact each action acts on. */
 type Target = {
+  "drop foreign key": "foreign key";
   "drop unique": "unique";
   "drop primary key": "primary key";
   "drop column": "column";
@@ -30,6 +38,7 @@ type Target = {
   "set expression": "generated";
   "add primary key": "primary key";
   "add unique": "unique";
+  "add foreign key": "foreign key";
 };
 
 export type ActionKind = keyof Target;
@@ -74,6 +83,7 @@ const always =
  * created in the same migration is empty, so only changes to a table `from` has can be slow.
  */
 const STEPS: { readonly [A in ActionKind]: Step<A> } = {
+  "drop foreign key": { render: dropConstraint, hazards: none },
   "drop unique": { render: dropConstraint, hazards: none },
   "drop primary key": { render: dropConstraint, hazards: none },
   "drop column": {
@@ -178,6 +188,11 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
     render: (key, { to }) => addConstraint(key, "unique", [key.payload.column], to),
     hazards: indexBuild,
   },
+  "add foreign key": {
+    render: addForeignKey,
+    // A table created in the same migration is empty, so only an existing table has rows to scan.
+    hazards: ({ fact }, { from }) => (from.has(fact.parent) ? WRITE_LOCK : []),
+  },
 };
 
 export function render<A extends ActionKind>(action: Action<A>, catalogs: Catalogs): string {
@@ -226,7 +241,10 @@ function columnDefinition(column: FactOf<"column">, to: Catalog): string {
   return parts.join(" ");
 }
 
-function dropConstraint(key: FactOf<"primary key" | "unique">, { from }: Catalogs): string {
+function dropConstraint(
+  key: FactOf<"primary key" | "unique" | "foreign key">,
+  { from }: Catalogs,
+): string {
   return `${alterTable(key, from)} drop constraint ${quoteIdentifier(key.name)};`;
 }
 
@@ -236,8 +254,24 @@ function addConstraint(
   columns: readonly string[],
   to: Catalog,
 ): string {
-  const list = columns.map((column) => quoteIdentifier(column)).join(", ");
-  return `${alterTable(key, to)} add constraint ${quoteIdentifier(key.name)} ${clause} (${list});`;
+  return `${alterTable(key, to)} add constraint ${quoteIdentifier(key.name)} ${clause} (${columnList(columns)});`;
+}
+
+function columnList(names: readonly string[]): string {
+  return names.map((name) => quoteIdentifier(name)).join(", ");
+}
+
+/** Leaves out the clauses at Postgres's defaults, so the statement reads like the SQL one writes. */
+function addForeignKey(key: FactOf<"foreign key">, { to }: Catalogs): string {
+  const { columns, target, onDelete, onUpdate, match, deferrable } = key.payload;
+  const clauses = [
+    match === "full" ? "match full" : "",
+    onDelete === "no action" ? "" : `on delete ${onDelete}`,
+    onUpdate === "no action" ? "" : `on update ${onUpdate}`,
+    deferrable === "not deferrable" ? "" : `deferrable initially ${deferrable}`,
+  ].filter((clause) => clause !== "");
+  const references = `${quoteIdentifier(target.schema)}.${quoteIdentifier(target.table)} (${columnList(target.columns)})`;
+  return `${alterTable(key, to)} add constraint ${quoteIdentifier(key.name)} foreign key (${columnList(columns)}) references ${[references, ...clauses].join(" ")};`;
 }
 
 /** `alter table` for the table that holds `fact`, a column or key. */

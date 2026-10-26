@@ -13,7 +13,7 @@ export {
   type ParsedMigration,
 } from "./migration-file.ts";
 export { readCommitted, type MigrationFolder } from "./migration-folder.ts";
-export { acquireMigrationLock } from "./migration-lock.ts";
+export { acquireMigrationLock, MIGRATION_LOCK_KEY } from "./migration-lock.ts";
 export { quoteIdentifier } from "./quote-identifier.ts";
 export { sha256 } from "./sha256.ts";
 export {

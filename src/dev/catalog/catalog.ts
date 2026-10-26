@@ -1,48 +1,14 @@
-import { isEnum, type Enum, type Table } from "../../runtime/definition/index.ts";
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
-import { constraintNames, type ConstraintNames } from "./constraint-names.ts";
-import { columnType } from "./column-type.ts";
-import { enumTypeNames, labelsOf } from "./enums.ts";
-
-export type ColumnPayload = {
-  /** The type as `format_type` renders it, such as `character varying(20)`. */
-  readonly type: string;
-  /** True for a Postgres 18 `pg_constraint` NOT NULL row too, whatever its constraint name. */
-  readonly notNull: boolean;
-};
-
-export type DefaultPayload = {
-  /** The expression as `pg_get_expr` renders it, such as `now()` or `'new'::text`. */
-  readonly expression: string;
-  /**
-   * True when the expression calls a volatile function, such as `random()` or `nextval`, so
-   * adding the column evaluates it once per row instead of once for the table.
-   */
-  readonly volatile: boolean;
-};
-
-export type IdentityPayload = {
-  readonly generated: "always" | "by default";
-};
-
-export type GeneratedPayload = {
-  /** The expression as `pg_get_expr` renders it, such as `(a * 2)`. */
-  readonly expression: string;
-  /** Postgres 18 defaults to `virtual`; only `stored` keeps its values on disk. */
-  readonly storage: "stored" | "virtual";
-};
-
-/** Labels in sort order, which is the order the enum compares in. */
-export type EnumPayload = { readonly labels: readonly string[] };
-
-export type PrimaryKeyPayload = {
-  /** In key order, which is the order the index sorts by. */
-  readonly columns: readonly string[];
-};
-
-export type UniquePayload = {
-  readonly column: string;
-};
+import type {
+  ColumnPayload,
+  DefaultPayload,
+  EnumPayload,
+  ForeignKeyPayload,
+  GeneratedPayload,
+  IdentityPayload,
+  PrimaryKeyPayload,
+  UniquePayload,
+} from "./payloads.ts";
 
 /** Schemas and tables carry nothing beyond their name in v0.1. */
 type NoPayload = Readonly<Record<string, never>>;
@@ -105,6 +71,13 @@ export type Fact =
       readonly name: string;
       readonly parent: Key;
       readonly payload: UniquePayload;
+    }
+  | {
+      /** Named by its constraint; the payload names its target by schema, table, and columns. */
+      readonly kind: "foreign key";
+      readonly name: string;
+      readonly parent: Key;
+      readonly payload: ForeignKeyPayload;
     };
 
 /** A fact on a column, before the builder gives it its parent. */
@@ -135,10 +108,14 @@ export type CatalogBuilder = {
   columnGenerated(schema: string, table: string, column: string, payload: GeneratedPayload): void;
   primaryKey(schema: string, table: string, name: string, payload: PrimaryKeyPayload): void;
   unique(schema: string, table: string, name: string, payload: UniquePayload): void;
+  foreignKey(schema: string, table: string, name: string, payload: ForeignKeyPayload): void;
   build(): Catalog;
 };
 
-/** Throws when a fact names a parent, or a key names a column, not added yet. */
+/**
+ * Throws when a fact names a parent, or a key names a column, not added yet. A foreign key's
+ * target may be added after it, so `build` checks the target.
+ */
 export function catalogBuilder(): CatalogBuilder {
   const catalog = new Map<Key, Fact>();
   const added = (kind: Fact["kind"], ...names: string[]): Key => {
@@ -175,18 +152,68 @@ export function catalogBuilder(): CatalogBuilder {
     columnGenerated(schema, table, column, payload) {
       attribute(schema, table, column, { kind: "generated", name: GENERATED_NAME, payload });
     },
-    primaryKey(schema, table, name, payload) {
-      const parent = added("table", schema, table);
-      for (const column of payload.columns) added("column", schema, table, column);
-      catalog.set(constraintKey(parent, name), { kind: "primary key", name, parent, payload });
+    ...constraintMethods(catalog, added),
+    build() {
+      for (const fact of catalog.values()) {
+        if (fact.kind === "foreign key") requireTarget(fact.payload.target, added);
+      }
+      return new Map(catalog);
     },
-    unique(schema, table, name, payload) {
-      const parent = added("table", schema, table);
-      added("column", schema, table, payload.column);
-      catalog.set(constraintKey(parent, name), { kind: "unique", name, parent, payload });
-    },
-    build: () => new Map(catalog),
   };
+}
+
+type Added = (kind: Fact["kind"], ...names: string[]) => Key;
+
+function constraintMethods(
+  catalog: Map<Key, Fact>,
+  added: Added,
+): Pick<CatalogBuilder, "primaryKey" | "unique" | "foreignKey"> {
+  const add = (
+    schema: string,
+    table: string,
+    columns: readonly string[],
+    make: (parent: Key) => Fact,
+  ) => {
+    const parent = added("table", schema, table);
+    for (const column of columns) added("column", schema, table, column);
+    const fact = make(parent);
+    catalog.set(constraintKey(parent, fact.name), fact);
+  };
+  return {
+    primaryKey: (schema, table, name, payload) => {
+      add(schema, table, payload.columns, (parent) => ({
+        kind: "primary key",
+        name,
+        parent,
+        payload,
+      }));
+    },
+    unique: (schema, table, name, payload) => {
+      add(schema, table, [payload.column], (parent) => ({
+        kind: "unique",
+        name,
+        parent,
+        payload,
+      }));
+    },
+    foreignKey: (schema, table, name, payload) => {
+      add(schema, table, payload.columns, (parent) => ({
+        kind: "foreign key",
+        name,
+        parent,
+        payload,
+      }));
+    },
+  };
+}
+
+/** A foreign key's target may be added after the key, so `build` checks it once all are in. */
+function requireTarget(
+  { schema, table, columns }: ForeignKeyPayload["target"],
+  added: Added,
+): void {
+  added("table", schema, table);
+  for (const column of columns) added("column", schema, table, column);
 }
 
 export function parentOf(catalog: Catalog, fact: Fact): Fact {
@@ -208,69 +235,6 @@ export function namesOf(catalog: Catalog, fact: Fact): readonly string[] {
     : [...namesOf(catalog, parentOf(catalog, fact)), fact.name];
 }
 
-/** The shape `defineDatabase` returns, loosened so any Definition fits. */
-export type DefinitionTables = {
-  readonly [schema: string]: { readonly [name: string]: Table | Enum };
-};
-
-export function definitionCatalog(definition: DefinitionTables): Catalog {
-  const builder = catalogBuilder();
-  const enums = enumTypeNames(definition);
-  for (const [schema, entries] of Object.entries(definition)) {
-    builder.schema(schema);
-    const tables: Record<string, Table> = {};
-    for (const [name, entry] of Object.entries(entries)) {
-      if (isEnum(entry)) builder.enumType(schema, name, { labels: labelsOf(schema, name, entry) });
-      else tables[name] = entry;
-    }
-    const names = constraintNames(schema, tables);
-    for (const [table, definitionTable] of Object.entries(tables)) {
-      addTable(builder, { schema, table, names, enums }, definitionTable);
-    }
-  }
-  return builder.build();
-}
-
-type TableContext = {
-  readonly schema: string;
-  readonly table: string;
-  readonly names: ConstraintNames;
-  readonly enums: ReadonlyMap<Enum, string>;
-};
-
-function addTable(
-  builder: CatalogBuilder,
-  { schema, table, names, enums }: TableContext,
-  { columns, primaryKey, primaryKeyName }: Table,
-): void {
-  builder.table(schema, table);
-  const entries = Object.entries(columns);
-  for (const [column, { state }] of entries) {
-    builder.column(schema, table, column, {
-      type: columnType(state, enums, quoted([schema, table, column])),
-      notNull: state.notNull || primaryKey.includes(column) || state.identity !== undefined,
-    });
-    // introspect reads the real volatility from the Definition database.
-    if (state.default !== undefined) {
-      builder.columnDefault(schema, table, column, { expression: state.default, volatile: false });
-    }
-    if (state.identity !== undefined) {
-      builder.columnIdentity(schema, table, column, { generated: state.identity });
-    }
-  }
-  if (primaryKey.length > 0) {
-    builder.primaryKey(schema, table, names.primaryKey(table, primaryKey, primaryKeyName), {
-      columns: [...primaryKey],
-    });
-  }
-  for (const [column, { state }] of entries) {
-    if (state.unique) {
-      const name = names.unique(table, column, state.constraintName);
-      builder.unique(schema, table, name, { column });
-    }
-  }
-}
-
 // No Postgres name can hold a NUL byte, so no two chains of names join to the same key.
 const SEPARATOR = "\0";
 
@@ -289,11 +253,11 @@ function constraintKey(table: Key, name: string): Key {
 
 function keyOf(fact: Fact): Key {
   if (fact.parent === undefined) return key(fact.name);
-  return fact.kind === "primary key" || fact.kind === "unique"
+  return fact.kind === "primary key" || fact.kind === "unique" || fact.kind === "foreign key"
     ? constraintKey(fact.parent, fact.name)
     : key(fact.parent, fact.name);
 }
 
-function quoted(names: readonly string[]): string {
+export function quoted(names: readonly string[]): string {
   return names.map((name) => quoteIdentifier(name)).join(".");
 }

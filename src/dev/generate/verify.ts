@@ -28,14 +28,13 @@ export async function leftoverAfter(
   definition: Catalog,
   context: { readonly tracking: TrackingSchema; readonly handEdited?: boolean },
 ): Promise<string | undefined> {
+  const { noTransaction } = splitCurrentHeader(sql);
   try {
     // Outside a transaction only for a no-transaction hand edit, so a statement that needs that
     // fails here, as it would in `migrate` and `reset`, unless the edit says so (ADR-0020).
-    await (splitCurrentHeader(sql).noTransaction
-      ? shadow.execute(sql)
-      : shadow.transaction((tx) => tx.execute(sql)));
+    await (noTransaction ? shadow.execute(sql) : shadow.transaction((tx) => tx.execute(sql)));
   } catch (error) {
-    throw explainShadowError(error, { handEdited: context.handEdited });
+    throw explainShadowError(error, { handEdited: context.handEdited, noTransaction });
   }
   const remaining = differences(await introspect(shadow, context.tracking), definition);
   if (remaining.length === 0) return undefined;

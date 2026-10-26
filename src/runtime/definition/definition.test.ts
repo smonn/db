@@ -1,6 +1,6 @@
 import { assert, describe, expect, expectTypeOf, it } from "vitest";
-import type { ColumnFactories } from "./column.ts";
-import { defineDatabase, defineTable, type Refs, type Row } from "./definition.ts";
+import type { ColumnFactories } from "./factories.ts";
+import { defineDatabase, defineTable, type ColumnRefs, type Row } from "./definition.ts";
 
 const users = defineTable((c) => ({
   id: c.text().notNull(),
@@ -18,6 +18,7 @@ const PLAIN = {
   primaryKey: false,
   unique: false,
   constraintName: undefined,
+  references: undefined,
 };
 
 describe("defineTable", () => {
@@ -130,7 +131,7 @@ describe("defineTable", () => {
   });
 
   it("rejects another table's references, by type where the columns differ and at load always", () => {
-    const held: { refs?: Refs<ReturnType<typeof pair>> } = {};
+    const held: { refs?: ColumnRefs<ReturnType<typeof pair>> } = {};
     defineTable(pair, (t) => {
       held.refs = t;
       return {};
@@ -272,6 +273,7 @@ describe("defineDatabase", () => {
       columns: users.columns,
       primaryKey: [],
       primaryKeyName: undefined,
+      foreignKeys: [],
     });
     expect(db.auth.sessions).toStrictEqual({
       schema: "auth",
@@ -279,6 +281,7 @@ describe("defineDatabase", () => {
       columns: sessions.columns,
       primaryKey: [],
       primaryKeyName: undefined,
+      foreignKeys: [],
     });
   });
 
