@@ -5,7 +5,11 @@
 export function lineDiff(from: string, to: string): string {
   const a = lines(from);
   const b = lines(to);
-  // lcs[i][j] is the longest common subsequence length of a[i..] and b[j..].
+  return diffLines(a, b, lcsTable(a, b));
+}
+
+/** `lcs[i][j]` is the longest common subsequence length of `a[i..]` and `b[j..]`. */
+function lcsTable(a: readonly string[], b: readonly string[]): number[][] {
   const lcs = Array.from({ length: a.length + 1 }, () =>
     Array.from({ length: b.length + 1 }, () => 0),
   );
@@ -15,6 +19,10 @@ export function lineDiff(from: string, to: string): string {
         a[i] === b[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
     }
   }
+  return lcs;
+}
+
+function diffLines(a: readonly string[], b: readonly string[], lcs: readonly number[][]): string {
   let out = "";
   let i = 0;
   let j = 0;
