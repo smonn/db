@@ -24,10 +24,14 @@ jobs:
       PUPPETEER_SKIP_DOWNLOAD: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The checked-out merge commit and its first parent (the base), so check:pr can diff them.
+          fetch-depth: 2
       - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with:
           cache: true
       - env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BRANCH: ${{ github.head_ref }}
+          PR_DIFF_BASE: HEAD^1
         run: pnpm check:pr
