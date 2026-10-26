@@ -68,6 +68,7 @@ export function main(
     return;
   }
   console.error(`\n${failed.length} of ${scripts.length} checks failed: ${failed.join(", ")}`);
+  if (failed.includes("format:check")) console.error("Run `pnpm run format` to fix formatting.");
   process.exitCode = 1;
 }
 
