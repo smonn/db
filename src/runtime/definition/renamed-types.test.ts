@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defineDatabase } from "./definition.ts";
+import { defineDatabase } from "./database.ts";
 import { defineDomain } from "./define-domain.ts";
 import { defineEnum } from "./enum.ts";
 

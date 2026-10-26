@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { defineDatabase, defineTable } from "./definition.ts";
+import { defineDatabase } from "./database.ts";
+import { defineTable } from "./definition.ts";
 
 const refuse = () =>
   defineTable(

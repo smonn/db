@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { defineDatabase, defineTable, type Row } from "./definition.ts";
+import { defineDatabase } from "./database.ts";
+import { defineTable, type Row } from "./definition.ts";
 
 const users = defineTable((c) => ({
   id: c.text().notNull(),
