@@ -14,6 +14,7 @@ describe("main", () => {
     spawn.mockReset();
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(process, "exit").mockImplementation((code) => {
       throw new Error(`exit ${code}`);
     });
@@ -50,9 +51,62 @@ describe("main", () => {
   test("says so when no child is on the frontier", () => {
     ghReturns(spawn, {
       "repos/{owner}/{repo}/issues/5/sub_issues": [issue(8, { state: "closed" })],
+      "repos/{owner}/{repo}/issues/5": { body: "[Done](https://github.com/smonn/db/issues/8)" },
     });
     main("5");
     expect(console.log).toHaveBeenCalledWith("No frontier tickets.");
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  test("warns after the frontier lines for each closed child the map body does not link", () => {
+    ghReturns(spawn, {
+      "repos/{owner}/{repo}/issues/5/sub_issues": [
+        issue(8, { state: "closed" }),
+        issue(9, { state: "closed" }),
+        issue(10),
+      ],
+      "repos/{owner}/{repo}/issues/10/dependencies/blocked_by": [],
+      "repos/{owner}/{repo}/issues/5": { body: "[Done](https://github.com/smonn/db/issues/8)" },
+    });
+    main("5");
+    expect(console.log).toHaveBeenCalledWith("#10 Ticket 10 [wayfinder:grilling]");
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalledWith(
+      "warning: closed #9 Ticket 9 [wayfinder:grilling] is not linked in the map body (https://github.com/smonn/db/issues/9)",
+    );
+  });
+
+  test("treats a map with no body as linking nothing", () => {
+    ghReturns(spawn, {
+      "repos/{owner}/{repo}/issues/5/sub_issues": [issue(8, { state: "closed" })],
+      "repos/{owner}/{repo}/issues/5": { body: null },
+    });
+    main("5");
+    expect(console.warn).toHaveBeenCalledTimes(1);
+  });
+
+  test("leaves the output alone and skips the body read when no child is closed", () => {
+    ghReturns(spawn, {
+      "repos/{owner}/{repo}/issues/5/sub_issues": [issue(8)],
+      "repos/{owner}/{repo}/issues/8/dependencies/blocked_by": [],
+    });
+    main("5");
+    expect(console.warn).not.toHaveBeenCalled();
+    expect(spawn.mock.calls.map((call) => call[1]?.at(-1))).not.toContain(
+      "repos/{owner}/{repo}/issues/5",
+    );
+  });
+
+  test("prints the gh error and exits 1 when the map body read fails", () => {
+    ghReturns(spawn, {
+      "repos/{owner}/{repo}/issues/5/sub_issues": [issue(8, { state: "closed" })],
+    });
+    expect(() => {
+      main("5");
+    }).toThrow("exit 1");
+    expect(console.error).toHaveBeenCalledWith(
+      "gh api repos/{owner}/{repo}/issues/5 failed:\nno route repos/{owner}/{repo}/issues/5",
+    );
   });
 
   test("with no map, prints every open ticket that has no open blocker", () => {
