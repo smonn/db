@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import postgres, { type Sql } from "postgres";
 import { afterAll, afterEach, beforeAll } from "vitest";
+import { acquireMigrationLock } from "../../runtime/internal/index.ts";
 import type { Connect, Driver } from "../../runtime/ports/index.ts";
 import { postgresJsConnect } from "./connect.ts";
 import { postgresJsDriver } from "./driver.ts";
@@ -136,4 +137,35 @@ export function terminateBackendRunning(driver: Driver, fragment: string): Promi
 /** Waits until another backend in this database runs a statement containing `fragment`. */
 export function backendRunning(driver: Driver, fragment: string): Promise<void> {
   return untilActiveBackend(driver, "true", fragment);
+}
+
+/** The advisory-lock requests queued in this database; other databases' tests don't count. */
+async function queuedAdvisoryLocks(driver: Driver): Promise<number> {
+  const { rows } = await driver.query(
+    "select count(*)::int as n from pg_locks where locktype = 'advisory' and not granted and database = (select oid from pg_database where datname = current_database())",
+  );
+  return Number(rows[0]?.["n"]);
+}
+
+/**
+ * Holds the migration lock in a session of its own, starts `contender`, and gives it time to poll.
+ * Reports whether it finished and how many lock requests queued while the lock was held, then
+ * releases the lock and awaits the contender's result.
+ */
+export function whileMigrationLockHeld<T>(
+  driver: Driver,
+  contender: () => Promise<T>,
+): Promise<{ readonly finishedWhileHeld: boolean; readonly queued: number; readonly result: T }> {
+  return driver.session(async (holder) => {
+    await acquireMigrationLock(holder);
+    let finishedWhileHeld = false;
+    const running = contender().finally(() => {
+      finishedWhileHeld = true;
+    });
+    await setTimeout(150);
+    const queued = await queuedAdvisoryLocks(driver);
+    const held = finishedWhileHeld;
+    await holder.query("select pg_advisory_unlock_all()");
+    return { finishedWhileHeld: held, queued, result: await running };
+  });
 }
