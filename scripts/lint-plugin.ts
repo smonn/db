@@ -4,7 +4,7 @@
  *
  * - `smonn/sql-interpolation`: a `${...}` in a template literal passed straight to `query`,
  *   `unsafe`, or `execute` must be a `quoteIdentifier` call, a `const` set from one, or a
- *   module-level constant.
+ *   module-level constant; see `lint-rule-sql-interpolation.ts`.
  * - `smonn/error-message-qualifier`: a template literal passed to `new Error(...)`, or to a class
  *   whose name ends in `Error`, has no `.` and identifier character directly after a `${...}`.
  * - `smonn/required-brand`: an exported type has no optional property whose key starts with `~`.
@@ -14,12 +14,12 @@
  *   `lint-rule-test-server-url.ts`.
  */
 import type { RuleTester } from "oxlint/plugins-dev";
+import { sqlInterpolation } from "./lint-rule-sql-interpolation.ts";
 import { testServerUrl } from "./lint-rule-test-server-url.ts";
 
 type Rule = Parameters<RuleTester["run"]>[1];
 type Context = Parameters<Extract<Rule, { create: unknown }>["create"]>[0];
 type Node = Parameters<Context["sourceCode"]["getScope"]>[0];
-type Scope = ReturnType<Context["sourceCode"]["getScope"]>;
 type Plugin = {
   readonly meta: { readonly name: string };
   readonly rules: Readonly<
@@ -32,74 +32,6 @@ type Plugin = {
       Rule
     >
   >;
-};
-
-const SQL_METHODS = new Set(["query", "unsafe", "execute"]);
-// quoteTrackingSchema validates the name, then quotes it with quoteIdentifier.
-const QUOTERS = new Set(["quoteIdentifier", "quoteTrackingSchema"]);
-
-function calleeName(node: Node): string | undefined {
-  if (node.type === "Identifier") return node.name;
-  if (node.type === "MemberExpression" && !node.computed && node.property.type === "Identifier") {
-    return node.property.name;
-  }
-  return undefined;
-}
-
-function isQuoted(node: Node, context: Context, seen: Set<Node>): boolean {
-  if (node.type === "CallExpression") {
-    const name = calleeName(node.callee);
-    return name !== undefined && QUOTERS.has(name);
-  }
-  if (node.type !== "Identifier" || seen.has(node)) return false;
-  seen.add(node);
-  for (
-    let scope: Scope | null = context.sourceCode.getScope(node);
-    scope !== null;
-    scope = scope.upper
-  ) {
-    const variable = scope.set.get(node.name);
-    if (variable === undefined) continue;
-    const [definition] = variable.defs;
-    if (
-      variable.defs.length !== 1 ||
-      definition?.type !== "Variable" ||
-      definition.parent?.type !== "VariableDeclaration" ||
-      definition.parent.kind !== "const" ||
-      definition.node.type !== "VariableDeclarator"
-    ) {
-      return false;
-    }
-    if (variable.scope.type === "module") return true;
-    const init = definition.node.init;
-    return init !== null && isQuoted(init, context, seen);
-  }
-  return false;
-}
-
-const sqlInterpolation: Rule = {
-  meta: {
-    type: "problem",
-    docs: { description: "Quote identifiers and bind values in SQL passed as a template literal" },
-  },
-  create(context) {
-    return {
-      CallExpression(node) {
-        const name = calleeName(node.callee);
-        const [text] = node.arguments;
-        if (name === undefined || !SQL_METHODS.has(name) || text?.type !== "TemplateLiteral") {
-          return;
-        }
-        for (const expression of text.expressions) {
-          if (isQuoted(expression, context, new Set())) continue;
-          context.report({
-            node: expression,
-            message: `Quote this identifier with quoteIdentifier, or bind the value as a parameter of ${name}; it accepts a quoteIdentifier call, a const set from one in scope, or a module-level const, not a parameter or a template built from quoted parts`,
-          });
-        }
-      },
-    };
-  },
 };
 
 function isExported(declaration: Node, name: string, program: Node): boolean {

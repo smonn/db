@@ -1,7 +1,7 @@
 import type { Queryable } from "../ports/index.ts";
 
 // "SMONNDBMIGRATE" on a phone keypad, per ADR-0008.
-const MIGRATION_LOCK_KEY = "76666326447283";
+export const MIGRATION_LOCK_KEY = "76666326447283";
 
 const POLL_INTERVAL_MS = 100;
 

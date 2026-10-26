@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   backendRunning,
+  terminateBackendRunning,
   useTestDatabase,
 } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { writeMigration } from "../internal/index.ts";
@@ -120,6 +121,30 @@ describe("migrate a no-transaction file (ADR-0020)", () => {
       `${duplicate.filename} is recorded as failed: could not create unique index "users_name"`,
     );
     expect(await lockIsFree()).toBe(true);
+  });
+
+  it("leaves the row started when the backend ends mid-statement, and refuses the next run", async () => {
+    const sleeping = await writeMigration(
+      "000002-sleep.sql",
+      CREATE_USERS.hash,
+      "select pg_sleep(30);\n",
+      { noTransaction: true },
+    );
+    const files = source(CREATE_USERS, sleeping);
+
+    const failed = migrate({ driver: db.ownPool(), source: files });
+    await Promise.all([
+      expect(failed).rejects.toThrow("the statement failed, and so did marking it"),
+      terminateBackendRunning(db.driver, "pg_sleep(30)"),
+    ]);
+
+    expect(await queryRows(STATUSES)).toStrictEqual([
+      applied(CREATE_USERS.filename),
+      { filename: sleeping.filename, status: "started", error: null },
+    ]);
+    await expect(migrate({ driver: db.driver, source: files })).rejects.toThrow(
+      `${sleeping.filename} is recorded as started`,
+    );
   });
 
   it("fails a file of two statements with 25001, which Postgres enforces", async () => {
