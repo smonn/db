@@ -51,7 +51,7 @@ flowchart TB
     sql["<b>sql</b><br/>[module]<br/>SQL fragments, the sql template, rendering to text and params"]
     migrator["<b>migrator</b><br/>[module]<br/>Verifies the hash chain and applies Committed migrations under an advisory lock"]
     ports["<b>ports</b><br/>[types only]<br/>Driver, Connect, MigrationSource, FileSystem"]
-    internal["<b>internal</b><br/>[module, never exported]<br/>Shared helpers: sha256, the migration file, folder, and lock, identifier quoting, and blocker errors"]
+    internal["<b>internal</b><br/>[module, never exported]<br/>Shared helpers: sha256, the migration file, folder, and lock, the Tracking schema, identifier quoting, and blocker errors"]
   end
 
   adapters["<b>adapters/</b><br/>[container]"]

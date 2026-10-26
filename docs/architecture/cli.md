@@ -55,7 +55,7 @@ Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body 
 
 ### Dev database catch-up
 
-Generate resets the Dev database, as [`reset`](#reset) does and never on an unmarked Database, whenever the Current migration's hash differs from `smonn_db.current`, or the last hash in `smonn_db.migrations` differs from the tip of the Committed migration files. The tip check covers a pulled Committed migration that leaves the regenerated Current migration byte-identical. Resetting is exact after hand edits and branch switches, at the cost of dev data. Keeping that data is a v0.4 dev loop question.
+Generate resets the Dev database, as [`reset`](#reset) does and only in a marked or empty Database (ADR-0016), whenever the Current migration's hash differs from `smonn_db.current`, or the last hash in `smonn_db.migrations` differs from the tip of the Committed migration files. The tip check covers a pulled Committed migration that leaves the regenerated Current migration byte-identical. Resetting is exact after hand edits and branch switches, at the cost of dev data. Keeping that data is a v0.4 dev loop question.
 
 ## commit
 
@@ -93,7 +93,7 @@ sequenceDiagram
   Mig->>DB: run each remaining Committed migration
 ```
 
-`migrate` runs the runtime migrator against `url`. When an object outside the Definition blocks a drop or retype (`2BP01`, `0A000`), the file rolls back and the error names it and its blockers, through the mapping in `runtime/internal` that generate's Shadow check shares.
+`migrate` runs the runtime migrator against `url`. When an object outside the Definition blocks a drop or retype (`2BP01`, `0A000`), the error names the file and its blockers, through the mapping in `runtime/internal` that generate's Shadow check shares.
 
 ## reset
 
