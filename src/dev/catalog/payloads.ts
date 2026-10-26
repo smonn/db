@@ -38,6 +38,8 @@ export type DomainPayload = {
   readonly notNull: boolean;
   /** As `pg_get_expr` renders it, or null without one. */
   readonly default: string | null;
+  /** True when the default calls a volatile function, as a column default's `volatile`. */
+  readonly defaultVolatile: boolean;
 };
 
 /** A `NOT VALID` check is the same fact as a valid one. */

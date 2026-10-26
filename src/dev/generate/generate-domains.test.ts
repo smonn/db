@@ -74,6 +74,18 @@ create domain "public"."calm" as public.mood default ('a'::public.mood);
 `);
   });
 
+  it("creates a domain after the enum labels it uses, so the Shadow names the uncommitted label", async () => {
+    const mood = defineEnum(["a", "b"]);
+    const calm = defineDomain((c) => c.enum(mood), { default: "'b'" });
+
+    await expect(
+      generateFrom(
+        defineDatabase({ public: { calm, mood } }),
+        "create type public.mood as enum ('a');\n",
+      ),
+    ).rejects.toThrow(/unsafe use of new value "b" of enum type mood\nGenerate adds the label/u);
+  });
+
   it("drops a domain after the table that used it", async () => {
     const result = await generateFrom(
       defineDatabase({ public: {} }),
@@ -167,6 +179,36 @@ ${D_AND_T}`;
     expect(result.sql).toBe(
       `-- hazard: rewrite\n-- hazard: access_exclusive_lock\nalter table "public"."t" add column "n" public.d;\n`,
     );
+  });
+
+  it("rewrites when it adds a column of a domain with a volatile default and none of its own", async () => {
+    const id = defineDomain((c) => c.uuid(), { default: "gen_random_uuid()" });
+    const committed =
+      "create domain public.id as uuid default gen_random_uuid();\ncreate table public.t (a integer);\n";
+
+    const result = await generateFrom(
+      defineDatabase({
+        public: { id, t: defineTable((c) => ({ a: c.integer(), n: c.domain(id) })) },
+      }),
+      committed,
+    );
+    expect(result.sql).toBe(
+      `-- hazard: rewrite\n-- hazard: access_exclusive_lock\nalter table "public"."t" add column "n" public.id;\n`,
+    );
+
+    const ownDefault = await generateFrom(
+      defineDatabase({
+        public: {
+          id,
+          t: defineTable((c) => ({
+            a: c.integer(),
+            n: c.domain(id).default("'00000000-0000-0000-0000-000000000000'"),
+          })),
+        },
+      }),
+      committed,
+    );
+    expect(ownDefault.hazards).toStrictEqual([]);
   });
 
   it("retypes a column onto a domain over its type, rewriting only for a constrained one", async () => {

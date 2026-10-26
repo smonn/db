@@ -37,7 +37,8 @@ export const TYPE_HANDLING: HandlingTable<TypeFact> = {
     parentCreateCovers: false,
     create: (fact) => [{ kind: "create domain", fact }],
     replacedOnChange: false,
-    // No ALTER DOMAIN changes the base, so `refuseTypeChanges` stops generate before this runs.
+    // No ALTER DOMAIN changes the base, so this skips a changed one; generate's
+    // `refuseTypeChanges` refuses it before the SQL reaches the Shadow.
     alter: (before, after) => {
       const actions: Action[] = [];
       if (before.payload.default !== after.payload.default) {

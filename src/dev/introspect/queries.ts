@@ -5,6 +5,17 @@ const NOT_EXTENSION_MEMBER = (catalog: string, alias: string): string => `not ex
 
 const KEPT_SCHEMA = `n.nspname !~ '^pg_' and n.nspname not in ('information_schema', $1)`;
 
+// Whether `expression` calls a function `pg_proc` marks volatile, matched by name since
+// `pg_depend` omits built-in functions. String literals are stripped so `'f('` names no call.
+const CALLS_VOLATILE = (expression: string): string => `exists (
+    select from regexp_matches(
+      regexp_replace(${expression}, '''([^'']|'''')*''', '', 'g'),
+      '([A-Za-z_][A-Za-z0-9_$]*|"[^"]+")\\s*\\(', 'g'
+    ) as call(name)
+      join pg_proc p on p.proname = trim(both '"' from call.name[1])
+    where p.provolatile = 'v'
+  )`;
+
 export const SCHEMAS: string = `
 select n.nspname as name
 from pg_namespace n
@@ -36,7 +47,8 @@ select n.nspname as schema, t.typname as name, format_type(t.typbasetype, t.typt
   t.typnotnull or exists (
     select from pg_constraint k where k.contypid = t.oid and k.contype = 'n'
   ) as not_null,
-  pg_get_expr(t.typdefaultbin, 0) as default_expression
+  pg_get_expr(t.typdefaultbin, 0) as default_expression,
+  ${CALLS_VOLATILE("pg_get_expr(t.typdefaultbin, 0)")} as default_volatile
 from pg_type t
   join pg_namespace n on n.oid = t.typnamespace
   join pg_type b on b.oid = t.typbasetype
@@ -62,14 +74,8 @@ select n.nspname as schema, c.relname as table, a.attname as name,
   a.attidentity as identity, a.attgenerated as generated,
   case when a.attgenerated <> '' then pg_get_expr(d.adbin, d.adrelid) end as generation_expression,
   case when a.attgenerated = '' then pg_get_expr(d.adbin, d.adrelid) end as default_expression,
-  case when a.attgenerated = '' then exists (
-    select from regexp_matches(
-      regexp_replace(pg_get_expr(d.adbin, d.adrelid), '''([^'']|'''')*''', '', 'g'),
-      '([A-Za-z_][A-Za-z0-9_$]*|"[^"]+")\\s*\\(', 'g'
-    ) as call(name)
-      join pg_proc p on p.proname = trim(both '"' from call.name[1])
-    where p.provolatile = 'v'
-  ) end as default_volatile
+  case when a.attgenerated = '' then ${CALLS_VOLATILE("pg_get_expr(d.adbin, d.adrelid)")}
+  end as default_volatile
 from pg_attribute a
   join pg_class c on c.oid = a.attrelid
   join pg_namespace n on n.oid = c.relnamespace

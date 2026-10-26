@@ -14,6 +14,7 @@ export function addDomains(
       base: String(domain["base"]),
       notNull: domain["not_null"] === true,
       default: typeof expression === "string" ? expression : null,
+      defaultVolatile: domain["default_volatile"] === true,
     });
     for (const check of rows.checks) {
       if (check["schema"] !== schema || check["domain"] !== name) continue;

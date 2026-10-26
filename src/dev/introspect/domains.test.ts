@@ -24,7 +24,7 @@ describe("introspect domains", () => {
       kind: "domain",
       name: "posint",
       parent: "public",
-      payload: { base: "integer", notNull: true, default: "1" },
+      payload: { base: "integer", notNull: true, default: "1", defaultVolatile: false },
     });
     expect(read["public\0posint\0positive"]).toStrictEqual({
       kind: "domain check",
@@ -38,6 +38,20 @@ describe("introspect domains", () => {
     expect(Object.keys(read).filter((key) => key.startsWith("public\0posint\0"))).toStrictEqual([
       "public\0posint\0positive",
     ]);
+  });
+
+  it("reads whether a domain's default calls a volatile function", async () => {
+    await db.driver.execute(`
+      create domain public.id as uuid default gen_random_uuid();
+      create domain public.label as text default 'random()';
+      create domain public.bare as text;
+    `);
+
+    const read = await facts();
+
+    expect(read["public\0id"]).toMatchObject({ payload: { defaultVolatile: true } });
+    expect(read["public\0label"]).toMatchObject({ payload: { defaultVolatile: false } });
+    expect(read["public\0bare"]).toMatchObject({ payload: { defaultVolatile: false } });
   });
 
   it("reads a NOT VALID check as the same fact as a valid one", async () => {

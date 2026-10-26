@@ -4,7 +4,7 @@ How generate turns the Definition into the Current migration. ADR-0005 and ADR-0
 
 ## What v0.1 models
 
-Schemas, tables, columns (type, NOT NULL, default, identity), single and composite primary keys, unique constraints over one or more columns and indexes over columns (ADR-0021), one-column foreign keys (ADR-0019), and enums and domains (ADR-0023): exactly what the Definition can express.
+Schemas, tables, columns (type, NOT NULL, default, identity), single and composite primary keys, unique constraints over one or more columns and indexes over columns (ADR-0021), foreign keys (ADR-0019), and enums and domains (ADR-0023): exactly what the Definition can express.
 
 Both introspections skip the Tracking schema (`smonn_db` unless configured), `pg_catalog`, `information_schema`, `pg_toast*`, `pg_temp*`, extension members, and every kind outside this list (ADR-0005). Generate refuses a Definition that names one of these schemas, since its tables would vanish from the diff.
 
@@ -44,9 +44,9 @@ An index is a child fact of its table, named by the index and keyed like a key. 
 
 ### Foreign keys
 
-A foreign key is a child fact of its table, named by its constraint and keyed like a key. Its payload holds its columns, the target's schema, table, and columns (paired by position), `onDelete`, `onUpdate`, `match`, and `deferrable` (`not deferrable`, `immediate`, or `deferred`). A changed payload drops the constraint and adds it back. A `NOT VALID` foreign key is the same fact as a valid one.
+A foreign key is a child fact of its table, named by its constraint and keyed like a key. Its payload holds its columns, the target's schema, table, and columns (paired by position), `onDelete`, `onUpdate`, `match`, and `deferrable`. A changed payload drops the constraint and adds it back. A `NOT VALID` foreign key is the same fact as a valid one.
 
-`defineDatabase` resolves each target column to its table by identity, so the catalog reads names only; the builder checks the target at `build`, since a target may come after the foreign key. The name is the one `.references(target, { name })` gives, or Postgres's default, `<table>_<columns joined by _>_fkey`. `definitionCatalog` refuses a name over 63 bytes, and two constraints on one table that take one name; a foreign key has no index, so it clashes with nothing else.
+`defineDatabase` resolves each target column to its table by identity, so the catalog reads names only; the builder checks the target at `build`, since a target may come after the foreign key. A column's `.references()` and a `foreignKeys` entry in the second callback yield the same fact. The name is the one the Definition gives, or Postgres's default, `<table>_<columns joined by _>_fkey`. `definitionCatalog` refuses a name over 63 bytes, and two constraints on one table that take one name.
 
 `introspect` skips as Unmodeled a foreign key that is `NOT ENFORCED`, uses `PERIOD`, names a column list on `SET NULL` or `SET DEFAULT`, or points at an Unmodeled table, such as a partitioned one or one in a skipped schema.
 
@@ -64,7 +64,7 @@ A removed or reordered label swaps the type (ADR-0023): phase 1 renames the old 
 
 ### Domains
 
-A domain is a fact under its schema, keyed like an enum. Its payload holds its base as `format_type` spells it, its default as `pg_get_expr` renders it, and NOT NULL, folded like a column's. Each check is a child `domain check` fact named by its constraint; a `NOT VALID` one is the same fact. `introspect` skips as Unmodeled a domain over a domain or array, or with its own collation. Generate refuses a changed base, and a name switching between enum and domain.
+A domain is a fact under its schema, keyed like an enum. Its payload holds its base as `format_type` spells it, its default as `pg_get_expr` renders it and whether that calls a volatile function, and NOT NULL, folded like a column's. Each check is a child `domain check` fact named by its constraint; a `NOT VALID` one is the same fact. `introspect` skips as Unmodeled a domain over a domain or array, or with its own collation. Generate refuses a changed base, and a name switching between enum and domain.
 
 ## Ordering
 
@@ -74,7 +74,7 @@ Each action is one statement-sized change, such as create table, add column, or 
 2. Payload-matched renames of constraints, indexes, sequences, and domain checks, which compare under the names phase 1 gives.
 3. Drop foreign key, index, unique constraint, primary key.
 4. Drop column, then table.
-5. Create or alter schema or type: create schema, enum, domain; enum `ADD VALUE`; domain alters and checks. All before columns, so a new column gets the new domain default.
+5. Create or alter schema or type: create schema, enum; enum `ADD VALUE`; create domain, after the labels it may use; domain alters and checks. All before columns, so a new column gets the new domain default.
 6. Create table, add column, then column alters: drop default, drop identity or expression, type (an enum swap's retypes included), NOT NULL, set default or expression, add identity or switch identity mode.
 7. Add primary key, unique constraint, index, foreign key.
 8. Drop domain, then enum, after the retypes.
@@ -103,7 +103,7 @@ Dropping a table or column drops what it holds, so no separate drop is emitted f
 Each action kind declares its Hazards (`data_loss`, `rewrite`, `access_exclusive_lock`, `share_lock`, `share_row_exclusive_lock`, `rename`) in a table, classified from the catalog, not the SQL text. Each Hazard is written as a `-- hazard: <kind>` comment above its statement, and generate returns them with their statements. Generation never blocks on a Hazard; commit does, per kind (ADR-0015). Commit also refuses a near-miss `-- hazard:` comment (indented, unspaced, recased, trailing, or mid-statement), since that would drop its gate by accident.
 
 - `data_loss`: a dropped column or table (so a rename too, ADR-0010, unless a `renamedFrom` marker declares it, which carries `rename` instead, ADR-0024), and a type change that converts values without an error but not back, such as `numeric(10,2)` to `integer`, `timestamptz` to `date`, or `double precision` to `real`. A change that fails on a value that doesn't fit, such as `bigint` to `integer`, loses nothing, since the statement rolls back. An enum swap's retypes carry it when a label is removed (ADR-0023).
-- `rewrite`: a type change Postgres can't make in place (text to an enum, an enum to text, and one enum to another among them), and a new column whose default calls a volatile function, that is an identity, is stored generated, or is of a constrained domain, and a new expression on a stored generated column, because each row needs its own value. A virtual column computes on read and rewrites nothing.
+- `rewrite`: a type change Postgres can't make in place (text to an enum, an enum to text, and one enum to another among them), and a new column whose default calls a volatile function, that is an identity, is stored generated, is of a constrained domain, or takes its domain's volatile default, and a new expression on a stored generated column, because each row needs its own value. A virtual column computes on read and rewrites nothing.
   - `retypeHazards` in `diff/hazards.ts` lists the type changes Postgres makes in place, and how an array's element type counts.
   - A default is volatile when its expression calls a function that `pg_proc` marks volatile, which `introspect` reads by function name, since `pg_depend` omits built-in functions.
 - `access_exclusive_lock`: a statement that holds the lock while it does work that grows with the table. Every `ALTER TABLE` takes that lock, but only a rewrite (which therefore carries both kinds), `SET NOT NULL` (a scan of every row), and adding a primary key or unique constraint (an index build) hold it past a catalog change. Adding a key to a table created in the same migration is empty, so it carries nothing.
