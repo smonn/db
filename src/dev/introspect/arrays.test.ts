@@ -56,3 +56,34 @@ describe("introspect array columns", () => {
     ).toStrictEqual(["id", "tags"]);
   });
 });
+
+const tableFacts = async (): Promise<string[]> =>
+  [...(await introspect(db.driver)).values()]
+    .filter((fact) => fact.parent === "public\0t")
+    .map((fact) => `${fact.kind} ${fact.name}`);
+
+describe("introspect keys on a skipped array column", () => {
+  it("skips a unique constraint on an array of a range type", async () => {
+    await db.driver.execute("create table public.t (id integer, spans int4range[] unique);");
+
+    expect(await tableFacts()).toStrictEqual(["column id"]);
+  });
+
+  it("skips a primary key on an array of a composite type", async () => {
+    await db.driver.execute(`
+      create type public.pair as (a integer, b integer);
+      create table public.t (id integer, pairs public.pair[] primary key);
+    `);
+
+    expect(await tableFacts()).toStrictEqual(["column id"]);
+  });
+
+  it("skips a foreign key from an array of a range type", async () => {
+    await db.driver.execute(`
+      create table public.other (spans int4range[] primary key);
+      create table public.t (id integer, spans int4range[] references public.other (spans));
+    `);
+
+    expect(await tableFacts()).toStrictEqual(["column id"]);
+  });
+});
