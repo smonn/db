@@ -1,5 +1,6 @@
 import type { Codec, RuntimeCodec } from "./codec.ts";
 import type { Enum } from "./enum.ts";
+import { columnIndexOf, type ColumnIndex, type IndexOptions } from "./index-options.ts";
 import type { ColumnReference, ForeignKeyOptions, Target } from "./references.ts";
 
 type Identity = "always" | "by default";
@@ -19,6 +20,8 @@ export type ColumnState = {
   /** True when `.primaryKey()` made this column the table's whole primary key. */
   readonly primaryKey: boolean;
   readonly unique: boolean;
+  /** One entry per `.index()` call, in call order. */
+  readonly indexes: readonly ColumnIndex[];
   /** The name `.primaryKey({ name })` or `.unique({ name })` gave its constraint. */
   readonly constraintName: string | undefined;
   /** The SQL name the column had before a rename, for generate to turn into a `RENAME`. */
@@ -64,6 +67,11 @@ export type Column<
    * marker once the old name is gone, so remove it after the rename ships.
    */
   renamedFrom(oldName: string): Column<V, N, Int, Gen, Pk, Key, Co, Fk, Fresh>;
+  /**
+   * An index on this column alone. Call it again for a second index, giving each a name. An index
+   * over several columns, or with more options, goes in the second callback's `indexes`.
+   */
+  index(options?: IndexOptions): Column<V, N, Int, Gen, Pk, Key, Co, Fk, Fresh>;
 } & (Fresh extends true
   ? {
       /**
@@ -146,6 +154,8 @@ export function column<
     array: () => column({ ...state, array: true }, codec),
     notNull: () => column({ ...state, notNull: true }, codec),
     renamedFrom: (oldName: string) => column({ ...state, renamedFrom: oldName }, codec),
+    index: (options?: IndexOptions) =>
+      column({ ...state, indexes: [...state.indexes, columnIndexOf(options)] }, codec),
     default: (expression: string) => column({ ...state, default: expression }, codec),
     identity: (generated: Identity = "by default") =>
       column({ ...state, notNull: true, identity: generated }, codec),

@@ -45,3 +45,25 @@ export function retyped(column: Key, catalogs: Catalogs): boolean {
       swapOf(after.payload.type, catalogs) !== undefined)
   );
 }
+
+/**
+ * `catalog` without the rebuilt columns, the facts under them, and the facts that name them, which
+ * `columnsNamed` reads off each fact.
+ */
+export function without(
+  catalog: Catalog,
+  rebuilt: ReadonlyMap<Key, Fact>,
+  columnsNamed: (fact: Fact) => readonly string[],
+): Catalog {
+  const columns = [...rebuilt.values()];
+  return new Map(
+    [...catalog].filter(
+      ([key, fact]) =>
+        !rebuilt.has(key) &&
+        !(fact.parent !== undefined && rebuilt.has(fact.parent)) &&
+        !columns.some(
+          (column) => column.parent === fact.parent && columnsNamed(fact).includes(column.name),
+        ),
+    ),
+  );
+}

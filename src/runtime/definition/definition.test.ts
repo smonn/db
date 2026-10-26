@@ -19,6 +19,7 @@ const PLAIN = {
   identity: undefined,
   primaryKey: false,
   unique: false,
+  indexes: [],
   constraintName: undefined,
   renamedFrom: undefined,
   references: undefined,

@@ -15,6 +15,7 @@ describe("defineDatabase", () => {
       primaryKeyName: undefined,
       uniques: [],
       declaredForeignKeys: [],
+      indexes: [],
       renamedFrom: undefined,
       foreignKeys: [],
     };

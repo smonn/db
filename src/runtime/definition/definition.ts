@@ -8,9 +8,10 @@ import {
   placesOf,
   type Places,
 } from "./foreign-keys.ts";
-import type { CheckedForeignKeys, ForeignKeyEntries } from "./foreign-key-entries.ts";
+import { indexesOf, type TableIndex } from "./indexes.ts";
 import type { DeclaredForeignKey } from "./references.ts";
-import type { ColumnRefs, OwnRef, Ref } from "./refs.ts";
+import type { ColumnRefs } from "./refs.ts";
+import type { ExtrasArgs, KeyOf } from "./table-extras.ts";
 import {
   keyColumns,
   refsOf,
@@ -30,6 +31,8 @@ export type TableDefinition<C extends Columns = Columns, K extends string = stri
   readonly uniques: readonly UniqueConstraint[];
   /** The foreign keys the second callback declares; `defineDatabase` resolves them into `Table.foreignKeys`. */
   readonly declaredForeignKeys: readonly DeclaredForeignKey[];
+  /** The indexes the second callback declares; a column's `.index()` stays in its state. */
+  readonly indexes: readonly TableIndex[];
   /** The SQL name the table had before a rename, for generate to turn into a `RENAME`. */
   readonly renamedFrom: string | undefined;
 };
@@ -43,65 +46,6 @@ export type Table<C extends Columns = Columns, K extends string = string> = Tabl
   /** The foreign keys its columns and second callback declare, with each target's table named. */
   readonly foreignKeys: readonly ForeignKey[];
 };
-
-type KeyedColumns<C extends Columns> = {
-  [Name in keyof C & string]: C[Name]["~types"]["primaryKey"] extends true ? Name : never;
-}[keyof C & string];
-
-type IsUnion<T, U = T> = [T] extends [never]
-  ? false
-  : T extends unknown
-    ? [U] extends [T]
-      ? false
-      : true
-    : never;
-
-type KeyRefs<C extends Columns> = readonly [OwnRef<C>, OwnRef<C>, ...OwnRef<C>[]];
-
-/** A composite key's columns, or its columns and the constraint name that replaces the derived one. */
-type KeyEntry<C extends Columns> =
-  | KeyRefs<C>
-  | { readonly name: string; readonly columns: KeyRefs<C> };
-
-/** A unique constraint over at least two columns; one column calls `unique()` instead. */
-type UniqueEntry<C extends Columns> = {
-  readonly columns: KeyRefs<C>;
-  /** Replaces the derived name, `<table>_<columns joined by _>_key`. */
-  readonly name?: string;
-  /** Treats NULLs as equal, so two rows with the same columns and a NULL conflict. */
-  readonly nullsNotDistinct?: boolean;
-};
-
-/** The table-level entries, keyed by kind. Later kinds (indexes, checks) join here. */
-type TableExtras<C extends Columns> = {
-  /** The table's SQL name before this change; generate ignores it once the old name is gone. */
-  readonly renamedFrom?: string;
-  readonly unique?: readonly UniqueEntry<C>[];
-  readonly foreignKeys?: ForeignKeyEntries<C>;
-} & ([KeyedColumns<C>] extends [never]
-  ? { readonly primaryKey?: KeyEntry<C> }
-  : { readonly primaryKey?: never });
-
-/** The arguments after the columns; a misuse of the primary key leaves no argument list that fits. */
-type ExtrasArgs<C extends Columns, Args = never> =
-  IsUnion<KeyedColumns<C>> extends true
-    ? [
-        extras: (t: ColumnRefs<C>) => {
-          readonly primaryKey?: never;
-          readonly "several columns call primaryKey(); declare a composite key in the second callback": never;
-        },
-      ]
-    : [extras?: (t: ColumnRefs<C>) => TableExtras<C> & CheckedForeignKeys<C, Args>];
-
-type ListedRefs<Entry> = Entry extends { readonly columns: infer Listed } ? Listed : Entry;
-
-type KeyOf<C extends Columns, Args extends unknown[]> = Args extends [
-  (t: never) => { readonly primaryKey: infer Entry },
-]
-  ? ListedRefs<Entry> extends readonly Ref<infer K, C>[]
-    ? K
-    : never
-  : KeyedColumns<C>;
 
 type PrimaryKey = { readonly columns: string[]; readonly name: string | undefined };
 
@@ -143,6 +87,11 @@ function refuseKeyAndUnique(columns: Columns): void {
   }
 }
 
+function renamedFromOf(declared: unknown): string | undefined {
+  if (declared === undefined || typeof declared === "string") return declared;
+  throw new TypeError("The table's renamedFrom takes the old SQL name as a string");
+}
+
 export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>(
   define: (c: ColumnFactories) => C,
   ...args: Args
@@ -153,6 +102,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>
         readonly primaryKey?: unknown;
         readonly unique?: unknown;
         readonly foreignKeys?: unknown;
+        readonly indexes?: unknown;
         readonly renamedFrom?: unknown;
       })
     | undefined = args[0];
@@ -162,10 +112,8 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>
   const primaryKey = primaryKeyOf(columns, own, declared?.primaryKey);
   const uniques = uniquesOf(own, declared?.unique);
   const declaredForeignKeys = declaredForeignKeysOf(own, declared?.foreignKeys);
-  const renamedFrom = declared?.renamedFrom;
-  if (renamedFrom !== undefined && typeof renamedFrom !== "string") {
-    throw new TypeError("The table's renamedFrom takes the old SQL name as a string");
-  }
+  const indexes = indexesOf(own, declared?.indexes);
+  const renamedFrom = renamedFromOf(declared?.renamedFrom);
   refuseKeyAndUnique(columns);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the key names are checked above.
   return {
@@ -174,6 +122,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>
     primaryKeyName: primaryKey.name,
     uniques,
     declaredForeignKeys,
+    indexes,
     renamedFrom,
   } as unknown as TableDefinition<C, KeyOf<C, Args>>;
 }
@@ -201,6 +150,7 @@ function tableOf(
     primaryKeyName,
     uniques,
     declaredForeignKeys,
+    indexes,
     renamedFrom,
   }: TableDefinition,
 ): Table {
@@ -212,6 +162,7 @@ function tableOf(
     primaryKeyName,
     uniques,
     declaredForeignKeys,
+    indexes,
     renamedFrom,
     foreignKeys: foreignKeysOf(places, schema, name, { columns, primaryKey, declaredForeignKeys }),
   };

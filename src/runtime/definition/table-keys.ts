@@ -29,14 +29,13 @@ export function columnOf(own: RuntimeRefs, ref: unknown, entry: string): string 
   return name;
 }
 
-/** The column keys of a composite entry, in order; one column goes on the column instead. */
-export function keyColumns(
-  own: RuntimeRefs,
-  declared: unknown,
-  entry: "primaryKey" | "unique",
-): string[] {
+/** The table-level entries that list columns, named as the second callback spells them. */
+export type ListingEntry = "primaryKey" | "unique" | "indexes";
+
+/** The column keys of an entry, in order; a key lists two or more, since one goes on the column. An index lists any number. */
+export function keyColumns(own: RuntimeRefs, declared: unknown, entry: ListingEntry): string[] {
   const refs: unknown[] = Array.isArray(declared) ? declared : [];
-  if (refs.length < 2) {
+  if (entry !== "indexes" && refs.length < 2) {
     throw new Error(
       `The table's ${entry} lists fewer than two columns; call ${entry}() on the column instead`,
     );

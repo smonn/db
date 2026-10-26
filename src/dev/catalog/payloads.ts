@@ -1,4 +1,4 @@
-import type { ForeignKey, ForeignKeyAction } from "../../runtime/definition/index.ts";
+import type { ForeignKey, ForeignKeyAction, IndexMethod } from "../../runtime/definition/index.ts";
 
 export type ColumnPayload = {
   /** The type as `format_type` renders it, such as `character varying(20)`. */
@@ -39,6 +39,23 @@ export type PrimaryKeyPayload = {
 export type UniquePayload = {
   /** In key order, which is the order the index sorts by. */
   readonly columns: readonly string[];
+  readonly nullsNotDistinct: boolean;
+};
+
+/** One key of an index, in the order the index sorts by. */
+export type IndexKeyPayload = {
+  readonly column: string;
+  readonly descending: boolean;
+  /** Postgres defaults to NULLs last for an ascending key and first for a descending one. */
+  readonly nullsFirst: boolean;
+};
+
+export type IndexPayload = {
+  readonly unique: boolean;
+  readonly method: IndexMethod;
+  readonly keys: readonly IndexKeyPayload[];
+  /** Stored beside the keys, in the order given. */
+  readonly include: readonly string[];
   readonly nullsNotDistinct: boolean;
 };
 
