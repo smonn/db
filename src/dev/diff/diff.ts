@@ -92,6 +92,21 @@ export const HANDLING: HandlingTable<Fact> = {
     alter: () => [],
     columnsNamed: () => [],
   },
+  enum: {
+    // Postgres refuses to drop a schema that holds a type, so the type drops on its own.
+    parentDropCovers: false,
+    drop: (fact) => [{ kind: "drop enum", fact }],
+    parentCreateCovers: false,
+    create: (fact) => [{ kind: "create enum", fact }],
+    replacedOnChange: false,
+    // Only an added label is one statement. A removed or reordered label (#438) leaves the
+    // payloads apart, which Shadow verification refuses.
+    alter: (before, after) =>
+      after.payload.labels
+        .filter((label) => !before.payload.labels.includes(label))
+        .map((label) => ({ kind: "add enum value", fact: after, before, label })),
+    columnsNamed: () => [],
+  },
   table: {
     parentDropCovers: false,
     drop: (fact) => [{ kind: "drop table", fact }],

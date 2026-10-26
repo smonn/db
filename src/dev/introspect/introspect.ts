@@ -43,6 +43,16 @@ where c.relkind = 'r' and not c.relispartition and ${KEPT_SCHEMA}
   and ${NOT_EXTENSION_MEMBER("pg_class", "c")}
 order by c.relname`;
 
+// Labels come in sort order, which `enumsortorder` keeps across `ADD VALUE ... BEFORE`.
+const ENUMS = `
+select n.nspname as schema, t.typname as name, array(
+  select e.enumlabel::text from pg_enum e where e.enumtypid = t.oid order by e.enumsortorder
+) as labels
+from pg_type t join pg_namespace n on n.oid = t.typnamespace
+where t.typtype = 'e' and ${KEPT_SCHEMA}
+  and ${NOT_EXTENSION_MEMBER("pg_type", "t")}
+order by t.typname`;
+
 const COLUMNS = `
 select n.nspname as schema, c.relname as table, a.attname as name,
   format_type(a.atttypid, a.atttypmod) as type, a.attnotnull as not_null,
@@ -132,6 +142,7 @@ export async function requireSupportedServer(tx: Queryable): Promise<void> {
 async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
   const { rows: schemas } = await tx.query(SCHEMAS, [trackingName]);
   const { rows: tables } = await tx.query(TABLES, [trackingName]);
+  const { rows: enums } = await tx.query(ENUMS, [trackingName]);
   const { rows: columns } = await tx.query(COLUMNS, [trackingName]);
   const { rows: constraints } = await tx.query(CONSTRAINTS, [trackingName]);
 
@@ -139,6 +150,10 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
   for (const { name } of schemas) {
     const schema = String(name);
     builder.schema(schema);
+    for (const type of enums.filter((row) => row["schema"] === schema)) {
+      const labels = Array.isArray(type["labels"]) ? type["labels"].map(String) : [];
+      builder.enumType(schema, String(type["name"]), { labels });
+    }
     for (const table of tables.filter((row) => row["schema"] === schema)) {
       const tableName = String(table["name"]);
       builder.table(schema, tableName);

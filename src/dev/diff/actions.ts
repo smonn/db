@@ -1,5 +1,6 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
 import { childrenOf, parentOf, qualified, type Catalog, type Fact } from "../catalog/index.ts";
+import { enumTypes, labelPosition, quoteLiteral } from "./enums.ts";
 import { HAZARD_KINDS, LONG_LOCK, REWRITE, retypeHazards, type HazardKind } from "./hazards.ts";
 
 type FactOf<K extends Fact["kind"]> = Extract<Fact, { readonly kind: K }>;
@@ -12,6 +13,9 @@ type Target = {
   "drop table": "table";
   "drop schema": "schema";
   "create schema": "schema";
+  "create enum": "enum";
+  "add enum value": "enum";
+  "drop enum": "enum";
   "create table": "table";
   "add column": "column";
   "drop default": "default";
@@ -34,6 +38,8 @@ export type ActionKind = keyof Target;
 type Carries = {
   /** The column as the `from` catalog has it, since a type change's hazards depend on both types. */
   "alter type": { readonly before: FactOf<"column"> };
+  /** The enum as the `from` catalog has it, and the label to add to it. */
+  "add enum value": { readonly before: FactOf<"enum">; readonly label: string };
 };
 
 /**
@@ -49,7 +55,8 @@ export type Action<A extends ActionKind = ActionKind> = {
 export type Catalogs = { readonly from: Catalog; readonly to: Catalog };
 
 type Step<A extends ActionKind> = {
-  readonly render: (fact: FactOf<Target[A]>, catalogs: Catalogs) => string;
+  /** Most steps read only their fact; a step that also needs what its action carries takes the action. */
+  readonly render: (fact: FactOf<Target[A]>, catalogs: Catalogs, action: Action<A>) => string;
   /** Classified from the catalogs the action reads, never from the SQL it renders. */
   readonly hazards: (action: Action<A>, catalogs: Catalogs) => readonly HazardKind[];
 };
@@ -86,6 +93,22 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
     render: (schema) => `create schema ${quoteIdentifier(schema.name)};`,
     hazards: none,
   },
+  "create enum": {
+    render: (type, { to }) =>
+      `create type ${qualified(type, to)} as enum (${type.payload.labels.map(quoteLiteral).join(", ")});`,
+    hazards: none,
+  },
+  // Adding a label rewrites no row. Using it in the same transaction fails (55P04), which
+  // `explainShadowError` words.
+  "add enum value": {
+    render: (fact, { to }, { before, label }) =>
+      `alter type ${qualified(fact, to)} add value ${quoteLiteral(label)}${labelPosition(fact, before, label)};`,
+    hazards: none,
+  },
+  "drop enum": {
+    render: (type, { from }) => `drop type ${qualified(type, from)};`,
+    hazards: none,
+  },
   "create table": { render: createTable, hazards: none },
   "add column": {
     render: (column, { to }) =>
@@ -117,7 +140,8 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
   },
   "alter type": {
     render: (column, { to }) => `${alterColumn(column, to)} type ${column.payload.type};`,
-    hazards: ({ before, fact }) => retypeHazards(before.payload.type, fact.payload.type),
+    hazards: ({ before, fact }, catalogs) =>
+      retypeHazards(before.payload.type, fact.payload.type, enumTypes(catalogs.from, catalogs.to)),
   },
   // Reads every row under the lock to prove none is null.
   "set not null": {
@@ -157,7 +181,7 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
 };
 
 export function render<A extends ActionKind>(action: Action<A>, catalogs: Catalogs): string {
-  return STEPS[action.kind].render(action.fact, catalogs);
+  return STEPS[action.kind].render(action.fact, catalogs, action);
 }
 
 /** In `HAZARD_KINDS` order, so the `-- hazard:` comments above a statement always read alike. */

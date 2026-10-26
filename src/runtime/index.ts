@@ -1,4 +1,4 @@
-export { defineDatabase, defineTable, plainDate } from "./definition/index.ts";
+export { defineDatabase, defineEnum, defineTable, plainDate } from "./definition/index.ts";
 export type {
   Codec,
   Column,
@@ -6,6 +6,7 @@ export type {
   Columns,
   ColumnState,
   Database,
+  Enum,
   PlainDate,
   Row,
   Table,

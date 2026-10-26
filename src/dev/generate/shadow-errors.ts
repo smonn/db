@@ -10,6 +10,13 @@ const FIXES: Readonly<Record<string, { readonly generated: string; readonly hand
       handEdited:
         "Add a USING clause to the ALTER COLUMN ... TYPE, or change the column's default, in the Current migration.",
     },
+    // A new enum label can't be used before its transaction commits, and a migration is one transaction.
+    "55P04": {
+      generated:
+        "Generate adds the label with ALTER TYPE ... ADD VALUE, and a later statement in the same migration uses it. Remove the use from the Definition, commit the migration that adds the label, then use it in the next migration.",
+      handEdited:
+        "The Current migration adds an enum label and uses it in one transaction. Commit the label, then use it in the next migration.",
+    },
   };
 
 /**

@@ -1,7 +1,8 @@
-import type { Table } from "../../runtime/definition/index.ts";
+import { isEnum, type Enum, type Table } from "../../runtime/definition/index.ts";
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
-import { postgresType } from "./column-type.ts";
 import { constraintNames, type ConstraintNames } from "./constraint-names.ts";
+import { columnType } from "./column-type.ts";
+import { enumTypeNames, labelsOf } from "./enums.ts";
 
 export type ColumnPayload = {
   /** The type as `format_type` renders it, such as `character varying(20)`. */
@@ -31,6 +32,9 @@ export type GeneratedPayload = {
   readonly storage: "stored" | "virtual";
 };
 
+/** Labels in sort order, which is the order the enum compares in. */
+export type EnumPayload = { readonly labels: readonly string[] };
+
 export type PrimaryKeyPayload = {
   /** In key order, which is the order the index sorts by. */
   readonly columns: readonly string[];
@@ -58,6 +62,12 @@ export type Fact =
       readonly name: string;
       readonly parent: Key;
       readonly payload: NoPayload;
+    }
+  | {
+      readonly kind: "enum";
+      readonly name: string;
+      readonly parent: Key;
+      readonly payload: EnumPayload;
     }
   | {
       readonly kind: "column";
@@ -118,6 +128,7 @@ export type Catalog = ReadonlyMap<Key, Fact>;
 export type CatalogBuilder = {
   schema(name: string): void;
   table(schema: string, name: string): void;
+  enumType(schema: string, name: string, payload: EnumPayload): void;
   column(schema: string, table: string, name: string, payload: ColumnPayload): void;
   columnDefault(schema: string, table: string, column: string, payload: DefaultPayload): void;
   columnIdentity(schema: string, table: string, column: string, payload: IdentityPayload): void;
@@ -146,6 +157,10 @@ export function catalogBuilder(): CatalogBuilder {
     table(schema, name) {
       const parent = added("schema", schema);
       catalog.set(key(schema, name), { kind: "table", name, parent, payload: {} });
+    },
+    enumType(schema, name, payload) {
+      const parent = added("schema", schema);
+      catalog.set(key(schema, name), { kind: "enum", name, parent, payload });
     },
     column(schema, table, name, payload) {
       const parent = added("table", schema, table);
@@ -195,16 +210,22 @@ export function namesOf(catalog: Catalog, fact: Fact): readonly string[] {
 
 /** The shape `defineDatabase` returns, loosened so any Definition fits. */
 export type DefinitionTables = {
-  readonly [schema: string]: { readonly [table: string]: Table };
+  readonly [schema: string]: { readonly [name: string]: Table | Enum };
 };
 
 export function definitionCatalog(definition: DefinitionTables): Catalog {
   const builder = catalogBuilder();
-  for (const [schema, tables] of Object.entries(definition)) {
+  const enums = enumTypeNames(definition);
+  for (const [schema, entries] of Object.entries(definition)) {
     builder.schema(schema);
+    const tables: Record<string, Table> = {};
+    for (const [name, entry] of Object.entries(entries)) {
+      if (isEnum(entry)) builder.enumType(schema, name, { labels: labelsOf(schema, name, entry) });
+      else tables[name] = entry;
+    }
     const names = constraintNames(schema, tables);
     for (const [table, definitionTable] of Object.entries(tables)) {
-      addTable(builder, { schema, table, names }, definitionTable);
+      addTable(builder, { schema, table, names, enums }, definitionTable);
     }
   }
   return builder.build();
@@ -214,18 +235,19 @@ type TableContext = {
   readonly schema: string;
   readonly table: string;
   readonly names: ConstraintNames;
+  readonly enums: ReadonlyMap<Enum, string>;
 };
 
 function addTable(
   builder: CatalogBuilder,
-  { schema, table, names }: TableContext,
+  { schema, table, names, enums }: TableContext,
   { columns, primaryKey, primaryKeyName }: Table,
 ): void {
   builder.table(schema, table);
   const entries = Object.entries(columns);
   for (const [column, { state }] of entries) {
     builder.column(schema, table, column, {
-      type: postgresType(state.sqlType),
+      type: columnType(state, enums, quoted([schema, table, column])),
       notNull: state.notNull || primaryKey.includes(column) || state.identity !== undefined,
     });
     // introspect reads the real volatility from the Definition database.
