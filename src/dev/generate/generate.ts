@@ -61,6 +61,11 @@ export type GenerateResult = {
    * edit's: the edit keeps its own `-- hazard:` comments.
    */
   readonly hazards: readonly Hazard[];
+  /**
+   * Renames the Definition could declare, one line each, for a drop and an add that look like one
+   * (ADR-0024). Generate never writes a guessed rename into the SQL.
+   */
+  readonly hints: readonly string[];
 };
 
 /**
@@ -107,7 +112,7 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     ...(edited === undefined ? {} : { edited }),
   });
 
-  const { sql, hazards } = shadowDiff;
+  const { sql, hazards, hints } = shadowDiff;
   if (edited !== undefined) {
     return replayEdited({ driver, source, tracking, committed, path }, edited, shadowDiff);
   }
@@ -115,13 +120,13 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     await fileSystem.remove(path);
     const reset = await needsReset(driver, tracking, committed);
     if (reset) await resetDevDatabase(driver, source, tracking);
-    return { path, sql: undefined, reset, hazards: [] };
+    return { path, sql: undefined, reset, hazards: [], hints };
   }
   const current = await writeCurrent(sql);
   await fileSystem.writeFile(path, current.content);
   const reset = await needsReset(driver, tracking, committed, current.hash);
   if (reset) await resetDevDatabase(driver, source, tracking, current);
-  return { path, sql: current.body, reset, hazards };
+  return { path, sql: current.body, reset, hazards, hints };
 }
 
 type KeptEdit = {
@@ -136,7 +141,7 @@ type KeptEdit = {
 async function replayEdited(
   { driver, source, tracking, committed, path }: KeptEdit,
   edited: string,
-  { sql, hazards, leftover }: ShadowDiff,
+  { sql, hazards, hints, leftover }: ShadowDiff,
 ): Promise<GenerateResult> {
   const current = { body: edited, hash: await currentHash(edited) };
   const reset = await needsReset(driver, tracking, committed, current.hash);
@@ -150,6 +155,7 @@ async function replayEdited(
     ...(leftover === undefined ? {} : { leftover }),
     reset,
     hazards,
+    hints,
   };
 }
 

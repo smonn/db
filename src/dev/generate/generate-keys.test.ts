@@ -78,7 +78,13 @@ create table public.memberships (
       migrations: "db/migrations",
     });
 
-    expect(result).toStrictEqual({ path: CURRENT, sql: undefined, reset: true, hazards: [] });
+    expect(result).toStrictEqual({
+      path: CURRENT,
+      sql: undefined,
+      reset: true,
+      hazards: [],
+      hints: [],
+    });
   });
 });
 
@@ -121,7 +127,13 @@ describe("identity by default", () => {
       migrations: "db/migrations",
     });
 
-    expect(result).toStrictEqual({ path: CURRENT, sql: undefined, reset: true, hazards: [] });
+    expect(result).toStrictEqual({
+      path: CURRENT,
+      sql: undefined,
+      reset: true,
+      hazards: [],
+      hints: [],
+    });
   });
 
   it("switches an identity committed as always to by default and verifies the Shadow database", async () => {
