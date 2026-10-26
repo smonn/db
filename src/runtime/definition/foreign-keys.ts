@@ -1,6 +1,6 @@
 import { quoteIdentifier } from "../internal/index.ts";
 import type { Columns } from "./column.ts";
-import type { ForeignKeyAction } from "./references.ts";
+import type { ColumnReference, ForeignKeyAction } from "./references.ts";
 
 /** A foreign key once `defineDatabase` has named its target table. */
 export type ForeignKey = {
@@ -55,39 +55,55 @@ export function foreignKeysOf(
   columns: Columns,
 ): ForeignKey[] {
   const keys: ForeignKey[] = [];
-  for (const [name, { state }] of Object.entries(columns)) {
-    if (state.references === undefined) continue;
-    const { target, options } = state.references;
+  for (const [name, column] of Object.entries(columns)) {
+    const { references } = column.state;
+    if (references === undefined) continue;
     const on = `${qualified(schema, table)} (${quoteIdentifier(name)})`;
-    const column = target();
-    const found = places.get(column) ?? [];
-    const [place, other] = found;
-    if (place === undefined) {
-      throw new Error(
-        `the foreign key on ${on} points at a table that is not in the Database; add it to defineDatabase`,
-      );
-    }
-    if (other !== undefined) {
-      throw new Error(
-        `the foreign key on ${on} points at a table that defineDatabase rolls up under two names, ${qualified(place.schema, place.table)} and ${qualified(other.schema, other.table)}; roll it up once`,
-      );
-    }
-    if (!column.state.primaryKey && !column.state.unique) {
-      throw new Error(
-        `the foreign key on ${on} points at ${qualified(place.schema, place.table)} (${quoteIdentifier(place.column)}), which is not a primary key or unique column`,
-      );
-    }
-    keys.push({
-      name: options.name,
-      columns: [name],
-      target: { schema: place.schema, table: place.table, columns: [place.column] },
-      onDelete: options.onDelete ?? "no action",
-      onUpdate: options.onUpdate ?? "no action",
-      match: "simple",
-      deferrable: options.deferrable ?? "not deferrable",
-    });
+    keys.push(foreignKeyOf(places, on, name, references));
   }
   return keys;
+}
+
+function foreignKeyOf(
+  places: Places,
+  on: string,
+  name: string,
+  { target, options }: ColumnReference,
+): ForeignKey {
+  const place = targetPlace(places, on, target());
+  return {
+    name: options.name,
+    columns: [name],
+    target: { schema: place.schema, table: place.table, columns: [place.column] },
+    onDelete: options.onDelete ?? "no action",
+    onUpdate: options.onUpdate ?? "no action",
+    match: "simple",
+    deferrable: options.deferrable ?? "not deferrable",
+  };
+}
+
+function targetPlace(
+  places: Places,
+  on: string,
+  column: { readonly state: { readonly primaryKey: boolean; readonly unique: boolean } },
+): Place {
+  const [place, other] = places.get(column) ?? [];
+  if (place === undefined) {
+    throw new Error(
+      `the foreign key on ${on} points at a table that is not in the Database; add it to defineDatabase`,
+    );
+  }
+  if (other !== undefined) {
+    throw new Error(
+      `the foreign key on ${on} points at a table that defineDatabase rolls up under two names, ${qualified(place.schema, place.table)} and ${qualified(other.schema, other.table)}; roll it up once`,
+    );
+  }
+  if (!column.state.primaryKey && !column.state.unique) {
+    throw new Error(
+      `the foreign key on ${on} points at ${qualified(place.schema, place.table)} (${quoteIdentifier(place.column)}), which is not a primary key or unique column`,
+    );
+  }
+  return place;
 }
 
 function qualified(schema: string, table: string): string {
