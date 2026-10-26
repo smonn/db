@@ -23,11 +23,20 @@ export type NodeVersionSources = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+function devEnginesRuntime(pkg: unknown): unknown {
+  return isRecord(pkg) && isRecord(pkg["devEngines"]) ? pkg["devEngines"]["runtime"] : [];
+}
+
+const nodeVersion = (entry: unknown): string | undefined =>
+  isRecord(entry) && entry["name"] === "node" && typeof entry["version"] === "string"
+    ? entry["version"]
+    : undefined;
+
 function nodeRange(pkg: unknown): string | undefined {
-  const runtime = isRecord(pkg) && isRecord(pkg["devEngines"]) ? pkg["devEngines"]["runtime"] : [];
-  for (const entry of [runtime].flat())
-    if (isRecord(entry) && entry["name"] === "node" && typeof entry["version"] === "string")
-      return entry["version"];
+  for (const entry of [devEnginesRuntime(pkg)].flat()) {
+    const version = nodeVersion(entry);
+    if (version !== undefined) return version;
+  }
   return undefined;
 }
 

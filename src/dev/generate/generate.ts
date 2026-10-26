@@ -112,10 +112,17 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     ...(edited === undefined ? {} : { edited }),
   });
 
-  const { sql, hazards, hints } = shadowDiff;
-  if (edited !== undefined) {
-    return replayEdited({ driver, source, tracking, committed, path }, edited, shadowDiff);
-  }
+  const kept = { driver, source, tracking, committed, path };
+  if (edited !== undefined) return replayEdited(kept, edited, shadowDiff);
+  return writeGenerated({ ...kept, fileSystem }, shadowDiff);
+}
+
+/** Writes the generation to `current.sql`, or deletes the file when there is no diff. */
+async function writeGenerated(
+  { fileSystem, ...kept }: KeptEdit & { readonly fileSystem: FileSystem },
+  { sql, hazards, hints }: ShadowDiff,
+): Promise<GenerateResult> {
+  const { driver, source, tracking, committed, path } = kept;
   if (sql === "") {
     await fileSystem.remove(path);
     const reset = await needsReset(driver, tracking, committed);
