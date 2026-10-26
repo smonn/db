@@ -109,7 +109,7 @@ export function checkBudget(file: string, text: string, cap: number): Problem[] 
       .map(({ line, words }) => ({
         file,
         line,
-        message: `block has ${words} words; the cap is ${MAX_BLOCK_WORDS}. Split it by topic or cut`,
+        message: `block has ${words} words; the cap is ${MAX_BLOCK_WORDS}. Split it by topic, move behavior inside one module to its TSDoc, or cut`,
       })),
   ];
 }

@@ -65,7 +65,8 @@ describe("checkBudget", () => {
 
   test("flags a paragraph, list item, or table row over 120 words", () => {
     const text = `# A\n\n${long}\n\n- ${long}\n- short\n\n| a |\n| - |\n| ${long} |\n`;
-    const message = "block has 121 words; the cap is 120. Split it by topic or cut";
+    const message =
+      "block has 121 words; the cap is 120. Split it by topic, move behavior inside one module to its TSDoc, or cut";
     expect(checkBudget("docs/a.md", text, 1000)).toEqual([
       { file: "docs/a.md", line: 3, message },
       { file: "docs/a.md", line: 5, message },
