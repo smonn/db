@@ -1,4 +1,5 @@
-import { type ColumnFactories, type Columns, factories } from "./column.ts";
+import type { Columns } from "./column.ts";
+import { type ColumnFactories, factories } from "./factories.ts";
 import { type ForeignKey, foreignKeysOf, placesOf } from "./foreign-keys.ts";
 
 /** A table without its name or schema, which `defineDatabase` gives it. */

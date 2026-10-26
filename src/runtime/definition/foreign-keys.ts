@@ -1,5 +1,6 @@
 import { quoteIdentifier } from "../internal/index.ts";
-import type { ForeignKeyAction, Columns } from "./column.ts";
+import type { Columns } from "./column.ts";
+import type { ForeignKeyAction } from "./references.ts";
 
 /** A foreign key once `defineDatabase` has named its target table. */
 export type ForeignKey = {
@@ -19,7 +20,6 @@ export type ForeignKey = {
 
 type Place = { readonly schema: string; readonly table: string; readonly column: string };
 
-/** Every column value of the Database, with each table that holds it. */
 export type Places = ReadonlyMap<unknown, readonly Place[]>;
 
 type Tables = Readonly<Record<string, Readonly<Record<string, { readonly columns: Columns }>>>>;

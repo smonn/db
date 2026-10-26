@@ -1,4 +1,5 @@
 import type { Codec, RuntimeCodec } from "./codec.ts";
+import type { ColumnReference, ForeignKeyOptions, Target } from "./references.ts";
 
 type Identity = "always" | "by default";
 
@@ -16,37 +17,6 @@ export type ColumnState = {
   readonly constraintName: string | undefined;
   /** What `.references()` was given, apart from `constraintName`; `defineDatabase` resolves the target. */
   readonly references: ColumnReference | undefined;
-};
-
-export type ForeignKeyAction = "no action" | "restrict" | "cascade" | "set null" | "set default";
-
-export type ForeignKeyOptions = {
-  /** Replaces the name Postgres would derive, `<table>_<column>_fkey`. */
-  readonly name?: string;
-  /** Defaults to `"no action"`. */
-  readonly onDelete?: ForeignKeyAction;
-  /** Defaults to `"no action"`. */
-  readonly onUpdate?: ForeignKeyAction;
-  /** Makes the constraint `DEFERRABLE` with this initial mode; without it the constraint is not deferrable. */
-  readonly deferrable?: "immediate" | "deferred";
-};
-
-/** A column's foreign key before `defineDatabase` finds the table its target belongs to. */
-export type ColumnReference = {
-  /** A thunk, so tables in two files that import each other load in either order. */
-  readonly target: () => Target<unknown>;
-  readonly options: ForeignKeyOptions;
-};
-
-/** What a foreign key may point at: a primary key or unique column holding a `V`. */
-export type Target<V> = {
-  readonly state: ColumnState;
-  readonly "~types": {
-    readonly value: V;
-    readonly notNull: boolean;
-    readonly primaryKey: boolean;
-    readonly key: true;
-  };
 };
 
 /** Replaces the name Postgres would derive, such as `users_pkey` or `users_email_key`. */
@@ -130,7 +100,7 @@ type AnyColumn = {
   };
 };
 
-function column<
+export function column<
   V,
   N extends boolean,
   Int extends boolean,
@@ -151,67 +121,12 @@ function column<
       column({ ...state, notNull: true, primaryKey: true, constraintName: options?.name }, codec),
     unique: (options?: ConstraintOptions) =>
       column({ ...state, unique: true, constraintName: options?.name }, codec),
-    references: (target: () => Target<unknown>, options: ForeignKeyOptions = {}) =>
+    references: (target: ColumnReference["target"], options: ColumnReference["options"] = {}) =>
       column({ ...state, references: { target, options } }, codec),
     codec: (given: Codec<never, unknown>) => column(state, given as RuntimeCodec),
   };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- "~types" exists only in types, so `parts` doesn't overlap `Column` enough for a direct cast (TS2352); it goes through `unknown`.
   return parts as unknown as Column<V, N, Int, Gen, Pk, Key, Co, Fk>;
 }
-
-export type ColumnFactories = {
-  readonly text: () => Column<string>;
-  readonly varchar: (length: number) => Column<string>;
-  readonly smallint: () => Column<number, false, true>;
-  readonly integer: () => Column<number, false, true>;
-  readonly bigint: () => Column<bigint, false, true>;
-  /** Without a precision the column holds any number of digits. */
-  readonly numeric: (precision?: number, scale?: number) => Column<string>;
-  readonly real: () => Column<number>;
-  readonly doublePrecision: () => Column<number>;
-  readonly boolean: () => Column<boolean>;
-  readonly uuid: () => Column<string>;
-  readonly date: () => Column<string>;
-  readonly timestamp: () => Column<Date>;
-  readonly timestamptz: () => Column<Date>;
-  readonly jsonb: <T = unknown>() => Column<T>;
-  readonly bytea: () => Column<Uint8Array>;
-};
-
-function of<V, Int extends boolean = false>(sqlType: string): Column<V, false, Int> {
-  return column<V, false, Int, false, false, false, false, false>({
-    sqlType,
-    notNull: false,
-    default: undefined,
-    identity: undefined,
-    primaryKey: false,
-    unique: false,
-    constraintName: undefined,
-    references: undefined,
-  });
-}
-
-function numericType(precision?: number, scale?: number): string {
-  if (precision === undefined) return "numeric";
-  return scale === undefined ? `numeric(${precision})` : `numeric(${precision},${scale})`;
-}
-
-export const factories: ColumnFactories = {
-  text: () => of("text"),
-  varchar: (length) => of(`varchar(${length})`),
-  smallint: () => of("smallint"),
-  integer: () => of("integer"),
-  bigint: () => of("bigint"),
-  numeric: (precision, scale) => of(numericType(precision, scale)),
-  real: () => of("real"),
-  doublePrecision: () => of("double precision"),
-  boolean: () => of("boolean"),
-  uuid: () => of("uuid"),
-  date: () => of("date"),
-  timestamp: () => of("timestamp"),
-  timestamptz: () => of("timestamptz"),
-  jsonb: () => of("jsonb"),
-  bytea: () => of("bytea"),
-};
 
 export type Columns = Record<string, AnyColumn>;
