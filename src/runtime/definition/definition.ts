@@ -2,6 +2,8 @@ import type { Columns } from "./column.ts";
 import { isEnum, type Enum } from "./enum.ts";
 import { type ColumnFactories, factories } from "./factories.ts";
 import { type ForeignKey, foreignKeysOf, placesOf, type Places } from "./foreign-keys.ts";
+import type { IndexEntry } from "./index-entries.ts";
+import { indexesOf, type TableIndex } from "./indexes.ts";
 import {
   keyColumns,
   refsOf,
@@ -19,6 +21,8 @@ export type TableDefinition<C extends Columns = Columns, K extends string = stri
   readonly primaryKeyName: string | undefined;
   /** The unique constraints over two or more columns that the second callback declares. */
   readonly uniques: readonly UniqueConstraint[];
+  /** The indexes the second callback declares; a column's `.index()` stays in its state. */
+  readonly indexes: readonly TableIndex[];
   /** The SQL name the table had before a rename, for generate to turn into a `RENAME`. */
   readonly renamedFrom: string | undefined;
 };
@@ -76,11 +80,12 @@ type UniqueEntry<C extends Columns> = {
   readonly nullsNotDistinct?: boolean;
 };
 
-/** The table-level entries, keyed by kind. Later kinds (indexes, checks) join here. */
+/** The table-level entries, keyed by kind. Later kinds (checks) join here. */
 type TableExtras<C extends Columns> = {
   /** The table's SQL name before this change; generate ignores it once the old name is gone. */
   readonly renamedFrom?: string;
   readonly unique?: readonly UniqueEntry<C>[];
+  readonly indexes?: readonly IndexEntry<OwnRef<C>>[];
 } & ([KeyedColumns<C>] extends [never]
   ? { readonly primaryKey?: KeyEntry<C> }
   : { readonly primaryKey?: never });
@@ -137,6 +142,11 @@ function keyEntry(declared: unknown): { name: string | undefined; columns: unkno
   throw new TypeError("The table's primaryKey takes a list of columns or { name, columns }");
 }
 
+function renamedFromOf(declared: unknown): string | undefined {
+  if (declared === undefined || typeof declared === "string") return declared;
+  throw new TypeError("The table's renamedFrom takes the old SQL name as a string");
+}
+
 export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
   define: (c: ColumnFactories) => C,
   ...args: Args
@@ -146,6 +156,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
     | ((t: ColumnRefs<C>) => {
         readonly primaryKey?: unknown;
         readonly unique?: unknown;
+        readonly indexes?: unknown;
         readonly renamedFrom?: unknown;
       })
     | undefined = args[0];
@@ -154,10 +165,8 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
   const declared = extras?.(own as unknown as ColumnRefs<C>);
   const primaryKey = primaryKeyOf(columns, own, declared?.primaryKey);
   const uniques = uniquesOf(own, declared?.unique);
-  const renamedFrom = declared?.renamedFrom;
-  if (renamedFrom !== undefined && typeof renamedFrom !== "string") {
-    throw new TypeError("The table's renamedFrom takes the old SQL name as a string");
-  }
+  const indexes = indexesOf(own, declared?.indexes);
+  const renamedFrom = renamedFromOf(declared?.renamedFrom);
   const both = Object.entries(columns).find(([, { state }]) => state.primaryKey && state.unique);
   if (both !== undefined) {
     throw new Error(
@@ -170,6 +179,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
     primaryKey: primaryKey.columns,
     primaryKeyName: primaryKey.name,
     uniques,
+    indexes,
     renamedFrom,
   } as unknown as TableDefinition<C, KeyOf<C, Args>>;
 }
@@ -191,7 +201,7 @@ function tableOf(
   places: Places,
   schema: string,
   name: string,
-  { columns, primaryKey, primaryKeyName, uniques, renamedFrom }: TableDefinition,
+  { columns, primaryKey, primaryKeyName, uniques, indexes, renamedFrom }: TableDefinition,
 ): Table {
   return {
     schema,
@@ -200,6 +210,7 @@ function tableOf(
     primaryKey,
     primaryKeyName,
     uniques,
+    indexes,
     renamedFrom,
     foreignKeys: foreignKeysOf(places, schema, name, columns),
   };

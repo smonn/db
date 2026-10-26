@@ -15,7 +15,7 @@ commands:
   commit <slug> [--accept <kind,...>]
                   freeze current.sql into the next Committed migration; --accept names
                   the Hazard kinds to allow (data_loss, rewrite, access_exclusive_lock,
-                  share_row_exclusive_lock, rename)
+                  share_lock, share_row_exclusive_lock, rename)
   reset [--erase] rebuild the Dev database from the migration files
   migrate         apply the pending Committed migrations
   verify          check the Committed migrations' hash chain, with no database

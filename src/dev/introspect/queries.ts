@@ -79,6 +79,64 @@ where k.contype in ('p', 'u')
   and ${NOT_EXTENSION_MEMBER("pg_class", "c")}
 order by k.conname`;
 
+// An index is Unmodeled (ADR-0005) when it has another method, an opclass or collation other than
+// the default, storage parameters, a tablespace, an expression key, or a predicate (expression
+// keys and WHERE wait for #442), or is invalid (a failed CREATE INDEX CONCURRENTLY leaves one
+// that the planner never uses). An index that backs a primary key, unique, or exclusion
+// constraint is the constraint's fact, so it is skipped too; a foreign key's `conindid` is the
+// referenced table's index, which stays an index. `orders` holds one `<asc|desc> nulls <first|last>`
+// per key, read from `indoption`.
+export const INDEXES: string = `
+select n.nspname as schema, c.relname as table, ic.relname as name, am.amname as method,
+  i.indisunique as is_unique, i.indnullsnotdistinct as nulls_not_distinct,
+  array(
+    select a.attname::text
+    from unnest(i.indkey::int2[]) with ordinality as key(attnum, position)
+      join pg_attribute a on a.attrelid = i.indrelid and a.attnum = key.attnum
+    where key.position <= i.indnkeyatts
+    order by key.position
+  ) as columns,
+  array(
+    select case when (o.option & 1) = 1 then 'desc' else 'asc' end
+      || case when (o.option & 2) = 2 then ' nulls first' else ' nulls last' end
+    from unnest(i.indoption::int2[]) with ordinality as o(option, position)
+    where o.position <= i.indnkeyatts
+    order by o.position
+  ) as orders,
+  array(
+    select a.attname::text
+    from unnest(i.indkey::int2[]) with ordinality as key(attnum, position)
+      join pg_attribute a on a.attrelid = i.indrelid and a.attnum = key.attnum
+    where key.position > i.indnkeyatts
+    order by key.position
+  ) as include
+from pg_index i
+  join pg_class ic on ic.oid = i.indexrelid
+  join pg_am am on am.oid = ic.relam
+  join pg_class c on c.oid = i.indrelid
+  join pg_namespace n on n.oid = c.relnamespace
+where am.amname in ('btree', 'hash', 'gin', 'gist', 'brin')
+  and i.indisvalid and i.indexprs is null and i.indpred is null
+  and ic.reloptions is null and ic.reltablespace = 0
+  and not exists (
+    select from pg_constraint k
+    where k.conindid = i.indexrelid and k.contype in ('p', 'u', 'x')
+  )
+  and not exists (
+    select from unnest(i.indclass::oid[]) with ordinality as oc(opclass, position)
+      join pg_opclass op on op.oid = oc.opclass
+    where oc.position <= i.indnkeyatts and not op.opcdefault
+  )
+  and not exists (
+    select from unnest(i.indkey::int2[], i.indcollation::oid[]) with ordinality
+        as k(attnum, coll, position)
+      join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
+    where k.position <= i.indnkeyatts and k.coll <> a.attcollation
+  )
+  and c.relkind = 'r' and not c.relispartition and ${KEPT_SCHEMA}
+  and ${NOT_EXTENSION_MEMBER("pg_class", "c")}
+order by ic.relname`;
+
 // A foreign key reads like a plain one unless it is NOT ENFORCED, uses PERIOD, or names a column
 // list on SET NULL or SET DEFAULT, each of which is an Unmodeled object (ADR-0005). NOT VALID is
 // the same fact as a valid key. A key to an Unmodeled table is skipped in `read`, which knows the

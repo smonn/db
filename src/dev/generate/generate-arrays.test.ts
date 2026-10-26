@@ -101,6 +101,7 @@ describe("generate with array columns", () => {
         "data_loss",
         "rewrite",
         "access_exclusive_lock",
+        "share_lock",
         "share_row_exclusive_lock",
         "rename",
       ]),

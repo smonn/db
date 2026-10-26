@@ -4,6 +4,7 @@ export const HAZARD_KINDS = [
   "data_loss",
   "rewrite",
   "access_exclusive_lock",
+  "share_lock",
   "share_row_exclusive_lock",
   "rename",
 ] as const;
@@ -24,6 +25,8 @@ export const REWRITE: readonly HazardKind[] = ["rewrite", "access_exclusive_lock
  * on the table it points at, which blocks writes but not reads.
  */
 export const WRITE_LOCK: readonly HazardKind[] = ["share_row_exclusive_lock"];
+/** Creating an index on an existing table holds SHARE on it, which blocks writes but not reads. */
+export const INDEX_LOCK: readonly HazardKind[] = ["share_lock"];
 /**
  * Every `ALTER TABLE` takes ACCESS EXCLUSIVE, but only a scan or an index build holds it for
  * work that grows with the table, so only those carry the kind.

@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { Fact, Key } from "../catalog/index.ts";
 import { HANDLING, type Handling, type HandlingTable } from "./diff.ts";
 
-/** A kind the diff doesn't know yet, such as the index kind #376 adds. */
-type Index = {
-  readonly kind: "index";
+/** A kind the diff doesn't know yet, such as a domain kind. */
+type Domain = {
+  readonly kind: "domain";
   readonly name: string;
   readonly parent: Key;
   readonly payload: { readonly columns: readonly string[] };
 };
-type Future = Fact | Index;
+type Future = Fact | Domain;
 
-const stated: Handling<Index> = {
+const stated: Handling<Domain> = {
   parentDropCovers: true,
   drop: () => [],
   parentCreateCovers: false,
@@ -23,33 +23,33 @@ const stated: Handling<Index> = {
 
 describe("the handling of each fact kind", () => {
   it("fails to compile until a new kind states every decision", () => {
-    const complete: HandlingTable<Future> = { ...HANDLING, index: stated };
+    const complete: HandlingTable<Future> = { ...HANDLING, domain: stated };
 
     // @ts-expect-error -- no handling at all for the new kind.
     const none: HandlingTable<Future> = { ...HANDLING };
 
     // @ts-expect-error -- no statement of whether a dropped parent covers its drop.
-    const noDrop: HandlingTable<Future> = { ...HANDLING, index: omit(stated, "parentDropCovers") };
+    const noDrop: HandlingTable<Future> = { ...HANDLING, domain: omit(stated, "parentDropCovers") };
 
     const noCreate: HandlingTable<Future> = {
       ...HANDLING,
       // @ts-expect-error -- no statement of whether a new parent creates it inline.
-      index: omit(stated, "parentCreateCovers"),
+      domain: omit(stated, "parentCreateCovers"),
     };
 
     // @ts-expect-error -- no altered comparison.
-    const noAlter: HandlingTable<Future> = { ...HANDLING, index: omit(stated, "alter") };
+    const noAlter: HandlingTable<Future> = { ...HANDLING, domain: omit(stated, "alter") };
 
     const noReplaced: HandlingTable<Future> = {
       ...HANDLING,
       // @ts-expect-error -- no statement of whether a changed payload replaces it.
-      index: omit(stated, "replacedOnChange"),
+      domain: omit(stated, "replacedOnChange"),
     };
 
     const noColumns: HandlingTable<Future> = {
       ...HANDLING,
       // @ts-expect-error -- no statement of which columns it names, so a rebuilt one drops it.
-      index: omit(stated, "columnsNamed"),
+      domain: omit(stated, "columnsNamed"),
     };
 
     expect([complete, none, noDrop, noCreate, noAlter, noReplaced, noColumns]).toHaveLength(7);
