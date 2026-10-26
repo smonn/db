@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { checkPr, main } from "./check-pr.ts";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { checkPr, main, parseAdrStatus, readChangedAdrs, type ChangedAdr } from "./check-pr.ts";
+
+vi.mock("node:child_process", () => ({ execFileSync: vi.fn<typeof execFileSync>() }));
 
 describe("checkPr title", () => {
   const branch = "chore/53-pr-title-check";
@@ -74,6 +80,85 @@ describe("checkPr branch", () => {
   });
 });
 
+describe("parseAdrStatus", () => {
+  test.each([
+    ["---\nstatus: accepted\n---\n\n# T\n", "accepted"],
+    ["---\nstatus: proposed\n---\n", "proposed"],
+    ["# T\n\nstatus: accepted\n", "missing"],
+    ["---\n---\n", "missing"],
+  ])("reads %j as %s", (text, status) => {
+    expect(parseAdrStatus(text)).toBe(status);
+  });
+});
+
+describe("checkPr ADR title", () => {
+  const branch = "chore/adr-title";
+  const accepted = { file: "docs/adr/0021-indexes.md", status: "accepted" };
+  const proposed = { file: "docs/adr/0026-new.md", status: "proposed" };
+
+  test("rejects a propose title over an accepted ADR, naming the file and status", () => {
+    expect(checkPr("docs(adr): propose indexes", branch, [accepted, proposed])).toEqual([
+      'PR title says "propose" but docs/adr/0021-indexes.md has status: accepted',
+    ]);
+  });
+
+  test("rejects an accept title over each ADR that is not accepted", () => {
+    expect(checkPr("docs(adr): accept indexes", branch, [accepted, proposed])).toEqual([
+      'PR title says "accept" but docs/adr/0026-new.md has status: proposed',
+    ]);
+  });
+
+  test.each([
+    ["docs(adr): propose indexes", [proposed]],
+    ["docs(adr): accept indexes", [accepted]],
+    ["docs(adr)!: accept indexes", [accepted]],
+    ["docs(adr): accept indexes", []],
+  ])("accepts %s over matching ADRs", (title, adrs) => {
+    expect(checkPr(title, branch, adrs)).toEqual([]);
+  });
+
+  test.each([
+    "docs(adr): revise indexes",
+    "docs(adr): accepted indexes",
+    "docs(adr): proposed indexes",
+    "docs: propose indexes",
+    "feat(adr): accept indexes",
+  ])("leaves %s unchecked", (title) => {
+    expect(checkPr(title, branch, [accepted, proposed])).toEqual([]);
+  });
+});
+
+describe("readChangedAdrs", () => {
+  let repo: string;
+
+  beforeEach(() => {
+    repo = mkdtempSync(join(tmpdir(), "check-pr-"));
+    mkdirSync(join(repo, "docs/adr"), { recursive: true });
+    writeFileSync(join(repo, "docs/adr/0001-old.md"), "---\nstatus: accepted\n---\n");
+    writeFileSync(join(repo, "docs/adr/0003-new.md"), "---\nstatus: proposed\n---\n");
+    writeFileSync(join(repo, "docs/adr/TEMPLATE.md"), "---\nstatus: proposed\n---\n");
+  });
+
+  afterEach(() => {
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  test("lists the changed ADRs with their status, and skips other files", () => {
+    vi.mocked(execFileSync).mockReturnValue(
+      "docs/adr/0001-old.md\ndocs/adr/0003-new.md\ndocs/adr/TEMPLATE.md\ndocs/notes.md\n",
+    );
+    expect(readChangedAdrs("HEAD^1", repo)).toEqual([
+      { file: "docs/adr/0001-old.md", status: "accepted" },
+      { file: "docs/adr/0003-new.md", status: "proposed" },
+    ]);
+    expect(execFileSync).toHaveBeenCalledWith(
+      "git",
+      ["diff", "--name-only", "--diff-filter=d", "HEAD^1", "HEAD"],
+      { cwd: repo, encoding: "utf8" },
+    );
+  });
+});
+
 describe("main", () => {
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -95,6 +180,28 @@ describe("main", () => {
     main({ PR_TITLE: "add where", PR_BRANCH: "main" });
     expect(console.error).toHaveBeenCalledTimes(2);
     expect(process.exitCode).toBe(1);
+  });
+
+  test("checks the ADRs changed since PR_DIFF_BASE", () => {
+    const readAdrs = vi.fn<(base: string) => ChangedAdr[]>(() => [
+      { file: "docs/adr/0021-x.md", status: "accepted" },
+    ]);
+    main(
+      { PR_TITLE: "docs(adr): propose x", PR_BRANCH: "chore/x", PR_DIFF_BASE: "HEAD^1" },
+      readAdrs,
+    );
+    expect(readAdrs).toHaveBeenCalledWith("HEAD^1");
+    expect(console.error).toHaveBeenCalledWith(
+      'PR title says "propose" but docs/adr/0021-x.md has status: accepted',
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  test("skips the ADR check without PR_DIFF_BASE", () => {
+    const readAdrs = vi.fn<(base: string) => ChangedAdr[]>(() => []);
+    main({ PR_TITLE: "docs(adr): propose x", PR_BRANCH: "chore/x" }, readAdrs);
+    expect(readAdrs).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
   });
 
   test("fails when PR_TITLE or PR_BRANCH is unset", () => {
