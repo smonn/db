@@ -1,6 +1,6 @@
 import postgres from "postgres";
 import { describe, expect, it } from "vitest";
-import { explainConnectionError } from "./test-database.test-helper.ts";
+import { explainConnectionError, testServerUrl } from "./test-database.test-helper.ts";
 
 async function connectError(url: string): Promise<unknown> {
   const sql = postgres(url, { max: 1, onnotice: () => {} });
@@ -16,7 +16,7 @@ async function connectError(url: string): Promise<unknown> {
 
 describe("explainConnectionError", () => {
   it("names DATABASE_URL's host and port when the server rejects the login", async () => {
-    const url = new URL(String(process.env["DATABASE_URL"]));
+    const url = new URL(testServerUrl());
     url.password = "wrong-password";
     const error = await connectError(url.href);
 

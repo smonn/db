@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
+import {
+  testServerUrl,
+  useTestDatabase,
+} from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { writeMigration } from "../../runtime/internal/index.ts";
 
 const admin = useTestDatabase();
@@ -79,7 +82,7 @@ describe("smonndb generate, interrupted", () => {
       const dev = `smonn_db_interrupt_dev_${suffix}`;
       await admin.driver.execute(`create role ${role} login createdb password '${suffix}'`);
       await admin.driver.execute(`create database ${dev} owner ${role}`);
-      const url = new URL(String(process.env["DATABASE_URL"]));
+      const url = new URL(testServerUrl());
       url.username = role;
       url.password = suffix;
       url.pathname = `/${dev}`;

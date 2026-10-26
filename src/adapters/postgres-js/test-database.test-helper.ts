@@ -58,14 +58,23 @@ async function endAdvisoryLockSessions(sql: Sql): Promise<void> {
 }
 
 /**
- * Creates a fresh database on `DATABASE_URL`'s server before the test file and drops it after.
- * Every test in the file shares it, so give each test its own table names.
+ * The test server's URL, from `DATABASE_URL`. The only place a test reads it, so a missing server
+ * always fails with the `test-db.ts` hint rather than `Invalid URL`.
  */
-export function useTestDatabase(): TestDatabase {
+export function testServerUrl(): string {
   const serverUrl = process.env["DATABASE_URL"];
   if (serverUrl === undefined || serverUrl === "") {
     throw new Error(missingServerUrl);
   }
+  return serverUrl;
+}
+
+/**
+ * Creates a fresh database on `DATABASE_URL`'s server before the test file and drops it after.
+ * Every test in the file shares it, so give each test its own table names.
+ */
+export function useTestDatabase(): TestDatabase {
+  const serverUrl = testServerUrl();
   const name = `smonn_db_test_${randomUUID().replaceAll("-", "")}`;
   const url = new URL(serverUrl);
   url.pathname = `/${name}`;
