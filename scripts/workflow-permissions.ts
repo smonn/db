@@ -24,29 +24,34 @@ const isPermissions = (key: string): boolean => key.toLowerCase() === "permissio
 const permissionsForm =
   'write permissions as {}, read-all, write-all, a one-line flow map, or one "scope: level" per line';
 
-function blockProblem(lines: WorkflowLine[], at: number, column: number): number | undefined {
+function blockEntries(lines: WorkflowLine[], at: number, column: number): WorkflowLine[] {
   const entries: WorkflowLine[] = [];
   for (const line of lines.slice(at + 1)) {
     if (line.indent <= column) break;
     entries.push(line);
   }
+  return entries;
+}
+
+const isScopeLine = (line: WorkflowLine, indent: number | undefined): boolean =>
+  line.indent === indent &&
+  line.key?.column === line.indent &&
+  entry.test(`${line.key.name}: ${line.value}`);
+
+function blockProblem(lines: WorkflowLine[], at: number, column: number): number | undefined {
+  const entries = blockEntries(lines, at, column);
   if (entries.length === 0) return lines[at]?.number;
   const indent = entries[0]?.indent;
-  const bad = entries.find(
-    (line) =>
-      line.indent !== indent ||
-      line.key?.column !== line.indent ||
-      !entry.test(`${line.key.name}: ${line.value}`),
-  );
-  return bad?.number;
+  return entries.find((line) => !isScopeLine(line, indent))?.number;
 }
+
+const isWholeOrFlow = (value: string): boolean =>
+  flowPermissions.test(value) || wholePermissions.test(value);
 
 function permissionsProblem(lines: WorkflowLine[], at: number, column: number): number | undefined {
   const value = lines[at]?.value ?? "";
   if (value === "") return blockProblem(lines, at, column);
-  return flowPermissions.test(value) || wholePermissions.test(value)
-    ? undefined
-    : lines[at]?.number;
+  return isWholeOrFlow(value) ? undefined : lines[at]?.number;
 }
 
 export function permissionsProblems(lines: WorkflowLine[], file: string): string[] {

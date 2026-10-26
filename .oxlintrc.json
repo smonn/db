@@ -51,7 +51,8 @@
     {
       "files": ["**/*.test.ts", "**/*.test-helper.ts"],
       "rules": {
-        "smonn/test-server-url": "error"
+        "smonn/test-server-url": "error",
+        "smonn/real-git-env": "error"
       }
     },
     {

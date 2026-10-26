@@ -7,10 +7,12 @@ import {
   readCommitted,
   splitCurrentHeader,
   trackingSchema,
+  type ParsedMigration,
+  type TrackingSchema,
   writeMigration,
 } from "../../runtime/internal/index.ts";
 import { verify } from "../../runtime/migrator/index.ts";
-import type { Driver, FileSystem } from "../../runtime/ports/index.ts";
+import type { Driver, FileSystem, Queryable } from "../../runtime/ports/index.ts";
 import type { HazardKind } from "../diff/index.ts";
 import { withDevLock } from "./dev-lock.ts";
 import { hazardRefusal } from "./hazard-refusal.ts";
@@ -54,11 +56,7 @@ async function commitLocked(options: CommitOptions): Promise<CommitResult> {
     throw new Error(`slug ${JSON.stringify(slug)} must be kebab-case, such as create-users`);
   }
   const currentPath = `${migrations}/${CURRENT_FILENAME}`;
-  const content = await fileSystem.readFile(currentPath);
-  if (content === undefined) throw new Error(`${currentPath} doesn't exist; run generate first`);
-  const { body } = await parseCurrent(content);
-  const refusal = hazardRefusal(body, options.accept);
-  if (refusal !== undefined) throw new Error(refusal);
+  const body = await readAcceptedBody(fileSystem, currentPath, options.accept);
 
   const committed = await readCommitted(fileSystem, migrations);
   await verify({ list: () => Promise.resolve(committed) });
@@ -72,17 +70,7 @@ async function commitLocked(options: CommitOptions): Promise<CommitResult> {
   let wrote = false;
   try {
     await driver.transaction(async (tx) => {
-      if ((await tracking.readCurrent(tx)) !== (await currentHash(body))) {
-        throw new Error(
-          `the Dev database hasn't replayed ${currentPath} as it reads now; run generate first`,
-        );
-      }
-      const recorded = await tracking.readRecorded(tx);
-      if (recorded.length !== chain.length || recorded.at(-1)?.hash !== tip?.hash) {
-        throw new Error(
-          `the Dev database's Committed migrations don't match the files in ${migrations}; run generate first`,
-        );
-      }
+      await checkDevReplayed(tx, tracking, { body, currentPath, chain, tip, migrations });
       await fileSystem.writeFile(path, migration.content);
       wrote = true;
       await tracking.recordMigration(tx, parseMigration(migration));
@@ -94,4 +82,43 @@ async function commitLocked(options: CommitOptions): Promise<CommitResult> {
   }
   await fileSystem.remove(currentPath);
   return { path };
+}
+
+async function readAcceptedBody(
+  fileSystem: FileSystem,
+  currentPath: string,
+  accept: readonly HazardKind[],
+): Promise<string> {
+  const content = await fileSystem.readFile(currentPath);
+  if (content === undefined) throw new Error(`${currentPath} doesn't exist; run generate first`);
+  const { body } = await parseCurrent(content);
+  const refusal = hazardRefusal(body, accept);
+  if (refusal !== undefined) throw new Error(refusal);
+  return body;
+}
+
+/** Refuses unless the Dev database holds `current.sql` as it reads now and the whole Committed chain. */
+async function checkDevReplayed(
+  tx: Queryable,
+  tracking: TrackingSchema,
+  expected: {
+    readonly body: string;
+    readonly currentPath: string;
+    readonly chain: readonly ParsedMigration[];
+    readonly tip: ParsedMigration | undefined;
+    readonly migrations: string;
+  },
+): Promise<void> {
+  const { body, currentPath, chain, tip, migrations } = expected;
+  if ((await tracking.readCurrent(tx)) !== (await currentHash(body))) {
+    throw new Error(
+      `the Dev database hasn't replayed ${currentPath} as it reads now; run generate first`,
+    );
+  }
+  const recorded = await tracking.readRecorded(tx);
+  if (recorded.length !== chain.length || recorded.at(-1)?.hash !== tip?.hash) {
+    throw new Error(
+      `the Dev database's Committed migrations don't match the files in ${migrations}; run generate first`,
+    );
+  }
 }

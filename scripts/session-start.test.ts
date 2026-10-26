@@ -4,7 +4,8 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { hookCwd, main, shouldSync } from "./session-start.ts";
+import { isolateGitEnv } from "../src/dev/cli/git-env.test-helper.ts";
+import { main } from "./session-start.ts";
 
 // A spawn that fails to start returns null output, which SpawnSyncReturns doesn't model.
 type Result = { status: number | null; stdout: string | null; stderr: string | null };
@@ -33,20 +34,6 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
-}
-
-// Git hooks export GIT_DIR and GIT_INDEX_FILE, which would point every git call, ours and
-// main()'s, at the real repository instead of the temp one.
-function isolateGitEnv(): void {
-  for (const name of Object.keys(process.env)) {
-    if (name.startsWith("GIT_")) vi.stubEnv(name, undefined);
-  }
-  vi.stubEnv("GIT_AUTHOR_NAME", "t");
-  vi.stubEnv("GIT_AUTHOR_EMAIL", "t@example.com");
-  vi.stubEnv("GIT_COMMITTER_NAME", "t");
-  vi.stubEnv("GIT_COMMITTER_EMAIL", "t@example.com");
-  vi.stubEnv("GIT_CONFIG_GLOBAL", "/dev/null");
-  vi.stubEnv("GIT_CONFIG_SYSTEM", "/dev/null");
 }
 
 function commit(cwd: string, file: string): void {
@@ -164,29 +151,6 @@ describe("main", () => {
   });
 });
 
-describe("shouldSync", () => {
-  const subagent = '{"hook_event_name":"SubagentStart"}';
-
-  test("skips a subagent that works in the project checkout", () => {
-    expect(shouldSync(subagent, "/proj", "/proj/")).toBe(false);
-  });
-
-  test("syncs a subagent in another directory", () => {
-    expect(shouldSync(subagent, "/proj/.claude/worktrees/a", "/proj")).toBe(true);
-  });
-
-  test("syncs a subagent when the project directory is unknown", () => {
-    expect(shouldSync(subagent, "/proj")).toBe(true);
-  });
-
-  test.each(['{"hook_event_name":"SessionStart"}', "", "not json"])(
-    "syncs a session start in the project checkout for %j",
-    (input) => {
-      expect(shouldSync(input, "/proj", "/proj")).toBe(true);
-    },
-  );
-});
-
 describe("main without sync", () => {
   test("installs but does not touch git", () => {
     mocks.pnpm.mockReset();
@@ -197,19 +161,4 @@ describe("main without sync", () => {
     expect(mocks.pnpm).toHaveBeenCalledTimes(1);
     vi.restoreAllMocks();
   });
-});
-
-describe("hookCwd", () => {
-  test("uses the cwd the hook input names", () => {
-    expect(hookCwd('{"cwd":"/work/tree","hook_event_name":"SubagentStart"}', "/fallback")).toBe(
-      "/work/tree",
-    );
-  });
-
-  test.each(["", "not json", "{}", '{"cwd":""}', '{"cwd":3}', "null"])(
-    "falls back for %j",
-    (input) => {
-      expect(hookCwd(input, "/fallback")).toBe("/fallback");
-    },
-  );
 });
