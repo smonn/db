@@ -16,9 +16,9 @@
     "reportUnusedDisableDirectives": "error"
   },
   "rules": {
-    // Baseline: complexity 16 (parseCommand in dev/cli/main.ts, isQuoted in scripts/lint-plugin.ts);
+    // Baseline: complexity 11 (rebuiltColumns in dev/diff/diff.ts);
     // it was 21 at adoption (2026-10-22). Target: 6. Lower it as functions are split.
-    "complexity": ["error", { "max": 16 }],
+    "complexity": ["error", { "max": 11 }],
     "max-params": ["error", { "max": 4 }],
     "max-depth": ["error", { "max": 4 }],
     // A backstop; fta judges file maintainability, so this stays above the largest file.
