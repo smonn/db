@@ -15,6 +15,15 @@ export function hazardRefusal(body: string, accepted: readonly string[]): string
   const { missing, unknown } = groupHazards(body, accepted);
   const strays = strayHazardComments(body);
   if (missing.size === 0 && unknown.size === 0 && strays.length === 0) return undefined;
+  return refusalLines(missing, unknown, strays, accepted).join("\n");
+}
+
+function refusalLines(
+  missing: ReadonlyMap<string, string[]>,
+  unknown: ReadonlySet<string>,
+  strays: readonly { line: number; text: string }[],
+  accepted: readonly string[],
+): string[] {
   const lines: string[] = [];
   for (const { line, text } of strays) {
     lines.push(
@@ -31,7 +40,7 @@ export function hazardRefusal(body: string, accepted: readonly string[]): string
     );
   }
   if (missing.size > 0) lines.push(acceptHint(accepted, missing));
-  return lines.join("\n");
+  return lines;
 }
 
 function acceptHint(accepted: readonly string[], missing: ReadonlyMap<string, string[]>): string {

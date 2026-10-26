@@ -29,21 +29,8 @@ function parseTimestamp(text: string): Date {
   // `infinity`, `-infinity`, and years past 275760 have no Date. A timestamp has no offset, which
   // reads as UTC rather than the local time `new Date` would assume.
   if (match === null) throw new Error(`Can't read timestamp "${text}" as a Date`);
-  const [
-    ,
-    year,
-    month,
-    day,
-    hours,
-    minutes,
-    seconds,
-    fraction = "",
-    sign,
-    offsetHours,
-    offsetMinutes,
-    offsetSeconds,
-    bc,
-  ] = match;
+  const [, year, month, day, hours, minutes, seconds, fraction, ...offset] = match;
+  const bc = offset[4];
   const value = new Date(0);
   // Date.UTC reads years 0 to 99 as 1900 to 1999; setUTCFullYear doesn't. 1 BC is year 0.
   value.setUTCFullYear(
@@ -51,6 +38,16 @@ function parseTimestamp(text: string): Date {
     Number(month) - 1,
     Number(day),
   );
+  setClock(value, [hours, minutes, seconds, fraction], offset);
+  if (Number.isNaN(value.getTime())) throw new Error(`Can't read timestamp "${text}" as a Date`);
+  return value;
+}
+
+function setClock(
+  value: Date,
+  [hours, minutes, seconds, fraction]: readonly (string | undefined)[],
+  [sign, offsetHours, offsetMinutes, offsetSeconds]: readonly (string | undefined)[],
+): void {
   // Subtracting the offset here, not from a finished Date, keeps a local time past a Date's range
   // readable when its instant is inside it.
   const direction = sign === "-" ? -1 : 1;
@@ -58,10 +55,8 @@ function parseTimestamp(text: string): Date {
     Number(hours) - direction * Number(offsetHours ?? 0),
     Number(minutes) - direction * Number(offsetMinutes ?? 0),
     Number(seconds) - direction * Number(offsetSeconds ?? 0),
-    Number(fraction.padEnd(3, "0").slice(0, 3)),
+    Number((fraction ?? "").padEnd(3, "0").slice(0, 3)),
   );
-  if (Number.isNaN(value.getTime())) throw new Error(`Can't read timestamp "${text}" as a Date`);
-  return value;
 }
 
 // toISOString writes BC and five-digit years as `-000043` and `+010000`, which Postgres refuses.

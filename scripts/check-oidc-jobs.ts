@@ -63,20 +63,26 @@ function readLines(workflow: string): Line[] {
     .map((text) => ({ text, indent: indentOf(text) }));
 }
 
-function splitJobs(lines: Line[]): { header: Line[]; jobs: Job[] } {
-  const start = lines.findIndex((line) => /^jobs:\s*(?:#.*)?$/u.test(line.text));
-  if (start === -1) return { header: lines, jobs: [] };
-  const header = lines.slice(0, start);
+function groupJobs(lines: Line[], jobIndent: number): Job[] {
   const jobs: Job[] = [];
-  const jobIndent = lines[start + 1]?.indent ?? 0;
-  const end = lines.findIndex((line, index) => index > start && line.indent === 0);
-  header.push(...(end === -1 ? [] : lines.slice(end)));
-  for (const line of lines.slice(start + 1, end === -1 ? undefined : end)) {
+  for (const line of lines) {
     if (line.indent <= jobIndent)
       jobs.push({ name: line.text.trim().replace(/:.*$/u, ""), lines: [line] });
     else jobs.at(-1)?.lines.push(line);
   }
-  return { header, jobs };
+  return jobs;
+}
+
+function splitJobs(lines: Line[]): { header: Line[]; jobs: Job[] } {
+  const start = lines.findIndex((line) => /^jobs:\s*(?:#.*)?$/u.test(line.text));
+  if (start === -1) return { header: lines, jobs: [] };
+  const jobIndent = lines[start + 1]?.indent ?? 0;
+  const end = lines.findIndex((line, index) => index > start && line.indent === 0);
+  const header = [...lines.slice(0, start), ...(end === -1 ? [] : lines.slice(end))];
+  return {
+    header,
+    jobs: groupJobs(lines.slice(start + 1, end === -1 ? undefined : end), jobIndent),
+  };
 }
 
 // Each template line ends outside any quote, so a line cut at a `#` inside quotes still differs
@@ -103,15 +109,8 @@ function checkJob(job: Job, file: string, pnpm: string): string[] {
   ];
 }
 
-export function checkOidcJobs(workflow: string, file: string, pnpm: string): string[] {
-  const unreadable = workflowYamlProblems(workflow, file);
-  if (unreadable.length > 0) return unreadable;
-  const lines = readLines(workflow);
-  const { header, jobs } = splitJobs(lines);
+function headerProblems(header: Line[], file: string): string[] {
   const problems: string[] = [];
-  if (lines.some((line) => grantsAll.test(line.text)))
-    problems.push(`${file} grants write-all, which includes id-token; grant id-token alone`);
-  if (!lines.some((line) => grantsIdToken.test(line.text))) return problems;
   if (header.some((line) => grantsIdToken.test(line.text)))
     problems.push(`${file} grants id-token outside a job; grant it to the publish job only`);
   for (const line of header) {
@@ -121,6 +120,19 @@ export function checkOidcJobs(workflow: string, file: string, pnpm: string): str
         `${file} sets workflow-level ${setting}, which reaches the job holding id-token`,
       );
   }
+  return problems;
+}
+
+export function checkOidcJobs(workflow: string, file: string, pnpm: string): string[] {
+  const unreadable = workflowYamlProblems(workflow, file);
+  if (unreadable.length > 0) return unreadable;
+  const lines = readLines(workflow);
+  const { header, jobs } = splitJobs(lines);
+  const problems: string[] = [];
+  if (lines.some((line) => grantsAll.test(line.text)))
+    problems.push(`${file} grants write-all, which includes id-token; grant id-token alone`);
+  if (!lines.some((line) => grantsIdToken.test(line.text))) return problems;
+  problems.push(...headerProblems(header, file));
   for (const job of jobs)
     if (job.lines.some((line) => grantsIdToken.test(line.text)))
       problems.push(...checkJob(job, file, pnpm));
