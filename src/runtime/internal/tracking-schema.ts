@@ -11,6 +11,14 @@ export type RecordedMigration = {
   readonly hash: string;
 };
 
+/** The last recorded row, when it never reached `applied` (ADR-0020). */
+type UnfinishedMigration = {
+  readonly sequence: number;
+  readonly filename: string;
+  readonly status: string;
+  readonly error: string | null;
+};
+
 /** The tracking schema's `migrations` and `current` tables (ADR-0008, ADR-0016). */
 export type TrackingSchema = {
   /** The name as configured, unquoted, for catalog lookups. */
@@ -18,6 +26,10 @@ export type TrackingSchema = {
   /** The `current` table's quoted, qualified name, for messages. */
   readonly currentTable: string;
   ensureMigrationsTable(session: Queryable): Promise<void>;
+  /** The `migrations` table's quoted, qualified name, for messages. */
+  readonly migrationsTable: string;
+  /** The last recorded row when its status is `started` or `failed`, else `undefined`. */
+  readUnfinished(session: Queryable): Promise<UnfinishedMigration | undefined>;
   /** The recorded rows, in sequence order. */
   readRecorded(session: Queryable): Promise<RecordedMigration[]>;
   /** Records an applied migration. Run it in the transaction that applied the body. */
@@ -61,8 +73,15 @@ create table if not exists ${schema}.migrations (
   filename text not null,
   hash text not null unique,
   previous_hash text references ${schema}.migrations (hash),
-  applied_at timestamptz not null default now()
-);`;
+  applied_at timestamptz not null default now(),
+  status text not null default 'applied',
+  error text
+);
+alter table ${schema}.migrations add column if not exists status text not null default 'applied';
+alter table ${schema}.migrations add column if not exists error text;`;
+
+const READ_LAST = (schema: string): string =>
+  `select sequence, filename, status, error from ${schema}.migrations order by sequence desc limit 1`;
 
 const CURRENT_TABLE = (schema: string): string => `
 create schema ${schema};
@@ -79,6 +98,9 @@ export function trackingSchema(name: string): TrackingSchema {
   return {
     name,
     currentTable: current,
+    migrationsTable: `${schema}.${quoteIdentifier("migrations")}`,
+
+    readUnfinished: (session) => readUnfinished(session, schema),
 
     ensureMigrationsTable: (session) => session.execute(MIGRATIONS_TABLE(schema)),
 
@@ -114,6 +136,23 @@ export function trackingSchema(name: string): TrackingSchema {
         `${schema}.${quoteIdentifier("migrations")}`,
         `select hash from ${schema}.migrations order by sequence desc limit 1`,
       ),
+  };
+}
+
+async function readUnfinished(
+  session: Queryable,
+  schema: string,
+): Promise<UnfinishedMigration | undefined> {
+  const {
+    rows: [row],
+  } = await session.query(READ_LAST(schema));
+  if (row === undefined || row["status"] === "applied") return undefined;
+  const error: unknown = row["error"];
+  return {
+    sequence: Number(row["sequence"]),
+    filename: String(row["filename"]),
+    status: String(row["status"]),
+    error: typeof error === "string" ? error : null,
   };
 }
 

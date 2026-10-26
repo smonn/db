@@ -21,8 +21,8 @@ export type MigrateResult = {
 /**
  * Applies every Committed migration not yet recorded, each in its own transaction with its
  * tracking row. A session advisory lock, polled for, makes parallel runs wait, then find nothing left.
- * Before applying anything, it refuses a broken file chain and recorded rows that aren't a prefix
- * of that chain.
+ * Before applying anything, it refuses a broken file chain, recorded rows that aren't a prefix
+ * of that chain, and a last row left `started` or `failed` (ADR-0020).
  * Refuses a Dev database (ADR-0016) when migrations are pending: the tracking schema's
  * `current` table holds a row.
  */
@@ -39,6 +39,17 @@ export async function migrate({
     await tracking.ensureMigrationsTable(session);
     const recorded = await tracking.readRecorded(session);
     checkRecorded(migrations, recorded);
+    const unfinished = await tracking.readUnfinished(session);
+    if (unfinished !== undefined) {
+      const table = tracking.migrationsTable;
+      const where = `where sequence = ${unfinished.sequence}`;
+      const stored = unfinished.error === null ? "" : `: ${unfinished.error}`;
+      throw new Error(
+        `${unfinished.filename} is recorded as ${unfinished.status}${stored}\n` +
+          `Clean up what it left, then delete its row to retry it:\n  delete from ${table} ${where};\n` +
+          `Or, when the statement did finish, mark it applied:\n  update ${table} set status = 'applied', error = null ${where};`,
+      );
+    }
     const pending = migrations.slice(recorded.length);
     if (pending.length > 0 && (await tracking.holdsCurrentMigration(session))) {
       throw new Error(
