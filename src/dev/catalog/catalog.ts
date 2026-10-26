@@ -7,18 +7,19 @@ import {
   type Fact,
   type Key,
 } from "./fact.ts";
-import type {
-  ColumnPayload,
-  DefaultPayload,
-  DomainCheckPayload,
-  DomainPayload,
-  EnumPayload,
-  ForeignKeyPayload,
-  GeneratedPayload,
-  IdentityPayload,
-  IndexPayload,
-  PrimaryKeyPayload,
-  UniquePayload,
+import {
+  plainKeyColumns,
+  type ColumnPayload,
+  type DefaultPayload,
+  type DomainCheckPayload,
+  type DomainPayload,
+  type EnumPayload,
+  type ForeignKeyPayload,
+  type GeneratedPayload,
+  type IdentityPayload,
+  type IndexPayload,
+  type PrimaryKeyPayload,
+  type UniquePayload,
 } from "./payloads.ts";
 
 /** A fact on a column, before the builder gives it its parent. */
@@ -148,12 +149,12 @@ function constraintMethods(
       }));
     },
     index: (schema, table, name, payload) => {
-      add(
-        schema,
-        table,
-        [...payload.keys.map(({ column }) => column), ...payload.include],
-        (parent) => ({ kind: "index", name, parent, payload }),
-      );
+      add(schema, table, [...plainKeyColumns(payload.keys), ...payload.include], (parent) => ({
+        kind: "index",
+        name,
+        parent,
+        payload,
+      }));
     },
     foreignKey: (schema, table, name, payload) => {
       add(schema, table, payload.columns, (parent) => ({
