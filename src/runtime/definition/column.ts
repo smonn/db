@@ -1,3 +1,5 @@
+import type { Codec, RuntimeCodec } from "./codec.ts";
+
 type Identity = "always" | "by default";
 
 export type ColumnState = {
@@ -29,34 +31,44 @@ export type Column<
   Gen extends boolean = false,
   Pk extends boolean = false,
   Key extends boolean = false,
+  Co extends boolean = false,
 > = {
   readonly state: ColumnState;
+  /** Runtime-only: the codec `.codec()` set. It stays out of `state`, so it never reaches the catalog. */
+  readonly "~codec": RuntimeCodec | undefined;
   /** Type-only: the value a row holds, whether the column is NOT NULL, and whether it is the primary key. */
   readonly "~types": { readonly value: V; readonly notNull: N; readonly primaryKey: Pk };
-  notNull(): Column<V, true, Int, Gen, Pk, Key>;
-} & (Key extends true
+  notNull(): Column<V, true, Int, Gen, Pk, Key, Co>;
+} & (Co extends true
   ? unknown
   : {
-      /** The table's whole primary key. A composite key goes in `defineTable`'s second callback. */
-      primaryKey(options?: ConstraintOptions): Column<V, true, Int, Gen, true, true>;
-      /** A unique constraint on this column alone. */
-      unique(options?: ConstraintOptions): Column<V, N, Int, Gen, Pk, true>;
+      /** Overrides the TypeScript mapping; the query layer runs it and the catalog never sees it. A column takes one. */
+      codec<Value>(codec: Codec<V, Value>): Column<Value, N, Int, Gen, Pk, Key, true>;
     }) &
+  (Key extends true
+    ? unknown
+    : {
+        /** The table's whole primary key. A composite key goes in `defineTable`'s second callback. */
+        primaryKey(options?: ConstraintOptions): Column<V, true, Int, Gen, true, true, Co>;
+        /** A unique constraint on this column alone. */
+        unique(options?: ConstraintOptions): Column<V, N, Int, Gen, Pk, true, Co>;
+      }) &
   (Gen extends true
     ? unknown
     : {
         /** Takes a SQL expression, such as `now()`; a string literal needs its quotes (`"'new'"`). */
-        default(expression: string): Column<V, N, Int, true, Pk, Key>;
+        default(expression: string): Column<V, N, Int, true, Pk, Key, Co>;
       } & (Int extends true
         ? {
             /** Generates the value from a sequence. */
-            identity(generated?: Identity): Column<V, true, Int, true, Pk, Key>;
+            identity(generated?: Identity): Column<V, true, Int, true, Pk, Key, Co>;
           }
         : unknown));
 
 /** A column of any kind, which is all a table needs to read. */
 type AnyColumn = {
   readonly state: ColumnState;
+  readonly "~codec": RuntimeCodec | undefined;
   readonly "~types": {
     readonly value: unknown;
     readonly notNull: boolean;
@@ -71,20 +83,23 @@ function column<
   Gen extends boolean,
   Pk extends boolean,
   Key extends boolean,
->(state: ColumnState): Column<V, N, Int, Gen, Pk, Key> {
+  Co extends boolean,
+>(state: ColumnState, codec?: RuntimeCodec): Column<V, N, Int, Gen, Pk, Key, Co> {
   const parts = {
     state,
-    notNull: () => column({ ...state, notNull: true }),
-    default: (expression: string) => column({ ...state, default: expression }),
+    "~codec": codec,
+    notNull: () => column({ ...state, notNull: true }, codec),
+    default: (expression: string) => column({ ...state, default: expression }, codec),
     identity: (generated: Identity = "by default") =>
-      column({ ...state, notNull: true, identity: generated }),
+      column({ ...state, notNull: true, identity: generated }, codec),
     primaryKey: (options?: ConstraintOptions) =>
-      column({ ...state, notNull: true, primaryKey: true, constraintName: options?.name }),
+      column({ ...state, notNull: true, primaryKey: true, constraintName: options?.name }, codec),
     unique: (options?: ConstraintOptions) =>
-      column({ ...state, unique: true, constraintName: options?.name }),
+      column({ ...state, unique: true, constraintName: options?.name }, codec),
+    codec: (given: Codec<never, unknown>) => column(state, given as RuntimeCodec),
   };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- "~types" exists only in types, so `parts` doesn't overlap `Column` enough for a direct cast (TS2352); it goes through `unknown`.
-  return parts as unknown as Column<V, N, Int, Gen, Pk, Key>;
+  return parts as unknown as Column<V, N, Int, Gen, Pk, Key, Co>;
 }
 
 export type ColumnFactories = {
@@ -107,7 +122,7 @@ export type ColumnFactories = {
 };
 
 function of<V, Int extends boolean = false>(sqlType: string): Column<V, false, Int> {
-  return column<V, false, Int, false, false, false>({
+  return column<V, false, Int, false, false, false, false>({
     sqlType,
     notNull: false,
     default: undefined,

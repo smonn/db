@@ -1,5 +1,6 @@
 import type { Row, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment, type RenderedSql } from "../sql/index.ts";
+import { decoderFor, encodeValue, withDecoder } from "./codecs.ts";
 
 export type Statement = {
   toSql(): RenderedSql;
@@ -19,7 +20,7 @@ export function brand<Q extends Statement>(parts: Omit<Q, "~returns" | "~row" | 
 }
 
 /** A boolean SQL expression, built from column comparisons and the `and`, `or`, `not` exports. */
-export type Predicate = { readonly "~predicate": Fragment };
+export type Predicate = { readonly "~predicate": () => Fragment };
 
 type NullChecks = {
   isNull(): Predicate;
@@ -67,35 +68,42 @@ type State = {
   readonly predicate?: Predicate;
 };
 
-const predicate = (piece: Fragment): Predicate => ({ "~predicate": piece });
+/** Built when the statement renders, so a codec that throws rejects the query instead of the builder. */
+const predicate = (piece: () => Fragment): Predicate => ({ "~predicate": piece });
 
-function refOf(name: string): ColumnRef<string | null> {
+function refOf(table: Table, name: string): ColumnRef<string | null> {
   const column = identifier(name);
+  const compare = (operator: Fragment, value: unknown) =>
+    predicate(() => fragment`${column} ${operator} ${encodeValue(table, name, value)}`);
   return {
     name,
-    eq: (value) => predicate(fragment`${column} = ${value}`),
-    ne: (value) => predicate(fragment`${column} <> ${value}`),
-    gt: (value) => predicate(fragment`${column} > ${value}`),
-    gte: (value) => predicate(fragment`${column} >= ${value}`),
-    lt: (value) => predicate(fragment`${column} < ${value}`),
-    lte: (value) => predicate(fragment`${column} <= ${value}`),
-    isNull: () => predicate(fragment`${column} is null`),
-    isNotNull: () => predicate(fragment`${column} is not null`),
+    eq: (value) => compare(fragment`=`, value),
+    ne: (value) => compare(fragment`<>`, value),
+    gt: (value) => compare(fragment`>`, value),
+    gte: (value) => compare(fragment`>=`, value),
+    lt: (value) => compare(fragment`<`, value),
+    lte: (value) => compare(fragment`<=`, value),
+    isNull: () => predicate(() => fragment`${column} is null`),
+    isNotNull: () => predicate(() => fragment`${column} is not null`),
   };
 }
 
 export function refsOf<T extends Table>(table: T): Refs<T> {
-  const refs = Object.fromEntries(Object.keys(table.columns).map((name) => [name, refOf(name)]));
+  const refs = Object.fromEntries(
+    Object.keys(table.columns).map((name) => [name, refOf(table, name)]),
+  );
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries loses the keys.
   return refs as unknown as Refs<T>;
 }
 
 function combine(separator: Fragment, terms: readonly Predicate[]): Predicate {
-  const inner = join(
-    terms.map((term) => term["~predicate"]),
-    separator,
-  );
-  return predicate(fragment`(${inner})`);
+  return predicate(() => {
+    const inner = join(
+      terms.map((term) => term["~predicate"]()),
+      separator,
+    );
+    return fragment`(${inner})`;
+  });
 }
 
 export function and(first: Predicate, ...rest: Predicate[]): Predicate {
@@ -107,7 +115,7 @@ export function or(first: Predicate, ...rest: Predicate[]): Predicate {
 }
 
 export function not(term: Predicate): Predicate {
-  return predicate(fragment`not (${term["~predicate"]})`);
+  return predicate(() => fragment`not (${term["~predicate"]()})`);
 }
 
 export function renderOutput([alias, name]: Output): Fragment {
@@ -115,7 +123,7 @@ export function renderOutput([alias, name]: Output): Fragment {
 }
 
 function selectQuery<T extends Table, R>(table: T, state: State): SelectQuery<T, R> {
-  return brand<SelectQuery<T, R>>({
+  const query = brand<SelectQuery<T, R>>({
     select(pick) {
       const picked = Object.entries(pick(refsOf(table)));
       if (picked.length === 0) throw new Error("select needs at least one column");
@@ -135,11 +143,12 @@ function selectQuery<T extends Table, R>(table: T, state: State): SelectQuery<T,
         fragment`, `,
       );
       const filter = state.predicate
-        ? fragment` where ${state.predicate["~predicate"]}`
+        ? fragment` where ${state.predicate["~predicate"]()}`
         : fragment``;
       return fragment`select ${columns} from ${identifier(table.schema)}.${identifier(table.name)}${filter}`.toSql();
     },
   });
+  return withDecoder(query, decoderFor(table, state.outputs));
 }
 
 export function from<T extends Table>(table: T): SelectQuery<T, Row<T>> {
