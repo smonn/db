@@ -31,6 +31,23 @@ export type GeneratedPayload = {
 /** Labels in sort order, which is the order the enum compares in. */
 export type EnumPayload = { readonly labels: readonly string[] };
 
+export type DomainPayload = {
+  /** The base type as `format_type` renders it, such as `integer` or `public.mood`. */
+  readonly base: string;
+  /** Folds `typnotnull` and a Postgres 18 `pg_constraint` NOT NULL row, whatever its name. */
+  readonly notNull: boolean;
+  /** As `pg_get_expr` renders it, or null without one. */
+  readonly default: string | null;
+  /** True when the default calls a volatile function, as a column default's `volatile`. */
+  readonly defaultVolatile: boolean;
+};
+
+/** A `NOT VALID` check is the same fact as a valid one. */
+export type DomainCheckPayload = {
+  /** What `CHECK` holds as `pg_get_constraintdef` renders it, such as `(VALUE > 0)`. */
+  readonly expression: string;
+};
+
 export type PrimaryKeyPayload = {
   /** In key order, which is the order the index sorts by. */
   readonly columns: readonly string[];
@@ -42,9 +59,14 @@ export type UniquePayload = {
   readonly nullsNotDistinct: boolean;
 };
 
-/** One key of an index, in the order the index sorts by. */
-export type IndexKeyPayload = {
-  readonly column: string;
+/** One key of an index, in the order the index sorts by: a column, or an expression over columns. */
+export type IndexKeyPayload = (
+  | { readonly column: string }
+  | {
+      /** As Postgres deparses it, without the parentheses an index key needs around it. */
+      readonly expression: string;
+    }
+) & {
   readonly descending: boolean;
   /** Postgres defaults to NULLs last for an ascending key and first for a descending one. */
   readonly nullsFirst: boolean;
@@ -56,6 +78,8 @@ export type IndexPayload = {
   readonly keys: readonly IndexKeyPayload[];
   /** Stored beside the keys, in the order given. */
   readonly include: readonly string[];
+  /** The partial index's predicate as Postgres deparses it; `undefined` indexes every row. */
+  readonly where: string | undefined;
   readonly nullsNotDistinct: boolean;
 };
 
@@ -72,3 +96,8 @@ export type ForeignKeyPayload = {
   readonly match: ForeignKey["match"];
   readonly deferrable: ForeignKey["deferrable"];
 };
+
+/** The columns an index names as plain keys; an expression key names none here. */
+export function plainKeyColumns(keys: readonly IndexKeyPayload[]): string[] {
+  return keys.flatMap((key) => ("column" in key ? [key.column] : []));
+}

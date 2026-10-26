@@ -23,26 +23,36 @@ export type GlossaryEntry = {
 const MAX_ADR_SENTENCES = 3;
 const EM_DASH = "\u2014";
 
+function extendEntry(entry: GlossaryEntry, line: string, lineNumber: number): void {
+  entry.endLine = lineNumber;
+  const avoid = /^_Avoid_:\s*(.+)$/u.exec(line)?.[1];
+  if (avoid !== undefined) entry.avoid = avoid.split(",").map((term) => term.trim());
+}
+
+/** Reads one glossary line and returns the entry it leaves open, if any. */
+function readGlossaryLine(
+  entries: GlossaryEntry[],
+  current: GlossaryEntry | undefined,
+  line: string,
+  lineNumber: number,
+): GlossaryEntry | undefined {
+  const headword = /^\*\*(.+)\*\*:\s*$/u.exec(line)?.[1];
+  if (headword !== undefined) {
+    const entry = { headword, avoid: [], startLine: lineNumber, endLine: lineNumber };
+    entries.push(entry);
+    return entry;
+  }
+  if (current === undefined || line.trim() === "") return undefined;
+  extendEntry(current, line, lineNumber);
+  return current;
+}
+
 export function parseGlossary(text: string): GlossaryEntry[] {
   const entries: GlossaryEntry[] = [];
   let current: GlossaryEntry | undefined;
-  text.split("\n").forEach((line, index) => {
-    const lineNumber = index + 1;
-    const headword = /^\*\*(.+)\*\*:\s*$/u.exec(line)?.[1];
-    if (headword !== undefined) {
-      current = { headword, avoid: [], startLine: lineNumber, endLine: lineNumber };
-      entries.push(current);
-      return;
-    }
-    if (current === undefined) return;
-    if (line.trim() === "") {
-      current = undefined;
-      return;
-    }
-    current.endLine = lineNumber;
-    const avoid = /^_Avoid_:\s*(.+)$/u.exec(line)?.[1];
-    if (avoid !== undefined) current.avoid = avoid.split(",").map((term) => term.trim());
-  });
+  for (const [index, line] of text.split("\n").entries()) {
+    current = readGlossaryLine(entries, current, line, index + 1);
+  }
   return entries;
 }
 
@@ -176,6 +186,13 @@ function checkMarkdownFile(cwd: string, file: string, glossary: GlossaryEntry[])
   return problems;
 }
 
+function checkTypeScriptEmDashes(cwd: string): Problem[] {
+  // Editor tools can turn a typed `\u2014` escape into the literal character.
+  return globSync("{scripts,src}/**/*.ts", { cwd })
+    .toSorted()
+    .flatMap((file) => checkEmDashes(file, readFileSync(join(cwd, file), "utf8")));
+}
+
 export function main(cwd = ".", budgets: Record<string, number> = DOC_BUDGETS): void {
   const files = markdownFiles(cwd);
   const glossary = parseGlossary(readFileSync(join(cwd, "GLOSSARY.md"), "utf8"));
@@ -183,12 +200,9 @@ export function main(cwd = ".", budgets: Record<string, number> = DOC_BUDGETS): 
     ...checkGlossary(glossary),
     ...checkAdrNumbers(files),
     ...checkBudgets(cwd, budgets),
+    ...files.flatMap((file) => checkMarkdownFile(cwd, file, glossary)),
+    ...checkTypeScriptEmDashes(cwd),
   ];
-  for (const file of files) problems.push(...checkMarkdownFile(cwd, file, glossary));
-  // Editor tools can turn a typed `\u2014` escape into the literal character.
-  for (const file of globSync("{scripts,src}/**/*.ts", { cwd }).toSorted()) {
-    problems.push(...checkEmDashes(file, readFileSync(join(cwd, file), "utf8")));
-  }
   for (const { file, line, message } of problems) console.error(`${file}:${line}: ${message}`);
   if (problems.length > 0) process.exitCode = 1;
 }

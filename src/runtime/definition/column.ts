@@ -1,4 +1,5 @@
 import type { Codec, RuntimeCodec } from "./codec.ts";
+import type { Domain } from "./domain.ts";
 import type { Enum } from "./enum.ts";
 import { columnIndexOf, type ColumnIndex, type IndexOptions } from "./index-options.ts";
 import type { ColumnReference, ForeignKeyOptions, Target } from "./references.ts";
@@ -6,11 +7,13 @@ import type { ColumnReference, ForeignKeyOptions, Target } from "./references.ts
 type Identity = "always" | "by default";
 
 export type ColumnState = {
-  /** Empty for an enum column, whose type is `enumType`. */
+  /** Empty for an enum or domain column, whose type is `enumType` or `domainType`. */
   readonly sqlType: string;
   /** The enum itself, since the rollup gives its type a name. */
   readonly enumType: Enum | undefined;
-  /** True once `.array()` ran: a one-dimensional array of `sqlType` or `enumType`. */
+  /** The domain itself, named by the rollup like an enum. */
+  readonly domainType: Domain | undefined;
+  /** True once `.array()` ran: a one-dimensional array of the column's type. */
   readonly array: boolean;
   /** True for a primary key or identity column too, as Postgres makes them. */
   readonly notNull: boolean;

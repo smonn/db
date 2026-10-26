@@ -49,21 +49,46 @@ function hasAnchor(resolved: string, targetText: string, anchor: string | undefi
   );
 }
 
+function isExternal(target: string): boolean {
+  return /^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(target);
+}
+
+function resolveLink(
+  { file, text }: { file: string; text: string },
+  path: string,
+  read: (path: string) => string | undefined,
+): { resolved: string; targetText: string | undefined } {
+  if (path === "") return { resolved: file, targetText: text };
+  const resolved = posix.join(posix.dirname(file), path);
+  return { resolved, targetText: read(resolved) };
+}
+
 function checkLink(
   source: { file: string; text: string; line: number },
   target: string,
   read: (path: string) => string | undefined,
 ): Problem[] {
-  const { file, text, line } = source;
-  if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(target)) return [];
+  const { file, line } = source;
+  if (isExternal(target)) return [];
   const [path = "", anchor] = target.split("#");
-  const resolved = path === "" ? file : posix.join(posix.dirname(file), path);
-  const targetText = path === "" ? text : read(resolved);
-  const problem = (message: string): Problem[] => [{ file, line, message }];
-  if (targetText === undefined) return problem(`link to missing file ${path}`);
-  return hasAnchor(resolved, targetText, anchor)
-    ? []
-    : problem(`link to missing heading ${target}`);
+  const { resolved, targetText } = resolveLink(source, path, read);
+  const message = linkFault(
+    path,
+    target,
+    targetText,
+    hasAnchor(resolved, targetText ?? "", anchor),
+  );
+  return message === undefined ? [] : [{ file, line, message }];
+}
+
+function linkFault(
+  path: string,
+  target: string,
+  targetText: string | undefined,
+  anchored: boolean,
+): string | undefined {
+  if (targetText === undefined) return `link to missing file ${path}`;
+  return anchored ? undefined : `link to missing heading ${target}`;
 }
 
 /**
@@ -87,12 +112,13 @@ function wordCount(line: string): number {
   return line.split(/\s+/u).filter((token) => /[\p{L}\p{N}]/u.test(token)).length;
 }
 
-/**
- * Flags a file over `cap` words, and each paragraph, list item, or table row over
- * `MAX_BLOCK_WORDS`. Code fences don't count, so a diagram costs nothing.
- */
-export function checkBudget(file: string, text: string, cap: number): Problem[] {
-  const blocks: { line: number; words: number }[] = [];
+const BLOCK_START = /^\s*(?:[-*]\s|\d+\.\s|\||#)/u;
+const STANDALONE = /^\s*(?:\||#)/u;
+
+type Block = { line: number; words: number };
+
+function splitBlocks(text: string): Block[] {
+  const blocks: Block[] = [];
   let open = false;
   for (const [index, line] of proseLines(text).entries()) {
     if (line.trim() === "") {
@@ -100,11 +126,19 @@ export function checkBudget(file: string, text: string, cap: number): Problem[] 
       continue;
     }
     const last = blocks.at(-1);
-    if (open && last !== undefined && !/^\s*(?:[-*]\s|\d+\.\s|\||#)/u.test(line))
-      last.words += wordCount(line);
+    if (open && last !== undefined && !BLOCK_START.test(line)) last.words += wordCount(line);
     else blocks.push({ line: index + 1, words: wordCount(line) });
-    open = !/^\s*(?:\||#)/u.test(line);
+    open = !STANDALONE.test(line);
   }
+  return blocks;
+}
+
+/**
+ * Flags a file over `cap` words, and each paragraph, list item, or table row over
+ * `MAX_BLOCK_WORDS`. Code fences don't count, so a diagram costs nothing.
+ */
+export function checkBudget(file: string, text: string, cap: number): Problem[] {
+  const blocks = splitBlocks(text);
   const total = blocks.reduce((sum, block) => sum + block.words, 0);
   const overCap: Problem[] =
     total > cap
