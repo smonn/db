@@ -17,17 +17,21 @@ export function declaredTypeRenames(definition: DefinitionTables): TypeRenames {
   const renames: TypeRenames = { enums: [], labels: [], domains: [] };
   for (const [schema, entries] of Object.entries(definition)) {
     for (const [name, def] of Object.entries(entries)) {
-      if (isDomain(def) && def.renamedFrom !== undefined) {
-        renames.domains.push({ kind: "domain", schema, name, was: def.renamedFrom });
-      } else if (isEnum(def)) {
-        if (def.renamedFrom !== undefined) {
-          renames.enums.push({ kind: "enum", schema, name, was: def.renamedFrom });
-        }
-        renames.labels.push(...labelRenames(schema, name, def));
-      }
+      collectRenames(renames, schema, name, def);
     }
   }
   return renames;
+}
+
+function collectRenames(renames: TypeRenames, schema: string, name: string, def: unknown): void {
+  if (isDomain(def) && def.renamedFrom !== undefined) {
+    renames.domains.push({ kind: "domain", schema, name, was: def.renamedFrom });
+  } else if (isEnum(def)) {
+    if (def.renamedFrom !== undefined) {
+      renames.enums.push({ kind: "enum", schema, name, was: def.renamedFrom });
+    }
+    renames.labels.push(...labelRenames(schema, name, def));
+  }
 }
 
 function labelRenames(schema: string, name: string, def: Enum): LabelRename[] {
@@ -79,20 +83,29 @@ function labelApplies(
   if (type?.kind !== "enum") return false;
   const { labels } = type.payload;
   const hasOld = labels.includes(rename.was);
-  if (hasOld && chainsOrSwaps(rename, siblings)) {
+  if (hasOld) assertLabelRenameIsSafe(rename, enumName, labels, siblings);
+  return hasOld;
+}
+
+function assertLabelRenameIsSafe(
+  rename: LabelRename,
+  enumName: string,
+  labels: readonly string[],
+  siblings: readonly LabelRename[],
+): void {
+  if (chainsOrSwaps(rename, siblings)) {
     throw new Error(
       `enum ${quotedPath(rename.schema, enumName)} chains or swaps the label ${JSON.stringify(rename.name)} ` +
         "(it is both a new and an old label); split label chains and swaps across migrations",
     );
   }
-  if (hasOld && labels.includes(rename.name)) {
+  if (labels.includes(rename.name)) {
     throw new Error(
       `enum ${quotedPath(rename.schema, enumName)} has renamedLabels ${JSON.stringify(rename.name)} from ` +
         `${JSON.stringify(rename.was)}, but the Shadow database holds both labels; ` +
         "drop the label you no longer want, or remove the entry",
     );
   }
-  return hasOld;
 }
 
 function chainsOrSwaps(rename: LabelRename, siblings: readonly LabelRename[]): boolean {
