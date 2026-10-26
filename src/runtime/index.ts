@@ -1,10 +1,12 @@
-export { defineDatabase, defineTable } from "./definition/index.ts";
+export { defineDatabase, defineTable, plainDate } from "./definition/index.ts";
 export type {
+  Codec,
   Column,
   ColumnFactories,
   Columns,
   ColumnState,
   Database,
+  PlainDate,
   Row,
   Table,
   TableDefinition,

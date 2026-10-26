@@ -135,9 +135,50 @@ describe("main rebase", () => {
 
     expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
     expect(cli.stderr).toBe(
-      `${folder} has uncommitted changes to 000002-x.sql, 000003-y.sql; set them aside with git -C '${folder}' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase\n`,
+      `${folder} has changes git doesn't hold: 000002-x.sql, 000003-y.sql; set them aside with git -C '${folder}' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase\n`,
     );
     expect(await folderContents()).toStrictEqual(before);
+  });
+
+  it("ignores untracked junk, nested files, and a changed current.sql", async () => {
+    await forkedRepo();
+    const folder = join(cli.dir, "migrations");
+    await writeFile(join(folder, ".DS_Store"), "junk");
+    await writeFile(join(folder, "x.sql.swp"), "junk");
+    await mkdir(join(folder, "sub"));
+    await writeFile(join(folder, "sub", "nested.sql"), "select 1;\n");
+    await writeFile(join(folder, "current.sql"), "select 1;\n");
+
+    expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(0);
+    expect(await migrationNames()).toStrictEqual([
+      ".DS_Store",
+      "000001-a.sql",
+      "000002-b.sql",
+      "000003-x.sql",
+      "current.sql",
+      "sub",
+      "x.sql.swp",
+    ]);
+  });
+
+  it("refuses on a gitignored migration", async () => {
+    await forkedRepo();
+    const folder = join(cli.dir, "migrations");
+    const X3 = await writeMigration("000003-x.sql", B.hash, "create table x (n int);");
+    await writeFile(join(folder, X3.filename), X3.content);
+    await writeFile(join(cli.dir, ".gitignore"), "000003-x.sql\n");
+
+    expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
+    expect(cli.stderr).toContain("has changes git doesn't hold: 000003-x.sql;");
+  });
+
+  it("refuses on a gitignored leftover .sql.tmp", async () => {
+    await forkedRepo();
+    await writeFile(join(cli.dir, "migrations", "000003-x.sql.tmp"), "half");
+    await writeFile(join(cli.dir, ".gitignore"), "*.tmp\n");
+
+    expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
+    expect(cli.stderr).toContain("has changes git doesn't hold: 000003-x.sql.tmp;");
   });
 
   it("finishes on a rerun after the step it names when a run stopped before its removes", async () => {
@@ -148,7 +189,7 @@ describe("main rebase", () => {
 
     expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
     expect(cli.stderr).toBe(
-      `${folder} has uncommitted changes to 000003-x.sql; set them aside with git -C '${folder}' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase\n`,
+      `${folder} has changes git doesn't hold: 000003-x.sql; set them aside with git -C '${folder}' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase\n`,
     );
     runPrintedStep(cli.stderr, cli.dir);
 
