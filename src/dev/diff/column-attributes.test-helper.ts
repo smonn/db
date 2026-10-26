@@ -37,7 +37,11 @@ export function table(columns: Readonly<Record<string, Column>>, keys: Keys = {}
   if (keys.primary !== undefined) {
     builder.primaryKey("public", "t", "t_pkey", { columns: keys.primary });
   }
-  if (keys.unique !== undefined) builder.unique("public", "t", keys.unique.name, keys.unique);
+  if (keys.unique !== undefined)
+    builder.unique("public", "t", keys.unique.name, {
+      columns: [keys.unique.column],
+      nullsNotDistinct: false,
+    });
   return builder.build();
 }
 

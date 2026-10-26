@@ -19,13 +19,42 @@ function postgresType(sqlType: string): string {
   return `${TYPE_NAMES[name] ?? name}${spelled}`;
 }
 
+const ARRAY_SUFFIX = "[]";
+
+/**
+ * The array of a type, spelled as `format_type` does: `[]` after the element, whatever its
+ * modifiers or quoting. Postgres shows no dimensions, so every array is one-dimensional here.
+ */
+export function arrayType(element: string): string {
+  return `${element}${ARRAY_SUFFIX}`;
+}
+
+/** The element of an array type spelled by `arrayType`, or `undefined` for any other type. */
+export function elementOf(type: string): string | undefined {
+  return type.endsWith(ARRAY_SUFFIX) ? type.slice(0, -ARRAY_SUFFIX.length) : undefined;
+}
+
 /**
  * A column's type as `format_type` renders it. An enum column holds the enum itself, which
  * `enums` names by the key it sits under; `column` locates the column in the error for an enum
  * the Definition never rolled up.
  */
 export function columnType(
-  { sqlType, enumType }: { readonly sqlType: string; readonly enumType: Enum | undefined },
+  {
+    sqlType,
+    enumType,
+    array,
+  }: { readonly sqlType: string; readonly enumType: Enum | undefined; readonly array: boolean },
+  enums: ReadonlyMap<Enum, string>,
+  column: string,
+): string {
+  const element = elementType(sqlType, enumType, enums, column);
+  return array ? arrayType(element) : element;
+}
+
+function elementType(
+  sqlType: string,
+  enumType: Enum | undefined,
   enums: ReadonlyMap<Enum, string>,
   column: string,
 ): string {

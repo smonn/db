@@ -59,8 +59,44 @@ describe("retypeHazards", () => {
   });
 
   it("flags every hazard for a type it doesn't classify", () => {
-    expect(retypeHazards("integer[]", "bigint[]")).toStrictEqual(HAZARD_KINDS);
     expect(retypeHazards("integer", "citext")).toStrictEqual(HAZARD_KINDS);
+    expect(retypeHazards("citext[]", "text[]")).toStrictEqual(HAZARD_KINDS);
+    expect(retypeHazards("integer[]", "citext[]")).toStrictEqual(HAZARD_KINDS);
+  });
+});
+
+describe("retypeHazards for arrays", () => {
+  const rewrite = ["rewrite", "access_exclusive_lock"];
+
+  it("rewrites on any element change, even one that widens a length", () => {
+    expect(retypeHazards("character varying(20)[]", "character varying(40)[]")).toStrictEqual(
+      rewrite,
+    );
+    expect(retypeHazards("character varying(20)[]", "text[]")).toStrictEqual(rewrite);
+    expect(retypeHazards("integer[]", "bigint[]")).toStrictEqual(rewrite);
+  });
+
+  it("keeps the element pair's data_loss rule", () => {
+    expect(retypeHazards("numeric(10,2)[]", "integer[]")).toStrictEqual(["data_loss", ...rewrite]);
+    expect(retypeHazards("timestamp with time zone[]", "date[]")).toContain("data_loss");
+    expect(retypeHazards("bigint[]", "integer[]")).not.toContain("data_loss");
+  });
+
+  it("reads an enum element, keeping the enum pair's rule", () => {
+    const enums = new Set(["public.mood", "public.feeling"]);
+
+    expect(retypeHazards("public.mood[]", "text[]", enums)).toStrictEqual(rewrite);
+    expect(retypeHazards("public.mood[]", "public.feeling[]", enums)).toStrictEqual(rewrite);
+    expect(retypeHazards("public.mood[]", "integer[]", enums)).toStrictEqual(HAZARD_KINDS);
+  });
+
+  it("flags every hazard from a scalar to an array and back", () => {
+    expect(retypeHazards("integer", "integer[]")).toStrictEqual(HAZARD_KINDS);
+    expect(retypeHazards("integer[]", "integer")).toStrictEqual(HAZARD_KINDS);
+    expect(retypeHazards("text", "character varying(5)[]")).toStrictEqual(HAZARD_KINDS);
+    expect(retypeHazards("public.mood", "public.mood[]", new Set(["public.mood"]))).toStrictEqual(
+      HAZARD_KINDS,
+    );
   });
 });
 
@@ -226,5 +262,26 @@ describe("retypeHazards against Postgres 18", () => {
     expect(unflaggedLoss).toStrictEqual([]);
     // Guards against a probe that converts nothing.
     expect(converted.length).toBeGreaterThan(150);
+  });
+
+  it("rewrites the table when only an array's element length grows", async () => {
+    await db.driver.execute(
+      "drop table if exists public.probe; create table public.probe (c character varying(20)[]); insert into public.probe values ('{a,b}')",
+    );
+    const relfilenode = async (): Promise<unknown> => {
+      const { rows } = await db.driver.query(
+        "select relfilenode from pg_class where oid = 'public.probe'::regclass",
+      );
+      return rows[0]?.["relfilenode"];
+    };
+    const before = await relfilenode();
+
+    await db.driver.execute("alter table public.probe alter column c type character varying(40)[]");
+
+    expect(await relfilenode()).not.toBe(before);
+    expect(retypeHazards("character varying(20)[]", "character varying(40)[]")).toContain(
+      "rewrite",
+    );
+    await db.driver.execute("drop table public.probe");
   });
 });

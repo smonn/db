@@ -15,7 +15,7 @@ function table(kind: Kind): Catalog {
   builder.table("public", "t");
   builder.column("public", "t", "a", { type: "text", notNull: true });
   if (kind === "primary key") builder.primaryKey("public", "t", "t_key", { columns: ["a"] });
-  else builder.unique("public", "t", "t_key", { column: "a" });
+  else builder.unique("public", "t", "t_key", { columns: ["a"], nullsNotDistinct: false });
   return builder.build();
 }
 

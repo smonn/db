@@ -2,6 +2,13 @@ import type { Columns } from "./column.ts";
 import { isEnum, type Enum } from "./enum.ts";
 import { type ColumnFactories, factories } from "./factories.ts";
 import { type ForeignKey, foreignKeysOf, placesOf, type Places } from "./foreign-keys.ts";
+import {
+  keyColumns,
+  refsOf,
+  type RuntimeRefs,
+  uniquesOf,
+  type UniqueConstraint,
+} from "./table-keys.ts";
 
 /** A table without its name or schema, which `defineDatabase` gives it. */
 export type TableDefinition<C extends Columns = Columns, K extends string = string> = {
@@ -10,6 +17,8 @@ export type TableDefinition<C extends Columns = Columns, K extends string = stri
   readonly primaryKey: readonly K[];
   /** The primary key's constraint name when the Definition gives one; the catalog derives it otherwise. */
   readonly primaryKeyName: string | undefined;
+  /** The unique constraints over two or more columns that the second callback declares. */
+  readonly uniques: readonly UniqueConstraint[];
   /** The SQL name the table had before a rename, for generate to turn into a `RENAME`. */
   readonly renamedFrom: string | undefined;
 };
@@ -58,10 +67,20 @@ type KeyEntry<C extends Columns> =
   | KeyRefs<C>
   | { readonly name: string; readonly columns: KeyRefs<C> };
 
+/** A unique constraint over at least two columns; one column calls `unique()` instead. */
+type UniqueEntry<C extends Columns> = {
+  readonly columns: KeyRefs<C>;
+  /** Replaces the derived name, `<table>_<columns joined by _>_key`. */
+  readonly name?: string;
+  /** Treats NULLs as equal, so two rows with the same columns and a NULL conflict. */
+  readonly nullsNotDistinct?: boolean;
+};
+
 /** The table-level entries, keyed by kind. Later kinds (indexes, checks) join here. */
 type TableExtras<C extends Columns> = {
   /** The table's SQL name before this change; generate ignores it once the old name is gone. */
   readonly renamedFrom?: string;
+  readonly unique?: readonly UniqueEntry<C>[];
 } & ([KeyedColumns<C>] extends [never]
   ? { readonly primaryKey?: KeyEntry<C> }
   : { readonly primaryKey?: never });
@@ -87,27 +106,6 @@ type KeyOf<C extends Columns, Args extends unknown[]> = Args extends [
     : never
   : KeyedColumns<C>;
 
-/** A `Ref` as it exists at runtime; one table's references are told from another's by identity. */
-type RuntimeRefs = Readonly<Record<string, { readonly "~ref": string }>>;
-
-function refsOf(columns: Columns): RuntimeRefs {
-  return Object.fromEntries(Object.keys(columns).map((name) => [name, { "~ref": name }]));
-}
-
-/** The column key `ref` names, once it proves to be one of this table's own references. */
-function columnOf(own: RuntimeRefs, ref: unknown, entry: string): string {
-  const name = typeof ref === "object" && ref !== null && "~ref" in ref ? ref["~ref"] : undefined;
-  if (typeof name !== "string") {
-    throw new TypeError(`The table's ${entry} names something that is not one of its columns`);
-  }
-  if (own[name] !== ref) {
-    throw new Error(
-      `The table's ${entry} takes "${name}" from another table; name columns through the references its own second callback receives`,
-    );
-  }
-  return name;
-}
-
 type PrimaryKey = { readonly columns: string[]; readonly name: string | undefined };
 
 function primaryKeyOf(columns: Columns, own: RuntimeRefs, declared: unknown): PrimaryKey {
@@ -126,7 +124,7 @@ function primaryKeyOf(columns: Columns, own: RuntimeRefs, declared: unknown): Pr
     );
   }
   const entry = keyEntry(declared);
-  return { columns: keyColumns(own, entry.columns), name: entry.name };
+  return { columns: keyColumns(own, entry.columns, "primaryKey"), name: entry.name };
 }
 
 function keyEntry(declared: unknown): { name: string | undefined; columns: unknown } {
@@ -139,36 +137,23 @@ function keyEntry(declared: unknown): { name: string | undefined; columns: unkno
   throw new TypeError("The table's primaryKey takes a list of columns or { name, columns }");
 }
 
-function keyColumns(own: RuntimeRefs, declared: unknown): string[] {
-  const refs: unknown[] = Array.isArray(declared) ? declared : [];
-  if (refs.length < 2) {
-    throw new Error(
-      "The table's primaryKey lists fewer than two columns; call primaryKey() on the column instead",
-    );
-  }
-  const keys: string[] = [];
-  for (const ref of refs) {
-    const name = columnOf(own, ref, "primaryKey");
-    if (keys.includes(name)) {
-      throw new Error(`The table's primaryKey lists "${name}" twice`);
-    }
-    keys.push(name);
-  }
-  return keys;
-}
-
 export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
   define: (c: ColumnFactories) => C,
   ...args: Args
 ): TableDefinition<C, KeyOf<C, Args>> {
   const columns = define(factories);
   const extras:
-    | ((t: ColumnRefs<C>) => { readonly primaryKey?: unknown; readonly renamedFrom?: unknown })
+    | ((t: ColumnRefs<C>) => {
+        readonly primaryKey?: unknown;
+        readonly unique?: unknown;
+        readonly renamedFrom?: unknown;
+      })
     | undefined = args[0];
   const own = refsOf(columns);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- refsOf builds one Ref per key; "~table" exists only in types.
   const declared = extras?.(own as unknown as ColumnRefs<C>);
   const primaryKey = primaryKeyOf(columns, own, declared?.primaryKey);
+  const uniques = uniquesOf(own, declared?.unique);
   const renamedFrom = declared?.renamedFrom;
   if (renamedFrom !== undefined && typeof renamedFrom !== "string") {
     throw new TypeError("The table's renamedFrom takes the old SQL name as a string");
@@ -184,6 +169,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
     columns,
     primaryKey: primaryKey.columns,
     primaryKeyName: primaryKey.name,
+    uniques,
     renamedFrom,
   } as unknown as TableDefinition<C, KeyOf<C, Args>>;
 }
@@ -205,7 +191,7 @@ function tableOf(
   places: Places,
   schema: string,
   name: string,
-  { columns, primaryKey, primaryKeyName, renamedFrom }: TableDefinition,
+  { columns, primaryKey, primaryKeyName, uniques, renamedFrom }: TableDefinition,
 ): Table {
   return {
     schema,
@@ -213,6 +199,7 @@ function tableOf(
     columns,
     primaryKey,
     primaryKeyName,
+    uniques,
     renamedFrom,
     foreignKeys: foreignKeysOf(places, schema, name, columns),
   };

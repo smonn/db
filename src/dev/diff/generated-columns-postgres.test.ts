@@ -76,7 +76,7 @@ describe("generated columns against Postgres", () => {
     builder.columnGenerated("public", "t", "w", virtual("(a * 2)"));
     builder.columnGenerated("public", "t", "x", virtual("(a * 5)"));
     builder.primaryKey("public", "t", "t_pkey", { columns: ["a"] });
-    builder.unique("public", "t", "t_p_key", { column: "p" });
+    builder.unique("public", "t", "t_p_key", { columns: ["p"], nullsNotDistinct: false });
     const wanted = builder.build();
 
     await db.driver.execute(diff(await introspect(db.driver), wanted));

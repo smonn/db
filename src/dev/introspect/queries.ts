@@ -29,6 +29,7 @@ where t.typtype = 'e' and ${KEPT_SCHEMA}
   and ${NOT_EXTENSION_MEMBER("pg_type", "t")}
 order by t.typname`;
 
+// A column of an array of a composite or range type is an Unmodeled object (ADR-0005, ADR-0023).
 export const COLUMNS: string = `
 select n.nspname as schema, c.relname as table, a.attname as name,
   format_type(a.atttypid, a.atttypmod) as type, a.attnotnull as not_null,
@@ -48,13 +49,18 @@ from pg_attribute a
   join pg_namespace n on n.oid = c.relnamespace
   left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
 where c.relkind = 'r' and a.attnum > 0 and not a.attisdropped and ${KEPT_SCHEMA}
+  and not exists (
+    select from pg_type t join pg_type e on e.oid = t.typelem
+    where t.oid = a.atttypid and t.typcategory = 'A' and e.typtype in ('c', 'r')
+  )
 order by a.attnum`;
 
-// Multi-column unique constraints wait for v0.2, so only a single `conkey` entry counts. A
-// deferrable, NULLS NOT DISTINCT, INCLUDE, or WITHOUT OVERLAPS key reads like a plain one, so it
-// is skipped as an Unmodeled object (ADR-0005).
+// A deferrable, INCLUDE, or WITHOUT OVERLAPS key reads like a plain one, so it is skipped as an
+// Unmodeled object (ADR-0005), as is a single-column NULLS NOT DISTINCT unique: only a unique entry
+// over two or more columns can declare it (ADR-0021). A multi-column one is modeled.
 export const CONSTRAINTS: string = `
 select n.nspname as schema, c.relname as table, k.conname as name, k.contype as type,
+  i.indnullsnotdistinct as nulls_not_distinct,
   array(
     select a.attname::text
     from unnest(k.conkey) with ordinality as key(attnum, position)
@@ -65,9 +71,10 @@ from pg_constraint k
   join pg_class c on c.oid = k.conrelid
   join pg_namespace n on n.oid = c.relnamespace
   join pg_index i on i.indexrelid = k.conindid
-where (k.contype = 'p' or (k.contype = 'u' and cardinality(k.conkey) = 1))
+where k.contype in ('p', 'u')
   and not k.condeferrable and not k.conperiod
-  and not i.indnullsnotdistinct and i.indnkeyatts = i.indnatts
+  and i.indnkeyatts = i.indnatts
+  and not (cardinality(k.conkey) = 1 and i.indnullsnotdistinct)
   and c.relkind = 'r' and not c.relispartition and ${KEPT_SCHEMA}
   and ${NOT_EXTENSION_MEMBER("pg_class", "c")}
 order by k.conname`;
