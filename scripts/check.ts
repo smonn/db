@@ -5,10 +5,13 @@
  * `clear:review` (each needs an event payload).
  *
  * Run from the repo root with `pnpm check`. Like `pnpm coverage`, it needs the test database:
- * run `node scripts/test-db.ts` first. When a CI job gains a step, add its script here.
+ * run `node scripts/test-db.ts` first, or it fails `coverage` with that hint instead of running it.
+ * When a CI job gains a step, add its script here.
  * `pnpm check:static` (`--static`) skips `coverage`, so it needs no database; pre-push runs it.
  */
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 export const checks = [
   "format:check",
@@ -39,14 +42,27 @@ export function runChecks(scripts: readonly string[], run: Run = runScript): str
   });
 }
 
-export function main(run: Run = runScript, args: readonly string[] = process.argv.slice(2)): void {
+// Same lookup as vitest.config.ts: CI sets DATABASE_URL, scripts/test-db.ts writes .env.test.
+const hasTestDatabase = (): boolean =>
+  process.env["DATABASE_URL"] !== undefined ||
+  existsSync(fileURLToPath(new URL("../.env.test", import.meta.url)));
+
+export function main(
+  run: Run = runScript,
+  args: readonly string[] = process.argv.slice(2),
+  hasDatabase: () => boolean = hasTestDatabase,
+): void {
   const unknown = args.filter((arg) => arg !== "--static");
   if (unknown.length > 0)
     throw new Error(`Unknown argument "${unknown.join(" ")}"; expected --static.`);
   const scripts = args.includes("--static")
     ? checks.filter((script) => script !== "coverage")
     : checks;
-  const failed = runChecks(scripts, run);
+  const failed = runChecks(scripts, (script) => {
+    if (script !== "coverage" || hasDatabase()) return run(script);
+    console.error("Skipped: no test database. Run `node scripts/test-db.ts`, or set DATABASE_URL.");
+    return false;
+  });
   if (failed.length === 0) {
     console.log(`\nAll ${scripts.length} checks passed`);
     return;
