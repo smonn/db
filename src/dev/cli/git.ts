@@ -63,10 +63,19 @@ export function gitMigrationSource(directory: string, ref: string): MigrationSou
   };
 }
 
-/** The paths under `directory`, relative to it, that differ from the last commit or aren't tracked. */
-export async function uncommittedPaths(directory: string): Promise<string[]> {
+/** The paths under `directory`, relative to it, that differ from the last commit, are untracked, or are gitignored. */
+export async function unheldPaths(directory: string): Promise<string[]> {
   const prefix = (await git(directory, ["rev-parse", "--show-prefix"])).trim();
-  const args = ["status", "--porcelain", "-z", "--untracked-files=all", "--no-renames", "--", "."];
+  const args = [
+    "status",
+    "--porcelain",
+    "-z",
+    "--untracked-files=all",
+    "--ignored=matching",
+    "--no-renames",
+    "--",
+    ".",
+  ];
   return (await git(directory, args))
     .split("\0")
     .filter((entry) => entry !== "")

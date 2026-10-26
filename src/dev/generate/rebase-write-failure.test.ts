@@ -50,7 +50,7 @@ function rebaseFailing(
     migrations: MIGRATIONS,
     base: { list: () => Promise.resolve(base) },
     onto: "origin/main",
-    uncommitted: [],
+    unheld: [],
   });
   return { fileSystem, result };
 }
