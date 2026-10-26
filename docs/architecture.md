@@ -291,8 +291,9 @@ Schemas, tables, columns (type, NOT NULL, default, identity), single and composi
 
 1. The Definition converts to a catalog, spelling each type as `format_type` does, and the diff renders it against the catalog of the freshly created Definition database, which holds only template0's `public` schema. That SQL builds the Definition database.
 2. `introspect` reads each database in one `REPEATABLE READ READ ONLY` transaction with `search_path` pinned to `pg_catalog`, keyed by name, never by OID.
-3. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL.
-4. Generate verifies the SQL in the Shadow (ADR-0013), then writes the Current migration. A hand-edited `current.sql` is verified instead of the generated SQL, and a leftover difference is a warning.
+3. Generate runs the Definition's `renamedFrom` markers on the Shadow inside a transaction, introspects it, and rolls back (ADR-0024). Postgres follows a rename by OID, so every default and expression in that catalog already names the new object. A marker whose old name the Shadow lacks is skipped, and one whose old and new names both exist throws.
+4. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL. The renames that ran open the SQL, so the migration repeats them. It also returns hints, which generate prints: the `renamedFrom` to add when a table drops one column and adds one of the same type, or a schema drops one table and adds one with identical columns. A hint never reaches the SQL.
+5. Generate verifies the SQL in the Shadow (ADR-0013), then writes the Current migration. A hand-edited `current.sql` is verified instead of the generated SQL, and a leftover difference is a warning.
 
 ### Catalog
 
@@ -325,15 +326,17 @@ Ranks within a phase follow #381's listed order and leave gaps for kinds that la
 - Primary keys and unique constraints drop with `ALTER TABLE ... DROP CONSTRAINT` in phase 3 and add with `ALTER TABLE ... ADD CONSTRAINT` in phase 7, never inline in `CREATE TABLE`, which also silently drops an inline unique that duplicates the primary key.
 - A new column appends; column order differences are ignored, since Postgres can't reorder columns.
 - A type change is a plain `ALTER COLUMN ... TYPE` with no `USING`. When a cast is needed, edit the Current migration by hand.
-- Renaming a Definition key drops and creates, flagged as data loss (ADR-0010).
+- A table or column with a `renamedFrom` marker renames with `ALTER TABLE ... RENAME TO` or `ALTER TABLE ... RENAME COLUMN` in phase 1, tables first, so the column statements and every later statement use the new names. A rename combined with a retype emits the `RENAME` first. Without a marker, a renamed key drops and creates, flagged as data loss (ADR-0010, ADR-0024).
 
 ### Hazards
 
-Each action kind declares its Hazards (`data_loss`, `rewrite`, `access_exclusive_lock`) in a table, classified from the catalog, not the SQL text. Each Hazard is written as a `-- hazard: <kind>` comment above its statement, and generate returns them with their statements. Generation never blocks on a Hazard; commit does, per kind (ADR-0015). Commit also refuses a line that matches `--+\s*hazard\s*:` (case-insensitive, singular) without being a `-- hazard: <kind>` comment above a statement, such as an indented, unspaced, recased, trailing, or mid-statement one, since that would drop its gate by accident; deleting the comment drops it on purpose.
+Each action kind declares its Hazards (`data_loss`, `rewrite`, `access_exclusive_lock`, `rename`) in a table, classified from the catalog, not the SQL text. Each Hazard is written as a `-- hazard: <kind>` comment above its statement, and generate returns them with their statements. Generation never blocks on a Hazard; commit does, per kind (ADR-0015). Commit also refuses a line that matches `--+\s*hazard\s*:` (case-insensitive, singular) without being a `-- hazard: <kind>` comment above a statement, such as an indented, unspaced, recased, trailing, or mid-statement one, since that would drop its gate by accident; deleting the comment drops it on purpose.
 
 - `data_loss`: a dropped column or table (so a rename too, ADR-0010), and a type change that converts values without an error but not back, such as `numeric(10,2)` to `integer`, `timestamptz` to `date`, or `double precision` to `real`. A change that fails on a value that doesn't fit, such as `bigint` to `integer`, loses nothing, since the statement rolls back.
 - `rewrite`: a type change Postgres can't make in place, and a new column whose default calls a volatile function, that is an identity, or that is stored generated, and a new expression on a stored generated column, because each row needs its own value. A virtual column computes on read and rewrites nothing. In place are only `varchar(n)` to a longer `varchar(m)`, `varchar`, or `text`, `text` to `varchar`, and `numeric(p,s)` to `numeric(q,s)` with `q >= p` or to unbounded `numeric`. `timestamp` and `timestamptz` skip the rewrite only in a UTC session, which a migration can't count on, so they count as a rewrite. A default is volatile when its expression calls a function that `pg_proc` marks volatile, which `introspect` reads by function name, since `pg_depend` omits built-in functions.
 - `access_exclusive_lock`: a statement that holds the lock while it does work that grows with the table. Every `ALTER TABLE` takes that lock, but only a rewrite (which therefore carries both kinds), `SET NOT NULL` (a scan of every row), and adding a primary key or unique constraint (an index build) hold it past a catalog change. Adding a key to a table created in the same migration is empty, so it carries nothing.
+
+- `rename`: a table or column rename. The statement only changes the catalog, but app code still on the old name breaks between `migrate` and its deploy, so accepting it should be explicit (ADR-0024).
 
 A type v0.1 doesn't classify carries every Hazard, since only the gate can say it is safe.
 
