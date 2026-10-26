@@ -3,14 +3,13 @@ import {
   currentHash,
   DEFAULT_TRACKING_SCHEMA,
   parseCurrent,
-  parseMigration,
   quoteIdentifier,
   readCommitted,
   trackingSchema,
   type CurrentMigration,
   type TrackingSchema,
 } from "../../runtime/internal/index.ts";
-import { verify } from "../../runtime/migrator/index.ts";
+import { applyInTransaction, loadVerifiedMigrations } from "../../runtime/migrator/index.ts";
 import type { Driver, FileSystem, MigrationSource } from "../../runtime/ports/index.ts";
 import { requireSupportedServer } from "../introspect/index.ts";
 import { withDevLock } from "./dev-lock.ts";
@@ -63,10 +62,7 @@ export async function resetDevDatabase(
   current?: CurrentMigration,
 ): Promise<void> {
   // A broken chain would otherwise fail the replay after the wipe.
-  await verify(committed);
-  const migrations = (await committed.list())
-    .map((file) => parseMigration(file))
-    .toSorted((a, b) => a.sequence - b.sequence);
+  const migrations = await loadVerifiedMigrations(committed);
   await driver.transaction(async (tx) => {
     const { rows: extensions } = await tx.query(EXTENSIONS);
     await tx.execute(
@@ -83,10 +79,7 @@ export async function resetDevDatabase(
     await tracking.ensureMigrationsTable(tx);
     for (const migration of migrations) {
       // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
-      await replay(migration.filename, async () => {
-        await tx.execute(migration.body);
-        await tracking.recordMigration(tx, migration);
-      });
+      await replay(migration.filename, () => applyInTransaction(tx, tracking, migration));
     }
     if (current === undefined) return;
     await replay(CURRENT_FILENAME, async () => {
