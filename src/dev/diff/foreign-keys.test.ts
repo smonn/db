@@ -1,47 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { catalogBuilder, type Catalog, type ForeignKeyPayload } from "../catalog/index.ts";
+import { catalogBuilder } from "../catalog/index.ts";
 import { bareDiff } from "./bare-sql.test-helper.ts";
 import { diff } from "./diff.ts";
-
-const PLAIN: ForeignKeyPayload = {
-  columns: ["user_id"],
-  target: { schema: "public", table: "users", columns: ["id"] },
-  onDelete: "no action",
-  onUpdate: "no action",
-  match: "simple",
-  deferrable: "not deferrable",
-};
-
-type Shape = {
-  /** The tables `users` and `orders` exist unless this is false. */
-  readonly orders?: boolean;
-  readonly foreignKeys?: Readonly<Record<string, Partial<ForeignKeyPayload>>>;
-  readonly users?: boolean;
-};
-
-/** `public.users (id)` and `public.orders (id, user_id)`, with the given foreign keys on `orders`. */
-function database({ orders = true, users = true, foreignKeys = {} }: Shape): Catalog {
-  const builder = catalogBuilder();
-  builder.schema("public");
-  if (users) {
-    builder.table("public", "users");
-    builder.column("public", "users", "id", { type: "integer", notNull: true });
-    builder.primaryKey("public", "users", "users_pkey", { columns: ["id"] });
-  }
-  if (orders) {
-    builder.table("public", "orders");
-    builder.column("public", "orders", "id", { type: "integer", notNull: true });
-    builder.column("public", "orders", "user_id", { type: "integer", notNull: false });
-    for (const [name, payload] of Object.entries(foreignKeys)) {
-      builder.foreignKey("public", "orders", name, { ...PLAIN, ...payload });
-    }
-  }
-  return builder.build();
-}
-
-const FK = "orders_user_id_fkey";
-const ADD = `alter table "public"."orders" add constraint "${FK}" foreign key ("user_id") references "public"."users" ("id")`;
-const DROP = `alter table "public"."orders" drop constraint "${FK}";`;
+import { ADD, DROP, FK, PLAIN, database } from "./foreign-keys.test-helper.ts";
 
 describe("adding a foreign key", () => {
   it("is an ALTER TABLE ADD CONSTRAINT after the tables and keys it needs, never inline", () => {
@@ -211,49 +172,5 @@ describe("dropping a foreign key", () => {
 
     expect(result.sql).toBe(`${DROP}\n`);
     expect(result.hazards).toStrictEqual([]);
-  });
-});
-
-describe("changing a foreign key", () => {
-  it.each([
-    ["an action", { onDelete: "cascade" }],
-    ["the update action", { onUpdate: "restrict" }],
-    ["MATCH", { match: "full" }],
-    ["deferrable", { deferrable: "deferred" }],
-    ["its columns", { columns: ["id"] }],
-    ["its target", { target: { schema: "public", table: "orders", columns: ["id"] } }],
-  ] as const)("drops and adds it back when %s changes", (_, change) => {
-    const result = diff(
-      database({ foreignKeys: { [FK]: {} } }),
-      database({ foreignKeys: { [FK]: change } }),
-    );
-
-    expect(result.sql.split("\n\n")).toStrictEqual([
-      DROP,
-      expect.stringContaining(
-        `-- hazard: share_row_exclusive_lock\n${ADD.split(" foreign key")[0]}`,
-      ),
-    ]);
-  });
-
-  it("rebuilds one under a new name", () => {
-    const sql = bareDiff(
-      database({ foreignKeys: { old: {} } }),
-      database({ foreignKeys: { fresh: {} } }),
-    );
-
-    expect(sql.split("\n\n")).toStrictEqual([
-      `alter table "public"."orders" drop constraint "old";`,
-      expect.stringContaining(`add constraint "fresh" foreign key`),
-    ]);
-  });
-
-  it("emits nothing for an unchanged foreign key, whatever the payload's key order", () => {
-    expect(
-      diff(
-        database({ foreignKeys: { [FK]: { onDelete: "cascade" } } }),
-        database({ foreignKeys: { [FK]: { onDelete: "cascade" } } }),
-      ).sql,
-    ).toBe("");
   });
 });

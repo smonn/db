@@ -195,7 +195,6 @@ export function catalogBuilder(): CatalogBuilder {
 
 type Added = (kind: Fact["kind"], ...names: string[]) => Key;
 
-/** The keys, which each check their table and columns before adding their fact. */
 function constraintMethods(
   catalog: Map<Key, Fact>,
   added: Added,
