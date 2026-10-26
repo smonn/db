@@ -6,6 +6,7 @@ import {
   type Table,
 } from "../../runtime/definition/index.ts";
 import { catalogBuilder, quoted, type CatalogBuilder } from "./catalog.ts";
+import { plainKeyColumns } from "./payloads.ts";
 import { columnType, typeNamesOf, type TypeNames } from "./column-type.ts";
 import { constraintNames, type ConstraintNames } from "./constraint-names.ts";
 import { addDomain } from "./domains.ts";
@@ -98,12 +99,14 @@ function addIndexes(
         method,
         keys: [key],
         include: [],
+        where: undefined,
         nullsNotDistinct: false,
       });
     }
   }
   for (const { name, keys, include, ...payload } of indexes) {
-    const listed = keys.map(({ column }) => column);
+    // An expression key demands a name, so a derived name only ever lists plain columns.
+    const listed = plainKeyColumns(keys);
     builder.index(schema, table, names.index(table, listed, name), {
       ...payload,
       keys: [...keys],

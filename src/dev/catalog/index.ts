@@ -14,6 +14,7 @@ export type {
   Rename,
   TableRename,
 } from "./rename-types.ts";
+export { plainKeyColumns } from "./payloads.ts";
 export type {
   ColumnPayload,
   DefaultPayload,

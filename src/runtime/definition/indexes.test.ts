@@ -36,6 +36,7 @@ describe("an indexes entry in the second callback", () => {
         method: "btree",
         unique: false,
         nullsNotDistinct: false,
+        where: undefined,
       },
     ]);
     expectTypeOf<Row<typeof t>>().toEqualTypeOf<{
@@ -177,7 +178,7 @@ describe("an indexes entry in the second callback", () => {
   });
 
   it("rejects an unknown key by name, and a shape that is not a list of entries", () => {
-    expect(load(() => ({ columns: [], where: "true" }))).toThrow('does not take "where"');
+    expect(load(() => ({ columns: [], having: "true" }))).toThrow('does not take "having"');
     expect(loadRaw(() => ({}))).toThrow("The table's indexes takes a list of");
     expect(loadRaw(() => [null])).toThrow("The table's indexes takes a list of");
     expect(() =>
