@@ -148,3 +148,7 @@ dist
 
 # Test database URL from scripts/test-db.ts
 .env.test
+
+# Stryker sandbox and reports from pnpm mutation
+.stryker-tmp/
+reports/

@@ -6,15 +6,18 @@ export {
   plainDate,
 } from "./definition/index.ts";
 export type {
+  Casing,
   Codec,
   Column,
   ColumnFactories,
   Columns,
   ColumnState,
   Database,
+  DatabaseOptions,
   Domain,
   DomainOptions,
   Enum,
+  EnumOptions,
   ForeignKey,
   ForeignKeyAction,
   ForeignKeyOptions,

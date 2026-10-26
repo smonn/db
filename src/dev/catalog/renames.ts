@@ -1,4 +1,4 @@
-import { isDomain, isEnum } from "../../runtime/definition/index.ts";
+import { isDomain, isEnum, sqlDefinition } from "../../runtime/definition/index.ts";
 import type { Catalog } from "./fact.ts";
 import type { DefinitionTables } from "./definition-catalog.ts";
 import { applies } from "./rename-applies.ts";
@@ -11,7 +11,8 @@ export type { Rename } from "./rename-types.ts";
  * Every `renamedFrom` marker in the Definition, in the order the renames run: tables, columns,
  * then enums, their labels, and domains.
  */
-export function declaredRenames(definition: DefinitionTables): Rename[] {
+export function declaredRenames(database: DefinitionTables): Rename[] {
+  const definition = sqlDefinition(database);
   const tables: Rename[] = [];
   const columns: Rename[] = [];
   for (const [schema, schemaTables] of Object.entries(definition)) {

@@ -1,5 +1,6 @@
 import { assert, describe, expect, it } from "vitest";
-import { defineDatabase, defineTable } from "./definition.ts";
+import { defineDatabase } from "./database.ts";
+import { defineTable } from "./definition.ts";
 import type { ColumnFactories } from "./factories.ts";
 import type { Target } from "./references.ts";
 import type { ColumnRefs } from "./refs.ts";

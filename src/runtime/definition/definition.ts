@@ -1,52 +1,11 @@
 import type { Columns } from "./column.ts";
-import { isDomain, type Domain } from "./domain.ts";
-import { isEnum, type Enum } from "./enum.ts";
 import { type ColumnFactories, factories } from "./factories.ts";
-import {
-  declaredForeignKeysOf,
-  type ForeignKey,
-  foreignKeysOf,
-  placesOf,
-  type Places,
-} from "./foreign-keys.ts";
-import { indexesOf, type TableIndex } from "./indexes.ts";
-import type { DeclaredForeignKey } from "./references.ts";
+import { declaredForeignKeysOf } from "./foreign-keys.ts";
+import { indexesOf } from "./indexes.ts";
 import type { ColumnRefs } from "./refs.ts";
 import type { ExtrasArgs, KeyOf } from "./table-extras.ts";
-import {
-  keyColumns,
-  refsOf,
-  type RuntimeRefs,
-  uniquesOf,
-  type UniqueConstraint,
-} from "./table-keys.ts";
-
-/** A table without its name or schema, which `defineDatabase` gives it. */
-export type TableDefinition<C extends Columns = Columns, K extends string = string> = {
-  readonly columns: C;
-  /** The primary key's columns in key order, empty without one. */
-  readonly primaryKey: readonly K[];
-  /** The primary key's constraint name when the Definition gives one; the catalog derives it otherwise. */
-  readonly primaryKeyName: string | undefined;
-  /** The unique constraints over two or more columns that the second callback declares. */
-  readonly uniques: readonly UniqueConstraint[];
-  /** The foreign keys the second callback declares; `defineDatabase` resolves them into `Table.foreignKeys`. */
-  readonly declaredForeignKeys: readonly DeclaredForeignKey[];
-  /** The indexes the second callback declares; a column's `.index()` stays in its state. */
-  readonly indexes: readonly TableIndex[];
-  /** The SQL name the table had before a rename, for generate to turn into a `RENAME`. */
-  readonly renamedFrom: string | undefined;
-};
-
-export type Table<C extends Columns = Columns, K extends string = string> = TableDefinition<
-  C,
-  K
-> & {
-  readonly schema: string;
-  readonly name: string;
-  /** The foreign keys its columns and second callback declare, with each target's table named. */
-  readonly foreignKeys: readonly ForeignKey[];
-};
+import { keyColumns, refsOf, type RuntimeRefs, uniquesOf } from "./table-keys.ts";
+import type { TableDefinition } from "./table.ts";
 
 type PrimaryKey = { readonly columns: string[]; readonly name: string | undefined };
 
@@ -99,12 +58,18 @@ function renamedFromOf(declared: unknown): string | undefined {
   throw new TypeError("The table's renamedFrom takes the old SQL name as a string");
 }
 
+function sqlNameOf(declared: unknown): string | undefined {
+  if (declared === undefined || typeof declared === "string") return declared;
+  throw new TypeError("The table's name takes its SQL name as a string");
+}
+
 type Extras = {
   readonly primaryKey?: unknown;
   readonly unique?: unknown;
   readonly foreignKeys?: unknown;
   readonly indexes?: unknown;
   readonly renamedFrom?: unknown;
+  readonly name?: unknown;
 };
 
 function declaredExtras<C extends Columns>(
@@ -127,6 +92,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>
   const declaredForeignKeys = declaredForeignKeysOf(own, declared?.foreignKeys);
   const indexes = indexesOf(own, declared?.indexes);
   const renamedFrom = renamedFromOf(declared?.renamedFrom);
+  const explicitName = sqlNameOf(declared?.name);
   refuseKeyAndUnique(columns);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the key names are checked above.
   return {
@@ -136,67 +102,9 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>
     uniques,
     declaredForeignKeys,
     indexes,
+    explicitName,
     renamedFrom,
   } as unknown as TableDefinition<C, KeyOf<C, Args>>;
-}
-
-/** What a schema holds: tables, enums, and domains, which share one pool of names in Postgres. */
-type SchemaEntry = TableDefinition | Enum | Domain;
-
-type Schemas = Record<string, Record<string, SchemaEntry>>;
-
-export type Database<S extends Schemas> = {
-  readonly [Schema in keyof S]: {
-    readonly [Name in keyof S[Schema]]: S[Schema][Name] extends TableDefinition
-      ? Table<S[Schema][Name]["columns"], S[Schema][Name]["primaryKey"][number]>
-      : S[Schema][Name];
-  };
-};
-
-function tableOf(
-  places: Places,
-  schema: string,
-  name: string,
-  {
-    columns,
-    primaryKey,
-    primaryKeyName,
-    uniques,
-    declaredForeignKeys,
-    indexes,
-    renamedFrom,
-  }: TableDefinition,
-): Table {
-  return {
-    schema,
-    name,
-    columns,
-    primaryKey,
-    primaryKeyName,
-    uniques,
-    declaredForeignKeys,
-    indexes,
-    renamedFrom,
-    foreignKeys: foreignKeysOf(places, schema, name, { columns, primaryKey, declaredForeignKeys }),
-  };
-}
-
-export function defineDatabase<S extends Schemas>(schemas: S): Database<S> {
-  const places = placesOf(schemas);
-  const database = Object.fromEntries(
-    Object.entries(schemas).map(([schema, tables]) => [
-      schema,
-      Object.fromEntries(
-        Object.entries(tables).map(([name, entry]) => [
-          name,
-          // A type stays the value its columns hold, since the catalog finds its name by identity.
-          isEnum(entry) || isDomain(entry) ? entry : tableOf(places, schema, name, entry),
-        ]),
-      ),
-    ]),
-  );
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `Object.fromEntries` types the result as string-indexed records, which don't overlap `Database<S>` enough for a direct cast (TS2352); it goes through `unknown`.
-  return database as unknown as Database<S>;
 }
 
 type TypesOf<Col> = Col extends {

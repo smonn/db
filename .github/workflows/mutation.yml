@@ -1,0 +1,74 @@
+name: Mutation
+
+# Not a required check: the Required job in ci.yml doesn't need it, and it never runs on pull requests.
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  mutation:
+    name: Mutation (${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        # scripts/mutation-shards.ts defines each shard; its test keeps this list in step.
+        shard: [diff, dev, runtime, scripts]
+    services:
+      postgres:
+        image: postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres"
+          --health-interval 1s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      MUTATION_SHARD: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          cache: true
+      - run: pnpm mutation
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-report-${{ matrix.shard }}
+          path: reports/mutation/mutation.json
+
+  # Runs only when every shard finished, so a failed shard can't report its survivors as fixed.
+  report:
+    name: Report
+    needs: [mutation]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          cache: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: mutation-report-*
+          path: reports/mutation
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm mutation:report reports/mutation/*/mutation.json

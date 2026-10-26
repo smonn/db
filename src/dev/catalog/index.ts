@@ -2,7 +2,7 @@ export { catalogBuilder, childrenOf, factAt, namesOf, parentOf } from "./catalog
 export type { CatalogBuilder } from "./catalog.ts";
 export type { Catalog, Fact, Key } from "./fact.ts";
 export { arrayType, elementOf, typeName } from "./column-type.ts";
-export { definitionCatalog } from "./definition-catalog.ts";
+export { definitionCatalog, definitionSchemas } from "./definition-catalog.ts";
 export type { DefinitionTables } from "./definition-catalog.ts";
 export { arePayloadsEqual, qualified } from "./compare.ts";
 export { appliedRenames, declaredRenames } from "./renames.ts";
