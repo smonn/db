@@ -7,11 +7,10 @@ import {
   type Catalog,
   type DefinitionTables,
 } from "../catalog/index.ts";
-import { diff, type Diff } from "../diff/index.ts";
+import { diff, refuseTypeChanges, type Diff } from "../diff/index.ts";
 import { introspect } from "../introspect/index.ts";
 import { withShadowDatabases, type ShadowOptions } from "../shadow/index.ts";
 import { renameInShadow } from "./shadow-renames.ts";
-import { refuseSwapUnderDomains } from "./swap-domains.ts";
 import { leftoverAfter, verifyInShadow } from "./verify.ts";
 
 export type ShadowDiffOptions = {
@@ -61,7 +60,7 @@ export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
         });
         return leftover === undefined ? result : { ...result, leftover };
       }
-      await refuseSwapUnderDomains(databases.shadow, { from: catalog, to: target });
+      refuseTypeChanges({ from: catalog, to: target });
       if (result.sql !== "") await verifyInShadow(databases.shadow, result.sql, target, tracking);
       return result;
     },

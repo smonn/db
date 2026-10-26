@@ -13,7 +13,18 @@ import {
   type IdentityPayload,
 } from "../catalog/index.ts";
 import { addIndex, indexColumns } from "./indexes.ts";
-import { COLUMNS, CONSTRAINTS, ENUMS, FOREIGN_KEYS, INDEXES, SCHEMAS, TABLES } from "./queries.ts";
+import { addDomains } from "./domains.ts";
+import {
+  COLUMNS,
+  CONSTRAINTS,
+  DOMAIN_CHECKS,
+  DOMAINS,
+  ENUMS,
+  FOREIGN_KEYS,
+  INDEXES,
+  SCHEMAS,
+  TABLES,
+} from "./queries.ts";
 
 /** Why `SCHEMAS` skips `schema`, or `undefined` when introspect reads it. */
 export function skippedSchemaReason(
@@ -99,6 +110,8 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
   const { rows: schemas } = await tx.query(SCHEMAS, [trackingName]);
   const { rows: tables } = await tx.query(TABLES, [trackingName]);
   const { rows: enums } = await tx.query(ENUMS, [trackingName]);
+  const { rows: domains } = await tx.query(DOMAINS, [trackingName]);
+  const { rows: checks } = await tx.query(DOMAIN_CHECKS, [trackingName]);
   const { rows: columns } = await tx.query(COLUMNS, [trackingName]);
   const { rows: constraints } = await tx.query(CONSTRAINTS, [trackingName]);
   const { rows: indexes } = await tx.query(INDEXES, [trackingName]);
@@ -118,6 +131,7 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
       const labels = Array.isArray(type["labels"]) ? type["labels"].map(String) : [];
       builder.enumType(schema, String(type["name"]), { labels });
     }
+    addDomains(builder, schema, { domains, checks });
     for (const table of tables.filter((row) => row["schema"] === schema)) {
       addTable(builder, schema, String(table["name"]), rows);
     }

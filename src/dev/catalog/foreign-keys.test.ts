@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defineDatabase, defineTable, type Target } from "../../runtime/definition/index.ts";
-import { catalogBuilder, type Catalog } from "./catalog.ts";
+import { catalogBuilder } from "./catalog.ts";
+import type { Catalog } from "./fact.ts";
 import { definitionCatalog } from "./definition-catalog.ts";
 
 const users = defineTable((c) => ({
