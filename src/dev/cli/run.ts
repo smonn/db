@@ -36,52 +36,58 @@ export async function run(command: DatabaseCommand, project: Project): Promise<v
   }
 }
 
-async function runOn(driver: Driver, command: DatabaseCommand, project: Project): Promise<void> {
+type Context = {
+  readonly driver: Driver;
+  readonly project: Project;
+  readonly migrations: string;
+  readonly tracking: { readonly trackingSchema?: string };
+};
+
+function runOn(driver: Driver, command: DatabaseCommand, project: Project): Promise<void> {
   const { migrationsFolder: migrations, trackingSchema } = project;
   const tracking = trackingSchema === undefined ? {} : { trackingSchema };
+  const context = { driver, project, migrations, tracking };
+  if (command.name === "generate") return runGenerate(context);
+  if (command.name === "commit") return runCommit(context, command.slug, command.accept);
+  if (command.name === "reset") return runReset(context, command.erase);
+  return runMigrate(context);
+}
+
+async function runGenerate({ driver, project, migrations, tracking }: Context): Promise<void> {
+  const result = await generate({
+    driver,
+    connect: postgresJsConnect(project.url, { onnotice: ignoreNotice }),
+    fileSystem: nodeFileSystem(),
+    definition: await project.loadDefinition(),
+    migrations,
+    ...tracking,
+    log: (line) => {
+      process.stderr.write(`${line}\n`);
+    },
+    onInterrupt: onProcessInterrupt(),
+  });
+  for (const line of generateReport(result, relative(process.cwd(), result.path))) print(line);
+}
+
+async function runCommit(
+  { driver, migrations, tracking }: Context,
+  slug: string,
+  accept: CommitOptions["accept"],
+): Promise<void> {
   const fileSystem = nodeFileSystem();
-  switch (command.name) {
-    case "generate": {
-      const result = await generate({
-        driver,
-        connect: postgresJsConnect(project.url, { onnotice: ignoreNotice }),
-        fileSystem,
-        definition: await project.loadDefinition(),
-        migrations,
-        ...tracking,
-        log: (line) => {
-          process.stderr.write(`${line}\n`);
-        },
-        onInterrupt: onProcessInterrupt(),
-      });
-      for (const line of generateReport(result, relative(process.cwd(), result.path))) print(line);
-      return;
-    }
-    case "commit": {
-      const { slug, accept } = command;
-      const result = await commit({ driver, fileSystem, migrations, slug, accept, ...tracking });
-      print(`wrote ${relative(process.cwd(), result.path)}`);
-      return;
-    }
-    case "reset": {
-      const result = await reset({
-        driver,
-        fileSystem,
-        migrations,
-        erase: command.erase,
-        ...tracking,
-      });
-      print(resetReport(result));
-      return;
-    }
-    case "migrate": {
-      const source = nodeMigrationSource(migrations);
-      const { applied } = await migrate({ driver, source, ...tracking });
-      print(
-        applied.length === 0 ? "nothing to apply" : applied.map((f) => `applied ${f}`).join("\n"),
-      );
-    }
-  }
+  const result = await commit({ driver, fileSystem, migrations, slug, accept, ...tracking });
+  print(`wrote ${relative(process.cwd(), result.path)}`);
+}
+
+async function runReset({ driver, migrations, tracking }: Context, erase: boolean): Promise<void> {
+  const fileSystem = nodeFileSystem();
+  print(resetReport(await reset({ driver, fileSystem, migrations, erase, ...tracking })));
+}
+
+async function runMigrate({ driver, migrations, tracking }: Context): Promise<void> {
+  const source = nodeMigrationSource(migrations);
+  const { applied } = await migrate({ driver, source, ...tracking });
+  print(applied.length === 0 ? "nothing to apply" : applied.map((f) => `applied ${f}`).join("\n"));
 }
 
 export function print(line: string): void {

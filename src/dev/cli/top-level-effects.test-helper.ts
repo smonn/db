@@ -112,9 +112,8 @@ type Source = {
 
 /** The node's source, collapsed to one line and cut to about 80 characters. */
 function snippet(node: object, bytes: Buffer, base: number): string {
-  const span: unknown = Reflect.get(node, "span");
-  const start: unknown = typeof span === "object" && span !== null ? Reflect.get(span, "start") : 0;
-  const end: unknown = typeof span === "object" && span !== null ? Reflect.get(span, "end") : 0;
+  const start: unknown = spanEdge(node, "start", 0);
+  const end: unknown = spanEdge(node, "end", 0);
   if (typeof start !== "number" || typeof end !== "number") return "";
   const text = bytes
     .subarray(start - base, end - base)
@@ -124,10 +123,13 @@ function snippet(node: object, bytes: Buffer, base: number): string {
   return text.length > 80 ? `${text.slice(0, 77)}...` : text;
 }
 
-function startOf(node: object): number {
+function spanEdge(node: object, edge: "start" | "end", fallback: number): unknown {
   const span: unknown = Reflect.get(node, "span");
-  const start: unknown =
-    typeof span === "object" && span !== null ? Reflect.get(span, "start") : -1;
+  return typeof span === "object" && span !== null ? Reflect.get(span, edge) : fallback;
+}
+
+function startOf(node: object): number {
+  const start = spanEdge(node, "start", -1);
   return typeof start === "number" ? start : -1;
 }
 
@@ -139,11 +141,12 @@ function deferredValue(node: object): boolean {
 /** `outerStart` is where the nearest enclosing call or `new` begins, or -1 outside one. */
 function walk(node: unknown, source: Source, found: string[], outerStart = -1): void {
   if (typeof node !== "object" || node === null) return;
-  if (Array.isArray(node)) {
-    for (const item of node) walk(item, source, found, outerStart);
-    return;
-  }
-  if (walkDeferred(node, source, found, outerStart)) walkNode(node, source, found, outerStart);
+  if (Array.isArray(node)) walkAll(node, source, found, outerStart);
+  else if (walkDeferred(node, source, found, outerStart)) walkNode(node, source, found, outerStart);
+}
+
+function walkAll(nodes: readonly unknown[], source: Source, found: string[], outerStart: number) {
+  for (const item of nodes) walk(item, source, found, outerStart);
 }
 
 function walkNode(node: object, source: Source, found: string[], outerStart: number): void {
