@@ -26,7 +26,7 @@ type Place = readonly [phase: Phase, rank: number];
 export type PlaceTable<K extends string> = { readonly [A in K]: Place };
 
 /**
- * Ranks follow #381's listed order; the gaps belong to kinds that land later (index, foreign key).
+ * Ranks follow #381's listed order; the gaps belong to kinds that land later (index).
  *
  * Within its phase, each drop runs before the changes it would block: Postgres refuses to add an
  * identity to a column that has a default or isn't NOT NULL, to drop NOT NULL from an identity
