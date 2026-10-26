@@ -1,4 +1,5 @@
 import {
+  acquireMigrationLock,
   CURRENT_FILENAME,
   currentHash,
   DEFAULT_TRACKING_SCHEMA,
@@ -7,10 +8,11 @@ import {
   readCommitted,
   trackingSchema,
   type CurrentMigration,
+  type ParsedMigration,
   type TrackingSchema,
 } from "../../runtime/internal/index.ts";
 import { applyInTransaction, loadVerifiedMigrations } from "../../runtime/migrator/index.ts";
-import type { Driver, FileSystem, MigrationSource } from "../../runtime/ports/index.ts";
+import type { Driver, FileSystem, MigrationSource, Queryable } from "../../runtime/ports/index.ts";
 import { requireSupportedServer } from "../introspect/index.ts";
 import { withDevLock } from "./dev-lock.ts";
 
@@ -54,6 +56,10 @@ export async function requireDevDatabase(
  * all in one transaction: a SQL error rolls the wipe back and leaves the Dev database as it was.
  * Every file is transactional (ADR-0008), so one outer transaction holds them all. A failure names
  * the file that raised it.
+ *
+ * It holds the migrator's session lock, polled for, until its session ends, so a runtime `migrate`
+ * waits instead of running on a Dev database mid-reset. A transaction-scoped lock wouldn't last:
+ * reset breaks its transaction around a no-transaction file (ADR-0020).
  */
 export async function resetDevDatabase(
   driver: Driver,
@@ -63,29 +69,39 @@ export async function resetDevDatabase(
 ): Promise<void> {
   // A broken chain would otherwise fail the replay after the wipe.
   const migrations = await loadVerifiedMigrations(committed);
-  await driver.transaction(async (tx) => {
-    const { rows: extensions } = await tx.query(EXTENSIONS);
-    await tx.execute(
-      extensions
-        .map(({ name }) => `drop extension if exists ${quoteIdentifier(String(name))} cascade;`)
-        .join("\n"),
-    );
-    const { rows: schemas } = await tx.query(NON_SYSTEM_SCHEMAS);
-    const drops = schemas.map(
-      ({ name }) => `drop schema if exists ${quoteIdentifier(String(name))} cascade;`,
-    );
-    await tx.execute([...drops, RECREATE_PUBLIC].join("\n"));
-    await tracking.createCurrentTable(tx);
-    await tracking.ensureMigrationsTable(tx);
-    for (const migration of migrations) {
-      // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
-      await replay(migration.filename, () => applyInTransaction(tx, tracking, migration));
-    }
-    if (current === undefined) return;
-    await replay(CURRENT_FILENAME, async () => {
-      await tx.execute(current.body);
-      await tracking.recordCurrent(tx, current.hash);
-    });
+  await driver.session(async (session) => {
+    await acquireMigrationLock(session);
+    await session.transaction((tx) => wipeAndReplay(tx, migrations, tracking, current));
+  });
+}
+
+async function wipeAndReplay(
+  tx: Queryable,
+  migrations: readonly ParsedMigration[],
+  tracking: TrackingSchema,
+  current: CurrentMigration | undefined,
+): Promise<void> {
+  const { rows: extensions } = await tx.query(EXTENSIONS);
+  await tx.execute(
+    extensions
+      .map(({ name }) => `drop extension if exists ${quoteIdentifier(String(name))} cascade;`)
+      .join("\n"),
+  );
+  const { rows: schemas } = await tx.query(NON_SYSTEM_SCHEMAS);
+  const drops = schemas.map(
+    ({ name }) => `drop schema if exists ${quoteIdentifier(String(name))} cascade;`,
+  );
+  await tx.execute([...drops, RECREATE_PUBLIC].join("\n"));
+  await tracking.createCurrentTable(tx);
+  await tracking.ensureMigrationsTable(tx);
+  for (const migration of migrations) {
+    // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
+    await replay(migration.filename, () => applyInTransaction(tx, tracking, migration));
+  }
+  if (current === undefined) return;
+  await replay(CURRENT_FILENAME, async () => {
+    await tx.execute(current.body);
+    await tracking.recordCurrent(tx, current.hash);
   });
 }
 
