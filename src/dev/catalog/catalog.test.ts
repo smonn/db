@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
-import {
-  catalogBuilder,
-  childrenOf,
-  namesOf,
-  parentOf,
-  type Catalog,
-  type CatalogBuilder,
-  type Fact,
-} from "./catalog.ts";
+import { catalogBuilder, childrenOf, namesOf, parentOf, type CatalogBuilder } from "./catalog.ts";
+import type { Catalog, Fact } from "./fact.ts";
 import { definitionCatalog } from "./definition-catalog.ts";
 
 describe("definitionCatalog", () => {

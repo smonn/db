@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
-import { catalogBuilder, type Catalog } from "./catalog.ts";
+import { catalogBuilder } from "./catalog.ts";
+import type { Catalog } from "./fact.ts";
 import { appliedRenames, declaredRenames, type Rename } from "./renames.ts";
 
 function shadow(tables: Readonly<Record<string, readonly string[]>>): Catalog {
