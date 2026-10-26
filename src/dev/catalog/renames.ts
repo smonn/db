@@ -21,14 +21,24 @@ export function declaredRenames(database: DefinitionTables): Rename[] {
       if (def.renamedFrom !== undefined) {
         tables.push({ kind: "table", schema, name: table, was: def.renamedFrom });
       }
-      for (const [name, { state }] of Object.entries(def.columns)) {
-        if (state.renamedFrom === undefined) continue;
-        columns.push({ kind: "column", schema, table, name, was: state.renamedFrom });
-      }
+      columns.push(...columnRenames(schema, table, def.columns));
     }
   }
   const { enums, labels, domains } = declaredTypeRenames(definition);
   return [...tables, ...columns, ...enums, ...labels, ...domains];
+}
+
+function columnRenames(
+  schema: string,
+  table: string,
+  columns: Extract<DefinitionTables[string][string], { columns: unknown }>["columns"],
+): Rename[] {
+  const renames: Rename[] = [];
+  for (const [name, { state }] of Object.entries(columns)) {
+    if (state.renamedFrom === undefined) continue;
+    renames.push({ kind: "column", schema, table, name, was: state.renamedFrom });
+  }
+  return renames;
 }
 
 /**

@@ -6,6 +6,10 @@ import type { Catalog, Fact } from "./fact.ts";
 export function arePayloadsEqual(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  return entriesEqual(a, b);
+}
+
+function entriesEqual(a: object, b: object): boolean {
   const aEntries = Object.entries(a);
   const bValues = new Map(Object.entries(b));
   return (
