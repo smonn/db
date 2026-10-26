@@ -99,6 +99,7 @@ describe("migrate", () => {
       migrate({ driver: db.driver, source: source(CREATE_USERS) }),
     );
 
+    expect(held.finishedWhileHeld).toBe(false);
     expect(held.queued).toBe(0);
     expect(held.result).toStrictEqual({ applied: ["000001-create-users.sql"] });
   });

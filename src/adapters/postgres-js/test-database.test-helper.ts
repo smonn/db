@@ -162,10 +162,18 @@ export function whileMigrationLockHeld<T>(
     const running = contender().finally(() => {
       finishedWhileHeld = true;
     });
-    await setTimeout(150);
-    const queued = await queuedAdvisoryLocks(driver);
-    const held = finishedWhileHeld;
-    await holder.query("select pg_advisory_unlock_all()");
+    // A contender that rejects during the sleep must not surface as unhandled; `await running` rethrows it.
+    const settled = running.catch(() => {});
+    let queued = 0;
+    let held = false;
+    try {
+      await setTimeout(150);
+      queued = await queuedAdvisoryLocks(driver);
+      held = finishedWhileHeld;
+    } finally {
+      await holder.query("select pg_advisory_unlock_all()");
+      await settled;
+    }
     return { finishedWhileHeld: held, queued, result: await running };
   });
 }
