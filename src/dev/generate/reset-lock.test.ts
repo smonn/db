@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
+import { acquireMigrationLock } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import { memoryFileSystem } from "./memory-file-system.test-helper.ts";
 import { reset } from "./reset.ts";
@@ -54,5 +55,37 @@ describe("reset and the migrator's lock", () => {
     await Promise.all([resetting, migrating]);
 
     expect(events).toStrictEqual(["reset", "migrate"]);
+  });
+});
+
+describe("reset and the Dev database check", () => {
+  it("checks the Database under the migrator's lock, not before it", async () => {
+    await db.driver.execute(
+      "drop schema if exists smonn_db cascade; drop schema public cascade; create schema public; create table public.leftover (id int)",
+    );
+    let outcome: "pending" | "reset" | "refused" = "pending";
+    let resetting: Promise<unknown> = Promise.resolve();
+    // The lock holder stands in for a runtime migrate that changes the Database before it lets go.
+    await db.driver.session(async (holder) => {
+      await acquireMigrationLock(holder);
+      resetting = reset({
+        driver: db.driver,
+        fileSystem: memoryFileSystem(),
+        migrations: "db/migrations",
+      }).then(
+        () => {
+          outcome = "reset";
+        },
+        () => {
+          outcome = "refused";
+        },
+      );
+      await sleep(250);
+      expect(outcome).toBe("pending");
+      await holder.execute("drop table public.leftover");
+    });
+    await resetting;
+
+    expect(outcome).toBe("reset");
   });
 });
