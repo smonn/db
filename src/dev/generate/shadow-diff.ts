@@ -1,10 +1,16 @@
 import type { TrackingSchema } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type { Connect, Driver, MigrationSource } from "../../runtime/ports/index.ts";
-import { definitionCatalog, type Catalog, type DefinitionTables } from "../catalog/index.ts";
+import {
+  declaredRenames,
+  definitionCatalog,
+  type Catalog,
+  type DefinitionTables,
+} from "../catalog/index.ts";
 import { diff, type Diff } from "../diff/index.ts";
 import { introspect } from "../introspect/index.ts";
 import { withShadowDatabases, type ShadowOptions } from "../shadow/index.ts";
+import { renameInShadow } from "./shadow-renames.ts";
 import { leftoverAfter, verifyInShadow } from "./verify.ts";
 
 export type ShadowDiffOptions = {
@@ -41,7 +47,12 @@ export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
         await definitionSql(databases.definition, definitionCatalog(definition)),
       );
       const target = await introspect(databases.definition, tracking);
-      const result = diff(await introspect(databases.shadow, tracking), target);
+      const { catalog, renames } = await renameInShadow(
+        databases.shadow,
+        declaredRenames(definition),
+        tracking,
+      );
+      const result = diff(catalog, target, renames);
       if (options.edited !== undefined) {
         const leftover = await leftoverAfter(databases.shadow, options.edited, target, {
           tracking,

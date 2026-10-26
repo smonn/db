@@ -5,13 +5,14 @@ import {
   type ResetResult,
 } from "../generate/index.ts";
 
-/** The lines `generate` prints: the file, each Hazard with its statement, and whether it reset. */
+/** The lines `generate` prints: the file, each Hazard with its statement, each rename hint, and whether it reset. */
 export function generateReport(result: GenerateResult, path: string): string[] {
   const hazards = hazardsIn(result.sql ?? "").map(
     ({ kind, statement }) => `hazard ${kind}: ${statement}`,
   );
   const reset = result.reset ? "reset the Dev database" : "left the Dev database as it was";
-  return [...fileLines(result, path), ...hazards, reset];
+  const hints = result.hints.map((hint) => `hint: ${hint}`);
+  return [...fileLines(result, path), ...hazards, ...hints, reset];
 }
 
 function fileLines({ diff, sql, leftover }: GenerateResult, path: string): string[] {

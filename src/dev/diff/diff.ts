@@ -1,24 +1,37 @@
-import { arePayloadsEqual, type Catalog, type Fact, type Key } from "../catalog/index.ts";
+import {
+  arePayloadsEqual,
+  type Catalog,
+  type Fact,
+  type Key,
+  type Rename,
+} from "../catalog/index.ts";
 import { hazardsOf, render, type Action, type Catalogs } from "./actions.ts";
 import type { Hazard } from "./hazards.ts";
+import { renameHints } from "./hints.ts";
 import { order } from "./phases.ts";
 import { rebuiltColumns, retyped } from "./rebuilt.ts";
+import { renameAction } from "./renames.ts";
 
 export type Diff = {
   /** Each statement follows one `-- hazard: <kind>` comment per Hazard it carries. */
   readonly sql: string;
   readonly hazards: readonly Hazard[];
+  /** Renames the Definition could declare, for a drop and an add that look like one (ADR-0024). */
+  readonly hints: readonly string[];
 };
 
-/** The SQL that turns a database with catalog `from` into one with catalog `to`. */
-export function diff(from: Catalog, to: Catalog): Diff {
+/**
+ * The SQL that turns a database with catalog `from` into one with catalog `to`. With `renames`,
+ * `from` is the catalog after those renames ran, and the SQL opens with them.
+ */
+export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []): Diff {
   const catalogs = { from, to };
   // A column Postgres can't convert in place drops and adds back, so each side sees it, what it
   // holds, and the keys on it as absent from the other.
   const rebuilt = rebuiltColumns(catalogs);
   const keptFrom = without(from, rebuilt);
   const keptTo = without(to, rebuilt);
-  const actions: Action[] = [];
+  const actions = renames.map((rename) => renameAction(rename, from));
   for (const [key, fact] of from) {
     const after = keptTo.get(key);
     if (after === undefined) actions.push(...dropped(fact, keptTo));
@@ -45,7 +58,7 @@ export function diff(from: Catalog, to: Catalog): Diff {
       return `${kinds.map((kind) => `-- hazard: ${kind}\n`).join("")}${statement}\n`;
     })
     .join("\n");
-  return { sql, hazards };
+  return { sql, hazards, hints: renameHints(from, to) };
 }
 
 type Kind = Fact["kind"];

@@ -118,7 +118,7 @@ Run each as `smonndb <command>`, with `--config <path>` to pick a config file ot
 | `verify`                | Checks the Committed migrations' hash chain, with no database                                            |
 | `rebase [--onto <ref>]` | Moves the Committed migrations `<ref>` lacks onto its tip, with no database                              |
 
-Results go to stdout and errors to stderr, as plain text with no colors. `generate` prints the file it wrote, each Hazard with its statement, and whether it reset the Dev database. Exit codes: 0 on success, 1 on a refusal or failure (a missing folder, a held Dev lock, a bad hash chain), 2 on a usage error.
+Results go to stdout and errors to stderr, as plain text with no colors. `generate` prints the file it wrote, each Hazard with its statement, each rename hint, and whether it reset the Dev database. Exit codes: 0 on success, 1 on a refusal or failure (a missing folder, a held Dev lock, a bad hash chain), 2 on a usage error.
 
 ### Rebasing a Forked chain
 
