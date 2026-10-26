@@ -6,8 +6,9 @@ import {
   type GeneratedPayload,
   type Key,
 } from "../catalog/index.ts";
-import { hazardsOf, order, render, type Action, type Catalogs } from "./actions.ts";
+import { hazardsOf, render, type Action, type Catalogs } from "./actions.ts";
 import type { Hazard } from "./hazards.ts";
+import { order } from "./phases.ts";
 
 export type Diff = {
   /** Each statement follows one `-- hazard: <kind>` comment per Hazard it carries. */
