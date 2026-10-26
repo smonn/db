@@ -31,6 +31,13 @@ function isDatabaseUrlKey(key: Node, computed: boolean): boolean {
 const MESSAGE =
   "Call testServerUrl() from test-database.test-helper.ts: a missing server then fails with the `node scripts/test-db.ts` hint instead of `Invalid URL`";
 
+function destructuredDatabaseUrl(node: Extract<Node, { type: "VariableDeclarator" }>): Node[] {
+  if (node.init === null || !isProcessEnv(node.init) || node.id.type !== "ObjectPattern") return [];
+  return node.id.properties.filter(
+    (property) => property.type === "Property" && isDatabaseUrlKey(property.key, property.computed),
+  );
+}
+
 export const testServerUrlRule: Rule = {
   meta: {
     type: "problem",
@@ -44,13 +51,8 @@ export const testServerUrlRule: Rule = {
         }
       },
       VariableDeclarator(node) {
-        if (node.init === null || !isProcessEnv(node.init) || node.id.type !== "ObjectPattern") {
-          return;
-        }
-        for (const property of node.id.properties) {
-          if (property.type === "Property" && isDatabaseUrlKey(property.key, property.computed)) {
-            context.report({ node: property, message: MESSAGE });
-          }
+        for (const property of destructuredDatabaseUrl(node)) {
+          context.report({ node: property, message: MESSAGE });
         }
       },
     };

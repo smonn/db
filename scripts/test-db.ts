@@ -59,19 +59,24 @@ function stop(root: string, name: string): void {
   console.log(`Stopped ${name} and removed .env.test`);
 }
 
+const actions = new Map([
+  ["start", start],
+  ["stop", stop],
+]);
+
 export function main(
   args: string[],
   root: string = fileURLToPath(new URL("..", import.meta.url)),
 ): void {
   const name = projectName(root);
   const [command = "start", ...rest] = args;
-  if (rest.length === 0 && command === "start") start(root, name);
-  else if (rest.length === 0 && command === "stop") stop(root, name);
-  else {
+  const action = rest.length === 0 ? actions.get(command) : undefined;
+  if (action === undefined) {
     throw new Error(
       `Unknown arguments "${args.join(" ")}". Usage: node scripts/test-db.ts [start|stop]`,
     );
   }
+  action(root, name);
 }
 
 if (import.meta.main) main(process.argv.slice(2));
