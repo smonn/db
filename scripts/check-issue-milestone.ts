@@ -81,10 +81,17 @@ export function needsMilestone(issue: IssueEvent["issue"]): boolean {
   return issue.state === "open" && issue.milestone === null && issue.user.type !== "Bot";
 }
 
-export function needsCapitalTitle({ action, changes, issue }: IssueEvent): boolean {
-  const checked = action === "opened" || (action === "edited" && changes?.["title"] !== undefined);
+function titleWasChecked({ action, changes }: IssueEvent): boolean {
+  return action === "opened" || (action === "edited" && changes?.["title"] !== undefined);
+}
+
+export function needsCapitalTitle(event: IssueEvent): boolean {
+  const { issue } = event;
   return (
-    checked && issue.state === "open" && issue.user.type !== "Bot" && /^\p{Ll}/u.test(issue.title)
+    titleWasChecked(event) &&
+    issue.state === "open" &&
+    issue.user.type !== "Bot" &&
+    /^\p{Ll}/u.test(issue.title)
   );
 }
 
@@ -92,26 +99,41 @@ const runGh: Gh = (args) => {
   execFileSync("gh", args, { stdio: "inherit" });
 };
 
-export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void {
+function readEnvEvent(env: NodeJS.ProcessEnv): IssueEvent | undefined {
   const { GITHUB_EVENT_PATH: eventPath } = env;
   if (eventPath === undefined) {
     console.error("Set GITHUB_EVENT_PATH");
     process.exitCode = 1;
-    return;
+    return undefined;
   }
-  const event = readIssueEvent(parseJson(readFileSync(eventPath, "utf8"), eventPath), "$");
+  return readIssueEvent(parseJson(readFileSync(eventPath, "utf8"), eventPath), "$");
+}
+
+function requestCapitalTitle(target: string[], gh: Gh): void {
+  const body = `This title starts with a lowercase letter. Titles are sentence case: start with a capitalised plain word and keep identifiers verbatim, so reorder instead of recasing (\`generate drops tables\` becomes \`Command generate drops tables\`).`;
+  gh(["issue", "comment", ...target, "--body", body]);
+}
+
+function requestMilestone(event: IssueEvent, target: string[], gh: Gh): void {
   const { issue, repository } = event;
-  const target = [String(issue.number), "--repo", repository.full_name];
-  if (needsCapitalTitle(event)) {
-    const titleBody = `This title starts with a lowercase letter. Titles are sentence case: start with a capitalised plain word and keep identifiers verbatim, so reorder instead of recasing (\`generate drops tables\` becomes \`Command generate drops tables\`).`;
-    gh(["issue", "comment", ...target, "--body", titleBody]);
-  }
-  if (event.action === "edited" || !needsMilestone(issue)) return;
   const body = `This issue has no milestone. Every issue needs one: pick it by the milestone descriptions at ${repository.html_url}/milestones.`;
   if (!issue.labels.some((label) => label.name === "needs-triage")) {
     gh(["issue", "comment", ...target, "--body", body]);
   }
   gh(["issue", "edit", ...target, "--add-label", "needs-triage"]);
+}
+
+export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void {
+  const event = readEnvEvent(env);
+  if (event !== undefined) handleEvent(event, gh);
+}
+
+function handleEvent(event: IssueEvent, gh: Gh): void {
+  const { issue, repository } = event;
+  const target = [String(issue.number), "--repo", repository.full_name];
+  if (needsCapitalTitle(event)) requestCapitalTitle(target, gh);
+  if (event.action === "edited" || !needsMilestone(issue)) return;
+  requestMilestone(event, target, gh);
 }
 
 if (import.meta.main) main();
