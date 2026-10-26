@@ -37,22 +37,28 @@ type Command = DatabaseCommand | OfflineCommand;
 /** Runs one `smonndb` command and resolves to its exit code: 0, 1 on failure, 2 on misuse. */
 export async function main(argv: readonly string[]): Promise<number> {
   try {
-    const command = parseCommand(argv);
-    if (command.name === "verify" || command.name === "rebase") {
-      for (const line of await runOffline(command)) print(line);
-      return 0;
-    }
-    const project = await loadProject(command.config);
-    await run(command, project);
+    await execute(parseCommand(argv));
     return 0;
   } catch (error) {
-    if (error instanceof UsageError) {
-      process.stderr.write(`${error.message}\n\n${USAGE}\n`);
-      return 2;
-    }
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 1;
+    return reportFailure(error);
   }
+}
+
+async function execute(command: Command): Promise<void> {
+  if (command.name === "verify" || command.name === "rebase") {
+    for (const line of await runOffline(command)) print(line);
+    return;
+  }
+  await run(command, await loadProject(command.config));
+}
+
+function reportFailure(error: unknown): number {
+  if (error instanceof UsageError) {
+    process.stderr.write(`${error.message}\n\n${USAGE}\n`);
+    return 2;
+  }
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  return 1;
 }
 
 /** Runs a command that reads the migrations folder and no database, and returns its lines. */
@@ -137,29 +143,34 @@ function parseCommand(argv: readonly string[]): Command {
   return commandNamed(name, args, config, parsed.values);
 }
 
+const ARGUMENTLESS = ["reset", "rebase", "generate", "migrate", "verify"] as const;
+
+type ArgumentlessName = (typeof ARGUMENTLESS)[number];
+
+function isArgumentless(name: string): name is ArgumentlessName {
+  return ARGUMENTLESS.some((candidate) => candidate === name);
+}
+
+/** A command that takes no arguments, with the flag it alone accepts. */
+function flagged(
+  name: ArgumentlessName,
+  config: string,
+  values: { readonly erase?: boolean; readonly onto?: string },
+): Command {
+  if (name === "reset") return { name, erase: values.erase === true, config };
+  if (name === "rebase") return { name, config, onto: values.onto };
+  return { name, config };
+}
+
 function commandNamed(
   name: string | undefined,
   args: readonly string[],
   config: string,
   values: { readonly erase?: boolean; readonly onto?: string; readonly accept?: string },
 ): Command {
-  switch (name) {
-    case "reset":
-      checkNoArguments(name, args);
-      return { name, erase: values.erase === true, config };
-    case "rebase":
-      checkNoArguments(name, args);
-      return { name, config, onto: values.onto };
-    case "generate":
-    case "migrate":
-    case "verify":
-      checkNoArguments(name, args);
-      return { name, config };
-    case "commit":
-      return parseCommit(args, config, values.accept);
-    case undefined:
-      throw new UsageError("name a command");
-    default:
-      throw new UsageError(`unknown command ${name}`);
-  }
+  if (name === undefined) throw new UsageError("name a command");
+  if (name === "commit") return parseCommit(args, config, values.accept);
+  if (!isArgumentless(name)) throw new UsageError(`unknown command ${name}`);
+  checkNoArguments(name, args);
+  return flagged(name, config, values);
 }
