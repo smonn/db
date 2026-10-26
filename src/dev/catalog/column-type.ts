@@ -1,5 +1,6 @@
 import type { Enum } from "../../runtime/definition/index.ts";
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
+import { QUOTED_KEYWORDS } from "./keywords.ts";
 
 const TYPE_NAMES: Readonly<Record<string, string>> = {
   varchar: "character varying",
@@ -40,10 +41,12 @@ export function columnType(
 
 /**
  * A type's name as `format_type` spells it under `search_path = pg_catalog`: schema-qualified, and
- * quoted only where `quote_identifier` would. It leaves keywords unquoted, which Postgres quotes.
+ * quoted exactly where `quote_ident` would, which includes a keyword that is not unreserved.
  */
 export function typeName(schema: string, name: string): string {
   return [schema, name]
-    .map((part) => (/^[a-z_][a-z0-9_]*$/u.test(part) ? part : quoteIdentifier(part)))
+    .map((part) =>
+      /^[a-z_][a-z0-9_]*$/u.test(part) && !QUOTED_KEYWORDS.has(part) ? part : quoteIdentifier(part),
+    )
     .join(".");
 }

@@ -117,6 +117,75 @@ create table "public"."users" (
   });
 });
 
+/** A Committed migration that creates enum `name` with labels a and b, and a table with a column of it. */
+async function committedKeyword(name: string): Promise<ReturnType<typeof memoryFileSystem>> {
+  return memoryFileSystem(
+    filesIn("db/migrations", [
+      await writeMigration(
+        "000001-create-kind.sql",
+        undefined,
+        `create type public."${name}" as enum ('a', 'b');\ncreate table public.items (kind public."${name}");\n`,
+      ),
+    ]),
+  );
+}
+
+const keyword = defineEnum(["a", "b"]);
+const asEnum = defineTable((c) => ({ kind: c.enum(keyword) }));
+const asText = defineTable((c) => ({ kind: c.text() }));
+
+/** A Definition per keyword name, since a computed key would widen the schema's type. */
+const keywordCases = [
+  {
+    name: "user",
+    withEnum: defineDatabase({ public: { user: keyword, items: asEnum } }),
+    withText: defineDatabase({ public: { user: keyword, items: asText } }),
+  },
+  {
+    name: "order",
+    withEnum: defineDatabase({ public: { order: keyword, items: asEnum } }),
+    withText: defineDatabase({ public: { order: keyword, items: asText } }),
+  },
+  {
+    name: "mood",
+    withEnum: defineDatabase({ public: { mood: keyword, items: asEnum } }),
+    withText: defineDatabase({ public: { mood: keyword, items: asText } }),
+  },
+];
+
+describe("generate with keyword-named enums", () => {
+  it.each(keywordCases)("converges on an enum named $name", async ({ name, withEnum }) => {
+    const result = await generateFrom(withEnum, await committedKeyword(name));
+
+    expect(result.sql).toBeUndefined();
+  });
+
+  it.each(keywordCases)(
+    "leaves nothing to propose on a second generate for $name",
+    async ({ withEnum }) => {
+      const fileSystem = memoryFileSystem();
+      await generateFrom(withEnum, fileSystem);
+
+      const again = await generateFrom(withEnum, fileSystem);
+
+      expect(again.hazards).toStrictEqual([]);
+      expect(again.leftover).toBeUndefined();
+    },
+  );
+
+  it.each(keywordCases)(
+    "treats a column leaving enum $name for text as a rewrite and nothing worse",
+    async ({ name, withText }) => {
+      const result = await generateFrom(withText, await committedKeyword(name));
+
+      expect(result.hazards.map((hazard) => hazard.kind)).toStrictEqual([
+        "rewrite",
+        "access_exclusive_lock",
+      ]);
+    },
+  );
+});
+
 /** The message of the error `explainShadowError` returns, or an empty string for anything else. */
 function explained(error: unknown, options?: { readonly handEdited: boolean }): string {
   const result = explainShadowError(error, options);
