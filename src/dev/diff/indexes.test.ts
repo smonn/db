@@ -1,69 +1,20 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
-import {
-  catalogBuilder,
-  type Catalog,
-  type GeneratedPayload,
-  type IndexKeyPayload,
-  type IndexPayload,
-} from "../catalog/index.ts";
+import { catalogBuilder, type GeneratedPayload, type IndexPayload } from "../catalog/index.ts";
 import { introspect } from "../introspect/index.ts";
 import { bareDiff as diff } from "./bare-sql.test-helper.ts";
 import { diff as diffWithHazards } from "./diff.ts";
+import { key, plain, table, withIndex } from "./indexes.test-helper.ts";
 
 const db = useTestDatabase();
 
-/** A `public.t` table of text columns `a`, `b`, and `c`, with the named indexes. */
-function table(indexes: Readonly<Record<string, IndexPayload>>): Catalog {
-  const builder = catalogBuilder();
-  builder.schema("public");
-  builder.table("public", "t");
-  for (const name of ["a", "b", "c"]) {
-    builder.column("public", "t", name, { type: "text", notNull: false });
-  }
-  for (const [name, payload] of Object.entries(indexes)) {
-    builder.index("public", "t", name, payload);
-  }
-  return builder.build();
-}
-
 /** Columns `a` and `s` under an index over both, where `s` takes each generation given. */
-function withS(generated: readonly GeneratedPayload[]): Catalog {
-  const builder = catalogBuilder();
-  builder.schema("public");
-  builder.table("public", "t");
-  builder.column("public", "t", "a", { type: "integer", notNull: false });
-  builder.column("public", "t", "s", { type: "integer", notNull: false });
-  for (const payload of generated) builder.columnGenerated("public", "t", "s", payload);
-  builder.index("public", "t", "t_a_s_idx", { ...plain("a", "s"), include: [] });
-  return builder.build();
-}
+const withS = (generated: readonly GeneratedPayload[]) =>
+  withIndex(generated, "t_a_s_idx", plain("a", "s"));
 
 /** Columns `a` and `s` under an index on `a` that INCLUDEs `s`, which takes each generation given. */
-function includingS(generated: readonly GeneratedPayload[]): Catalog {
-  const catalog = catalogBuilder();
-  catalog.schema("public");
-  catalog.table("public", "t");
-  catalog.column("public", "t", "a", { type: "integer", notNull: false });
-  catalog.column("public", "t", "s", { type: "integer", notNull: false });
-  for (const payload of generated) catalog.columnGenerated("public", "t", "s", payload);
-  catalog.index("public", "t", "ix", { ...plain("a"), include: ["s"] });
-  return catalog.build();
-}
-
-const key = (column: string, descending = false, nullsFirst = descending): IndexKeyPayload => ({
-  column,
-  descending,
-  nullsFirst,
-});
-
-const plain = (...columns: string[]): IndexPayload => ({
-  unique: false,
-  method: "btree",
-  keys: columns.map((column) => key(column)),
-  include: [],
-  nullsNotDistinct: false,
-});
+const includingS = (generated: readonly GeneratedPayload[]) =>
+  withIndex(generated, "ix", { ...plain("a"), include: ["s"] });
 
 beforeEach(async () => {
   await db.driver.execute("drop schema public cascade; create schema public");
@@ -82,6 +33,7 @@ describe("an index", () => {
       method: "hash",
       keys: [key("a", true), key("b", true, false), key("c", false, true)],
       include: ["b", "a"],
+      where: undefined,
       nullsNotDistinct: true,
     };
 

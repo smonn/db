@@ -112,22 +112,32 @@ where k.contype in ('p', 'u')
 order by k.conname`;
 
 // An index is Unmodeled (ADR-0005) when it has another method, an opclass or collation other than
-// the default, storage parameters, a tablespace, an expression key, or a predicate (expression
-// keys and WHERE wait for #442), or is invalid (a failed CREATE INDEX CONCURRENTLY leaves one
-// that the planner never uses). An index that backs a primary key, unique, or exclusion
-// constraint is the constraint's fact, so it is skipped too; a foreign key's `conindid` is the
-// referenced table's index, which stays an index. `orders` holds one `<asc|desc> nulls <first|last>`
-// per key, read from `indoption`.
+// the default, storage parameters, or a tablespace, or is invalid (a failed CREATE INDEX
+// CONCURRENTLY leaves one that the planner never uses). An index that backs a primary key,
+// unique, or exclusion constraint is the constraint's fact, so it is skipped too; a foreign
+// key's `conindid` is the referenced table's index, which stays an index. `columns` and
+// `expressions` hold one entry per key, empty where the key is the other kind (no name or
+// expression is empty, and the driver reads a NULL in a text array as the string "NULL"); `orders`
+// holds one `<asc|desc> nulls <first|last>` per key, read from `indoption`. Postgres deparses an
+// expression key as `pg_get_indexdef` does, with the predicate through `pg_get_expr`, so a
+// spacing or cast difference in the source reads the same on both sides, as a default does.
 export const INDEXES: string = `
 select n.nspname as schema, c.relname as table, ic.relname as name, am.amname as method,
   i.indisunique as is_unique, i.indnullsnotdistinct as nulls_not_distinct,
   array(
-    select a.attname::text
+    select coalesce(a.attname::text, '')
     from unnest(i.indkey::int2[]) with ordinality as key(attnum, position)
-      join pg_attribute a on a.attrelid = i.indrelid and a.attnum = key.attnum
+      left join pg_attribute a on a.attrelid = i.indrelid and a.attnum = key.attnum
     where key.position <= i.indnkeyatts
     order by key.position
   ) as columns,
+  array(
+    select case when key.attnum = 0 then pg_get_indexdef(i.indexrelid, key.position::int, true) else '' end
+    from unnest(i.indkey::int2[]) with ordinality as key(attnum, position)
+    where key.position <= i.indnkeyatts
+    order by key.position
+  ) as expressions,
+  pg_get_expr(i.indpred, i.indrelid, true) as predicate,
   array(
     select case when (o.option & 1) = 1 then 'desc' else 'asc' end
       || case when (o.option & 2) = 2 then ' nulls first' else ' nulls last' end
@@ -148,7 +158,7 @@ from pg_index i
   join pg_class c on c.oid = i.indrelid
   join pg_namespace n on n.oid = c.relnamespace
 where am.amname in ('btree', 'hash', 'gin', 'gist', 'brin')
-  and i.indisvalid and i.indexprs is null and i.indpred is null
+  and i.indisvalid
   and ic.reloptions is null and ic.reltablespace = 0
   and not exists (
     select from pg_constraint k
@@ -162,8 +172,12 @@ where am.amname in ('btree', 'hash', 'gin', 'gist', 'brin')
   and not exists (
     select from unnest(i.indkey::int2[], i.indcollation::oid[]) with ordinality
         as k(attnum, coll, position)
-      join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
-    where k.position <= i.indnkeyatts and k.coll <> a.attcollation
+      left join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
+      join pg_attribute ia on ia.attrelid = i.indexrelid and ia.attnum = k.position
+      join pg_type t on t.oid = ia.atttypid
+    where k.position <= i.indnkeyatts
+      -- an expression key has no table column (attnum 0), so it compares to its type's collation
+      and k.coll <> case when k.attnum = 0 then t.typcollation else a.attcollation end
   )
   and c.relkind = 'r' and not c.relispartition and ${KEPT_SCHEMA}
   and ${NOT_EXTENSION_MEMBER("pg_class", "c")}

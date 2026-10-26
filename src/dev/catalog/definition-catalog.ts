@@ -6,6 +6,7 @@ import {
   type Table,
 } from "../../runtime/definition/index.ts";
 import { catalogBuilder, quoted, type CatalogBuilder } from "./catalog.ts";
+import { plainKeyColumns } from "./payloads.ts";
 import { columnType, typeNamesOf, type TypeNames } from "./column-type.ts";
 import { constraintNames, type ConstraintNames } from "./constraint-names.ts";
 import { addDomain } from "./domains.ts";
@@ -62,7 +63,24 @@ function addDefinitionTable(
       columns: [...primaryKey],
     });
   }
-  for (const [column, { state }] of entries) {
+  addUniques(builder, context, columns, uniques);
+  addIndexes(builder, context, columns, indexes);
+  for (const { name, columns: from, ...payload } of foreignKeys) {
+    builder.foreignKey(schema, table, names.foreignKey(table, from, name), {
+      columns: from,
+      ...payload,
+    });
+  }
+}
+
+/** A column's `.unique()` calls come first, in column order, then the second callback's `unique`. */
+function addUniques(
+  builder: CatalogBuilder,
+  { schema, table, names }: TableContext,
+  columns: Table["columns"],
+  uniques: Table["uniques"],
+): void {
+  for (const [column, { state }] of Object.entries(columns)) {
     if (state.unique) {
       const name = names.unique(table, [column], state.constraintName);
       builder.unique(schema, table, name, { columns: [column], nullsNotDistinct: false });
@@ -72,13 +90,6 @@ function addDefinitionTable(
     builder.unique(schema, table, names.unique(table, listed, name), {
       columns: [...listed],
       nullsNotDistinct,
-    });
-  }
-  addIndexes(builder, context, columns, indexes);
-  for (const { name, columns: from, ...payload } of foreignKeys) {
-    builder.foreignKey(schema, table, names.foreignKey(table, from, name), {
-      columns: from,
-      ...payload,
     });
   }
 }
@@ -98,12 +109,14 @@ function addIndexes(
         method,
         keys: [key],
         include: [],
+        where: undefined,
         nullsNotDistinct: false,
       });
     }
   }
   for (const { name, keys, include, ...payload } of indexes) {
-    const listed = keys.map(({ column }) => column);
+    // An expression key demands a name, so a derived name only ever lists plain columns.
+    const listed = plainKeyColumns(keys);
     builder.index(schema, table, names.index(table, listed, name), {
       ...payload,
       keys: [...keys],

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
-import { indexes, key } from "./indexes.test-helper.ts";
+import { expression, indexes, key, only } from "./indexes.test-helper.ts";
 import { introspect } from "./introspect.ts";
 
 const db = useTestDatabase();
@@ -29,12 +29,20 @@ describe("introspect indexes", () => {
           method: "btree",
           keys: [key("a")],
           include: [],
+          where: undefined,
           nullsNotDistinct: false,
         },
       ],
       [
         "public.t.t_b_c",
-        { unique: false, method: "hash", keys: [key("b")], include: [], nullsNotDistinct: false },
+        {
+          unique: false,
+          method: "hash",
+          keys: [key("b")],
+          include: [],
+          where: undefined,
+          nullsNotDistinct: false,
+        },
       ],
     ]);
   });
@@ -74,6 +82,7 @@ describe("introspect indexes", () => {
           method: "btree",
           keys: [key("c", true, true), key("a"), key("b", true, false), key("d", false, true)],
           include: [],
+          where: undefined,
           nullsNotDistinct: false,
         },
       ],
@@ -95,14 +104,68 @@ describe("introspect indexes", () => {
           method: "btree",
           keys: [key("a"), key("b")],
           include: ["d", "c"],
+          where: undefined,
           nullsNotDistinct: true,
         },
       ],
       [
         "public.t.v",
-        { unique: true, method: "btree", keys: [key("c")], include: [], nullsNotDistinct: false },
+        {
+          unique: true,
+          method: "btree",
+          keys: [key("c")],
+          include: [],
+          where: undefined,
+          nullsNotDistinct: false,
+        },
       ],
     ]);
+  });
+
+  it("reads an expression key as Postgres deparses it, wrapped or bare, beside plain keys", async () => {
+    await db.driver.execute(`
+      create table t (a integer, b text);
+      create index i on t (lower(b) desc, a, (a + 1), (b || 'x') nulls first);
+    `);
+
+    const payload = only(await introspect(db.driver));
+
+    expect(payload.keys).toStrictEqual([
+      expression("lower(b)", true, true),
+      key("a"),
+      expression("a + 1"),
+      expression("b || 'x'::text", false, true),
+    ]);
+  });
+
+  it("reads a partial index's predicate as Postgres deparses it", async () => {
+    await db.driver.execute(`
+      create table t (a integer, b text);
+      create unique index i on t (a) where b is not null and a > 0;
+    `);
+
+    const payload = only(await introspect(db.driver));
+
+    expect(payload.where).toBe("b IS NOT NULL AND a > 0");
+    expect(payload.unique).toBe(true);
+  });
+
+  it("reads an expression and a predicate together, with INCLUDE columns", async () => {
+    await db.driver.execute(`
+      create table t (a integer, b text, c integer);
+      create index i on t (lower(b)) include (c) where a > 0;
+    `);
+
+    const payload = only(await introspect(db.driver));
+
+    expect(payload).toStrictEqual({
+      unique: false,
+      method: "btree",
+      keys: [expression("lower(b)")],
+      include: ["c"],
+      where: "a > 0",
+      nullsNotDistinct: false,
+    });
   });
 
   it("reads an index in another schema under that schema's table", async () => {

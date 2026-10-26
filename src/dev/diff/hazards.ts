@@ -136,6 +136,15 @@ function domainRetypeHazards(
   const source = domains.get(before);
   const target = domains.get(after);
   if (source === undefined && target === undefined) return undefined;
+  return domainPairHazards(before, after, source, target);
+}
+
+function domainPairHazards(
+  before: string,
+  after: string,
+  source: DomainType | undefined,
+  target: DomainType | undefined,
+): readonly HazardKind[] {
   const value = source === undefined ? before : source.base;
   if (target === undefined) return value === after ? [] : HAZARD_KINDS;
   if (target.base !== value) return HAZARD_KINDS;

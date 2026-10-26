@@ -12,8 +12,11 @@
  *   `vi.mock("node:child_process", ...)`, so a script test cannot run `gh` against the live repo.
  * - `smonn/test-server-url`: no `process.env.DATABASE_URL` read in a test; see
  *   `lint-rule-test-server-url.ts`.
+ * - `smonn/real-git-env`: a test that spawns `git` imports `isolateGitEnv`; see
+ *   `lint-rule-real-git-env.ts`.
  */
 import type { RuleTester } from "oxlint/plugins-dev";
+import { realGitEnvRule } from "./lint-rule-real-git-env.ts";
 import { sqlInterpolation } from "./lint-rule-sql-interpolation.ts";
 import { testServerUrlRule } from "./lint-rule-test-server-url.ts";
 
@@ -28,7 +31,8 @@ type Plugin = {
       | "required-brand"
       | "error-message-qualifier"
       | "mock-child-process"
-      | "test-server-url",
+      | "test-server-url"
+      | "real-git-env",
       Rule
     >
   >;
@@ -102,6 +106,14 @@ function isErrorConstructor(callee: Node): boolean {
   return callee.type === "Identifier" && callee.name.endsWith("Error");
 }
 
+function dottedInterpolations(node: Extract<Node, { type: "NewExpression" }>): Node[] {
+  const [text] = node.arguments;
+  if (!isErrorConstructor(node.callee) || text?.type !== "TemplateLiteral") return [];
+  return text.expressions.filter((_, index) =>
+    DOTTED_NAME.test(text.quasis[index + 1]?.value.raw ?? ""),
+  );
+}
+
 const errorMessageQualifier: Rule = {
   meta: {
     type: "problem",
@@ -110,11 +122,7 @@ const errorMessageQualifier: Rule = {
   create(context) {
     return {
       NewExpression(node) {
-        const [text] = node.arguments;
-        if (!isErrorConstructor(node.callee) || text?.type !== "TemplateLiteral") return;
-        for (const [index, expression] of text.expressions.entries()) {
-          const after = text.quasis[index + 1]?.value.raw ?? "";
-          if (!DOTTED_NAME.test(after)) continue;
+        for (const expression of dottedInterpolations(node)) {
           context.report({
             node: expression,
             message:
@@ -184,6 +192,7 @@ const plugin: Plugin = {
     "error-message-qualifier": errorMessageQualifier,
     "mock-child-process": mockChildProcess,
     "test-server-url": testServerUrlRule,
+    "real-git-env": realGitEnvRule,
   },
 };
 export default plugin;

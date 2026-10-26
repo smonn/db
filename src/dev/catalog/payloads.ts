@@ -59,9 +59,14 @@ export type UniquePayload = {
   readonly nullsNotDistinct: boolean;
 };
 
-/** One key of an index, in the order the index sorts by. */
-export type IndexKeyPayload = {
-  readonly column: string;
+/** One key of an index, in the order the index sorts by: a column, or an expression over columns. */
+export type IndexKeyPayload = (
+  | { readonly column: string }
+  | {
+      /** As Postgres deparses it, without the parentheses an index key needs around it. */
+      readonly expression: string;
+    }
+) & {
   readonly descending: boolean;
   /** Postgres defaults to NULLs last for an ascending key and first for a descending one. */
   readonly nullsFirst: boolean;
@@ -73,6 +78,8 @@ export type IndexPayload = {
   readonly keys: readonly IndexKeyPayload[];
   /** Stored beside the keys, in the order given. */
   readonly include: readonly string[];
+  /** The partial index's predicate as Postgres deparses it; `undefined` indexes every row. */
+  readonly where: string | undefined;
   readonly nullsNotDistinct: boolean;
 };
 
@@ -89,3 +96,8 @@ export type ForeignKeyPayload = {
   readonly match: ForeignKey["match"];
   readonly deferrable: ForeignKey["deferrable"];
 };
+
+/** The columns an index names as plain keys; an expression key names none here. */
+export function plainKeyColumns(keys: readonly IndexKeyPayload[]): string[] {
+  return keys.flatMap((key) => ("column" in key ? [key.column] : []));
+}
