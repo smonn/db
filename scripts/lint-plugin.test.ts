@@ -140,6 +140,47 @@ tester.run("mock-child-process", plugin.rules["mock-child-process"], {
   ],
 });
 
+const CLEAR_GIT_ENV = 'import { isolateGitEnv } from "../src/dev/cli/git-env.test-helper.ts";\n';
+
+tester.run("real-git-env", plugin.rules["real-git-env"], {
+  valid: [
+    `${CLEAR_GIT_ENV}execFileSync("git", ["init"], { cwd });`,
+    `${CLEAR_GIT_ENV}cp.spawnSync("git", ["status"]);`,
+    'expect(execFileSync).toHaveBeenCalledWith("git", ["show", "HEAD"]);',
+    'vi.mocked(execFileSync).mockReturnValue("");',
+    'execFileSync("gh", ["pr", "view"]);',
+    "execFileSync(command, args, options);",
+    'execSync("github-cli --version");',
+    'import { isolateGitEnv } from "./git-env.test-helper.ts";\nexecSync(`git init`);',
+  ],
+  invalid: [
+    {
+      code: 'execFileSync("git", ["init"], { cwd });',
+      errors: [{ message: /isolateGitEnv\(\) from git-env\.test-helper\.ts/u }],
+    },
+    {
+      code: 'import { spawnSync } from "node:child_process";\nspawnSync("git", ["status"]);\nchild_process.spawn("git", []);',
+      errors: 2,
+    },
+    {
+      code: 'execSync("git init");',
+      errors: 1,
+    },
+    {
+      code: "exec(`git commit -m ${message}`);",
+      errors: 1,
+    },
+    {
+      code: 'import { isolateGitEnv } from "./elsewhere.ts";\nexecFile("git", []);',
+      errors: 1,
+    },
+    {
+      code: 'import { other } from "./git-env.test-helper.ts";\nexecFileSync("git", []);',
+      errors: 1,
+    },
+  ],
+});
+
 tester.run("test-server-url", plugin.rules["test-server-url"], {
   valid: [
     "const url = testServerUrl();",
