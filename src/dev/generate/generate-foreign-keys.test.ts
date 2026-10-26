@@ -189,3 +189,63 @@ create table public.orders (id integer primary key, user_id integer references p
     );
   });
 });
+
+describe("generating foreign keys from the second callback", () => {
+  const shipments = defineTable(
+    (c) => ({ region: c.text().notNull(), number: c.integer().notNull() }),
+    (t) => ({ primaryKey: [t.region, t.number] }),
+  );
+
+  function composite(options?: { name?: string; onDelete?: "cascade"; match?: "full" }) {
+    const events = defineTable(
+      (c) => ({ id: c.integer().primaryKey(), region: c.text(), number: c.integer() }),
+      (t) => ({
+        foreignKeys: [
+          {
+            columns: [t.number, t.region],
+            references: () => [shipments.columns.number, shipments.columns.region],
+            ...options,
+          },
+        ],
+      }),
+    );
+    return defineDatabase({ public: { shipments, events } });
+  }
+
+  const COMPOSITE = `create table public.shipments (region text not null, number integer not null, primary key (region, number));
+create table public.events (id integer primary key, region text, number integer);
+`;
+
+  it("creates a composite foreign key, and verifies the Shadow database matches", async () => {
+    const result = await run(memoryFileSystem(), composite({ onDelete: "cascade", match: "full" }));
+
+    expect(result.sql).toContain(
+      `alter table "public"."events" add constraint "events_number_region_fkey" foreign key ("number", "region") references "public"."shipments" ("number", "region") match full on delete cascade;`,
+    );
+    expect(result.hazards).toStrictEqual([]);
+  });
+
+  it("finds no difference from a Committed migration that adds it with Postgres's name", async () => {
+    const fileSystem = await committed(`${COMPOSITE}alter table public.events
+  add foreign key (number, region) references public.shipments (number, region);
+`);
+
+    expect(await run(fileSystem, composite())).toMatchObject({ sql: undefined });
+  });
+
+  it("creates a self reference, and verifies the Shadow database matches", async () => {
+    const nodes = defineTable(
+      (c) => ({ id: c.integer().primaryKey(), parent_id: c.integer() }),
+      (t) => ({
+        foreignKeys: [{ columns: [t.parent_id], references: [t.id], onDelete: "set null" }],
+      }),
+    );
+
+    const result = await run(memoryFileSystem(), defineDatabase({ public: { nodes } }));
+
+    expect(result.sql).toContain(
+      `alter table "public"."nodes" add constraint "nodes_parent_id_fkey" foreign key ("parent_id") references "public"."nodes" ("id") on delete set null;`,
+    );
+    expect(result.hazards).toStrictEqual([]);
+  });
+});

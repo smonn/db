@@ -82,7 +82,7 @@ function onTableClaims(): (table: string, name: string, owner: string) => string
     const other = names.get(name);
     if (other !== undefined) {
       throw new Error(
-        `${other} and ${owner} both take the constraint name ${quoteIdentifier(name)}; give one of them another name with primaryKey({ name }), unique({ name }), references(target, { name }), or { name, columns }`,
+        `${other} and ${owner} both take the constraint name ${quoteIdentifier(name)}; give one of them another name with primaryKey({ name }), unique({ name }), references(target, { name }), { name, columns }, or a foreignKeys entry's name`,
       );
     }
     names.set(name, owner);
