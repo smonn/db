@@ -28,6 +28,10 @@ function hintsFor(from: Catalog, to: Catalog, before: Fact, after: Fact): string
   if (before.kind === "table" && after.kind === "table") {
     return columnHints(from, to, before, after);
   }
+  return typeHints(from, to, before, after);
+}
+
+function typeHints(from: Catalog, to: Catalog, before: Fact, after: Fact): string[] {
   if (before.kind === "schema" && after.kind === "schema") {
     return tableHints(from, to, before, after);
   }
@@ -43,10 +47,9 @@ function columnHints(
 ): string[] {
   const dropped = missingFrom(from, to, columnsOf(from, before));
   const added = missingFrom(to, from, columnsOf(to, after));
-  const [drop, add] = [dropped[0], added[0]];
-  if (dropped.length !== 1 || added.length !== 1 || drop === undefined || add === undefined) {
-    return [];
-  }
+  const pair = onlyPair(dropped, added);
+  if (pair === undefined) return [];
+  const [drop, add] = pair;
   if (drop.payload.type !== add.payload.type) return [];
   return [
     `column ${qualified(add, to)} may be a rename of ${JSON.stringify(drop.name)}: add .renamedFrom(${JSON.stringify(drop.name)}) to it`,
@@ -61,10 +64,9 @@ function tableHints(
 ): string[] {
   const dropped = missingFrom(from, to, tablesOf(from, before));
   const added = missingFrom(to, from, tablesOf(to, after));
-  const [drop, add] = [dropped[0], added[0]];
-  if (dropped.length !== 1 || added.length !== 1 || drop === undefined || add === undefined) {
-    return [];
-  }
+  const pair = onlyPair(dropped, added);
+  if (pair === undefined) return [];
+  const [drop, add] = pair;
   const columns = signature(columnsOf(from, drop));
   if (columns === "[]" || columns !== signature(columnsOf(to, add))) return [];
   return [
@@ -75,14 +77,22 @@ function tableHints(
 function labelHints(to: Catalog, before: FactOf<"enum">, after: FactOf<"enum">): string[] {
   const removed = before.payload.labels.filter((label) => !after.payload.labels.includes(label));
   const added = after.payload.labels.filter((label) => !before.payload.labels.includes(label));
-  const [drop, add] = [removed[0], added[0]];
-  if (removed.length !== 1 || added.length !== 1 || drop === undefined || add === undefined) {
-    return [];
-  }
+  const pair = onlyPair(removed, added);
+  if (pair === undefined) return [];
+  const [drop, add] = pair;
   if (before.payload.labels.indexOf(drop) !== after.payload.labels.indexOf(add)) return [];
   return [
     `enum ${qualified(after, to)} may rename the label ${JSON.stringify(drop)} to ${JSON.stringify(add)}: add renamedLabels: { ${JSON.stringify(add)}: ${JSON.stringify(drop)} } to its options`,
   ];
+}
+
+/** The one dropped and the one added item, or undefined unless each side has exactly one. */
+function onlyPair<T>(dropped: readonly T[], added: readonly T[]): [T, T] | undefined {
+  const [drop, add] = [dropped[0], added[0]];
+  if (dropped.length !== 1 || added.length !== 1 || drop === undefined || add === undefined) {
+    return undefined;
+  }
+  return [drop, add];
 }
 
 function columnsOf(catalog: Catalog, table: FactOf<"table">): FactOf<"column">[] {

@@ -34,6 +34,11 @@ export function table(columns: Readonly<Record<string, Column>>, keys: Keys = {}
     builder.column("public", "t", name, payload);
     addAttributes(builder, name, column);
   }
+  addKeys(builder, keys);
+  return builder.build();
+}
+
+function addKeys(builder: CatalogBuilder, keys: Keys): void {
   if (keys.primary !== undefined) {
     builder.primaryKey("public", "t", "t_pkey", { columns: keys.primary });
   }
@@ -42,7 +47,6 @@ export function table(columns: Readonly<Record<string, Column>>, keys: Keys = {}
       columns: [keys.unique.column],
       nullsNotDistinct: false,
     });
-  return builder.build();
 }
 
 function addAttributes(builder: CatalogBuilder, name: string, column: Column): void {
