@@ -112,32 +112,41 @@ export function labelGaps(issue: LabelledIssue): string[] {
   ].filter((phrase) => phrase !== undefined);
 }
 
-export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void {
-  const { GITHUB_EVENT_PATH: eventPath } = env;
-  if (eventPath === undefined) {
-    console.error("Set GITHUB_EVENT_PATH");
-    process.exitCode = 1;
-    return;
-  }
-  const event = readEvent(parseJson(readFileSync(eventPath, "utf8"), eventPath), "$");
-  if (!needsLabelCheck(event)) return;
-  const { repository } = event;
-  const issuePath = `repos/${repository.full_name}/issues/${event.issue.number}`;
-  const current = readIssue(parseJson(gh(["api", issuePath]), `gh api ${issuePath}`), "$");
-  if (!qualifies(current)) return;
-  const gaps = labelGaps(current);
-  if (gaps.length === 0) return;
+function alreadyCommented(issuePath: string, gh: Gh): boolean {
   const commentsPath = `${issuePath}/comments?per_page=100`;
   const pages = parseJson(
     gh(["api", "--paginate", "--slurp", commentsPath]),
     `gh api ${commentsPath}`,
   );
-  if (
-    array(array(readComment))(pages, "$")
-      .flat()
-      .some((comment) => comment.body.includes(MARKER))
-  )
-    return;
+  return array(array(readComment))(pages, "$")
+    .flat()
+    .some((comment) => comment.body.includes(MARKER));
+}
+
+function readyGaps(issue: LabelledIssue): string[] {
+  return qualifies(issue) ? labelGaps(issue) : [];
+}
+
+/** The event to check, or `undefined` when the variable is unset or the event needs no check. */
+function readEnvEvent(env: NodeJS.ProcessEnv): LabelsEvent | undefined {
+  const { GITHUB_EVENT_PATH: eventPath } = env;
+  if (eventPath === undefined) {
+    console.error("Set GITHUB_EVENT_PATH");
+    process.exitCode = 1;
+    return undefined;
+  }
+  const event = readEvent(parseJson(readFileSync(eventPath, "utf8"), eventPath), "$");
+  return needsLabelCheck(event) ? event : undefined;
+}
+
+export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void {
+  const event = readEnvEvent(env);
+  if (event === undefined) return;
+  const { repository } = event;
+  const issuePath = `repos/${repository.full_name}/issues/${event.issue.number}`;
+  const current = readIssue(parseJson(gh(["api", issuePath]), `gh api ${issuePath}`), "$");
+  const gaps = readyGaps(current);
+  if (gaps.length === 0 || alreadyCommented(issuePath, gh)) return;
   const body = `${MARKER}\nThis ready issue breaks the label rule in \`docs/agents/triage-labels.md\`: ${gaps.join(" and ")}. Give it exactly one \`priority:*\` label and exactly one of \`bug\` or \`enhancement\`.`;
   gh(["issue", "comment", String(current.number), "--repo", repository.full_name, "--body", body]);
 }

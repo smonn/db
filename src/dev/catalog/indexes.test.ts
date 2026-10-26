@@ -5,6 +5,7 @@ import {
   type ColumnFactories,
   type ColumnRefs,
 } from "../../runtime/definition/index.ts";
+import { sql } from "../../runtime/query/index.ts";
 import { definitionCatalog } from "./definition-catalog.ts";
 
 const columns = (c: ColumnFactories) => ({ a: c.text(), b: c.text(), c: c.text() });
@@ -63,6 +64,7 @@ const btree = (...keyColumns: string[]) => ({
   method: "btree",
   keys: keyColumns.map((column) => ({ column, descending: false, nullsFirst: false })),
   include: [],
+  where: undefined,
   nullsNotDistinct: false,
 });
 
@@ -99,9 +101,45 @@ describe("an index in the Definition", () => {
             { column: "b", descending: false, nullsFirst: true },
           ],
           include: ["c"],
+          where: undefined,
           nullsNotDistinct: true,
         },
       ],
+    ]);
+  });
+
+  it("holds an expression key and the predicate as DDL text over the quoted columns", () => {
+    const catalog = catalogOf((t) => [
+      {
+        columns: [{ key: sql`lower(${t.a})`, order: "desc" }, t.c, sql`(${t.a} || ${t.b})`],
+        where: sql`${t.c} is not null and ${t.b} <> 'x'`,
+        unique: true,
+        name: "ix",
+      },
+    ]);
+
+    expect(indexesOf(catalog)).toStrictEqual([
+      [
+        "ix",
+        {
+          ...btree(),
+          unique: true,
+          keys: [
+            { expression: 'lower("a")', descending: true, nullsFirst: true },
+            { column: "c", descending: false, nullsFirst: false },
+            { expression: '("a" || "b")', descending: false, nullsFirst: false },
+          ],
+          where: `"c" is not null and "b" <> 'x'`,
+        },
+      ],
+    ]);
+  });
+
+  it("names a partial or expression unique through indexes with unique: true", () => {
+    const catalog = catalogOf((t) => [{ columns: [t.a], unique: true, where: sql`${t.b} > ''` }]);
+
+    expect(indexesOf(catalog)).toStrictEqual([
+      ["t_a_idx", { ...btree("a"), unique: true, where: `"b" > ''` }],
     ]);
   });
 
