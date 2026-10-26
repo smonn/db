@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Renames declared with `renamedFrom`, and an opt-in casing that maps keys to SQL names
