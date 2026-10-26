@@ -1,7 +1,7 @@
 import type { Action, ActionKind } from "./actions.ts";
 
 /**
- * The phases `order` sorts actions into, in order. `docs/architecture.md` (Ordering) numbers them
+ * The phases `order` sorts actions into, in order. `docs/architecture/diff-engine.md` (Ordering) numbers them
  * by position here, lists the kinds each holds, and says why fixed phases suffice until a kind
  * references its own kind.
  */
