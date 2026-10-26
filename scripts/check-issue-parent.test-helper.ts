@@ -91,10 +91,27 @@ export function writeEvent(payload: unknown, name = "event.json"): string {
   return path;
 }
 
-export function run(payload: ParentEvent, routes: Record<string, unknown>): Gh {
+export function run(
+  payload: ParentEvent,
+  routes: Record<string, unknown>,
+  wait: (ms: number) => void = () => {},
+): Gh {
   const gh = fakeGh(routes);
-  main({ GITHUB_EVENT_PATH: writeEvent(payload) }, gh, () => {});
+  main({ GITHUB_EVENT_PATH: writeEvent(payload) }, gh, wait);
   return gh;
+}
+
+/** Like `fakeGh`, but the second request for the issue itself, the refetch after the wait, calls `refetch`. */
+export function refetchingGh(routes: Record<string, unknown>, refetch: () => string): Gh {
+  const answer = fakeGh(routes);
+  let fetches = 0;
+  return vi.fn<(args: string[]) => string>((args) => {
+    if (args.at(-1) === issueRoute) {
+      fetches += 1;
+      if (fetches === 2) return refetch();
+    }
+    return answer(args);
+  });
 }
 
 export function posted(gh: Gh): string[][] {

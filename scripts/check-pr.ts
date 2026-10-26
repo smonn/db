@@ -1,10 +1,13 @@
 /**
  * Checks that a pull request title is a Conventional Commit, since release-please builds releases
  * from squash-merged titles (ADR-0018), and that its head branch is a Conventional Branch. A
- * `docs(adr): propose ...` title must not change an ADR to `status: accepted`, and a
- * `docs(adr): accept ...` title needs every changed ADR to be accepted. An ADR the PR adds must not
+ * `docs(adr): propose ...` title must not add or change an ADR to `status: accepted`, and a
+ * `docs(adr): accept ...` title must not add or change one to `proposed` and needs one to become
+ * accepted. An ADR whose status the PR leaves as it was on the base is not judged. An ADR the PR adds must not
  * share its number with one another open PR adds (docs/adr/TEMPLATE.md numbers one past the highest
  * on `main` or in an open PR, and nothing else catches a clash before the second merge).
+ *
+ * A closing keyword in `PR_BODY` must not name an issue outside `smonn/db` (`check-closing-keywords.ts`).
  *
  * Run with `PR_TITLE` and `PR_BRANCH` set, as `pnpm check:pr`; CI runs it in the Metadata job (`.github/workflows/pr.yml`).
  * Set `PR_DIFF_BASE` to a git revision (CI uses `HEAD^1`, the base side of the merge commit) to
@@ -16,6 +19,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { checkClosingKeywords } from "./check-closing-keywords.ts";
 import { checkAdrClash, readOpenPrAdds, type OpenPrAdd } from "./check-adr-clash.ts";
 
 const types = [
@@ -41,7 +45,8 @@ const statusPattern = /^status:\s*(\S+)\s*$/mu;
 const branchPattern = /^(feature|bugfix|hotfix|release|chore)\/[a-z0-9]+([.-][a-z0-9]+)*$/u;
 const botBranchPrefixes = ["renovate/", "release-please--"];
 
-export type ChangedAdr = { file: string; status: string; added: boolean };
+/** `baseStatus` is the status on the diff base, absent for an ADR the PR adds. */
+export type ChangedAdr = { file: string; status: string; added: boolean; baseStatus?: string };
 
 export function checkBranch(branch: string): string[] {
   const isBot = botBranchPrefixes.some((prefix) => branch.startsWith(prefix));
@@ -58,17 +63,16 @@ export function parseAdrStatus(text: string): string {
 
 export function checkAdrTitle(title: string, adrs: readonly ChangedAdr[]): string[] {
   const verb = adrTitlePattern.exec(title)?.[1];
-  if (verb === "propose") {
-    return adrs
-      .filter((adr) => adr.status === "accepted")
-      .map((adr) => `PR title says "propose" but ${adr.file} has status: ${adr.status}`);
+  if (verb === undefined) return [];
+  const changed = adrs.filter((adr) => adr.added || adr.baseStatus !== adr.status);
+  const wrong = verb === "propose" ? "accepted" : "proposed";
+  const problems = changed
+    .filter((adr) => adr.status === wrong)
+    .map((adr) => `PR title says "${verb}" but ${adr.file} has status: ${adr.status}`);
+  if (verb === "accept" && !changed.some((adr) => adr.status === "accepted")) {
+    problems.push('PR title says "accept" but no ADR became accepted');
   }
-  if (verb === "accept") {
-    return adrs
-      .filter((adr) => adr.status !== "accepted")
-      .map((adr) => `PR title says "accept" but ${adr.file} has status: ${adr.status}`);
-  }
-  return [];
+  return problems;
 }
 
 export function checkPr(title: string, branch: string, adrs: readonly ChangedAdr[] = []): string[] {
@@ -87,11 +91,13 @@ export function readChangedAdrs(base: string, cwd: string = process.cwd()): Chan
     ["diff", "--name-status", "--no-renames", "--diff-filter=d", base, "HEAD"],
     { cwd, encoding: "utf8" },
   );
-  return diff.split("\n").flatMap((line) => {
+  return diff.split("\n").flatMap((line): ChangedAdr[] => {
     const [letter, file] = line.split("\t");
     if (letter === undefined || file === undefined || !adrPathPattern.test(file)) return [];
     const status = parseAdrStatus(readFileSync(join(cwd, file), "utf8"));
-    return [{ file, status, added: letter === "A" }];
+    if (letter === "A") return [{ file, status, added: true }];
+    const baseText = execFileSync("git", ["show", `${base}:${file}`], { cwd, encoding: "utf8" });
+    return [{ file, status, added: false, baseStatus: parseAdrStatus(baseText) }];
   });
 }
 
@@ -104,21 +110,35 @@ function clashProblems(
   return checkAdrClash(adrs, readOpenAdds(number));
 }
 
+function report(problems: readonly string[]): void {
+  for (const problem of problems) console.error(problem);
+  if (problems.length > 0) process.exitCode = 1;
+}
+
 export function main(
   env: NodeJS.ProcessEnv = process.env,
   readAdrs: (base: string) => ChangedAdr[] = readChangedAdrs,
   readOpenAdds: (exclude: string) => OpenPrAdd[] = readOpenPrAdds,
 ): void {
-  const { PR_TITLE: title, PR_BRANCH: branch, PR_DIFF_BASE: base, PR_NUMBER: number } = env;
+  const {
+    PR_TITLE: title,
+    PR_BRANCH: branch,
+    PR_DIFF_BASE: base,
+    PR_NUMBER: number,
+    PR_BODY: body,
+  } = env;
   if (title === undefined || branch === undefined) {
     console.error("Set PR_TITLE and PR_BRANCH");
     process.exitCode = 1;
     return;
   }
   const adrs = base === undefined ? [] : readAdrs(base);
-  const problems = [...checkPr(title, branch, adrs), ...clashProblems(adrs, number, readOpenAdds)];
-  for (const problem of problems) console.error(problem);
-  if (problems.length > 0) process.exitCode = 1;
+  const problems = [
+    ...checkPr(title, branch, adrs),
+    ...checkClosingKeywords(body ?? ""),
+    ...clashProblems(adrs, number, readOpenAdds),
+  ];
+  report(problems);
 }
 
 if (import.meta.main) main();

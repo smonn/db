@@ -15,7 +15,7 @@
  */
 import type { RuleTester } from "oxlint/plugins-dev";
 import { sqlInterpolation } from "./lint-rule-sql-interpolation.ts";
-import { testServerUrl } from "./lint-rule-test-server-url.ts";
+import { testServerUrlRule } from "./lint-rule-test-server-url.ts";
 
 type Rule = Parameters<RuleTester["run"]>[1];
 type Context = Parameters<Extract<Rule, { create: unknown }>["create"]>[0];
@@ -169,7 +169,7 @@ const plugin: Plugin = {
     "required-brand": requiredBrand,
     "error-message-qualifier": errorMessageQualifier,
     "mock-child-process": mockChildProcess,
-    "test-server-url": testServerUrl,
+    "test-server-url": testServerUrlRule,
   },
 };
 export default plugin;

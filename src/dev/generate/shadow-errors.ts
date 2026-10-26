@@ -49,16 +49,24 @@ export function explainShadowError(
 ): unknown {
   const handEdited = options.handEdited ?? false;
   if (error instanceof Error) {
-    const code = (error as Error & { code?: unknown }).code;
-    if (code === "25001" && options.noTransaction !== true) return noTransactionHint(error);
-    const fix = fixFor(code);
-    if (fix !== undefined) {
-      return new Error(`${error.message}\n${handEdited ? fix.handEdited : fix.generated}`, {
-        cause: error,
-      });
-    }
+    const explained = explainPostgresError(error, handEdited, options.noTransaction === true);
+    if (explained !== undefined) return explained;
   }
   return explainBlockerError(error, {
     source: { kind: handEdited ? "hand-edited" : "generated" },
+  });
+}
+
+function explainPostgresError(
+  error: Error,
+  handEdited: boolean,
+  noTransaction: boolean,
+): Error | undefined {
+  const code = (error as Error & { code?: unknown }).code;
+  if (code === "25001" && !noTransaction) return noTransactionHint(error);
+  const fix = fixFor(code);
+  if (fix === undefined) return undefined;
+  return new Error(`${error.message}\n${handEdited ? fix.handEdited : fix.generated}`, {
+    cause: error,
   });
 }
