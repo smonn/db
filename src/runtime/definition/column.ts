@@ -14,6 +14,8 @@ export type ColumnState = {
   readonly unique: boolean;
   /** The name `.primaryKey({ name })` or `.unique({ name })` gave its constraint. */
   readonly constraintName: string | undefined;
+  /** The SQL name the column had before a rename, for generate to turn into a `RENAME`. */
+  readonly renamedFrom: string | undefined;
 };
 
 /** Replaces the name Postgres would derive, such as `users_pkey` or `users_email_key`. */
@@ -39,6 +41,11 @@ export type Column<
   /** Type-only: the value a row holds, whether the column is NOT NULL, and whether it is the primary key. */
   readonly "~types": { readonly value: V; readonly notNull: N; readonly primaryKey: Pk };
   notNull(): Column<V, true, Int, Gen, Pk, Key, Co>;
+  /**
+   * Renames the column from `oldName`, its SQL name before this change. Generate ignores the
+   * marker once the old name is gone, so remove it after the rename ships.
+   */
+  renamedFrom(oldName: string): Column<V, N, Int, Gen, Pk, Key, Co>;
 } & (Co extends true
   ? unknown
   : {
@@ -89,6 +96,7 @@ function column<
     state,
     "~codec": codec,
     notNull: () => column({ ...state, notNull: true }, codec),
+    renamedFrom: (oldName: string) => column({ ...state, renamedFrom: oldName }, codec),
     default: (expression: string) => column({ ...state, default: expression }, codec),
     identity: (generated: Identity = "by default") =>
       column({ ...state, notNull: true, identity: generated }, codec),
@@ -130,6 +138,7 @@ function of<V, Int extends boolean = false>(sqlType: string): Column<V, false, I
     primaryKey: false,
     unique: false,
     constraintName: undefined,
+    renamedFrom: undefined,
   });
 }
 

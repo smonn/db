@@ -7,6 +7,8 @@ export type TableDefinition<C extends Columns = Columns, K extends string = stri
   readonly primaryKey: readonly K[];
   /** The primary key's constraint name when the Definition gives one; the catalog derives it otherwise. */
   readonly primaryKeyName: string | undefined;
+  /** The SQL name the table had before a rename, for generate to turn into a `RENAME`. */
+  readonly renamedFrom: string | undefined;
 };
 
 export type Table<C extends Columns = Columns, K extends string = string> = TableDefinition<
@@ -52,9 +54,12 @@ type KeyEntry<C extends Columns> =
   | { readonly name: string; readonly columns: KeyRefs<C> };
 
 /** The table-level entries, keyed by kind. Later kinds (indexes, checks) join here. */
-type TableExtras<C extends Columns> = [KeyedColumns<C>] extends [never]
+type TableExtras<C extends Columns> = {
+  /** The table's SQL name before this change; generate ignores it once the old name is gone. */
+  readonly renamedFrom?: string;
+} & ([KeyedColumns<C>] extends [never]
   ? { readonly primaryKey?: KeyEntry<C> }
-  : { readonly primaryKey?: never };
+  : { readonly primaryKey?: never });
 
 /** The arguments after the columns; a misuse of the primary key leaves no argument list that fits. */
 type ExtrasArgs<C extends Columns> =
@@ -152,11 +157,17 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
   ...args: Args
 ): TableDefinition<C, KeyOf<C, Args>> {
   const columns = define(factories);
-  const extras: ((t: Refs<C>) => { readonly primaryKey?: unknown }) | undefined = args[0];
+  const extras:
+    | ((t: Refs<C>) => { readonly primaryKey?: unknown; readonly renamedFrom?: unknown })
+    | undefined = args[0];
   const own = refsOf(columns);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- refsOf builds one Ref per key; "~table" exists only in types.
   const declared = extras?.(own as unknown as Refs<C>);
   const primaryKey = primaryKeyOf(columns, own, declared?.primaryKey);
+  const renamedFrom = declared?.renamedFrom;
+  if (renamedFrom !== undefined && typeof renamedFrom !== "string") {
+    throw new TypeError("The table's renamedFrom takes the old SQL name as a string");
+  }
   const both = Object.entries(columns).find(([, { state }]) => state.primaryKey && state.unique);
   if (both !== undefined) {
     throw new Error(
@@ -168,6 +179,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
     columns,
     primaryKey: primaryKey.columns,
     primaryKeyName: primaryKey.name,
+    renamedFrom,
   } as unknown as TableDefinition<C, KeyOf<C, Args>>;
 }
 
@@ -187,10 +199,12 @@ export function defineDatabase<S extends Schemas>(schemas: S): Database<S> {
     Object.entries(schemas).map(([schema, tables]) => [
       schema,
       Object.fromEntries(
-        Object.entries(tables).map(([name, { columns, primaryKey, primaryKeyName }]) => [
-          name,
-          { schema, name, columns, primaryKey, primaryKeyName },
-        ]),
+        Object.entries(tables).map(
+          ([name, { columns, primaryKey, primaryKeyName, renamedFrom }]) => [
+            name,
+            { schema, name, columns, primaryKey, primaryKeyName, renamedFrom },
+          ],
+        ),
       ),
     ]),
   );
