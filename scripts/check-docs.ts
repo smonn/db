@@ -152,7 +152,11 @@ export function checkAdrNumbers(files: string[]): Problem[] {
 }
 
 // Lowered as a file shrinks and raised only with the maintainer (#511).
-const DOC_BUDGETS: Record<string, number> = {};
+const DOC_BUDGETS: Record<string, number> = {
+  "docs/architecture/README.md": 690,
+  "docs/architecture/cli.md": 1030,
+  "docs/architecture/diff-engine.md": 2670,
+};
 
 export function main(cwd = ".", budgets: Record<string, number> = DOC_BUDGETS): void {
   const files = markdownFiles(cwd);
