@@ -25,19 +25,43 @@ test("runChecks runs every script after a failure and returns the failed ones", 
 });
 
 test("main sets a non-zero exit code and names the failed checks", () => {
-  main((script) => script !== "lint", []);
+  main(
+    (script) => script !== "lint",
+    [],
+    () => true,
+  );
   expect(process.exitCode).toBe(1);
   expect(console.error).toHaveBeenCalledWith(expect.stringContaining("failed: lint"));
 });
 
 test("main leaves the exit code alone when every check passes", () => {
   const ran: string[] = [];
-  main((script) => {
-    ran.push(script);
-    return true;
-  }, []);
+  main(
+    (script) => {
+      ran.push(script);
+      return true;
+    },
+    [],
+    () => true,
+  );
   expect(process.exitCode).toBeUndefined();
   expect(ran).toEqual([...checks]);
+});
+
+test("main without a test database skips coverage, says how to start one, and fails", () => {
+  const ran: string[] = [];
+  main(
+    (script) => {
+      ran.push(script);
+      return true;
+    },
+    [],
+    () => false,
+  );
+  expect(ran).toEqual(checks.filter((script) => script !== "coverage"));
+  expect(console.error).toHaveBeenCalledWith(expect.stringContaining("node scripts/test-db.ts"));
+  expect(console.error).toHaveBeenCalledWith(expect.stringContaining("failed: coverage"));
+  expect(process.exitCode).toBe(1);
 });
 
 test("main with --static runs every check but coverage", () => {
