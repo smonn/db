@@ -22,6 +22,22 @@ function calleeName(node: Node): string | undefined {
   return undefined;
 }
 
+type Variable = NonNullable<ReturnType<Scope["set"]["get"]>>;
+
+function constDeclarator(variable: Variable) {
+  const [definition] = variable.defs;
+  if (
+    variable.defs.length !== 1 ||
+    definition?.type !== "Variable" ||
+    definition.parent?.type !== "VariableDeclaration" ||
+    definition.parent.kind !== "const" ||
+    definition.node.type !== "VariableDeclarator"
+  ) {
+    return null;
+  }
+  return definition.node;
+}
+
 function constBinding(node: Extract<Node, { type: "Identifier" }>, context: Context) {
   for (
     let scope: Scope | null = context.sourceCode.getScope(node);
@@ -30,17 +46,9 @@ function constBinding(node: Extract<Node, { type: "Identifier" }>, context: Cont
   ) {
     const variable = scope.set.get(node.name);
     if (variable === undefined) continue;
-    const [definition] = variable.defs;
-    if (
-      variable.defs.length !== 1 ||
-      definition?.type !== "Variable" ||
-      definition.parent?.type !== "VariableDeclaration" ||
-      definition.parent.kind !== "const" ||
-      definition.node.type !== "VariableDeclarator"
-    ) {
-      return null;
-    }
-    return { atModule: variable.scope.type === "module", init: definition.node.init };
+    const declarator = constDeclarator(variable);
+    if (declarator === null) return null;
+    return { atModule: variable.scope.type === "module", init: declarator.init };
   }
   return null;
 }

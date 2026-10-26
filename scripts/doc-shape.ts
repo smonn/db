@@ -43,6 +43,29 @@ export function headingAnchors(text: string): Set<string> {
   return anchors;
 }
 
+function hasAnchor(resolved: string, targetText: string, anchor: string | undefined): boolean {
+  return (
+    anchor === undefined || !resolved.endsWith(".md") || headingAnchors(targetText).has(anchor)
+  );
+}
+
+function checkLink(
+  source: { file: string; text: string; line: number },
+  target: string,
+  read: (path: string) => string | undefined,
+): Problem[] {
+  const { file, text, line } = source;
+  if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(target)) return [];
+  const [path = "", anchor] = target.split("#");
+  const resolved = path === "" ? file : posix.join(posix.dirname(file), path);
+  const targetText = path === "" ? text : read(resolved);
+  const problem = (message: string): Problem[] => [{ file, line, message }];
+  if (targetText === undefined) return problem(`link to missing file ${path}`);
+  return hasAnchor(resolved, targetText, anchor)
+    ? []
+    : problem(`link to missing heading ${target}`);
+}
+
 /**
  * Flags each relative link whose file is missing, or whose `#anchor` names no heading in the
  * target Markdown file. `read` returns a repo path's text, `""` for a folder, or `undefined`.
@@ -54,18 +77,9 @@ export function checkLinks(
 ): Problem[] {
   return proseLines(text).flatMap((line, index) => {
     const prose = line.replaceAll(/`[^`]*`/gu, "code");
-    return [...prose.matchAll(/\]\(([^)\s]+)/gu)].flatMap(([, target = ""]) => {
-      if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/iu.test(target)) return [];
-      const [path = "", anchor] = target.split("#");
-      const resolved = path === "" ? file : posix.join(posix.dirname(file), path);
-      const targetText = path === "" ? text : read(resolved);
-      const problem = (message: string): Problem[] => [{ file, line: index + 1, message }];
-      if (targetText === undefined) return problem(`link to missing file ${path}`);
-      if (anchor === undefined || !resolved.endsWith(".md")) return [];
-      return headingAnchors(targetText).has(anchor)
-        ? []
-        : problem(`link to missing heading ${target}`);
-    });
+    return [...prose.matchAll(/\]\(([^)\s]+)/gu)].flatMap(([, target = ""]) =>
+      checkLink({ file, text, line: index + 1 }, target, read),
+    );
   });
 }
 

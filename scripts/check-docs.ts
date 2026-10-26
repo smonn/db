@@ -158,6 +158,24 @@ const DOC_BUDGETS: Record<string, number> = {
   "docs/architecture/diff-engine.md": 2670,
 };
 
+function checkMarkdownFile(cwd: string, file: string, glossary: GlossaryEntry[]): Problem[] {
+  const text = readFileSync(join(cwd, file), "utf8");
+  const problems = [
+    ...checkEmDashes(file, text),
+    ...checkLinks(file, text, (path) => readRepoPath(cwd, path)),
+  ];
+  if (file === "README.md" || file === "GLOSSARY.md" || file.startsWith("docs/")) {
+    problems.push(
+      ...checkAvoidTerms(file, text, glossary),
+      ...checkHeadwordCase(file, text, glossary),
+    );
+  }
+  if (/^docs\/adr\/\d{4}-[^/]+\.md$/u.test(file)) {
+    problems.push(...checkAdrBody(file, text));
+  }
+  return problems;
+}
+
 export function main(cwd = ".", budgets: Record<string, number> = DOC_BUDGETS): void {
   const files = markdownFiles(cwd);
   const glossary = parseGlossary(readFileSync(join(cwd, "GLOSSARY.md"), "utf8"));
@@ -166,22 +184,7 @@ export function main(cwd = ".", budgets: Record<string, number> = DOC_BUDGETS): 
     ...checkAdrNumbers(files),
     ...checkBudgets(cwd, budgets),
   ];
-  for (const file of files) {
-    const text = readFileSync(join(cwd, file), "utf8");
-    problems.push(
-      ...checkEmDashes(file, text),
-      ...checkLinks(file, text, (path) => readRepoPath(cwd, path)),
-    );
-    if (file === "README.md" || file === "GLOSSARY.md" || file.startsWith("docs/")) {
-      problems.push(
-        ...checkAvoidTerms(file, text, glossary),
-        ...checkHeadwordCase(file, text, glossary),
-      );
-    }
-    if (/^docs\/adr\/\d{4}-[^/]+\.md$/u.test(file)) {
-      problems.push(...checkAdrBody(file, text));
-    }
-  }
+  for (const file of files) problems.push(...checkMarkdownFile(cwd, file, glossary));
   // Editor tools can turn a typed `\u2014` escape into the literal character.
   for (const file of globSync("{scripts,src}/**/*.ts", { cwd }).toSorted()) {
     problems.push(...checkEmDashes(file, readFileSync(join(cwd, file), "utf8")));
