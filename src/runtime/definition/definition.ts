@@ -1,4 +1,6 @@
-import { type ColumnFactories, type Columns, factories } from "./column.ts";
+import type { Columns } from "./column.ts";
+import { type ColumnFactories, factories } from "./factories.ts";
+import { type ForeignKey, foreignKeysOf, placesOf } from "./foreign-keys.ts";
 
 /** A table without its name or schema, which `defineDatabase` gives it. */
 export type TableDefinition<C extends Columns = Columns, K extends string = string> = {
@@ -15,6 +17,8 @@ export type Table<C extends Columns = Columns, K extends string = string> = Tabl
 > & {
   readonly schema: string;
   readonly name: string;
+  /** The foreign keys its columns declare, with each target's table named. */
+  readonly foreignKeys: readonly ForeignKey[];
 };
 
 type KeyedColumns<C extends Columns> = {
@@ -40,7 +44,7 @@ export type Ref<K extends string = string, C extends Columns = Columns> = {
 };
 
 /** The column references handed to a table's second callback, one per column key. */
-export type Refs<C extends Columns> = { readonly [K in keyof C & string]: Ref<K, C> };
+export type ColumnRefs<C extends Columns> = { readonly [K in keyof C & string]: Ref<K, C> };
 
 type OwnRef<C extends Columns> = Ref<keyof C & string, C>;
 
@@ -60,12 +64,12 @@ type TableExtras<C extends Columns> = [KeyedColumns<C>] extends [never]
 type ExtrasArgs<C extends Columns> =
   IsUnion<KeyedColumns<C>> extends true
     ? [
-        extras: (t: Refs<C>) => {
+        extras: (t: ColumnRefs<C>) => {
           readonly primaryKey?: never;
           readonly "several columns call primaryKey(); declare a composite key in the second callback": never;
         },
       ]
-    : [extras?: (t: Refs<C>) => TableExtras<C>];
+    : [extras?: (t: ColumnRefs<C>) => TableExtras<C>];
 
 type ListedRefs<Entry> = Entry extends { readonly columns: infer Listed } ? Listed : Entry;
 
@@ -152,10 +156,10 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
   ...args: Args
 ): TableDefinition<C, KeyOf<C, Args>> {
   const columns = define(factories);
-  const extras: ((t: Refs<C>) => { readonly primaryKey?: unknown }) | undefined = args[0];
+  const extras: ((t: ColumnRefs<C>) => { readonly primaryKey?: unknown }) | undefined = args[0];
   const own = refsOf(columns);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- refsOf builds one Ref per key; "~table" exists only in types.
-  const declared = extras?.(own as unknown as Refs<C>);
+  const declared = extras?.(own as unknown as ColumnRefs<C>);
   const primaryKey = primaryKeyOf(columns, own, declared?.primaryKey);
   const both = Object.entries(columns).find(([, { state }]) => state.primaryKey && state.unique);
   if (both !== undefined) {
@@ -183,19 +187,27 @@ export type Database<S extends Schemas> = {
 };
 
 export function defineDatabase<S extends Schemas>(schemas: S): Database<S> {
+  const places = placesOf(schemas);
   const database = Object.fromEntries(
     Object.entries(schemas).map(([schema, tables]) => [
       schema,
       Object.fromEntries(
         Object.entries(tables).map(([name, { columns, primaryKey, primaryKeyName }]) => [
           name,
-          { schema, name, columns, primaryKey, primaryKeyName },
+          {
+            schema,
+            name,
+            columns,
+            primaryKey,
+            primaryKeyName,
+            foreignKeys: foreignKeysOf(places, schema, name, columns),
+          },
         ]),
       ),
     ]),
   );
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries loses the keys.
-  return database as Database<S>;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `Object.fromEntries` types the result as string-indexed records, which don't overlap `Database<S>` enough for a direct cast (TS2352); it goes through `unknown`.
+  return database as unknown as Database<S>;
 }
 
 type TypesOf<Col> = Col extends {

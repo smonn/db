@@ -6,10 +6,14 @@ export type {
   Columns,
   ColumnState,
   Database,
+  ForeignKey,
+  ForeignKeyAction,
+  ForeignKeyOptions,
   PlainDate,
   Row,
   Table,
   TableDefinition,
+  Target,
 } from "./definition/index.ts";
 export { migrate, verify } from "./migrator/index.ts";
 export type { MigrateOptions, MigrateResult, VerifyResult } from "./migrator/index.ts";

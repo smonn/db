@@ -26,7 +26,7 @@ type Place = readonly [phase: Phase, rank: number];
 export type PlaceTable<K extends string> = { readonly [A in K]: Place };
 
 /**
- * Ranks follow #381's listed order; the gaps belong to kinds that land later (index, foreign key).
+ * Ranks follow #381's listed order; the gaps belong to kinds that land later (index).
  *
  * Within its phase, each drop runs before the changes it would block: Postgres refuses to add an
  * identity to a column that has a default or isn't NOT NULL, to drop NOT NULL from an identity
@@ -34,6 +34,7 @@ export type PlaceTable<K extends string> = { readonly [A in K]: Place };
  * changed key is rebuilt around the column changes it spans.
  */
 export const PLACES: PlaceTable<ActionKind> = {
+  "drop foreign key": ["drop key or index", 0],
   "drop unique": ["drop key or index", 2],
   "drop primary key": ["drop key or index", 3],
   "drop column": ["drop column or table", 0],
@@ -53,6 +54,7 @@ export const PLACES: PlaceTable<ActionKind> = {
   "set identity mode": ["create or alter table", 7],
   "add primary key": ["add key or index", 0],
   "add unique": ["add key or index", 1],
+  "add foreign key": ["add key or index", 3],
   "drop schema": ["drop schema", 0],
 };
 

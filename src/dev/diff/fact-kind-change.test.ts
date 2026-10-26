@@ -37,10 +37,10 @@ describe("a fact that changes kind at the same catalog key", () => {
   });
 
   it("throws for a kind it has no action for, naming the kind", () => {
-    const forged = relabeled(table(), "unique", "foreign key");
+    const forged = relabeled(table(), "unique", "view");
 
-    expect(() => diff(table(), forged)).toThrow('Unhandled fact kind "foreign key"');
-    expect(() => diff(forged, table())).toThrow('Unhandled fact kind "foreign key"');
-    expect(() => diff(forged, forged)).toThrow('Unhandled fact kind "foreign key"');
+    expect(() => diff(table(), forged)).toThrow('Unhandled fact kind "view"');
+    expect(() => diff(forged, table())).toThrow('Unhandled fact kind "view"');
+    expect(() => diff(forged, forged)).toThrow('Unhandled fact kind "view"');
   });
 });
