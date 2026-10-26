@@ -151,31 +151,42 @@ function walk(node: unknown, source: Source, found: string[], outerStart = -1): 
   for (const value of Object.values(node)) walk(value, source, found, next);
 }
 
+function functionDeclarationName(node: object): string | undefined {
+  if (typeOf(node) !== "FunctionDeclaration") return undefined;
+  const id: unknown = Reflect.get(node, "identifier");
+  const name: unknown = typeof id === "object" && id !== null ? Reflect.get(id, "value") : null;
+  return typeof name === "string" ? name : undefined;
+}
+
+function declaratorFunctionName(declarator: object): string | undefined {
+  const init: unknown = Reflect.get(declarator, "init");
+  const id: unknown = Reflect.get(declarator, "id");
+  const isFunction =
+    typeOf(init ?? {}) === "ArrowFunctionExpression" || typeOf(init ?? {}) === "FunctionExpression";
+  const name: unknown = typeof id === "object" && id !== null ? Reflect.get(id, "value") : null;
+  return isFunction && typeof name === "string" ? name : undefined;
+}
+
+function variableFunctionNames(node: object): string[] {
+  if (typeOf(node) !== "VariableDeclaration") return [];
+  const declarations: unknown = Reflect.get(node, "declarations");
+  if (!Array.isArray(declarations)) return [];
+  const names: string[] = [];
+  for (const declarator of declarations as readonly object[]) {
+    const name = declaratorFunctionName(declarator);
+    if (name !== undefined) names.push(name);
+  }
+  return names;
+}
+
 /** The names of the functions a module declares at its top level, exported or not. */
 function localFunctions(body: readonly object[]): Set<string> {
   const names = new Set<string>();
   const add = (node: unknown): void => {
     if (typeof node !== "object" || node === null) return;
-    if (typeOf(node) === "FunctionDeclaration") {
-      const id: unknown = Reflect.get(node, "identifier");
-      const name: unknown = typeof id === "object" && id !== null ? Reflect.get(id, "value") : null;
-      if (typeof name === "string") names.add(name);
-    }
-    if (typeOf(node) === "VariableDeclaration") {
-      const declarations: unknown = Reflect.get(node, "declarations");
-      if (Array.isArray(declarations)) {
-        for (const declarator of declarations) {
-          const init: unknown = Reflect.get(declarator, "init");
-          const id: unknown = Reflect.get(declarator, "id");
-          const isFunction =
-            typeOf(init ?? {}) === "ArrowFunctionExpression" ||
-            typeOf(init ?? {}) === "FunctionExpression";
-          const name: unknown =
-            typeof id === "object" && id !== null ? Reflect.get(id, "value") : null;
-          if (isFunction && typeof name === "string") names.add(name);
-        }
-      }
-    }
+    const declared = functionDeclarationName(node);
+    if (declared !== undefined) names.add(declared);
+    for (const name of variableFunctionNames(node)) names.add(name);
   };
   for (const item of body) {
     add(item);
