@@ -6,6 +6,8 @@ import { type ColumnFactories, factories } from "./factories.ts";
 export type BaseFactories = Omit<ColumnFactories, "domain">;
 
 export type DomainOptions<N extends boolean = boolean> = {
+  /** The type's SQL name in place of its key, for a name casing can't produce. */
+  readonly name?: string;
   /** Makes every column of the domain NOT NULL, and non-null in `Row`. */
   readonly notNull?: N;
   /** A SQL expression, such as `0`; a string literal needs its quotes (`"'new'"`). */
@@ -28,6 +30,7 @@ function modified(state: ColumnState, codec: unknown): boolean {
     state.primaryKey,
     state.unique,
     state.indexes.length > 0,
+    state.name !== undefined,
     state.renamedFrom !== undefined,
     state.references !== undefined,
     codec !== undefined,
@@ -59,6 +62,7 @@ export function defineDomain<V, Int extends boolean, N extends boolean = false>(
     kind: "domain",
     base: { sqlType: state.sqlType, enumType: state.enumType },
     notNull: options.notNull === true,
+    name: options.name,
     default: options.default,
     checks: { ...options.checks },
     renamedFrom: options.renamedFrom,

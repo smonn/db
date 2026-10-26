@@ -27,6 +27,8 @@ export type ColumnState = {
   readonly indexes: readonly ColumnIndex[];
   /** The name `.primaryKey({ name })` or `.unique({ name })` gave its constraint. */
   readonly constraintName: string | undefined;
+  /** The SQL name `.name()` gave, which wins over the casing `defineDatabase` maps keys with. */
+  readonly name: string | undefined;
   /** The SQL name the column had before a rename, for generate to turn into a `RENAME`. */
   readonly renamedFrom: string | undefined;
   /** What `.references()` was given, apart from `constraintName`; `defineDatabase` resolves the target. */
@@ -40,7 +42,7 @@ type ConstraintOptions = { readonly name: string };
  * `Int` is true for the types Postgres allows an identity on. `Gen` is true once the column has a
  * default or an identity, which Postgres allows only one of. `Pk` is true once `.primaryKey()` ran,
  * and `Key` once `.primaryKey()` or `.unique()` ran, since a primary key is already unique. `Fk` is
- * true once `.references()` ran. `Fresh` is true until a modifier (anything but `.renamedFrom()`)
+ * true once `.references()` ran. `Fresh` is true until a modifier (anything but `.name()` and `.renamedFrom()`)
  * or `.array()` ran, since `.array()` must come first.
  */
 export type Column<
@@ -70,6 +72,8 @@ export type Column<
    * marker once the old name is gone, so remove it after the rename ships.
    */
   renamedFrom(oldName: string): Column<V, N, Int, Gen, Pk, Key, Co, Fk, Fresh>;
+  /** Gives the column this SQL name in place of its key, for a name casing can't produce. */
+  name(sqlName: string): Column<V, N, Int, Gen, Pk, Key, Co, Fk, Fresh>;
   /**
    * An index on this column alone. Call it again for a second index, giving each a name. An index
    * over several columns, or with more options, goes in the second callback's `indexes`.
@@ -157,6 +161,7 @@ export function column<
     array: () => column({ ...state, array: true }, codec),
     notNull: () => column({ ...state, notNull: true }, codec),
     renamedFrom: (oldName: string) => column({ ...state, renamedFrom: oldName }, codec),
+    name: (sqlName: string) => column({ ...state, name: sqlName }, codec),
     index: (options?: IndexOptions) =>
       column({ ...state, indexes: [...state.indexes, columnIndexOf(options)] }, codec),
     default: (expression: string) => column({ ...state, default: expression }, codec),

@@ -17,6 +17,8 @@ export type TableDefinition<C extends Columns = Columns, K extends string = stri
   readonly declaredForeignKeys: readonly DeclaredForeignKey[];
   /** The indexes the second callback declares; a column's `.index()` stays in its state. */
   readonly indexes: readonly TableIndex[];
+  /** The SQL name the second callback's `name` gave, which wins over the casing `defineDatabase` maps keys with. */
+  readonly sqlName: string | undefined;
   /** The SQL name the table had before a rename, for generate to turn into a `RENAME`. */
   readonly renamedFrom: string | undefined;
 };
@@ -25,8 +27,11 @@ export type Table<C extends Columns = Columns, K extends string = string> = Tabl
   C,
   K
 > & {
+  /** The SQL names, as `defineDatabase` mapped them. */
   readonly schema: string;
   readonly name: string;
-  /** The foreign keys its columns and second callback declare, with each target's table named. */
+  /** Each column key's SQL name. */
+  readonly columnNames: Readonly<Record<string, string>>;
+  /** The foreign keys its columns and second callback declare, named by keys, each target's table too; the SQL view names them in SQL. */
   readonly foreignKeys: readonly ForeignKey[];
 };

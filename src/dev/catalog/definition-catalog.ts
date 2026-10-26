@@ -1,6 +1,7 @@
 import {
   isDomain,
   isEnum,
+  sqlDefinition,
   type Domain,
   type Enum,
   type Table,
@@ -18,7 +19,14 @@ export type DefinitionTables = {
   readonly [schema: string]: { readonly [name: string]: Table | Enum | Domain };
 };
 
-export function definitionCatalog(definition: DefinitionTables): Catalog {
+/** The SQL names of the Definition's schemas, as `defineDatabase` mapped them. */
+export function definitionSchemas(database: DefinitionTables): string[] {
+  return Object.keys(sqlDefinition(database));
+}
+
+/** Reads the Definition by its SQL names, as `defineDatabase` mapped them. */
+export function definitionCatalog(database: DefinitionTables): Catalog {
+  const definition = sqlDefinition(database);
   const builder = catalogBuilder();
   const types: TypeNames = {
     enums: typeNamesOf(definition, isEnum, "defineEnum"),

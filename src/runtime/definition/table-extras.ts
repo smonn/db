@@ -35,6 +35,8 @@ type UniqueEntry<C extends Columns> = {
 type TableExtras<C extends Columns> = {
   /** The table's SQL name before this change; generate ignores it once the old name is gone. */
   readonly renamedFrom?: string;
+  /** The table's SQL name in place of its key, for a name casing can't produce. */
+  readonly name?: string;
   readonly unique?: readonly UniqueEntry<C>[];
   readonly foreignKeys?: ForeignKeyEntries<C>;
   readonly indexes?: readonly IndexEntry<OwnRef<C>>[];

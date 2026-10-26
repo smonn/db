@@ -17,7 +17,7 @@ import type {
   MigrationFile,
   MigrationSource,
 } from "../../runtime/ports/index.ts";
-import type { DefinitionTables } from "../catalog/index.ts";
+import { definitionSchemas, type DefinitionTables } from "../catalog/index.ts";
 import type { Hazard } from "../diff/index.ts";
 import { skippedSchemaReason } from "../introspect/index.ts";
 import type { ShadowOptions } from "../shadow/index.ts";
@@ -177,7 +177,7 @@ async function needsReset(
 
 /** Refuses a schema `introspect` skips, whose tables would otherwise vanish from `current.sql`. */
 function requireModeledSchemas(definition: DefinitionTables, trackingName: string): void {
-  for (const schema of Object.keys(definition)) {
+  for (const schema of definitionSchemas(definition)) {
     const reason = skippedSchemaReason(schema, trackingName);
     if (reason !== undefined) {
       throw new Error(

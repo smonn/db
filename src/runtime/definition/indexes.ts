@@ -1,4 +1,4 @@
-import { expressionOf } from "./index-expressions.ts";
+import { expressionOf, rememberExpression } from "./index-expressions.ts";
 import { indexNameOf, methodOf, type IndexMethod } from "./index-options.ts";
 import { keyColumns, type RuntimeRefs } from "./table-keys.ts";
 
@@ -59,15 +59,18 @@ function indexOf(own: RuntimeRefs, entry: unknown): TableIndex {
       "The table's indexes lists an expression key without a name; give the index its own name, since Postgres's default says nothing and collides",
     );
   }
-  return {
+  const where = get(entry, "where");
+  const index = {
     name,
     keys,
     include,
     method: methodOf(get(entry, "method"), "The table's indexes entry"),
     unique: flagOf(entry, "unique"),
     nullsNotDistinct: flagOf(entry, "nullsNotDistinct"),
-    where: whereOf(own, get(entry, "where")),
+    where: whereOf(own, where),
   };
+  if (where !== undefined) rememberExpression(index, own, where);
+  return index;
 }
 
 function whereOf(own: RuntimeRefs, given: unknown): string | undefined {
@@ -86,10 +89,12 @@ function keysOf(
   const expressions = listed.map(({ ref }) => expressionOf(own, ref));
   const plain = listed.flatMap(({ ref }, at) => (expressions[at] === undefined ? [ref] : []));
   const columns = keyColumns(own, [...plain, ...given], "indexes");
-  const keys = listed.map(({ descending, nullsFirst }, at): IndexKey => {
+  const keys = listed.map(({ ref, descending, nullsFirst }, at): IndexKey => {
     const expression = expressions[at];
-    const target = expression === undefined ? { column: columns.shift() ?? "" } : { expression };
-    return { ...target, descending, nullsFirst };
+    if (expression === undefined) return { column: columns.shift() ?? "", descending, nullsFirst };
+    const key = { expression, descending, nullsFirst };
+    rememberExpression(key, own, ref);
+    return key;
   });
   return { keys, include: columns };
 }

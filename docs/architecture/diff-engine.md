@@ -10,7 +10,7 @@ Both introspections skip the Tracking schema (`smonn_db` unless configured), `pg
 
 ## Pipeline
 
-1. The Definition converts to a catalog, spelling each type as `format_type` does, and the diff renders it against the catalog of the freshly created Definition database, which holds only template0's `public` schema. That SQL builds the Definition database.
+1. The Definition converts to a catalog, spelling each type as `format_type` does, and the diff renders it against the catalog of the freshly created Definition database, which holds only template0's `public` schema. That SQL builds the Definition database. The catalog, renames, and the skipped-schema check read the Definition by SQL names, through the view `defineDatabase` keeps after mapping keys with its casing and explicit names (ADR-0024), so every derived name comes from SQL names.
 2. `introspect` reads each database in one `REPEATABLE READ READ ONLY` transaction with `search_path` pinned to `pg_catalog`, keyed by name, never by OID.
 3. Generate runs the Definition's `renamedFrom` markers on the Shadow inside a transaction, introspects it, and rolls back (ADR-0024). Postgres follows a rename by OID, so every default and expression in that catalog already names the new object. A marker whose old name the Shadow lacks is skipped, and one whose old and new names both exist throws.
 4. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL. The renames that ran open the SQL, so the migration repeats them. It also returns hints, which generate prints but never writes into the SQL: the `renamedFrom` to add when a column or table looks dropped and added, and the `renamedLabels` entry to add when an enum removes one label and adds one at the same position (`diff/hints.ts`).
@@ -56,7 +56,7 @@ A foreign key is a child fact of its table, named by its constraint and keyed li
 
 An enum is a fact under its schema, keyed like a table (a type and a table share one pool of names), whose payload lists its labels in sort order. A column of an enum names it as `format_type` spells it under `search_path = pg_catalog` (`public.mood`). `introspect` reads labels by `enumsortorder` and skips an enum an extension owns as Unmodeled.
 
-`definitionCatalog` names an enum or domain by its key and finds it from a column by identity. It refuses a label that is empty, repeated, or over 63 bytes, a type rolled up under two names, and a column whose type is not in the Definition.
+`definitionCatalog` names an enum or domain by its SQL name and finds it from a column by identity. It refuses a label that is empty, repeated, or over 63 bytes, a type rolled up under two names, and a column whose type is not in the Definition.
 
 A label added to an existing enum is one `ALTER TYPE ... ADD VALUE ... BEFORE|AFTER` at its declared position, with no Hazard. Using a new label in the same migration fails (`55P04`); `shadow-errors.ts` words the fix.
 

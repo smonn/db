@@ -17,6 +17,7 @@ describe("defineDatabase", () => {
       uniques: [],
       declaredForeignKeys: [],
       indexes: [],
+      sqlName: undefined,
       renamedFrom: undefined,
       foreignKeys: [],
     };
@@ -24,12 +25,14 @@ describe("defineDatabase", () => {
       schema: "public",
       name: "users",
       columns: users.columns,
+      columnNames: { id: "id", email: "email" },
       ...bare,
     });
     expect(db.auth.sessions).toStrictEqual({
       schema: "auth",
       name: "sessions",
       columns: sessions.columns,
+      columnNames: { token: "token" },
       ...bare,
     });
   });

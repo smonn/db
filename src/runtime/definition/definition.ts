@@ -52,6 +52,11 @@ function renamedFromOf(declared: unknown): string | undefined {
   throw new TypeError("The table's renamedFrom takes the old SQL name as a string");
 }
 
+function sqlNameOf(declared: unknown): string | undefined {
+  if (declared === undefined || typeof declared === "string") return declared;
+  throw new TypeError("The table's name takes its SQL name as a string");
+}
+
 export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>(
   define: (c: ColumnFactories) => C,
   ...args: Args
@@ -64,6 +69,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>
         readonly foreignKeys?: unknown;
         readonly indexes?: unknown;
         readonly renamedFrom?: unknown;
+        readonly name?: unknown;
       })
     | undefined = args[0];
   const own = refsOf(columns);
@@ -74,6 +80,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>
   const declaredForeignKeys = declaredForeignKeysOf(own, declared?.foreignKeys);
   const indexes = indexesOf(own, declared?.indexes);
   const renamedFrom = renamedFromOf(declared?.renamedFrom);
+  const sqlName = sqlNameOf(declared?.name);
   refuseKeyAndUnique(columns);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the key names are checked above.
   return {
@@ -83,6 +90,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>
     uniques,
     declaredForeignKeys,
     indexes,
+    sqlName,
     renamedFrom,
   } as unknown as TableDefinition<C, KeyOf<C, Args>>;
 }

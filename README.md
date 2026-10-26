@@ -166,6 +166,30 @@ The marker takes the old SQL name, as the database holds it, not the old key. A 
 
 Remove the marker once you have run `commit`. From then on the Committed migrations hold the new name, so `generate` skips a marker whose old name is gone. Until then, keep it: each `generate` rebuilds `current.sql` from the Definition, and without the marker the rename turns back into a drop. If both the old and the new name exist, `generate` throws.
 
+### Mapping keys to snake_case
+
+A key is its SQL name by default. Pass `casing` to map schema, table, column, enum, and domain keys to snake_case:
+
+```ts
+export default defineDatabase(
+  { public: { userAccounts: defineTable((c) => ({ userId: c.text().primaryKey() })) } },
+  { casing: "snake_case" },
+);
+```
+
+That table is `public.user_accounts`, its column `user_id`, and its primary key `user_accounts_pkey`, since derived names come from the SQL names. Enum labels, and the names you give constraints, indexes, and domain checks, stay as written. For a name casing can't produce, a column takes `.name("sql_name")`, a table takes `name` in its second callback, and an enum or domain takes `name` in its options. An explicit name wins over casing. Two keys that map to one SQL name, such as `userId` and `user_id`, throw at load.
+
+Builder queries return rows keyed by your keys. Raw `sql` returns the SQL names Postgres sends, so type its rows with those names, or as `DriverRow`.
+
+Turning casing on for an existing database renames every name it changes, so each one needs a `renamedFrom` marker with its old SQL name. Without them, `generate` drops and recreates each table and column:
+
+```ts
+userAccounts: defineTable(
+  (c) => ({ userId: c.text().primaryKey().renamedFrom("userId") }),
+  () => ({ renamedFrom: "userAccounts" }),
+),
+```
+
 ### Rebasing a Forked chain
 
 When two branches each commit a Migration on the same tip, `migrate` and `verify` refuse the pair as a Forked chain. Merge the base branch into yours, then run `smonndb rebase`: it renumbers and rehashes each Committed migration the base branch lacks onto the base branch's tip, and leaves every other file as it is. `--onto <ref>` names the base branch, which defaults to the remote's default branch (`origin/HEAD`). It needs no database, does nothing on a straight chain, and can run unattended in CI. `actions/checkout` clones at depth 1 without `origin/HEAD`, so a CI job must fetch the base branch and pass `--onto`. It needs git 2.30 or newer, and refuses while git shows a changed, untracked, or gitignored top-level `.sql` file other than `current.sql`, or a `.sql.tmp` file, so git always holds what it rewrites. Each file is written under a temporary name and then renamed into place. If a run fails or stops partway, run `smonndb rebase` again: it names the files to set aside with `git stash`, and the run after that finishes. A Dev database that applied a moved file no longer matches the files, so run `smonndb reset` afterward.
