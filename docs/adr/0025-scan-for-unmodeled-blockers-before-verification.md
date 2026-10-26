@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Generate scans for Unmodeled blockers before verification
