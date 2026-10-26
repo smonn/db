@@ -139,3 +139,34 @@ tester.run("mock-child-process", plugin.rules["mock-child-process"], {
     },
   ],
 });
+
+tester.run("test-server-url", plugin.rules["test-server-url"], {
+  valid: [
+    "const url = testServerUrl();",
+    "const home = process.env.HOME;",
+    'const home = process.env["HOME"];',
+    "const url = env.DATABASE_URL;",
+    "const url = process.env[name];",
+    "const url = process.env[DATABASE_URL];",
+    "const { HOME } = process.env;",
+    'const env = { DATABASE_URL: "x" };',
+  ],
+  invalid: [
+    {
+      code: 'const url = new URL(String(process.env["DATABASE_URL"]));',
+      errors: [{ message: /testServerUrl\(\)/u }],
+    },
+    {
+      code: "const url = process.env.DATABASE_URL ?? '';",
+      errors: 1,
+    },
+    {
+      code: "const { DATABASE_URL } = process.env;",
+      errors: 1,
+    },
+    {
+      code: 'const { ["DATABASE_URL"]: url } = process.env;',
+      errors: 1,
+    },
+  ],
+});

@@ -10,8 +10,11 @@
  * - `smonn/required-brand`: an exported type has no optional property whose key starts with `~`.
  * - `smonn/mock-child-process`: a file that imports a value from `node:child_process` also calls
  *   `vi.mock("node:child_process", ...)`, so a script test cannot run `gh` against the live repo.
+ * - `smonn/test-server-url`: no `process.env.DATABASE_URL` read in a test; see
+ *   `lint-rule-test-server-url.ts`.
  */
 import type { RuleTester } from "oxlint/plugins-dev";
+import { testServerUrl } from "./lint-rule-test-server-url.ts";
 
 type Rule = Parameters<RuleTester["run"]>[1];
 type Context = Parameters<Extract<Rule, { create: unknown }>["create"]>[0];
@@ -21,7 +24,11 @@ type Plugin = {
   readonly meta: { readonly name: string };
   readonly rules: Readonly<
     Record<
-      "sql-interpolation" | "required-brand" | "error-message-qualifier" | "mock-child-process",
+      | "sql-interpolation"
+      | "required-brand"
+      | "error-message-qualifier"
+      | "mock-child-process"
+      | "test-server-url",
       Rule
     >
   >;
@@ -230,6 +237,7 @@ const plugin: Plugin = {
     "required-brand": requiredBrand,
     "error-message-qualifier": errorMessageQualifier,
     "mock-child-process": mockChildProcess,
+    "test-server-url": testServerUrl,
   },
 };
 export default plugin;

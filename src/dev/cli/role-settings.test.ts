@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
+import {
+  testServerUrl,
+  useTestDatabase,
+} from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { writeMigration } from "../../runtime/internal/index.ts";
 import { main } from "./main.ts";
 
@@ -50,7 +53,7 @@ describe("smonndb generate as a role with its own settings", () => {
     await dev.driver.execute(
       `create role ${role} login createdb password '${suffix}'; alter role ${role} set check_function_bodies = off;`,
     );
-    const url = new URL(String(process.env["DATABASE_URL"]));
+    const url = new URL(testServerUrl());
     url.username = role;
     url.password = suffix;
     url.pathname = `/${dev.name}`;
