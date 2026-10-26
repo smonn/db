@@ -188,6 +188,17 @@ describe("readChangedAdrs", () => {
     });
     expect(execFileSync).toHaveBeenCalledTimes(2);
   });
+
+  test("counts a changed ADR missing from the base as added instead of crashing", () => {
+    vi.mocked(execFileSync)
+      .mockReturnValueOnce("T\tdocs/adr/0003-new.md\n")
+      .mockImplementationOnce(() => {
+        throw new Error("fatal: path 'docs/adr/0003-new.md' exists on disk, but not in 'HEAD^1'");
+      });
+    expect(readChangedAdrs("HEAD^1", repo)).toEqual([
+      { file: "docs/adr/0003-new.md", status: "proposed", added: true },
+    ]);
+  });
 });
 
 const addsAdr0023 = (): ChangedAdr[] => [

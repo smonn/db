@@ -95,10 +95,21 @@ export function readChangedAdrs(base: string, cwd: string = process.cwd()): Chan
     const [letter, file] = line.split("\t");
     if (letter === undefined || file === undefined || !adrPathPattern.test(file)) return [];
     const status = parseAdrStatus(readFileSync(join(cwd, file), "utf8"));
-    if (letter === "A") return [{ file, status, added: true }];
-    const baseText = execFileSync("git", ["show", `${base}:${file}`], { cwd, encoding: "utf8" });
-    return [{ file, status, added: false, baseStatus: parseAdrStatus(baseText) }];
+    const baseStatus = letter === "A" ? undefined : readBaseStatus(base, file, cwd);
+    if (baseStatus === undefined) return [{ file, status, added: true }];
+    return [{ file, status, added: false, baseStatus }];
   });
+}
+
+// A file the base lacks (any status but M can leave one) counts as added.
+function readBaseStatus(base: string, file: string, cwd: string): string | undefined {
+  try {
+    return parseAdrStatus(
+      execFileSync("git", ["show", `${base}:${file}`], { cwd, encoding: "utf8" }),
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 function clashProblems(
