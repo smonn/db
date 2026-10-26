@@ -1,3 +1,4 @@
+import { quoteIdentifier } from "../internal/index.ts";
 import { isDomain, type Domain } from "./domain.ts";
 import { isEnum, type Enum } from "./enum.ts";
 import { renamedExpression } from "./index-expressions.ts";
@@ -39,10 +40,30 @@ export function withSqlDefinition<D extends SqlDefinition>(database: D, names: S
   return database;
 }
 
-/** The SQL view `defineDatabase` kept on `definition`, or `definition` itself, already keyed by SQL names, without one. */
+/**
+ * The SQL view `defineDatabase` kept on `definition`, or `definition` itself without one, which
+ * then must already be keyed by SQL names: a copy such as `{ ...db }` loses the view.
+ */
 export function sqlDefinition(definition: SqlDefinition): SqlDefinition {
   const view: unknown = Reflect.get(definition, viewKey());
-  return isView(view) ? view : definition;
+  if (isView(view)) return view;
+  for (const [schema, entries] of Object.entries(definition)) {
+    const keyed = Object.entries(entries).find(([key, entry]) => !namedByKeys(schema, key, entry));
+    if (keyed === undefined) continue;
+    throw new Error(
+      `The Definition names ${quoteIdentifier(schema)}.${quoteIdentifier(keyed[0])} by its keys, though defineDatabase mapped it to SQL names; pass the object defineDatabase returned, not a copy such as { ...db }`,
+    );
+  }
+  return definition;
+}
+
+/** Whether every SQL name of `entry` is the key it sits under. */
+function namedByKeys(schema: string, key: string, entry: Table | Enum | Domain): boolean {
+  if (isEnum(entry) || isDomain(entry)) {
+    return entry.explicitName === undefined || entry.explicitName === key;
+  }
+  const columns = Object.entries(entry.columnNames);
+  return entry.schema === schema && entry.name === key && columns.every(([k, n]) => k === n);
 }
 
 /** Only `withSqlDefinition` writes the property, so an object there is the view. */
