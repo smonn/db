@@ -1,6 +1,7 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
 import {
   childrenOf,
+  elementOf,
   parentOf,
   qualified,
   typeName,
@@ -59,7 +60,7 @@ export function enumSwap(
 
 /** The swap that retypes a column of `type`, an enum or an array of one, if any. */
 export function swapOf(type: string, catalogs: Catalogs): Swap | undefined {
-  return enumSwaps(catalogs).get(type.endsWith("[]") ? type.slice(0, -2) : type);
+  return enumSwaps(catalogs).get(elementOf(type) ?? type);
 }
 
 /** Whether `labels` keep their relative order in `next`, so `ADD VALUE` can reach it. */

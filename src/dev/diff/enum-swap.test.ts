@@ -28,6 +28,16 @@ async function values(query: string): Promise<unknown[]> {
   return rows.map((row) => row["value"]);
 }
 
+/** Like `withMood`, with a not-null array column of the enum. */
+function withMoods(...labels: string[]): Catalog {
+  const mood = defineEnum(labels);
+  return definitionCatalog(
+    defineDatabase({
+      public: { mood, users: defineTable((c) => ({ moods: c.enum(mood).array().notNull() })) },
+    }),
+  );
+}
+
 beforeEach(async () => {
   await db.driver.execute("drop schema if exists app cascade; drop schema public cascade");
   await db.driver.execute("create schema public");
@@ -102,12 +112,11 @@ drop type "public"."mood_old";
   });
 
   it("retypes an array column of the enum", async () => {
-    await db.driver.execute(`create type public.mood as enum ('a', 'b', 'c');
-create table public.users (moods public.mood[] not null);
-insert into public.users values ('{c,a}');`);
-    const to = relabeled(await introspect(db.driver), ["c", "a"]);
+    const to = withMoods("c", "a");
+    const sql = await migrate(withMoods("a", "b", "c"), to);
+    await db.driver.execute("insert into users values ('{c,a}')");
 
-    const { sql, hazards } = diff(await introspect(db.driver), to);
+    const { hazards } = diff(await introspect(db.driver), to);
 
     expect(sql).toContain(
       `alter table "public"."users" alter column "moods" type public.mood[] using "moods"::text::public.mood[];`,
