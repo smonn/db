@@ -52,7 +52,7 @@ An enum is a fact under its schema, keyed like a table (a type and a table share
 
 A created enum lists all its labels. A label added to an existing enum is one `ALTER TYPE ... ADD VALUE ... BEFORE|AFTER` at its declared position, in phase 5 with no Hazard, and a drop is `DROP TYPE` in phase 8. Postgres refuses to use a new label before its transaction commits (`55P04`), so generate rethrows that Shadow error with the fix: commit the label, then use it in the next migration. A type created in the same migration is exempt.
 
-Removing or moving a label swaps the type, which a domain on it blocks.
+A removed or reordered label swaps the type (ADR-0023): phase 1 renames the old one aside, phase 5 creates the new one, phase 6 retypes each column of it or its array with `USING col::text::<type>`, dropping and setting its default around it, and phase 8 drops the old one. Generate refuses a swap while a domain depends on the enum, naming the domain.
 
 ## Ordering
 
@@ -94,7 +94,7 @@ Each action kind declares its Hazards (`data_loss`, `rewrite`, `access_exclusive
 
 Commit also refuses a line that matches `--+\s*hazard\s*:` (case-insensitive, singular) without being a `-- hazard: <kind>` comment above a statement, such as an indented, unspaced, recased, trailing, or mid-statement one, since that would drop its gate by accident; deleting the comment drops it on purpose.
 
-- `data_loss`: a dropped column or table (so a rename too, ADR-0010, unless a `renamedFrom` marker declares it, which carries `rename` instead, ADR-0024), and a type change that converts values without an error but not back, such as `numeric(10,2)` to `integer`, `timestamptz` to `date`, or `double precision` to `real`. A change that fails on a value that doesn't fit, such as `bigint` to `integer`, loses nothing, since the statement rolls back.
+- `data_loss`: a dropped column or table (so a rename too, ADR-0010, unless a `renamedFrom` marker declares it, which carries `rename` instead, ADR-0024), and a type change that converts values without an error but not back, such as `numeric(10,2)` to `integer`, `timestamptz` to `date`, or `double precision` to `real`. A change that fails on a value that doesn't fit, such as `bigint` to `integer`, loses nothing, since the statement rolls back. An enum swap's retypes carry it when a label is removed (ADR-0023).
 - `rewrite`: a type change Postgres can't make in place (text to an enum, an enum to text, and one enum to another among them), and a new column whose default calls a volatile function, that is an identity, or that is stored generated, and a new expression on a stored generated column, because each row needs its own value. A virtual column computes on read and rewrites nothing.
   - In place are only `varchar(n)` to a longer `varchar(m)`, `varchar`, or `text`, `text` to `varchar`, and `numeric(p,s)` to `numeric(q,s)` with `q >= p` or to unbounded `numeric`. `timestamp` and `timestamptz` skip the rewrite only in a UTC session, which a migration can't count on, so they count as a rewrite.
   - Any element type change rewrites, even `varchar(20)[]` to `varchar(40)[]`, and keeps the element pair's `data_loss`. Array to scalar carries every Hazard; scalar to array has no implicit cast, so Shadow verification refuses it.
