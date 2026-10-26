@@ -6,7 +6,10 @@ describe("generateReport", () => {
     const sql = '-- hazard: data_loss\ndrop table "public"."a";\n';
 
     expect(
-      generateReport({ path: "/p/current.sql", sql, reset: true, hazards: [] }, "current.sql"),
+      generateReport(
+        { path: "/p/current.sql", sql, reset: true, hazards: [], hints: [] },
+        "current.sql",
+      ),
     ).toStrictEqual([
       "wrote current.sql",
       'hazard data_loss: drop table "public"."a";',
@@ -17,7 +20,7 @@ describe("generateReport", () => {
   it("says when there was no diff and the Dev database stayed", () => {
     expect(
       generateReport(
-        { path: "/p/current.sql", sql: undefined, reset: false, hazards: [] },
+        { path: "/p/current.sql", sql: undefined, reset: false, hazards: [], hints: [] },
         "current.sql",
       ),
     ).toStrictEqual(["no diff, removed current.sql", "left the Dev database as it was"]);
@@ -26,7 +29,14 @@ describe("generateReport", () => {
   it("says when a hand-edited file matches what generate would write", () => {
     expect(
       generateReport(
-        { path: "/p/current.sql", sql: "select 1;", diff: "", reset: false, hazards: [] },
+        {
+          path: "/p/current.sql",
+          sql: "select 1;",
+          diff: "",
+          reset: false,
+          hazards: [],
+          hints: [],
+        },
         "c.sql",
       ),
     ).toStrictEqual([
@@ -34,6 +44,19 @@ describe("generateReport", () => {
       "matches what generate would write",
       "left the Dev database as it was",
     ]);
+  });
+});
+
+describe("generateReport hints", () => {
+  it("prints each hint after the Hazards and before the reset", () => {
+    const hints = ['table "a" may be a rename of "b"'];
+
+    expect(
+      generateReport(
+        { path: "/p/current.sql", sql: "select 1;", reset: false, hazards: [], hints },
+        "c.sql",
+      ),
+    ).toStrictEqual(["wrote c.sql", `hint: ${hints[0]}`, "left the Dev database as it was"]);
   });
 });
 
@@ -48,6 +71,7 @@ describe("generateReport warnings", () => {
           leftover: "the edit leaves a difference",
           reset: false,
           hazards: [],
+          hints: [],
         },
         "c.sql",
       ),

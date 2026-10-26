@@ -225,6 +225,7 @@ describe("hazard comments", () => {
     expect(diff(table({}), table({ a: {} }))).toStrictEqual({
       sql: `alter table "public"."t" add column "a" text;\n`,
       hazards: [],
+      hints: [],
     });
   });
 });

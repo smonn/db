@@ -216,6 +216,11 @@ function requireTarget(
   for (const column of columns) added("column", schema, table, column);
 }
 
+/** The schema, table, or column at a chain of names; a constraint or attribute has no such chain. */
+export function factAt(catalog: Catalog, ...names: string[]): Fact | undefined {
+  return catalog.get(key(...names));
+}
+
 export function parentOf(catalog: Catalog, fact: Fact): Fact {
   const parent = fact.parent === undefined ? undefined : catalog.get(fact.parent);
   if (parent === undefined)
