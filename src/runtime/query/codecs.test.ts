@@ -46,10 +46,14 @@ describe("types", () => {
 
   it("refuses a second codec", () => {
     const once = defineTable((c) => ({ d: c.date().codec(day) })).columns.d;
+    /* oxlint-disable typescript/no-unsafe-call -- the missing method is the point. */
+    // @ts-expect-error a column takes one codec
+    once.codec(day);
+    /* oxlint-enable typescript/no-unsafe-call */
     expectTypeOf(once).not.toHaveProperty("codec");
   });
 
-  it("refuses a codec whose Base is not the column's base value", () => {
+  it("rejects a codec with the wrong Base at the type level", () => {
     // @ts-expect-error a date column's base value is a string
     const table = defineTable((c) => ({ n: c.integer().codec(day) }));
     expect(table.columns.n["~codec"]).toBe(day);
