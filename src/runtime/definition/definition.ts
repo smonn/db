@@ -2,7 +2,7 @@ import type { Columns } from "./column.ts";
 import { isEnum, type Enum } from "./enum.ts";
 import { type ColumnFactories, factories } from "./factories.ts";
 import { type ForeignKey, foreignKeysOf, placesOf, type Places } from "./foreign-keys.ts";
-import type { IndexMethod } from "./index-options.ts";
+import type { IndexEntry } from "./index-entries.ts";
 import { indexesOf, type TableIndex } from "./indexes.ts";
 import {
   keyColumns,
@@ -80,36 +80,12 @@ type UniqueEntry<C extends Columns> = {
   readonly nullsNotDistinct?: boolean;
 };
 
-/** One key of an index: a column, or a column with its order and where NULLs sort. */
-type IndexKeyEntry<C extends Columns> =
-  | OwnRef<C>
-  | {
-      readonly key: OwnRef<C>;
-      /** Defaults to `"asc"`. */
-      readonly order?: "asc" | "desc";
-      /** Defaults to `"last"` for `"asc"` and `"first"` for `"desc"`, as in Postgres. */
-      readonly nulls?: "first" | "last";
-    };
-
-type IndexEntry<C extends Columns> = {
-  readonly columns: readonly [IndexKeyEntry<C>, ...IndexKeyEntry<C>[]];
-  /** Columns stored in the index beyond its keys, so a query can read them without the table. */
-  readonly include?: readonly OwnRef<C>[];
-  /** Defaults to `"btree"`. */
-  readonly method?: IndexMethod;
-  readonly unique?: boolean;
-  /** Treats NULLs as equal in a unique index. */
-  readonly nullsNotDistinct?: boolean;
-  /** Replaces the derived name, `<table>_<columns joined by _>_idx`. */
-  readonly name?: string;
-};
-
 /** The table-level entries, keyed by kind. Later kinds (checks) join here. */
 type TableExtras<C extends Columns> = {
   /** The table's SQL name before this change; generate ignores it once the old name is gone. */
   readonly renamedFrom?: string;
   readonly unique?: readonly UniqueEntry<C>[];
-  readonly indexes?: readonly IndexEntry<C>[];
+  readonly indexes?: readonly IndexEntry<OwnRef<C>>[];
 } & ([KeyedColumns<C>] extends [never]
   ? { readonly primaryKey?: KeyEntry<C> }
   : { readonly primaryKey?: never });
