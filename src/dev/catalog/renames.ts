@@ -1,6 +1,7 @@
-import { isEnum } from "../../runtime/definition/index.ts";
+import { isDomain, isEnum } from "../../runtime/definition/index.ts";
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
-import { factAt, type Catalog } from "./catalog.ts";
+import { factAt } from "./catalog.ts";
+import type { Catalog } from "./fact.ts";
 import type { DefinitionTables } from "./definition-catalog.ts";
 
 /** A table the Definition renames: `name` is its SQL name now, `was` the name it had. */
@@ -28,7 +29,7 @@ export function declaredRenames(definition: DefinitionTables): Rename[] {
   const columns: Rename[] = [];
   for (const [schema, schemaTables] of Object.entries(definition)) {
     for (const [table, def] of Object.entries(schemaTables)) {
-      if (isEnum(def)) continue;
+      if (isEnum(def) || isDomain(def)) continue;
       if (def.renamedFrom !== undefined) {
         tables.push({ kind: "table", schema, name: table, was: def.renamedFrom });
       }

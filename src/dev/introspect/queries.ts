@@ -5,6 +5,17 @@ const NOT_EXTENSION_MEMBER = (catalog: string, alias: string): string => `not ex
 
 const KEPT_SCHEMA = `n.nspname !~ '^pg_' and n.nspname not in ('information_schema', $1)`;
 
+// Whether `expression` calls a function `pg_proc` marks volatile, matched by name since
+// `pg_depend` omits built-in functions. String literals are stripped so `'f('` names no call.
+const CALLS_VOLATILE = (expression: string): string => `exists (
+    select from regexp_matches(
+      regexp_replace(${expression}, '''([^'']|'''')*''', '', 'g'),
+      '([A-Za-z_][A-Za-z0-9_$]*|"[^"]+")\\s*\\(', 'g'
+    ) as call(name)
+      join pg_proc p on p.proname = trim(both '"' from call.name[1])
+    where p.provolatile = 'v'
+  )`;
+
 export const SCHEMAS: string = `
 select n.nspname as name
 from pg_namespace n
@@ -29,6 +40,33 @@ where t.typtype = 'e' and ${KEPT_SCHEMA}
   and ${NOT_EXTENSION_MEMBER("pg_type", "t")}
 order by t.typname`;
 
+// A domain over a domain or an array, or with a collation other than its base's, is an Unmodeled
+// object (ADR-0023). NOT NULL folds `typnotnull` and a Postgres 18 `pg_constraint` NOT NULL row.
+export const DOMAINS: string = `
+select n.nspname as schema, t.typname as name, format_type(t.typbasetype, t.typtypmod) as base,
+  t.typnotnull or exists (
+    select from pg_constraint k where k.contypid = t.oid and k.contype = 'n'
+  ) as not_null,
+  pg_get_expr(t.typdefaultbin, 0) as default_expression,
+  ${CALLS_VOLATILE("pg_get_expr(t.typdefaultbin, 0)")} as default_volatile
+from pg_type t
+  join pg_namespace n on n.oid = t.typnamespace
+  join pg_type b on b.oid = t.typbasetype
+where t.typtype = 'd' and b.typtype <> 'd' and b.typcategory <> 'A'
+  and t.typcollation = b.typcollation and ${KEPT_SCHEMA}
+  and ${NOT_EXTENSION_MEMBER("pg_type", "t")}
+order by t.typname`;
+
+// The expression inside `CHECK (...)`, so a `NOT VALID` check reads like a valid one.
+export const DOMAIN_CHECKS: string = `
+select n.nspname as schema, t.typname as domain, k.conname as name,
+  regexp_replace(pg_get_constraintdef(k.oid), '^CHECK \\((.*)\\)( NOT VALID)?$', '\\1') as expression
+from pg_constraint k
+  join pg_type t on t.oid = k.contypid
+  join pg_namespace n on n.oid = t.typnamespace
+where k.contype = 'c' and t.typtype = 'd' and ${KEPT_SCHEMA}
+order by k.conname`;
+
 // A column of an array of a composite or range type is an Unmodeled object (ADR-0005, ADR-0023).
 export const COLUMNS: string = `
 select n.nspname as schema, c.relname as table, a.attname as name,
@@ -36,14 +74,8 @@ select n.nspname as schema, c.relname as table, a.attname as name,
   a.attidentity as identity, a.attgenerated as generated,
   case when a.attgenerated <> '' then pg_get_expr(d.adbin, d.adrelid) end as generation_expression,
   case when a.attgenerated = '' then pg_get_expr(d.adbin, d.adrelid) end as default_expression,
-  case when a.attgenerated = '' then exists (
-    select from regexp_matches(
-      regexp_replace(pg_get_expr(d.adbin, d.adrelid), '''([^'']|'''')*''', '', 'g'),
-      '([A-Za-z_][A-Za-z0-9_$]*|"[^"]+")\\s*\\(', 'g'
-    ) as call(name)
-      join pg_proc p on p.proname = trim(both '"' from call.name[1])
-    where p.provolatile = 'v'
-  ) end as default_volatile
+  case when a.attgenerated = '' then ${CALLS_VOLATILE("pg_get_expr(d.adbin, d.adrelid)")}
+  end as default_volatile
 from pg_attribute a
   join pg_class c on c.oid = a.attrelid
   join pg_namespace n on n.oid = c.relnamespace
