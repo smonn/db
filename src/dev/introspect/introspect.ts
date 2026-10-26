@@ -107,12 +107,23 @@ export function introspect(
   tracking: TrackingSchema = trackingSchema(DEFAULT_TRACKING_SCHEMA),
 ): Promise<Catalog> {
   return session.transaction(async (tx) => {
-    await tx.execute(
-      "set transaction isolation level repeatable read read only; set local search_path = pg_catalog",
-    );
-    await requireSupportedServer(tx);
-    return read(tx, tracking.name);
+    await tx.execute("set transaction isolation level repeatable read read only");
+    return introspectIn(tx, tracking);
   });
+}
+
+/**
+ * `introspect` inside a transaction the caller already opened, such as one that renamed objects
+ * and will roll back. It pins `search_path` for that transaction, so the caller runs its own
+ * statements first.
+ */
+export async function introspectIn(
+  tx: Queryable,
+  tracking: TrackingSchema = trackingSchema(DEFAULT_TRACKING_SCHEMA),
+): Promise<Catalog> {
+  await tx.execute("set local search_path = pg_catalog");
+  await requireSupportedServer(tx);
+  return read(tx, tracking.name);
 }
 
 const MINIMUM_MAJOR_VERSION = 18;
