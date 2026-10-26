@@ -58,7 +58,7 @@ An enum is a fact under its schema, keyed like a table (a type and a table share
 
 A created enum lists all its labels. A label added to an existing enum is one `ALTER TYPE ... ADD VALUE ... BEFORE|AFTER` at its declared position, in phase 5 with no Hazard, and a drop is `DROP TYPE` in phase 8. Using a new label in the same migration fails (`55P04`); `shadow-errors.ts` words the fix.
 
-Removing or moving a label swaps the type, which a domain on it blocks.
+A removed or reordered label swaps the type (ADR-0023): phase 1 renames the old one aside, phase 5 creates the new one, phase 6 retypes each column of it or its array with `USING col::text::<type>`, dropping and setting its default around it, and phase 8 drops the old one. Generate refuses a swap while a domain depends on the enum, naming the domain.
 
 ## Ordering
 
@@ -97,7 +97,7 @@ Dropping a table or column drops what it holds, so no separate drop is emitted f
 
 Each action kind declares its Hazards (`data_loss`, `rewrite`, `access_exclusive_lock`, `share_lock`, `share_row_exclusive_lock`, `rename`) in a table, classified from the catalog, not the SQL text. Each Hazard is written as a `-- hazard: <kind>` comment above its statement, and generate returns them with their statements. Generation never blocks on a Hazard; commit does, per kind (ADR-0015). Commit also refuses a near-miss `-- hazard:` comment (indented, unspaced, recased, trailing, or mid-statement), since that would drop its gate by accident.
 
-- `data_loss`: a dropped column or table (so a rename too, ADR-0010, unless a `renamedFrom` marker declares it, which carries `rename` instead, ADR-0024), and a type change that converts values without an error but not back, such as `numeric(10,2)` to `integer`, `timestamptz` to `date`, or `double precision` to `real`. A change that fails on a value that doesn't fit, such as `bigint` to `integer`, loses nothing, since the statement rolls back.
+- `data_loss`: a dropped column or table (so a rename too, ADR-0010, unless a `renamedFrom` marker declares it, which carries `rename` instead, ADR-0024), and a type change that converts values without an error but not back, such as `numeric(10,2)` to `integer`, `timestamptz` to `date`, or `double precision` to `real`. A change that fails on a value that doesn't fit, such as `bigint` to `integer`, loses nothing, since the statement rolls back. An enum swap's retypes carry it when a label is removed (ADR-0023).
 - `rewrite`: a type change Postgres can't make in place (text to an enum, an enum to text, and one enum to another among them), and a new column whose default calls a volatile function, that is an identity, or that is stored generated, and a new expression on a stored generated column, because each row needs its own value. A virtual column computes on read and rewrites nothing.
   - `retypeHazards` in `diff/hazards.ts` lists the type changes Postgres makes in place, and how an array's element type counts.
   - A default is volatile when its expression calls a function that `pg_proc` marks volatile, which `introspect` reads by function name, since `pg_depend` omits built-in functions.
