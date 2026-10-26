@@ -24,71 +24,72 @@ test("runChecks runs every script after a failure and returns the failed ones", 
   expect(failed).toEqual(["a", "c"]);
 });
 
-test("main sets a non-zero exit code and names the failed checks", () => {
-  main(
+test("main sets a non-zero exit code and names the failed checks", async () => {
+  await main(
     (script) => script !== "lint",
     [],
-    () => true,
+    () => Promise.resolve(true),
   );
   expect(process.exitCode).toBe(1);
   expect(console.error).toHaveBeenCalledWith(expect.stringContaining("failed: lint"));
 });
 
-test("main says how to fix a failed format check", () => {
-  main(
+test("main says how to fix a failed format check", async () => {
+  await main(
     (script) => script !== "format:check",
     [],
-    () => true,
+    () => Promise.resolve(true),
   );
   expect(console.error).toHaveBeenCalledWith(expect.stringContaining("pnpm run format"));
 });
 
-test("main leaves the exit code alone when every check passes", () => {
+test("main leaves the exit code alone when every check passes", async () => {
   const ran: string[] = [];
-  main(
+  await main(
     (script) => {
       ran.push(script);
       return true;
     },
     [],
-    () => true,
+    () => Promise.resolve(true),
   );
   expect(process.exitCode).toBeUndefined();
   expect(ran).toEqual([...checks]);
 });
 
-test("main without a test database skips coverage, says how to start one, and fails", () => {
+test("main without a reachable test database skips coverage, says how to start one, and fails", async () => {
   const ran: string[] = [];
-  main(
+  await main(
     (script) => {
       ran.push(script);
       return true;
     },
     [],
-    () => false,
+    () => Promise.resolve(false),
   );
   expect(ran).toEqual(checks.filter((script) => script !== "coverage"));
-  expect(console.error).toHaveBeenCalledWith(expect.stringContaining("node scripts/test-db.ts"));
   expect(console.error).toHaveBeenCalledWith(expect.stringContaining("failed: coverage"));
+  expect(console.error).toHaveBeenLastCalledWith(
+    expect.stringContaining("node scripts/test-db.ts"),
+  );
   expect(process.exitCode).toBe(1);
 });
 
-test("main with --static runs every check but coverage", () => {
+test("main with --static runs every check but coverage", async () => {
   const ran: string[] = [];
-  main(
+  await main(
     (script) => {
       ran.push(script);
       return true;
     },
     ["--static"],
+    () => Promise.reject(new Error("--static must not look for a database")),
   );
   expect(ran).toEqual(checks.filter((script) => script !== "coverage"));
 });
 
-test("main rejects an unknown argument by name", () => {
-  expect(() => {
-    main(() => true, ["--statc"]);
-  }).toThrow('Unknown argument "--statc"');
+test("main rejects an unknown argument by name", async () => {
+  await expect(main(() => true, ["--statc"])).rejects.toThrow('Unknown argument "--statc"');
 });
 
 test("checks cover every pnpm script a CI job runs", () => {

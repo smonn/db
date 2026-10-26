@@ -1,14 +1,6 @@
-import { existsSync, globSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { parseEnv } from "node:util";
+import { globSync, readFileSync } from "node:fs";
 import { defineConfig, type ViteUserConfig } from "vitest/config";
-
-// scripts/test-db.ts writes .env.test; CI sets DATABASE_URL itself.
-const envFile = fileURLToPath(new URL(".env.test", import.meta.url));
-const env =
-  process.env["DATABASE_URL"] === undefined && existsSync(envFile)
-    ? parseEnv(readFileSync(envFile, "utf8"))
-    : {};
+import { testEnv } from "./scripts/test-database-url.ts";
 
 // A test file that imports useTestDatabase runs against Postgres, which slows down when several
 // worktrees run their own test databases at once (#191).
@@ -20,7 +12,7 @@ const databaseTests = testFiles.filter((file) =>
 
 const config: ViteUserConfig = defineConfig({
   test: {
-    env,
+    env: testEnv(),
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts", "scripts/**/*.ts"],
