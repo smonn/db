@@ -9,7 +9,12 @@ function shadow(): Catalog {
   const builder = catalogBuilder();
   builder.schema("app");
   builder.enumType("app", "old_mood", { labels: ["good", "bad"] });
-  builder.domain("app", "old_posint", { base: "integer", notNull: false, default: null });
+  builder.domain("app", "old_posint", {
+    base: "integer",
+    notNull: false,
+    default: null,
+    defaultVolatile: false,
+  });
   return builder.build();
 }
 
@@ -97,7 +102,12 @@ describe("appliedRenames for types", () => {
     const builder = catalogBuilder();
     builder.schema("app");
     builder.enumType("app", "mood", { labels: ["great", "bad"] });
-    builder.domain("app", "posint", { base: "integer", notNull: false, default: null });
+    builder.domain("app", "posint", {
+      base: "integer",
+      notNull: false,
+      default: null,
+      defaultVolatile: false,
+    });
 
     expect(appliedRenames([renameEnum, renameLabel, renameDomain], builder.build())).toStrictEqual(
       [],
@@ -119,7 +129,12 @@ describe("appliedRenames for types", () => {
     const builder = catalogBuilder();
     builder.schema("app");
     for (const name of ["old_posint", "posint"]) {
-      builder.domain("app", name, { base: "integer", notNull: false, default: null });
+      builder.domain("app", name, {
+        base: "integer",
+        notNull: false,
+        default: null,
+        defaultVolatile: false,
+      });
     }
 
     expect(() => appliedRenames([renameDomain], builder.build())).toThrow(

@@ -8,7 +8,12 @@ function types(options: { readonly labels?: string[]; readonly checks?: Checks }
   const builder = catalogBuilder();
   builder.schema("app");
   builder.enumType("app", "mood", { labels: options.labels ?? ["a"] });
-  builder.domain("app", "posint", { base: "integer", notNull: false, default: null });
+  builder.domain("app", "posint", {
+    base: "integer",
+    notNull: false,
+    default: null,
+    defaultVolatile: false,
+  });
   for (const [name, expression] of Object.entries(options.checks ?? {})) {
     builder.domainCheck("app", "posint", name, { expression });
   }
@@ -20,7 +25,12 @@ function checkedIn(checked: string): Catalog {
   const builder = catalogBuilder();
   builder.schema("app");
   for (const domain of ["a", "b"]) {
-    builder.domain("app", domain, { base: "integer", notNull: false, default: null });
+    builder.domain("app", domain, {
+      base: "integer",
+      notNull: false,
+      default: null,
+      defaultVolatile: false,
+    });
   }
   builder.domainCheck("app", checked, "positive", { expression: "VALUE > 0" });
   return builder.build();
