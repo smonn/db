@@ -34,6 +34,15 @@ test("main sets a non-zero exit code and names the failed checks", () => {
   expect(console.error).toHaveBeenCalledWith(expect.stringContaining("failed: lint"));
 });
 
+test("main says how to fix a failed format check", () => {
+  main(
+    (script) => script !== "format:check",
+    [],
+    () => true,
+  );
+  expect(console.error).toHaveBeenCalledWith(expect.stringContaining("pnpm run format"));
+});
+
 test("main leaves the exit code alone when every check passes", () => {
   const ran: string[] = [];
   main(
