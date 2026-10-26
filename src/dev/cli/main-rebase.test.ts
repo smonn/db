@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { writeMigration } from "../../runtime/internal/index.ts";
 import { useCliProject } from "./cli-project.test-helper.ts";
+import { isolateGitEnv } from "./git-env.test-helper.ts";
 import { main } from "./main.ts";
 import { runPrintedStep } from "./printed-step.test-helper.ts";
 
@@ -78,10 +79,7 @@ afterEach(() => {
 });
 
 beforeEach(async () => {
-  // A git hook running these tests exports GIT_DIR and friends, which would point git at this repo.
-  for (const name of Object.keys(process.env).filter((key) => key.startsWith("GIT_"))) {
-    vi.stubEnv(name, undefined);
-  }
+  isolateGitEnv();
   stdout = "";
   vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
     stdout += String(chunk);
