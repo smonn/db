@@ -30,7 +30,9 @@ type Place = readonly [phase: Phase, rank: number];
 export type PlaceTable<K extends string> = { readonly [A in K]: Place };
 
 /**
- * Ranks follow #381's listed order; the gaps belong to kinds that land later (domain).
+ * Ranks follow #381's listed order, and leave gaps for kinds that land later. A domain is created
+ * after the enum it may be over and any label its default or checks use, and dropped before that
+ * enum.
  *
  * Within its phase, each drop runs before the changes it would block: Postgres refuses to add an
  * identity to a column that has a default or isn't NOT NULL, to drop NOT NULL from an identity
@@ -40,7 +42,11 @@ export type PlaceTable<K extends string> = { readonly [A in K]: Place };
 export const PLACES: PlaceTable<ActionKind> = {
   "rename table": ["rename", 0],
   "rename column": ["rename", 2],
+  "rename enum": ["rename", 4],
+  "rename enum label": ["rename", 5],
+  "rename domain": ["rename", 6],
   "rename enum aside": ["rename", 8],
+  "rename domain check": ["rename by payload", 0],
   "drop foreign key": ["drop key or index", 0],
   "drop index": ["drop key or index", 1],
   "drop unique": ["drop key or index", 2],
@@ -50,6 +56,11 @@ export const PLACES: PlaceTable<ActionKind> = {
   "create schema": ["create or alter schema or type", 0],
   "create enum": ["create or alter schema or type", 2],
   "add enum value": ["create or alter schema or type", 5],
+  "create domain": ["create or alter schema or type", 6],
+  "drop domain check": ["create or alter schema or type", 6],
+  "alter domain default": ["create or alter schema or type", 7],
+  "alter domain not null": ["create or alter schema or type", 7],
+  "add domain check": ["create or alter schema or type", 8],
   "create table": ["create or alter table", 0],
   "add column": ["create or alter table", 1],
   "drop default": ["create or alter table", 2],
@@ -67,6 +78,7 @@ export const PLACES: PlaceTable<ActionKind> = {
   "add unique": ["add key or index", 1],
   "add index": ["add key or index", 2],
   "add foreign key": ["add key or index", 3],
+  "drop domain": ["drop type", 0],
   "drop enum": ["drop type", 2],
   "drop enum aside": ["drop type", 2],
   "drop schema": ["drop schema", 0],

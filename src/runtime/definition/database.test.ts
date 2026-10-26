@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { defineDatabase, defineTable, type Row } from "./definition.ts";
+import { defineDatabase } from "./database.ts";
+import { defineTable, type Row } from "./definition.ts";
 
 const users = defineTable((c) => ({
   id: c.text().notNull(),
@@ -16,6 +17,7 @@ describe("defineDatabase", () => {
       uniques: [],
       declaredForeignKeys: [],
       indexes: [],
+      explicitName: undefined,
       renamedFrom: undefined,
       foreignKeys: [],
     };
@@ -23,12 +25,14 @@ describe("defineDatabase", () => {
       schema: "public",
       name: "users",
       columns: users.columns,
+      columnNames: { id: "id", email: "email" },
       ...bare,
     });
     expect(db.auth.sessions).toStrictEqual({
       schema: "auth",
       name: "sessions",
       columns: sessions.columns,
+      columnNames: { token: "token" },
       ...bare,
     });
   });

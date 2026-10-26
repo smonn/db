@@ -120,7 +120,7 @@ Run each as `smonndb <command>`, with `--config <path>` to pick a config file ot
 
 Results go to stdout and errors to stderr, as plain text with no colors. `generate` prints the file it wrote, each Hazard with its statement, each rename hint, and whether it reset the Dev database. Exit codes: 0 on success, 1 on a refusal or failure (a missing folder, a held Dev lock, a bad hash chain), 2 on a usage error.
 
-### Renaming a table or column
+### Renaming a table, column, enum, or domain
 
 Rename a key in the Definition and `generate` sees a drop and a create, which it flags as `data_loss`. It prints a hint when it spots a likely rename: a table that drops one column and adds one of the same type, or a schema that drops one table and adds one with identical columns.
 
@@ -146,7 +146,17 @@ people: defineTable(
 ),
 ```
 
-`generate` then writes `ALTER ... RENAME` in place of the drop and create, and keeps the data. Each rename carries the `rename` Hazard, because app code still on the old name breaks between `migrate` and its deploy.
+An enum and a domain take the same marker in their options, and an enum also takes `renamedLabels`, keyed new label to old. Without it, a renamed label is a type swap that rewrites every table using the enum, and `generate` prints a hint naming the entry to add when an enum removes one label and adds one at the same position. A domain check renames on its own when its expression stays the same.
+
+```ts
+mood: defineEnum(["great", "bad"], {
+  renamedFrom: "old_mood",
+  renamedLabels: { great: "good" },
+}),
+posint: defineDomain((c) => c.integer(), { renamedFrom: "old_posint" }),
+```
+
+`generate` then writes `ALTER ... RENAME` in place of the drop and create, and keeps the data. Each table, column, enum, label, or domain rename carries the `rename` Hazard, because app code still on the old name breaks between `migrate` and its deploy.
 
 ```text
 hazard rename: alter table "public"."users" rename column "name" to "full_name";
@@ -155,6 +165,32 @@ hazard rename: alter table "public"."users" rename column "name" to "full_name";
 The marker takes the old SQL name, as the database holds it, not the old key. A hint is only a guess, and `generate` never writes one into the SQL, so a rename with no marker stays a drop and create.
 
 Remove the marker once you have run `commit`. From then on the Committed migrations hold the new name, so `generate` skips a marker whose old name is gone. Until then, keep it: each `generate` rebuilds `current.sql` from the Definition, and without the marker the rename turns back into a drop. If both the old and the new name exist, `generate` throws.
+
+### Mapping keys to snake_case
+
+A key is its SQL name by default. Pass `casing` to map schema, table, column, enum, and domain keys to snake_case:
+
+```ts
+export default defineDatabase(
+  { public: { userAccounts: defineTable((c) => ({ userId: c.text().primaryKey() })) } },
+  { casing: "snake_case" },
+);
+```
+
+That table is `public.user_accounts`, its column `user_id`, and its primary key `user_accounts_pkey`, since derived names come from the SQL names. Enum labels, and the names you give constraints, indexes, and domain checks, stay as written. For a name casing can't produce, such as `user_ids` for `userIDs` (which maps to `user_i_ds`), a column takes `.name("sql_name")`, a table takes `name` in its second callback, and an enum or domain takes `name` in its options. An explicit name wins over casing. Two keys that map to one SQL name, such as `userId` and `user_id`, throw at load.
+
+Builder queries return rows keyed by your keys. Raw `sql` returns the SQL names Postgres sends, so type its rows with those names, or as `DriverRow`.
+
+Turning casing on for an existing database renames every name it changes, so each one needs a `renamedFrom` marker with its old SQL name. Without them, `generate` drops and recreates each table and column:
+
+```ts
+userAccounts: defineTable(
+  (c) => ({ userId: c.text().primaryKey().renamedFrom("userId") }),
+  () => ({ renamedFrom: "userAccounts" }),
+),
+```
+
+Schemas don't rename and take no `name`, so no marker saves a schema whose key casing changes: `generate` drops a schema `appData` and creates `app_data`. Turn casing on only once each schema's SQL name is one casing leaves as it is, such as `app_data`.
 
 ### Rebasing a Forked chain
 

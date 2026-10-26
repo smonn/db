@@ -1,50 +1,51 @@
-import { isEnum } from "../../runtime/definition/index.ts";
-import { quoteIdentifier } from "../../runtime/internal/index.ts";
-import { factAt, type Catalog } from "./catalog.ts";
+import { isDomain, isEnum, sqlDefinition } from "../../runtime/definition/index.ts";
+import type { Catalog } from "./fact.ts";
 import type { DefinitionTables } from "./definition-catalog.ts";
+import { applies } from "./rename-applies.ts";
+import type { Rename } from "./rename-types.ts";
+import { appliedTypeRenames, declaredTypeRenames } from "./type-renames.ts";
 
-/** A table the Definition renames: `name` is its SQL name now, `was` the name it had. */
-export type TableRename = {
-  readonly kind: "table";
-  readonly schema: string;
-  readonly name: string;
-  readonly was: string;
-};
+export type { Rename } from "./rename-types.ts";
 
-export type ColumnRename = {
-  readonly kind: "column";
-  readonly schema: string;
-  /** The table's SQL name after the table renames, if it does. */
-  readonly table: string;
-  readonly name: string;
-  readonly was: string;
-};
-
-export type Rename = TableRename | ColumnRename;
-
-/** Every `renamedFrom` marker in the Definition, tables first. */
-export function declaredRenames(definition: DefinitionTables): Rename[] {
+/**
+ * Every `renamedFrom` marker in the Definition, in the order the renames run: tables, columns,
+ * then enums, their labels, and domains.
+ */
+export function declaredRenames(database: DefinitionTables): Rename[] {
+  const definition = sqlDefinition(database);
   const tables: Rename[] = [];
   const columns: Rename[] = [];
   for (const [schema, schemaTables] of Object.entries(definition)) {
     for (const [table, def] of Object.entries(schemaTables)) {
-      if (isEnum(def)) continue;
+      if (isEnum(def) || isDomain(def)) continue;
       if (def.renamedFrom !== undefined) {
         tables.push({ kind: "table", schema, name: table, was: def.renamedFrom });
       }
-      for (const [name, { state }] of Object.entries(def.columns)) {
-        if (state.renamedFrom === undefined) continue;
-        columns.push({ kind: "column", schema, table, name, was: state.renamedFrom });
-      }
+      columns.push(...columnRenames(schema, table, def.columns));
     }
   }
-  return [...tables, ...columns];
+  const { enums, labels, domains } = declaredTypeRenames(definition);
+  return [...tables, ...columns, ...enums, ...labels, ...domains];
+}
+
+function columnRenames(
+  schema: string,
+  table: string,
+  columns: Extract<DefinitionTables[string][string], { columns: unknown }>["columns"],
+): Rename[] {
+  const renames: Rename[] = [];
+  for (const [name, { state }] of Object.entries(columns)) {
+    if (state.renamedFrom === undefined) continue;
+    renames.push({ kind: "column", schema, table, name, was: state.renamedFrom });
+  }
+  return renames;
 }
 
 /**
- * The declared renames to run against `shadow`, tables first (ADR-0024). A marker whose old name
- * isn't in the Shadow is skipped, since it is stale or its object is new. Throws when the old and
- * new names both exist, since Postgres would refuse the `RENAME` and neither side is the safe one.
+ * The declared renames to run against `shadow`, in the order `declaredRenames` lists (ADR-0024). A
+ * marker whose old name isn't in the Shadow is skipped, since it is stale or its object is new.
+ * Throws when the old and new names both exist, since Postgres would refuse the `RENAME` and
+ * neither side is the safe one.
  */
 export function appliedRenames(declared: readonly Rename[], shadow: Catalog): Rename[] {
   const tables = declared.filter((rename) => rename.kind === "table");
@@ -58,18 +59,13 @@ export function appliedRenames(declared: readonly Rename[], shadow: Catalog): Re
     const table = was.get(`${rename.schema}\0${rename.table}`) ?? rename.table;
     return applies(shadow, "column", [rename.schema, table, rename.name], rename.was);
   });
-  return [...applied, ...inShadow];
-}
-
-/** `path` is the new name's chain as the Shadow would hold it, and `was` replaces its last name. */
-function applies(shadow: Catalog, kind: Rename["kind"], path: string[], was: string): boolean {
-  const hasOld = factAt(shadow, ...path.slice(0, -1), was)?.kind === kind;
-  if (hasOld && factAt(shadow, ...path)?.kind === kind) {
-    const quoted = path.map((part) => quoteIdentifier(part)).join(".");
-    throw new Error(
-      `${kind} ${quoted} has renamedFrom ${JSON.stringify(was)}, but the Shadow database holds both; ` +
-        "drop the object you no longer want, or remove the marker",
-    );
-  }
-  return hasOld;
+  const types = appliedTypeRenames(
+    {
+      enums: declared.filter((rename) => rename.kind === "enum"),
+      labels: declared.filter((rename) => rename.kind === "enum label"),
+      domains: declared.filter((rename) => rename.kind === "domain"),
+    },
+    shadow,
+  );
+  return [...applied, ...inShadow, ...types.enums, ...types.labels, ...types.domains];
 }

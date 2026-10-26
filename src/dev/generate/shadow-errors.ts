@@ -19,7 +19,18 @@ const FIXES: Readonly<Record<string, { readonly generated: string; readonly hand
     },
   };
 
-function fixFor(code: unknown): (typeof FIXES)[string] | undefined {
+// Postgres raises this, under 0A000, when ALTER DOMAIN would have to check an array of the domain.
+const DOMAIN_ARRAY_BLOCKED = /^cannot alter type ".+" because column ".+" uses it$/u;
+
+const DOMAIN_ARRAY_FIX = {
+  generated:
+    "Generate adds a domain check or sets a domain NOT NULL with ALTER DOMAIN, which Postgres refuses while a column holds an array of the domain. Hand edit the Current migration to retype that column off the domain before the ALTER DOMAIN and back after it.",
+  handEdited:
+    "Postgres refuses ALTER DOMAIN ... ADD CONSTRAINT and SET NOT NULL while a column holds an array of the domain. Retype that column off the domain before the ALTER DOMAIN and back after it in the Current migration.",
+};
+
+function fixFor(code: unknown, message: string): (typeof FIXES)[string] | undefined {
+  if (code === "0A000" && DOMAIN_ARRAY_BLOCKED.test(message)) return DOMAIN_ARRAY_FIX;
   return typeof code === "string" && Object.hasOwn(FIXES, code) ? FIXES[code] : undefined;
 }
 
@@ -64,7 +75,7 @@ function explainPostgresError(
 ): Error | undefined {
   const code = (error as Error & { code?: unknown }).code;
   if (code === "25001" && !noTransaction) return noTransactionHint(error);
-  const fix = fixFor(code);
+  const fix = fixFor(code, error.message);
   if (fix === undefined) return undefined;
   return new Error(`${error.message}\n${handEdited ? fix.handEdited : fix.generated}`, {
     cause: error,

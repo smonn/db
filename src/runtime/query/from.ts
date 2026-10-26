@@ -72,7 +72,7 @@ type State = {
 const predicate = (piece: () => Fragment): Predicate => ({ "~predicate": piece });
 
 function refOf(table: Table, name: string): ColumnRef<string | null> {
-  const column = identifier(name);
+  const column = columnIdentifier(table, name);
   const compare = (operator: Fragment, value: unknown) =>
     predicate(() => fragment`${column} ${operator} ${encodeValue(table, name, value)}`);
   return {
@@ -118,7 +118,14 @@ export function not(term: Predicate): Predicate {
   return predicate(() => fragment`not (${term["~predicate"]()})`);
 }
 
-export function renderOutput([alias, name]: Output): Fragment {
+/** The column of key `key` as SQL names it, once `defineDatabase` mapped it. */
+export function columnIdentifier(table: Table, key: string): Fragment {
+  return identifier(table.columnNames[key] ?? key);
+}
+
+/** An output aliases its column back to the key the row type names, unless the two are one. */
+export function renderOutput(table: Table, [alias, key]: Output): Fragment {
+  const name = table.columnNames[key] ?? key;
   return alias === name ? identifier(name) : fragment`${identifier(name)} as ${identifier(alias)}`;
 }
 
@@ -139,7 +146,7 @@ function selectQuery<T extends Table, R>(table: T, state: State): SelectQuery<T,
     },
     toSql() {
       const columns = join(
-        state.outputs.map((output) => renderOutput(output)),
+        state.outputs.map((output) => renderOutput(table, output)),
         fragment`, `,
       );
       const filter = state.predicate

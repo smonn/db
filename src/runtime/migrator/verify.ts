@@ -58,27 +58,36 @@ export async function loadVerifiedMigrations(source: MigrationSource): Promise<P
     migrations.map((migration) => migrationHash(migration.previous, migration.body, migration)),
   );
   migrations.forEach((migration, index) => {
-    const expected = index + 1;
-    if (migration.sequence > expected) {
-      throw new Error(`${migration.filename}: sequence ${expected} is missing before it`);
-    }
-    if (migration.sequence < expected) {
-      throw new Error(`${migration.filename}: repeats sequence ${migration.sequence}`);
-    }
-    const previous = migrations[index - 1]?.hash;
-    if (migration.previous !== previous) {
-      throw new Error(
-        `${migration.filename}: --! Previous should be ${previous ?? "-"}, not ${migration.previous ?? "-"}`,
-      );
-    }
-    const actual = actualHashes[index];
-    if (actual !== migration.hash) {
-      throw new Error(
-        `${migration.filename}: --! Hash says ${migration.hash} but the body hashes to ${actual}`,
-      );
-    }
+    checkSequence(migration, index + 1);
+    checkChained(migration, migrations[index - 1]?.hash);
+    checkHash(migration, actualHashes[index]);
   });
   return migrations;
+}
+
+function checkSequence(migration: ParsedMigration, expected: number): void {
+  if (migration.sequence > expected) {
+    throw new Error(`${migration.filename}: sequence ${expected} is missing before it`);
+  }
+  if (migration.sequence < expected) {
+    throw new Error(`${migration.filename}: repeats sequence ${migration.sequence}`);
+  }
+}
+
+function checkChained(migration: ParsedMigration, previous: string | undefined): void {
+  if (migration.previous !== previous) {
+    throw new Error(
+      `${migration.filename}: --! Previous should be ${previous ?? "-"}, not ${migration.previous ?? "-"}`,
+    );
+  }
+}
+
+function checkHash(migration: ParsedMigration, actual: string | undefined): void {
+  if (actual !== migration.hash) {
+    throw new Error(
+      `${migration.filename}: --! Hash says ${migration.hash} but the body hashes to ${actual}`,
+    );
+  }
 }
 
 function describeFork({ parent, previous, successors }: Fork): string {

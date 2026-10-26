@@ -1,27 +1,48 @@
-import { isEnum, type Enum, type Table } from "../../runtime/definition/index.ts";
-import { catalogBuilder, quoted, type Catalog, type CatalogBuilder } from "./catalog.ts";
-import { columnType } from "./column-type.ts";
+import {
+  isDomain,
+  isEnum,
+  sqlDefinition,
+  type Domain,
+  type Enum,
+  type Table,
+} from "../../runtime/definition/index.ts";
+import { catalogBuilder, quoted, type CatalogBuilder } from "./catalog.ts";
+import { plainKeyColumns } from "./payloads.ts";
+import { columnType, typeNamesOf, type TypeNames } from "./column-type.ts";
 import { constraintNames, type ConstraintNames } from "./constraint-names.ts";
-import { enumTypeNames, labelsOf } from "./enums.ts";
+import { addDomain } from "./domains.ts";
+import { labelsOf } from "./enums.ts";
+import type { Catalog } from "./fact.ts";
 
 /** The shape `defineDatabase` returns, loosened so any Definition fits. */
 export type DefinitionTables = {
-  readonly [schema: string]: { readonly [name: string]: Table | Enum };
+  readonly [schema: string]: { readonly [name: string]: Table | Enum | Domain };
 };
 
-export function definitionCatalog(definition: DefinitionTables): Catalog {
+/** The SQL names of the Definition's schemas, as `defineDatabase` mapped them. */
+export function definitionSchemas(database: DefinitionTables): string[] {
+  return Object.keys(sqlDefinition(database));
+}
+
+/** Reads the Definition by its SQL names, as `defineDatabase` mapped them. */
+export function definitionCatalog(database: DefinitionTables): Catalog {
+  const definition = sqlDefinition(database);
   const builder = catalogBuilder();
-  const enums = enumTypeNames(definition);
+  const types: TypeNames = {
+    enums: typeNamesOf(definition, isEnum, "defineEnum"),
+    domains: typeNamesOf(definition, isDomain, "defineDomain"),
+  };
   for (const [schema, entries] of Object.entries(definition)) {
     builder.schema(schema);
     const tables: Record<string, Table> = {};
     for (const [name, entry] of Object.entries(entries)) {
       if (isEnum(entry)) builder.enumType(schema, name, { labels: labelsOf(schema, name, entry) });
+      else if (isDomain(entry)) addDomain(builder, { schema, name, names: types }, entry);
       else tables[name] = entry;
     }
     const names = constraintNames(schema, tables);
     for (const [table, tableDefinition] of Object.entries(tables)) {
-      addDefinitionTable(builder, { schema, table, names, enums }, tableDefinition);
+      addDefinitionTable(builder, { schema, table, names, types }, tableDefinition);
     }
   }
   return builder.build();
@@ -31,7 +52,7 @@ type TableContext = {
   readonly schema: string;
   readonly table: string;
   readonly names: ConstraintNames;
-  readonly enums: ReadonlyMap<Enum, string>;
+  readonly types: TypeNames;
 };
 
 function addDefinitionTable(
@@ -50,7 +71,24 @@ function addDefinitionTable(
       columns: [...primaryKey],
     });
   }
-  for (const [column, { state }] of entries) {
+  addUniques(builder, context, columns, uniques);
+  addIndexes(builder, context, columns, indexes);
+  for (const { name, columns: from, ...payload } of foreignKeys) {
+    builder.foreignKey(schema, table, names.foreignKey(table, from, name), {
+      columns: from,
+      ...payload,
+    });
+  }
+}
+
+/** A column's `.unique()` calls come first, in column order, then the second callback's `unique`. */
+function addUniques(
+  builder: CatalogBuilder,
+  { schema, table, names }: TableContext,
+  columns: Table["columns"],
+  uniques: Table["uniques"],
+): void {
+  for (const [column, { state }] of Object.entries(columns)) {
     if (state.unique) {
       const name = names.unique(table, [column], state.constraintName);
       builder.unique(schema, table, name, { columns: [column], nullsNotDistinct: false });
@@ -60,13 +98,6 @@ function addDefinitionTable(
     builder.unique(schema, table, names.unique(table, listed, name), {
       columns: [...listed],
       nullsNotDistinct,
-    });
-  }
-  addIndexes(builder, context, columns, indexes);
-  for (const { name, columns: from, ...payload } of foreignKeys) {
-    builder.foreignKey(schema, table, names.foreignKey(table, from, name), {
-      columns: from,
-      ...payload,
     });
   }
 }
@@ -86,12 +117,14 @@ function addIndexes(
         method,
         keys: [key],
         include: [],
+        where: undefined,
         nullsNotDistinct: false,
       });
     }
   }
   for (const { name, keys, include, ...payload } of indexes) {
-    const listed = keys.map(({ column }) => column);
+    // An expression key demands a name, so a derived name only ever lists plain columns.
+    const listed = plainKeyColumns(keys);
     builder.index(schema, table, names.index(table, listed, name), {
       ...payload,
       keys: [...keys],
@@ -102,12 +135,12 @@ function addIndexes(
 
 function addColumn(
   builder: CatalogBuilder,
-  { schema, table, enums }: TableContext,
+  { schema, table, types }: TableContext,
   [column, { state }]: [string, Table["columns"][string]],
   inPrimaryKey: boolean,
 ): void {
   builder.column(schema, table, column, {
-    type: columnType(state, enums, quoted([schema, table, column])),
+    type: columnType(state, types, `Column ${quoted([schema, table, column])}`),
     notNull: state.notNull || inPrimaryKey || state.identity !== undefined,
   });
   if (state.default !== undefined) {

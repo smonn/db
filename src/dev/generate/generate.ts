@@ -17,7 +17,7 @@ import type {
   MigrationFile,
   MigrationSource,
 } from "../../runtime/ports/index.ts";
-import type { DefinitionTables } from "../catalog/index.ts";
+import { definitionSchemas, type DefinitionTables } from "../catalog/index.ts";
 import type { Hazard } from "../diff/index.ts";
 import { skippedSchemaReason } from "../introspect/index.ts";
 import type { ShadowOptions } from "../shadow/index.ts";
@@ -112,10 +112,17 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     ...(edited === undefined ? {} : { edited }),
   });
 
-  const { sql, hazards, hints } = shadowDiff;
-  if (edited !== undefined) {
-    return replayEdited({ driver, source, tracking, committed, path }, edited, shadowDiff);
-  }
+  const kept = { driver, source, tracking, committed, path };
+  if (edited !== undefined) return replayEdited(kept, edited, shadowDiff);
+  return writeGenerated({ ...kept, fileSystem }, shadowDiff);
+}
+
+/** Writes the generation to `current.sql`, or deletes the file when there is no diff. */
+async function writeGenerated(
+  { fileSystem, ...kept }: KeptEdit & { readonly fileSystem: FileSystem },
+  { sql, hazards, hints }: ShadowDiff,
+): Promise<GenerateResult> {
+  const { driver, source, tracking, committed, path } = kept;
   if (sql === "") {
     await fileSystem.remove(path);
     const reset = await needsReset(driver, tracking, committed);
@@ -177,7 +184,7 @@ async function needsReset(
 
 /** Refuses a schema `introspect` skips, whose tables would otherwise vanish from `current.sql`. */
 function requireModeledSchemas(definition: DefinitionTables, trackingName: string): void {
-  for (const schema of Object.keys(definition)) {
+  for (const schema of definitionSchemas(definition)) {
     const reason = skippedSchemaReason(schema, trackingName);
     if (reason !== undefined) {
       throw new Error(

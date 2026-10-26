@@ -2,6 +2,7 @@ import type { Row, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import {
   brand,
+  columnIdentifier,
   refsOf,
   renderOutput,
   type Query,
@@ -49,7 +50,7 @@ function insertInto(table: Table, rows: readonly Record<string, unknown>[]): Fra
     return fragment`(${join(cells, fragment`, `)})`;
   });
   const columns = join(
-    names.map((name) => identifier(name)),
+    names.map((name) => columnIdentifier(table, name)),
     fragment`, `,
   );
   return fragment`${target} (${columns}) values ${join(tuples, fragment`, `)}`;
@@ -64,7 +65,7 @@ function insertStatement<T extends Table>(
       const picked = Object.entries(pick(refsOf(table)));
       if (picked.length === 0) throw new Error("returning needs at least one column");
       const named = picked.map(([alias, ref]): [string, string] => [alias, ref.name]);
-      const outputs = named.map((output) => renderOutput(output));
+      const outputs = named.map((output) => renderOutput(table, output));
       return withDecoder(
         brand({
           toSql() {

@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { Target } from "./references.ts";
-import { defineDatabase, defineTable } from "./definition.ts";
+import { defineDatabase } from "./database.ts";
+import { defineTable } from "./definition.ts";
 
 const users = defineTable((c) => ({
   id: c.integer().primaryKey(),

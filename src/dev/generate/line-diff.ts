@@ -27,7 +27,7 @@ function diffLines(a: readonly string[], b: readonly string[], lcs: readonly num
   let i = 0;
   let j = 0;
   while (i < a.length || j < b.length) {
-    if (i < a.length && j < b.length && a[i] === b[j]) {
+    if (sameLine(a, b, i, j)) {
       i++;
       j++;
     } else if (removesNext(lcs, i, j)) {
@@ -37,6 +37,10 @@ function diffLines(a: readonly string[], b: readonly string[], lcs: readonly num
     }
   }
   return out;
+}
+
+function sameLine(a: readonly string[], b: readonly string[], i: number, j: number): boolean {
+  return i < a.length && j < b.length && a[i] === b[j];
 }
 
 function removesNext(lcs: readonly number[][], i: number, j: number): boolean {

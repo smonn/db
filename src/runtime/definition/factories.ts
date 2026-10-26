@@ -1,4 +1,5 @@
 import { column, type Column } from "./column.ts";
+import type { Domain } from "./domain.ts";
 import type { Enum } from "./enum.ts";
 
 export type ColumnFactories = {
@@ -21,15 +22,18 @@ export type ColumnFactories = {
   readonly bytea: () => Column<Uint8Array>;
   /** An enum from the same Database, rolled up under a schema beside the tables. */
   readonly enum: <L extends readonly string[]>(type: Enum<L>) => Column<L[number]>;
+  /** A domain from the same Database; a NOT NULL one makes the column non-null in `Row`. */
+  readonly domain: <V, N extends boolean>(type: Domain<V, N>) => Column<V, N>;
 };
 
-function of<V, Int extends boolean = false>(
+function of<V, Int extends boolean = false, N extends boolean = false>(
   sqlType: string,
-  enumType?: Enum,
-): Column<V, false, Int> {
-  return column<V, false, Int, false, false, false, false, false, true>({
+  named: { readonly enumType?: Enum; readonly domainType?: Domain } = {},
+): Column<V, N, Int> {
+  return column<V, N, Int, false, false, false, false, false, true>({
     sqlType,
-    enumType,
+    enumType: named.enumType,
+    domainType: named.domainType,
     array: false,
     notNull: false,
     default: undefined,
@@ -38,6 +42,7 @@ function of<V, Int extends boolean = false>(
     unique: false,
     indexes: [],
     constraintName: undefined,
+    explicitName: undefined,
     renamedFrom: undefined,
     references: undefined,
   });
@@ -64,5 +69,6 @@ export const factories: ColumnFactories = {
   timestamptz: () => of("timestamptz"),
   jsonb: () => of("jsonb"),
   bytea: () => of("bytea"),
-  enum: (type) => of("", type),
+  enum: (enumType) => of("", { enumType }),
+  domain: (domainType) => of("", { domainType }),
 };

@@ -1,23 +1,17 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
-import {
-  childrenOf,
-  qualified,
-  type Catalog,
-  type ColumnRename,
-  type TableRename,
-} from "../catalog/index.ts";
+import { qualified, type Catalog, type ColumnRename, type TableRename } from "../catalog/index.ts";
+import { columnRetypeHazards, fillsEachRow } from "./column-hazards.ts";
 import { SWAP_STEPS, type Swap } from "./enum-swap.ts";
-import { enumTypes, labelPosition, quoteLiteral } from "./enums.ts";
 import {
   HAZARD_KINDS,
   INDEX_LOCK,
   LONG_LOCK,
   REWRITE,
   WRITE_LOCK,
-  retypeHazards,
   type HazardKind,
 } from "./hazards.ts";
 import { renameSql } from "./rename-sql.ts";
+import { TYPE_STEPS, type TypeCarries, type TypeTarget } from "./type-steps.ts";
 import { createIndex, dropIndex } from "./index-statements.ts";
 import {
   addConstraint,
@@ -33,7 +27,7 @@ import {
 } from "./statements.ts";
 
 /** The kind of fact each action acts on. */
-type Target = {
+type Target = TypeTarget & {
   "rename table": "table";
   "rename column": "column";
   "drop foreign key": "foreign key";
@@ -44,9 +38,6 @@ type Target = {
   "drop table": "table";
   "drop schema": "schema";
   "create schema": "schema";
-  "create enum": "enum";
-  "add enum value": "enum";
-  "drop enum": "enum";
   "rename enum aside": "enum";
   "drop enum aside": "enum";
   "swap retype": "column";
@@ -71,7 +62,7 @@ type Target = {
 export type ActionKind = keyof Target;
 
 /** What an action needs beyond its fact. */
-type Carries = {
+type Carries = TypeCarries & {
   /** The column as the `from` catalog has it, since a type change's hazards depend on both types. */
   "alter type": { readonly before: FactOf<"column"> };
   /** The renamed object's fact is the `from` catalog's, which already holds the renamed object. */
@@ -141,38 +132,13 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
     render: (schema) => `create schema ${quoteIdentifier(schema.name)};`,
     hazards: none,
   },
-  "create enum": {
-    render: (type, { to }) =>
-      `create type ${qualified(type, to)} as enum (${type.payload.labels.map(quoteLiteral).join(", ")});`,
-    hazards: none,
-  },
-  // Adding a label rewrites no row. Using it in the same transaction fails (55P04), which
-  // `explainShadowError` words.
-  "add enum value": {
-    render: (fact, { to }, { before, label }) =>
-      `alter type ${qualified(fact, to)} add value ${quoteLiteral(label)}${labelPosition(fact, before, label)};`,
-    hazards: none,
-  },
-  "drop enum": {
-    render: (type, { from }) => `drop type ${qualified(type, from)};`,
-    hazards: none,
-  },
+  ...TYPE_STEPS,
   ...SWAP_STEPS,
   "create table": { render: createTable, hazards: none },
   "add column": {
     render: (column, { to }) =>
       `${alterTable(column, to)} add column ${columnDefinition(column, to)};`,
-    // An identity fills each row from its sequence, as a volatile default does, and a stored
-    // expression computes every row.
-    hazards: ({ fact }, { to }) =>
-      childrenOf(to, fact).some(
-        (child) =>
-          child.kind === "identity" ||
-          (child.kind === "default" && child.payload.volatile) ||
-          (child.kind === "generated" && child.payload.storage === "stored"),
-      )
-        ? REWRITE
-        : [],
+    hazards: ({ fact }, { to }) => (fillsEachRow(fact, to) ? REWRITE : []),
   },
   "drop default": {
     render: (fact, { from }) => `${alterColumn(fact, from)} drop default;`,
@@ -189,8 +155,7 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
   },
   "alter type": {
     render: (column, { to }) => `${alterColumn(column, to)} type ${column.payload.type};`,
-    hazards: ({ before, fact }, catalogs) =>
-      retypeHazards(before.payload.type, fact.payload.type, enumTypes(catalogs.from, catalogs.to)),
+    hazards: ({ before, fact }, catalogs) => columnRetypeHazards(before, fact, catalogs),
   },
   // Reads every row under the lock to prove none is null.
   "set not null": {
