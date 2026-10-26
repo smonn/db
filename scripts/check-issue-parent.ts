@@ -181,6 +181,10 @@ function matchingParents(self: Current, milestoneIssues: ApiIssue[]): number[] {
     .toSorted((a, b) => a - b);
 }
 
+function hasParentOrChildren(issue: Current): boolean {
+  return issue.parent_issue_url !== null || issue.sub_issues_summary.total > 0;
+}
+
 export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void {
   const { GITHUB_EVENT_PATH: eventPath } = env;
   if (eventPath === undefined) {
@@ -194,7 +198,7 @@ export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void
   const issuePath = `repos/${repository.full_name}/issues/${issue.number}`;
   const current = getOne(gh, issuePath);
   if (!qualifies(current) || current.milestone === null) return;
-  if (current.parent_issue_url !== null || current.sub_issues_summary.total > 0) return;
+  if (hasParentOrChildren(current)) return;
   const comments = getAll(gh, `${issuePath}/comments?per_page=100`, readComment);
   if (comments.some((comment) => comment.body.includes(MARKER))) return;
   const milestoneIssues = getAll(

@@ -95,6 +95,15 @@ export function readChangedAdrs(base: string, cwd: string = process.cwd()): Chan
   });
 }
 
+function clashProblems(
+  adrs: readonly ChangedAdr[],
+  number: string | undefined,
+  readOpenAdds: (exclude: string) => OpenPrAdd[],
+): string[] {
+  if (number === undefined || !adrs.some((adr) => adr.added)) return [];
+  return checkAdrClash(adrs, readOpenAdds(number));
+}
+
 export function main(
   env: NodeJS.ProcessEnv = process.env,
   readAdrs: (base: string) => ChangedAdr[] = readChangedAdrs,
@@ -107,10 +116,7 @@ export function main(
     return;
   }
   const adrs = base === undefined ? [] : readAdrs(base);
-  const problems = checkPr(title, branch, adrs);
-  if (number !== undefined && adrs.some((adr) => adr.added)) {
-    problems.push(...checkAdrClash(adrs, readOpenAdds(number)));
-  }
+  const problems = [...checkPr(title, branch, adrs), ...clashProblems(adrs, number, readOpenAdds)];
   for (const problem of problems) console.error(problem);
   if (problems.length > 0) process.exitCode = 1;
 }
