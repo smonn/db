@@ -14,7 +14,7 @@ A Postgres namespace that groups tables and other objects inside a Database, suc
 _Avoid_: Namespace
 
 **Definition**:
-The TypeScript description of a Database's desired tables and other objects, from Postgres's "data definition". Not the Schema, which groups objects inside a Database.
+The TypeScript description of a Database's desired tables and other objects, from Postgres's "data definition". A column declares what fits on it, such as `.unique()`; a table's second callback declares the rest, such as a multi-column `unique` list. Not the Schema, which groups objects inside a Database.
 _Avoid_: schema file
 
 **Unmodeled object**:

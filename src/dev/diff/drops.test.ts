@@ -23,7 +23,7 @@ function fullTable(builder: CatalogBuilder, schema: string, name = "t"): void {
   builder.column(schema, name, "a", text);
   builder.columnDefault(schema, name, "a", { expression: "'x'::text", volatile: false });
   builder.primaryKey(schema, name, `${name}_pkey`, { columns: ["id"] });
-  builder.unique(schema, name, `${name}_a_key`, { column: "a" });
+  builder.unique(schema, name, `${name}_a_key`, { columns: ["a"], nullsNotDistinct: false });
 }
 
 function publicOnly(builder: CatalogBuilder): void {

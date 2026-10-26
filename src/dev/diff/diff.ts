@@ -210,7 +210,7 @@ export const HANDLING: HandlingTable<Fact> = {
     create: (fact) => [{ kind: "add unique", fact }],
     replacedOnChange: true,
     alter: () => [],
-    columnsNamed: (fact) => [fact.payload.column],
+    columnsNamed: (fact) => fact.payload.columns,
   },
   "foreign key": {
     // Its target may drop before the table it sits on, and Postgres refuses to drop a key a

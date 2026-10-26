@@ -37,7 +37,9 @@ export type PrimaryKeyPayload = {
 };
 
 export type UniquePayload = {
-  readonly column: string;
+  /** In key order, which is the order the index sorts by. */
+  readonly columns: readonly string[];
+  readonly nullsNotDistinct: boolean;
 };
 
 export type ForeignKeyPayload = {

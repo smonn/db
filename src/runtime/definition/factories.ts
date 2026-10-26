@@ -27,9 +27,10 @@ function of<V, Int extends boolean = false>(
   sqlType: string,
   enumType?: Enum,
 ): Column<V, false, Int> {
-  return column<V, false, Int, false, false, false, false, false>({
+  return column<V, false, Int, false, false, false, false, false, true>({
     sqlType,
     enumType,
+    array: false,
     notNull: false,
     default: undefined,
     identity: undefined,

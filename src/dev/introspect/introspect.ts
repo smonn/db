@@ -102,8 +102,8 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
   const { rows: foreignKeys } = await tx.query(FOREIGN_KEYS, [trackingName]);
   const rows = {
     columns,
-    constraints,
-    foreignKeys: modeledForeignKeys(foreignKeys, schemas, tables),
+    constraints: onModeledColumns(constraints, columns),
+    foreignKeys: onModeledColumns(modeledForeignKeys(foreignKeys, schemas, tables), columns),
   };
 
   const builder = catalogBuilder();
@@ -137,6 +137,20 @@ function modeledForeignKeys(
   );
 }
 
+/** Drops a key that names a column `COLUMNS` skips, such as an array of a range: it is Unmodeled. */
+function onModeledColumns(keys: readonly DriverRow[], columns: readonly DriverRow[]): DriverRow[] {
+  const modeled = new Set(
+    columns.map(
+      (row) => `${String(row["schema"])}\0${String(row["table"])}\0${String(row["name"])}`,
+    ),
+  );
+  return keys.filter((row) =>
+    names(row["columns"]).every((column) =>
+      modeled.has(`${String(row["schema"])}\0${String(row["table"])}\0${column}`),
+    ),
+  );
+}
+
 function addTable(
   builder: CatalogBuilder,
   schema: string,
@@ -156,7 +170,10 @@ function addKey(builder: CatalogBuilder, schema: string, tableName: string, row:
   if (row["type"] === "p") {
     builder.primaryKey(schema, tableName, constraint, { columns: keyColumns });
   } else {
-    builder.unique(schema, tableName, constraint, { column: keyColumns[0] ?? "" });
+    builder.unique(schema, tableName, constraint, {
+      columns: keyColumns,
+      nullsNotDistinct: row["nulls_not_distinct"] === true,
+    });
   }
 }
 
