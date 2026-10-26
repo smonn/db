@@ -16,7 +16,9 @@ const stated: Handling<Index> = {
   drop: () => [],
   parentCreateCovers: false,
   create: () => [],
+  replacedOnChange: true,
   alter: () => [],
+  columnsNamed: (fact) => fact.payload.columns,
 };
 
 describe("the handling of each fact kind", () => {
@@ -38,7 +40,19 @@ describe("the handling of each fact kind", () => {
     // @ts-expect-error -- no altered comparison.
     const noAlter: HandlingTable<Future> = { ...HANDLING, index: omit(stated, "alter") };
 
-    expect([complete, none, noDrop, noCreate, noAlter]).toHaveLength(5);
+    const noReplaced: HandlingTable<Future> = {
+      ...HANDLING,
+      // @ts-expect-error -- no statement of whether a changed payload replaces it.
+      index: omit(stated, "replacedOnChange"),
+    };
+
+    const noColumns: HandlingTable<Future> = {
+      ...HANDLING,
+      // @ts-expect-error -- no statement of which columns it names, so a rebuilt one drops it.
+      index: omit(stated, "columnsNamed"),
+    };
+
+    expect([complete, none, noDrop, noCreate, noAlter, noReplaced, noColumns]).toHaveLength(7);
   });
 });
 
