@@ -10,6 +10,8 @@ export type { ColumnRename, Rename, TableRename } from "./renames.ts";
 export type {
   ColumnPayload,
   DefaultPayload,
+  DomainCheckPayload,
+  DomainPayload,
   EnumPayload,
   ForeignKeyPayload,
   GeneratedPayload,

@@ -12,6 +12,7 @@ const pair = (c: ColumnFactories) => ({ a: c.integer(), b: c.integer() });
 const PLAIN = {
   sqlType: "",
   enumType: undefined,
+  domainType: undefined,
   array: false,
   notNull: false,
   default: undefined,

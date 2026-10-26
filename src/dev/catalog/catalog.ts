@@ -10,6 +10,8 @@ import {
 import type {
   ColumnPayload,
   DefaultPayload,
+  DomainCheckPayload,
+  DomainPayload,
   EnumPayload,
   ForeignKeyPayload,
   GeneratedPayload,
@@ -30,6 +32,8 @@ export type CatalogBuilder = {
   schema(name: string): void;
   table(schema: string, name: string): void;
   enumType(schema: string, name: string, payload: EnumPayload): void;
+  domain(schema: string, name: string, payload: DomainPayload): void;
+  domainCheck(schema: string, domain: string, name: string, payload: DomainCheckPayload): void;
   column(schema: string, table: string, name: string, payload: ColumnPayload): void;
   columnDefault(schema: string, table: string, column: string, payload: DefaultPayload): void;
   columnIdentity(schema: string, table: string, column: string, payload: IdentityPayload): void;
@@ -64,10 +68,7 @@ export function catalogBuilder(): CatalogBuilder {
       const parent = added("schema", schema);
       catalog.set(key(schema, name), { kind: "table", name, parent, payload: {} });
     },
-    enumType(schema, name, payload) {
-      const parent = added("schema", schema);
-      catalog.set(key(schema, name), { kind: "enum", name, parent, payload });
-    },
+    ...typeMethods(catalog, added),
     column(schema, table, name, payload) {
       const parent = added("table", schema, table);
       catalog.set(key(schema, table, name), { kind: "column", name, parent, payload });
@@ -92,6 +93,27 @@ export function catalogBuilder(): CatalogBuilder {
 }
 
 type Added = (kind: Fact["kind"], ...names: string[]) => Key;
+
+/** Enums and domains sit under their schema, keyed like a table, since they share its names. */
+function typeMethods(
+  catalog: Map<Key, Fact>,
+  added: Added,
+): Pick<CatalogBuilder, "enumType" | "domain" | "domainCheck"> {
+  return {
+    enumType(schema, name, payload) {
+      const parent = added("schema", schema);
+      catalog.set(key(schema, name), { kind: "enum", name, parent, payload });
+    },
+    domain(schema, name, payload) {
+      const parent = added("schema", schema);
+      catalog.set(key(schema, name), { kind: "domain", name, parent, payload });
+    },
+    domainCheck(schema, domain, name, payload) {
+      const parent = added("domain", schema, domain);
+      catalog.set(key(schema, domain, name), { kind: "domain check", name, parent, payload });
+    },
+  };
+}
 
 function constraintMethods(
   catalog: Map<Key, Fact>,

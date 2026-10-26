@@ -1,6 +1,8 @@
 import type {
   ColumnPayload,
   DefaultPayload,
+  DomainCheckPayload,
+  DomainPayload,
   EnumPayload,
   ForeignKeyPayload,
   GeneratedPayload,
@@ -34,6 +36,20 @@ export type Fact =
       readonly name: string;
       readonly parent: Key;
       readonly payload: EnumPayload;
+    }
+  | {
+      /** Keyed like a table, since a type and a table share one pool of names. */
+      readonly kind: "domain";
+      readonly name: string;
+      readonly parent: Key;
+      readonly payload: DomainPayload;
+    }
+  | {
+      /** Named by its constraint, under its domain. */
+      readonly kind: "domain check";
+      readonly name: string;
+      readonly parent: Key;
+      readonly payload: DomainCheckPayload;
     }
   | {
       readonly kind: "column";

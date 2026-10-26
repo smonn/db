@@ -31,6 +31,21 @@ export type GeneratedPayload = {
 /** Labels in sort order, which is the order the enum compares in. */
 export type EnumPayload = { readonly labels: readonly string[] };
 
+export type DomainPayload = {
+  /** The base type as `format_type` renders it, such as `integer` or `public.mood`. */
+  readonly base: string;
+  /** Folds `typnotnull` and a Postgres 18 `pg_constraint` NOT NULL row, whatever its name. */
+  readonly notNull: boolean;
+  /** As `pg_get_expr` renders it, or null without one. */
+  readonly default: string | null;
+};
+
+/** A `NOT VALID` check is the same fact as a valid one. */
+export type DomainCheckPayload = {
+  /** What `CHECK` holds as `pg_get_constraintdef` renders it, such as `(VALUE > 0)`. */
+  readonly expression: string;
+};
+
 export type PrimaryKeyPayload = {
   /** In key order, which is the order the index sorts by. */
   readonly columns: readonly string[];

@@ -4,7 +4,7 @@ How generate turns the Definition into the Current migration. ADR-0005 and ADR-0
 
 ## What v0.1 models
 
-Schemas, tables, columns (type, NOT NULL, default, identity), single and composite primary keys, unique constraints over one or more columns and indexes over columns (ADR-0021), one-column foreign keys (ADR-0019), and enums (ADR-0023): exactly what the Definition can express.
+Schemas, tables, columns (type, NOT NULL, default, identity), single and composite primary keys, unique constraints over one or more columns and indexes over columns (ADR-0021), one-column foreign keys (ADR-0019), and enums and domains (ADR-0023): exactly what the Definition can express.
 
 Both introspections skip the Tracking schema (`smonn_db` unless configured), `pg_catalog`, `information_schema`, `pg_toast*`, `pg_temp*`, extension members, and every kind outside this list (ADR-0005). Generate refuses a Definition that names one of these schemas, since its tables would vanish from the diff.
 
@@ -13,12 +13,12 @@ Both introspections skip the Tracking schema (`smonn_db` unless configured), `pg
 1. The Definition converts to a catalog, spelling each type as `format_type` does, and the diff renders it against the catalog of the freshly created Definition database, which holds only template0's `public` schema. That SQL builds the Definition database.
 2. `introspect` reads each database in one `REPEATABLE READ READ ONLY` transaction with `search_path` pinned to `pg_catalog`, keyed by name, never by OID.
 3. Generate runs the Definition's `renamedFrom` markers on the Shadow inside a transaction, introspects it, and rolls back (ADR-0024). Postgres follows a rename by OID, so every default and expression in that catalog already names the new object. A marker whose old name the Shadow lacks is skipped, and one whose old and new names both exist throws.
-4. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL. The renames that ran open the SQL, so the migration repeats them. It also returns hints, which generate prints: the `renamedFrom` to add when a table drops one column and adds one of the same type, or a schema drops one table and adds one with identical columns. A hint never reaches the SQL.
+4. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL. The renames that ran open the SQL, so the migration repeats them. It also returns hints, which generate prints but never writes into the SQL: the `renamedFrom` to add when a column or table looks dropped and added (`diff/hints.ts`).
 5. Generate verifies the SQL, or a [hand edit](cli.md#hand-edits), in the Shadow (ADR-0013), then writes the Current migration.
 
 ## Catalog
 
-A flat `Map<key, fact>`. A key is the chain of names from the schema down (`public`, `users`, `email`), joined with `\0`, which no Postgres name can hold, so a table named `users.email` keys apart from the column `email` on `users`. Only the catalog module builds keys: `definitionCatalog` and `introspect` add facts through its builder, and `diff` finds parents, children, and names through its lookups.
+A flat `Map<key, fact>`. A key is the chain of names from the schema down (`public`, `users`, `email`), joined with `\0`, which no Postgres name can hold, so a table named `users.email` keys apart from the column `email` on `users`. Only the catalog module builds keys; `definitionCatalog` and `introspect` add facts through its builder.
 
 Each fact carries its parent's key and a plain-data payload compared by deep equality. A default, a primary key, and a unique constraint are separate facts, so one changed default is one difference. Payloads leave out the fact's own name, so a renamed fact can match by payload.
 
@@ -54,29 +54,31 @@ A foreign key is a child fact of its table, named by its constraint and keyed li
 
 An enum is a fact under its schema, keyed like a table (a type and a table share one pool of names), whose payload lists its labels in sort order. A column of an enum names it as `format_type` spells it under `search_path = pg_catalog` (`public.mood`). `introspect` reads labels by `enumsortorder` and skips an enum an extension owns as Unmodeled.
 
-`definitionCatalog` names an enum by its key in the schema's object and finds it from a column by the identity of the value `c.enum(mood)` holds. It refuses a label that is empty, repeated, or over 63 bytes, an enum rolled up under two names, and a column whose enum is not in the Definition.
+`definitionCatalog` names an enum or domain by its key and finds it from a column by identity. It refuses a label that is empty, repeated, or over 63 bytes, a type rolled up under two names, and a column whose type is not in the Definition.
 
-A created enum lists all its labels. A label added to an existing enum is one `ALTER TYPE ... ADD VALUE ... BEFORE|AFTER` at its declared position, in phase 5 with no Hazard, and a drop is `DROP TYPE` in phase 8. Using a new label in the same migration fails (`55P04`); `shadow-errors.ts` words the fix.
+A label added to an existing enum is one `ALTER TYPE ... ADD VALUE ... BEFORE|AFTER` at its declared position, with no Hazard. Using a new label in the same migration fails (`55P04`); `shadow-errors.ts` words the fix.
 
 Removing or moving a label swaps the type, which a domain on it blocks.
 
+### Domains
+
+A domain is a fact under its schema, keyed like an enum. Its payload holds its base as `format_type` spells it, its default as `pg_get_expr` renders it, and NOT NULL, folded like a column's. Each check is a child `domain check` fact named by its constraint; a `NOT VALID` one is the same fact. `introspect` skips as Unmodeled a domain over a domain or array, or with its own collation. Generate refuses a changed base, and a name switching between enum and domain.
+
 ## Ordering
 
-Each action is one statement-sized change, such as create table, add column, or set default. One `order(actions)` function sorts them into fixed phases (#381). A phase table in `diff/phases.ts` gives each action kind its phase and its rank within the phase, so a new kind fails to compile until it names one. Phase _n_ is the _n_th entry of `PHASES`, so #381 and this list cite phases by number and the code by name. The phases, with the kinds each will hold once v0.2 lands:
+Each action is one statement-sized change, such as create table, add column, or set default. One `order(actions)` function sorts them into fixed phases (#381). A phase table in `diff/phases.ts` gives each action kind its phase and its rank within the phase, so a new kind fails to compile until it names one. Phase _n_ is the _n_th entry of `PHASES`. The phases, with the kinds each will hold once v0.2 lands:
 
 1. `RENAME` of tables, columns, enums, domains, labels, and an enum type swap's old type.
 2. Payload-matched renames of constraints, indexes, sequences, and domain checks, which compare under the names phase 1 gives.
 3. Drop foreign key, index, unique constraint, primary key.
 4. Drop column, then table.
-5. Create or alter schema or type: create schema, enum, domain; domain alters and checks; enum `ADD VALUE`. All before columns, so a new column gets the new domain default.
+5. Create or alter schema or type: create schema, enum, domain; enum `ADD VALUE`; domain alters and checks. All before columns, so a new column gets the new domain default.
 6. Create table, add column, then column alters: drop default, drop identity or expression, type (an enum swap's retypes included), NOT NULL, set default or expression, add identity or switch identity mode.
 7. Add primary key, unique constraint, index, foreign key.
 8. Drop domain, then enum, after the retypes.
 9. Drop schema, last so a type drop precedes it.
 
-Fixed phases suffice until a kind references its own kind, such as a view or function (v0.5); `diff/phases.ts` says why.
-
-Ranks within a phase follow #381's listed order and leave gaps for kinds that land later, so adding one never renumbers another. Within a rank, ties keep catalog order, which `introspect` sorts by name for schemas, tables, and constraints and by position for columns, so new columns follow the Definition. Drops, including the drop half of a changed key, follow the source catalog, and everything else the target catalog.
+Ranks leave gaps, so a new kind never renumbers another. Within a rank, ties keep catalog order, which `introspect` sorts by name for schemas, tables, and constraints and by position for columns, so new columns follow the Definition. Drops, including the drop half of a changed key, follow the source catalog, and everything else the target catalog.
 
 Dropping a table or column drops what it holds, so no separate drop is emitted for its children, except a foreign key, which always gets its own `DROP CONSTRAINT`. A schema drop without `CASCADE` refuses while the schema holds anything, so each of its tables drops first, without its children. Keys drop in phase 3 and add in phase 7, so a changed key is rebuilt around the column changes it spans.
 
@@ -98,11 +100,11 @@ Dropping a table or column drops what it holds, so no separate drop is emitted f
 Each action kind declares its Hazards (`data_loss`, `rewrite`, `access_exclusive_lock`, `share_lock`, `share_row_exclusive_lock`, `rename`) in a table, classified from the catalog, not the SQL text. Each Hazard is written as a `-- hazard: <kind>` comment above its statement, and generate returns them with their statements. Generation never blocks on a Hazard; commit does, per kind (ADR-0015). Commit also refuses a near-miss `-- hazard:` comment (indented, unspaced, recased, trailing, or mid-statement), since that would drop its gate by accident.
 
 - `data_loss`: a dropped column or table (so a rename too, ADR-0010, unless a `renamedFrom` marker declares it, which carries `rename` instead, ADR-0024), and a type change that converts values without an error but not back, such as `numeric(10,2)` to `integer`, `timestamptz` to `date`, or `double precision` to `real`. A change that fails on a value that doesn't fit, such as `bigint` to `integer`, loses nothing, since the statement rolls back.
-- `rewrite`: a type change Postgres can't make in place (text to an enum, an enum to text, and one enum to another among them), and a new column whose default calls a volatile function, that is an identity, or that is stored generated, and a new expression on a stored generated column, because each row needs its own value. A virtual column computes on read and rewrites nothing.
+- `rewrite`: a type change Postgres can't make in place (text to an enum, an enum to text, and one enum to another among them), and a new column whose default calls a volatile function, that is an identity, is stored generated, or is of a constrained domain, and a new expression on a stored generated column, because each row needs its own value. A virtual column computes on read and rewrites nothing.
   - `retypeHazards` in `diff/hazards.ts` lists the type changes Postgres makes in place, and how an array's element type counts.
   - A default is volatile when its expression calls a function that `pg_proc` marks volatile, which `introspect` reads by function name, since `pg_depend` omits built-in functions.
 - `access_exclusive_lock`: a statement that holds the lock while it does work that grows with the table. Every `ALTER TABLE` takes that lock, but only a rewrite (which therefore carries both kinds), `SET NOT NULL` (a scan of every row), and adding a primary key or unique constraint (an index build) hold it past a catalog change. Adding a key to a table created in the same migration is empty, so it carries nothing.
-- `share_lock`: creating an index on a table that already exists. The build holds `SHARE` on the table, which blocks writes but not reads. An index on a table created in the same migration carries nothing, and dropping one carries none, since it only changes the catalog.
+- `share_lock`: creating an index on a table that already exists. The build holds `SHARE` on the table, which blocks writes but not reads. An index on a table created in the same migration carries nothing, and dropping one carries none, since it only changes the catalog. A domain's `SET NOT NULL` or new check scans its columns under `SHARE` too.
 - `share_row_exclusive_lock`: adding a foreign key to a table that already exists. The statement scans the table while it holds `SHARE ROW EXCLUSIVE` on it and on the table it points at, which blocks writes but not reads. A foreign key on a table created in the same migration carries nothing. Generate doesn't split the add into `NOT VALID` then `VALIDATE CONSTRAINT` (ADR-0020), since the split only helps when the two commit separately.
 - `rename`: a table or column rename. The statement only changes the catalog, but app code still on the old name breaks between `migrate` and its deploy, so accepting it should be explicit (ADR-0024).
 

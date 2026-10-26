@@ -33,12 +33,22 @@ export const INDEX_LOCK: readonly HazardKind[] = ["share_lock"];
  */
 export const LONG_LOCK: readonly HazardKind[] = ["access_exclusive_lock"];
 
+/** Adding a check or NOT NULL to a domain scans each column of it under SHARE (ADR-0021). */
+export const DOMAIN_SCAN_LOCK: readonly HazardKind[] = ["share_lock"];
+
+/** What `retypeHazards` reads of a domain. */
+export type DomainType = {
+  /** As `format_type` spells it, like a column's `type`. */
+  readonly base: string;
+  /** NOT NULL or with a check, so a value moving onto it has to be checked. */
+  readonly constrained: boolean;
+};
+
 type Type =
   | { readonly name: "character varying"; readonly length: number | undefined }
   | { readonly name: "numeric"; readonly precision: number | undefined; readonly scale: number }
   | { readonly name: SimpleName }
-  | { readonly name: "enum" }
-  | { readonly name: "array"; readonly element: Type };
+  | { readonly name: "enum" };
 
 type Varchar = Extract<Type, { readonly name: "character varying" }>;
 type Numeric = Extract<Type, { readonly name: "numeric" }>;
@@ -61,14 +71,9 @@ const SIMPLE_NAMES = [
 
 type SimpleName = (typeof SIMPLE_NAMES)[number];
 
-/** Reads a type as `format_type` spells it, or `undefined` for one the diff doesn't classify. */
+/** Reads a scalar type as `format_type` spells it, or `undefined` for one the diff doesn't classify. */
 function parse(type: string, enums: ReadonlySet<string>): Type | undefined {
   if (enums.has(type)) return { name: "enum" };
-  const elementName = elementOf(type);
-  if (elementName !== undefined) {
-    const element = parse(elementName, enums);
-    return element === undefined ? undefined : { name: "array", element };
-  }
   const varchar = /^character varying(?:\((\d+)\))?$/u.exec(type);
   if (varchar !== null) {
     return { name: "character varying", length: toNumber(varchar[1]) };
@@ -85,24 +90,59 @@ function toNumber(digits: string | undefined): number | undefined {
   return digits === undefined ? undefined : Number(digits);
 }
 
+type NamedTypes = {
+  readonly enums: ReadonlySet<string>;
+  readonly domains: ReadonlyMap<string, DomainType>;
+};
+
 /**
  * The hazards of `alter column ... type` from `before` to `after`, with no `USING`. `enums` holds
- * the types spelled as enums. A type the diff doesn't classify gets every hazard, since only a gate
- * can say it is safe.
+ * the types spelled as enums, and `domains` each domain by its spelling. A type the diff doesn't
+ * classify gets every hazard, since only a gate can say it is safe.
  */
 export function retypeHazards(
   before: string,
   after: string,
   enums: ReadonlySet<string> = new Set(),
+  domains: ReadonlyMap<string, DomainType> = new Map(),
 ): readonly HazardKind[] {
-  const from = parse(before, enums);
-  const to = parse(after, enums);
+  return typeHazards(before, after, { enums, domains });
+}
+
+function typeHazards(before: string, after: string, named: NamedTypes): readonly HazardKind[] {
+  const domain = domainRetypeHazards(before, after, named.domains);
+  if (domain !== undefined) return domain;
+  const fromElement = elementOf(before);
+  const toElement = elementOf(after);
+  if (fromElement !== undefined || toElement !== undefined) {
+    return arrayRetypeHazards(fromElement, toElement, named);
+  }
+  const from = parse(before, named.enums);
+  const to = parse(after, named.enums);
   if (from === undefined || to === undefined) return HAZARD_KINDS;
   return pairHazards(from, to);
 }
 
+/**
+ * A domain's values read as its base, so from a domain to its base, or to an unconstrained domain
+ * over the same base, changes nothing, and to a constrained one checks every row. Any other pair
+ * with a domain gets every hazard; `undefined` when neither type is a domain.
+ */
+function domainRetypeHazards(
+  before: string,
+  after: string,
+  domains: ReadonlyMap<string, DomainType>,
+): readonly HazardKind[] | undefined {
+  const source = domains.get(before);
+  const target = domains.get(after);
+  if (source === undefined && target === undefined) return undefined;
+  const value = source === undefined ? before : source.base;
+  if (target === undefined) return value === after ? [] : HAZARD_KINDS;
+  if (target.base !== value) return HAZARD_KINDS;
+  return target.constrained ? REWRITE : [];
+}
+
 function pairHazards(from: Type, to: Type): readonly HazardKind[] {
-  if (from.name === "array" || to.name === "array") return arrayRetypeHazards(from, to);
   if (from.name === "enum" || to.name === "enum") return enumRetypeHazards(from, to);
   return [
     ...(losesData(from, to) ? (["data_loss"] as const) : []),
@@ -114,9 +154,13 @@ function pairHazards(from: Type, to: Type): readonly HazardKind[] {
  * Any change to an array's element type rewrites, even `varchar(20)[]` to `varchar(40)[]`, and
  * keeps the element pair's other hazards. Scalar to array and back gets every hazard.
  */
-function arrayRetypeHazards(from: Type, to: Type): readonly HazardKind[] {
-  if (from.name !== "array" || to.name !== "array") return HAZARD_KINDS;
-  const kept = new Set([...pairHazards(from.element, to.element), ...REWRITE]);
+function arrayRetypeHazards(
+  from: string | undefined,
+  to: string | undefined,
+  named: NamedTypes,
+): readonly HazardKind[] {
+  if (from === undefined || to === undefined) return HAZARD_KINDS;
+  const kept = new Set([...typeHazards(from, to, named), ...REWRITE]);
   return HAZARD_KINDS.filter((kind) => kept.has(kind));
 }
 
