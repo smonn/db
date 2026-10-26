@@ -5,9 +5,17 @@ const MAX_NAME_BYTES = 63;
 
 export type ConstraintNames = {
   primaryKey(table: string, columns: readonly string[], name: string | undefined): string;
-  unique(table: string, column: string, name: string | undefined): string;
+  unique(table: string, columns: readonly string[], name: string | undefined): string;
   foreignKey(table: string, columns: readonly string[], name: string | undefined): string;
 };
+
+/**
+ * Postgres's default name, `<table>_<columns joined by _>_<suffix>` (`key`, `fkey`, `idx`), which
+ * `validate` refuses when it runs past 63 bytes, where Postgres would truncate it.
+ */
+function derivedName(table: string, columns: readonly string[], suffix: string): string {
+  return `${table}_${columns.join("_")}_${suffix}`;
+}
 
 /** Describes each relation a key's name can clash with: the tables and the identity sequences. */
 function relationOwners(
@@ -99,14 +107,14 @@ export function constraintNames(
   return {
     primaryKey: (table, columns, name) =>
       claim(table, name ?? `${table}_pkey`, `the primary key on ${on(table, columns)}`),
-    unique: (table, column, name) =>
+    unique: (table, columns, name) =>
       claim(
         table,
-        name ?? `${table}_${column}_key`,
-        `the unique constraint on ${on(table, [column])}`,
+        name ?? derivedName(table, columns, "key"),
+        `the unique constraint on ${on(table, columns)}`,
       ),
     foreignKey: (table, columns, name) => {
-      const taken = name ?? `${table}_${columns.join("_")}_fkey`;
+      const taken = name ?? derivedName(table, columns, "fkey");
       const owner = `the foreign key on ${on(table, columns)}`;
       validate(taken, owner);
       return claimOnTable(table, taken, owner);

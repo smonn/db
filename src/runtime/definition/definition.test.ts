@@ -268,23 +268,24 @@ describe("defineDatabase", () => {
   it("names schemas and tables by their keys", () => {
     const sessions = defineTable((c) => ({ token: c.text() }));
     const db = defineDatabase({ public: { users }, auth: { sessions } });
+    const bare = {
+      primaryKey: [],
+      primaryKeyName: undefined,
+      uniques: [],
+      renamedFrom: undefined,
+      foreignKeys: [],
+    };
     expect(db.public.users).toStrictEqual({
       schema: "public",
       name: "users",
       columns: users.columns,
-      primaryKey: [],
-      primaryKeyName: undefined,
-      renamedFrom: undefined,
-      foreignKeys: [],
+      ...bare,
     });
     expect(db.auth.sessions).toStrictEqual({
       schema: "auth",
       name: "sessions",
       columns: sessions.columns,
-      primaryKey: [],
-      primaryKeyName: undefined,
-      renamedFrom: undefined,
-      foreignKeys: [],
+      ...bare,
     });
   });
 

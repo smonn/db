@@ -37,7 +37,7 @@ type TableContext = {
 function addDefinitionTable(
   builder: CatalogBuilder,
   context: TableContext,
-  { columns, primaryKey, primaryKeyName, foreignKeys }: Table,
+  { columns, primaryKey, primaryKeyName, uniques, foreignKeys }: Table,
 ): void {
   const { schema, table, names } = context;
   builder.table(schema, table);
@@ -52,9 +52,15 @@ function addDefinitionTable(
   }
   for (const [column, { state }] of entries) {
     if (state.unique) {
-      const name = names.unique(table, column, state.constraintName);
+      const name = names.unique(table, [column], state.constraintName);
       builder.unique(schema, table, name, { columns: [column], nullsNotDistinct: false });
     }
+  }
+  for (const { name, columns: listed, nullsNotDistinct } of uniques) {
+    builder.unique(schema, table, names.unique(table, listed, name), {
+      columns: [...listed],
+      nullsNotDistinct,
+    });
   }
   for (const { name, columns: from, ...payload } of foreignKeys) {
     builder.foreignKey(schema, table, names.foreignKey(table, from, name), {

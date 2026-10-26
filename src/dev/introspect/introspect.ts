@@ -158,7 +158,7 @@ function addKey(builder: CatalogBuilder, schema: string, tableName: string, row:
   } else {
     builder.unique(schema, tableName, constraint, {
       columns: keyColumns,
-      nullsNotDistinct: false,
+      nullsNotDistinct: row["nulls_not_distinct"] === true,
     });
   }
 }
