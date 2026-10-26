@@ -23,6 +23,7 @@ describe("parseMigration", () => {
       previous: undefined,
       hash: HASH_A,
       body: "create table a (n int);\n",
+      noTransaction: false,
     });
   });
 
@@ -65,9 +66,9 @@ describe("parseMigration", () => {
   });
 
   it("refuses an unknown header", () => {
-    const content = `--! Previous: -\n--! Hash: ${HASH_A}\n--! no-transaction\nselect 1;`;
+    const content = `--! Previous: -\n--! Hash: ${HASH_A}\n--! other\nselect 1;`;
     expect(() => parseMigration({ filename: "000001-a.sql", content })).toThrow(
-      "000001-a.sql: unknown header --! no-transaction",
+      "000001-a.sql: unknown header --! other",
     );
   });
 
@@ -122,6 +123,7 @@ describe("writeMigration", () => {
       previous: undefined,
       hash: "sha256:d7d725aa0112fb1cbd6f88755f17784646fcd5154e0ea687f488c87fa1499173",
       body: "create table a (n int);\n",
+      noTransaction: false,
     });
   });
 

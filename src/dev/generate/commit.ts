@@ -5,6 +5,7 @@ import {
   parseCurrent,
   parseMigration,
   readCommitted,
+  splitCurrentHeader,
   trackingSchema,
   writeMigration,
 } from "../../runtime/internal/index.ts";
@@ -38,7 +39,8 @@ const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 /**
  * Freezes `current.sql` into the next Committed migration, chained onto the tip (ADR-0008), then
  * records it and clears the tracking schema's `current` table in one Dev database transaction and
- * deletes `current.sql`. Refuses while `current.sql` has a Hazard kind outside `accept`, and unless
+ * deletes `current.sql`. A `--! no-transaction` header on its first line carries into the Committed
+ * file (ADR-0020). Refuses while `current.sql` has a Hazard kind outside `accept`, and unless
  * the Dev database holds `current.sql` as it reads now and every Committed migration before it.
  */
 export function commit(options: CommitOptions): Promise<CommitResult> {
@@ -63,7 +65,8 @@ async function commitLocked(options: CommitOptions): Promise<CommitResult> {
   const chain = committed.map((file) => parseMigration(file));
   const tip = chain.find((migration) => migration.sequence === chain.length);
   const filename = `${String(chain.length + 1).padStart(6, "0")}-${slug}.sql`;
-  const migration = await writeMigration(filename, tip?.hash, body);
+  const { noTransaction, sql } = splitCurrentHeader(body);
+  const migration = await writeMigration(filename, tip?.hash, sql, { noTransaction });
   const path = `${migrations}/${filename}`;
 
   let wrote = false;
