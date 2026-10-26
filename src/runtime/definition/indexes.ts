@@ -2,7 +2,7 @@ import { indexNameOf, methodOf, type IndexMethod } from "./index-options.ts";
 import { keyColumns, type RuntimeRefs } from "./table-keys.ts";
 
 /** One key of an index. Postgres sorts NULLs last in an ascending key and first in a descending one. */
-export type IndexKey = {
+type IndexKey = {
   readonly column: string;
   readonly descending: boolean;
   readonly nullsFirst: boolean;

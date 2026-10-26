@@ -6,6 +6,7 @@ import {
   type Key,
 } from "../catalog/index.ts";
 import type { Catalogs } from "./actions.ts";
+import { swapOf } from "./enum-swap.ts";
 
 /**
  * The columns `ALTER COLUMN` can't convert: Postgres can't make a plain column generated, switch
@@ -33,12 +34,36 @@ function generation(catalog: Catalog, column: Fact): GeneratedPayload | undefine
   return child?.kind === "generated" ? child.payload : undefined;
 }
 
-export function retyped(column: Key, { from, to }: Catalogs): boolean {
-  const before = from.get(column);
-  const after = to.get(column);
+/** Whether the column changes type, or keeps the name of an enum that swaps (ADR-0023). */
+export function retyped(column: Key, catalogs: Catalogs): boolean {
+  const before = catalogs.from.get(column);
+  const after = catalogs.to.get(column);
   return (
     before?.kind === "column" &&
     after?.kind === "column" &&
-    before.payload.type !== after.payload.type
+    (before.payload.type !== after.payload.type ||
+      swapOf(after.payload.type, catalogs) !== undefined)
+  );
+}
+
+/**
+ * `catalog` without the rebuilt columns, the facts under them, and the facts that name them, which
+ * `columnsNamed` reads off each fact.
+ */
+export function without(
+  catalog: Catalog,
+  rebuilt: ReadonlyMap<Key, Fact>,
+  columnsNamed: (fact: Fact) => readonly string[],
+): Catalog {
+  const columns = [...rebuilt.values()];
+  return new Map(
+    [...catalog].filter(
+      ([key, fact]) =>
+        !rebuilt.has(key) &&
+        !(fact.parent !== undefined && rebuilt.has(fact.parent)) &&
+        !columns.some(
+          (column) => column.parent === fact.parent && columnsNamed(fact).includes(column.name),
+        ),
+    ),
   );
 }

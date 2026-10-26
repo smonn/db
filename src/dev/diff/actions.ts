@@ -6,6 +6,7 @@ import {
   type ColumnRename,
   type TableRename,
 } from "../catalog/index.ts";
+import { SWAP_STEPS, type Swap } from "./enum-swap.ts";
 import { enumTypes, labelPosition, quoteLiteral } from "./enums.ts";
 import {
   HAZARD_KINDS,
@@ -17,15 +18,16 @@ import {
   type HazardKind,
 } from "./hazards.ts";
 import { renameSql } from "./rename-sql.ts";
+import { createIndex, dropIndex } from "./index-statements.ts";
 import {
   addConstraint,
+  addForeignKey,
   alterColumn,
   alterTable,
   columnDefinition,
-  columnList,
-  createIndex,
+  createTable,
   defaultClause,
-  dropIndex,
+  dropConstraint,
   identityClause,
   type FactOf,
 } from "./statements.ts";
@@ -45,6 +47,9 @@ type Target = {
   "create enum": "enum";
   "add enum value": "enum";
   "drop enum": "enum";
+  "rename enum aside": "enum";
+  "drop enum aside": "enum";
+  "swap retype": "column";
   "create table": "table";
   "add column": "column";
   "drop default": "default";
@@ -74,6 +79,9 @@ type Carries = {
   "rename column": { readonly rename: ColumnRename };
   /** The enum as the `from` catalog has it, and the label to add to it. */
   "add enum value": { readonly before: FactOf<"enum">; readonly label: string };
+  "rename enum aside": { readonly swap: Swap };
+  "drop enum aside": { readonly swap: Swap };
+  "swap retype": { readonly swap: Swap };
 };
 
 /**
@@ -149,6 +157,7 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
     render: (type, { from }) => `drop type ${qualified(type, from)};`,
     hazards: none,
   },
+  ...SWAP_STEPS,
   "create table": { render: createTable, hazards: none },
   "add column": {
     render: (column, { to }) =>
@@ -266,32 +275,4 @@ function indexBuild(
   { from }: Catalogs,
 ): readonly HazardKind[] {
   return from.has(fact.parent) ? LONG_LOCK : [];
-}
-
-function createTable(table: FactOf<"table">, { to }: Catalogs): string {
-  const columns = childrenOf(to, table).flatMap((child) =>
-    child.kind === "column" ? [`  ${columnDefinition(child, to)}`] : [],
-  );
-  const body = columns.length === 0 ? "()" : `(\n${columns.join(",\n")}\n)`;
-  return `create table ${qualified(table, to)} ${body};`;
-}
-
-function dropConstraint(
-  key: FactOf<"primary key" | "unique" | "foreign key">,
-  { from }: Catalogs,
-): string {
-  return `${alterTable(key, from)} drop constraint ${quoteIdentifier(key.name)};`;
-}
-
-/** Leaves out the clauses at Postgres's defaults, so the statement reads like the SQL one writes. */
-function addForeignKey(key: FactOf<"foreign key">, { to }: Catalogs): string {
-  const { columns, target, onDelete, onUpdate, match, deferrable } = key.payload;
-  const clauses = [
-    match === "full" ? "match full" : "",
-    onDelete === "no action" ? "" : `on delete ${onDelete}`,
-    onUpdate === "no action" ? "" : `on update ${onUpdate}`,
-    deferrable === "not deferrable" ? "" : `deferrable initially ${deferrable}`,
-  ].filter((clause) => clause !== "");
-  const references = `${quoteIdentifier(target.schema)}.${quoteIdentifier(target.table)} (${columnList(target.columns)})`;
-  return `${alterTable(key, to)} add constraint ${quoteIdentifier(key.name)} foreign key (${columnList(columns)}) references ${[references, ...clauses].join(" ")};`;
 }

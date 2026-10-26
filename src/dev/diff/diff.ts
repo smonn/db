@@ -1,15 +1,10 @@
-import {
-  arePayloadsEqual,
-  type Catalog,
-  type Fact,
-  type Key,
-  type Rename,
-} from "../catalog/index.ts";
+import { arePayloadsEqual, type Catalog, type Fact, type Rename } from "../catalog/index.ts";
 import { hazardsOf, render, type Action, type Catalogs } from "./actions.ts";
+import { enumSwap, swapOf } from "./enum-swap.ts";
 import type { Hazard } from "./hazards.ts";
 import { renameHints } from "./hints.ts";
 import { order } from "./phases.ts";
-import { rebuiltColumns, retyped } from "./rebuilt.ts";
+import { rebuiltColumns, retyped, without } from "./rebuilt.ts";
 import { renameAction } from "./renames.ts";
 
 export type Diff = {
@@ -29,8 +24,8 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
   // A column Postgres can't convert in place drops and adds back, so each side sees it, what it
   // holds, and the keys on it as absent from the other.
   const rebuilt = rebuiltColumns(catalogs);
-  const keptFrom = without(from, rebuilt);
-  const keptTo = without(to, rebuilt);
+  const keptFrom = without(from, rebuilt, columnsNamedBy);
+  const keptTo = without(to, rebuilt, columnsNamedBy);
   const actions = renames.map((rename) => renameAction(rename, from));
   for (const [key, fact] of from)
     actions.push(...sourceActions(fact, keptTo.get(key), keptTo, catalogs));
@@ -114,12 +109,21 @@ export const HANDLING: HandlingTable<Fact> = {
     parentCreateCovers: false,
     create: (fact) => [{ kind: "create enum", fact }],
     replacedOnChange: false,
-    // Only an added label is one statement. A removed or reordered label (#438) leaves the
-    // payloads apart, which Shadow verification refuses.
-    alter: (before, after) =>
-      after.payload.labels
+    // An added label is one statement. Postgres can't drop or move one, so a removed or moved
+    // label swaps the type, and `column.alter` retypes each column that uses it.
+    alter: (before, after, catalogs) => {
+      const swap = enumSwap(before, catalogs);
+      if (swap !== undefined) {
+        return [
+          { kind: "rename enum aside", fact: before, swap },
+          { kind: "create enum", fact: after },
+          { kind: "drop enum aside", fact: before, swap },
+        ];
+      }
+      return after.payload.labels
         .filter((label) => !before.payload.labels.includes(label))
-        .map((label) => ({ kind: "add enum value", fact: after, before, label })),
+        .map((label) => ({ kind: "add enum value", fact: after, before, label }));
+    },
     columnsNamed: () => [],
   },
   table: {
@@ -137,9 +141,12 @@ export const HANDLING: HandlingTable<Fact> = {
     parentCreateCovers: true,
     create: (fact) => [{ kind: "add column", fact }],
     replacedOnChange: false,
-    alter: (before, after) => {
+    alter: (before, after, catalogs) => {
       const actions: Action[] = [];
-      if (before.payload.type !== after.payload.type) {
+      if (before.payload.type === after.payload.type) {
+        const swap = swapOf(after.payload.type, catalogs);
+        if (swap !== undefined) actions.push({ kind: "swap retype", fact: after, swap });
+      } else {
         actions.push({ kind: "alter type", fact: after, before });
       }
       if (before.payload.notNull !== after.payload.notNull) {
@@ -279,19 +286,6 @@ function replaced(before: Fact, after: Fact): boolean {
   );
 }
 
-/** `catalog` without the rebuilt columns, the facts under them, and the facts that name them. */
-function without(catalog: Catalog, rebuilt: ReadonlyMap<Key, Fact>): Catalog {
-  const columns = [...rebuilt.values()];
-  return new Map(
-    [...catalog].filter(
-      ([key, fact]) =>
-        !rebuilt.has(key) &&
-        !(fact.parent !== undefined && rebuilt.has(fact.parent)) &&
-        !columns.some(
-          (column) =>
-            column.parent === fact.parent &&
-            handlingOf(fact).columnsNamed(fact).includes(column.name),
-        ),
-    ),
-  );
+function columnsNamedBy(fact: Fact): readonly string[] {
+  return handlingOf(fact).columnsNamed(fact);
 }

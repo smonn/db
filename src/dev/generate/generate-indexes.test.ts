@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import {
   defineDatabase,
+  defineEnum,
   defineTable,
   type ColumnFactories,
   type ColumnRefs,
@@ -236,6 +237,28 @@ create index desc_first on public.slots (a desc, c nulls first, b desc nulls las
     const result = await run(fileSystem, definition);
 
     expect(result.sql).toContain(`alter table "public"."slots" alter column "a" type bigint;`);
+    expect(result.sql).not.toContain("index");
+  });
+
+  it("keeps an index on a column whose enum type swaps, and verifies the Shadow database", async () => {
+    const mood = defineEnum(["a", "c"]);
+    const definition = defineDatabase({
+      public: {
+        mood,
+        users: defineTable(
+          (c) => ({ mood: c.enum(mood) }),
+          (t) => ({ indexes: [{ columns: [t.mood], name: "users_mood" }] }),
+        ),
+      },
+    });
+    const fileSystem = await committed(`create type public.mood as enum ('a', 'b', 'c');
+create table public.users (mood public.mood);
+create index users_mood on public.users (mood);
+`);
+
+    const result = await run(fileSystem, definition);
+
+    expect(result.sql).toContain(`alter column "mood" type public.mood`);
     expect(result.sql).not.toContain("index");
   });
 });
