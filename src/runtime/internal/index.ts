@@ -6,6 +6,7 @@ export {
   migrationHash,
   parseCurrent,
   parseMigration,
+  splitCurrentHeader,
   writeCurrent,
   writeMigration,
   type CurrentMigration,

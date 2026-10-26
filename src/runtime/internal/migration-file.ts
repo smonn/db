@@ -15,7 +15,12 @@ export type ParsedMigration = {
   readonly hash: string;
   /** The SQL below the headers, as it is hashed. */
   readonly body: string;
+  /** Whether the file has the `--! no-transaction` header, so it runs outside a transaction (ADR-0020). */
+  readonly noTransaction: boolean;
 };
+
+/** The header that makes a Committed migration run outside a transaction (ADR-0020). */
+const NO_TRANSACTION = "--! no-transaction";
 
 const HEADER = /^--! (Previous|Hash): (.*)$/u;
 const HASH = /^sha256:[0-9a-f]{64}$/u;
@@ -25,9 +30,18 @@ export function parseMigration({ filename, content }: MigrationFile): ParsedMigr
   const sequence = committedSequence(filename);
   const lines = content.replaceAll("\r\n", "\n").split("\n");
   const headers = new Map<string, string>();
+  let noTransaction = false;
   let line = 0;
   for (; line < lines.length && lines[line]?.startsWith("--!") === true; line++) {
     const header = lines[line] ?? "";
+    if (header === NO_TRANSACTION) {
+      if (noTransaction) throw new Error(`${filename}: repeats the ${NO_TRANSACTION} header`);
+      if (!headers.has("Hash")) {
+        throw new Error(`${filename}: put ${NO_TRANSACTION} below --! Hash`);
+      }
+      noTransaction = true;
+      continue;
+    }
     const match = HEADER.exec(header);
     if (match === null) throw new Error(`${filename}: unknown header ${header}`);
     const name = match[1] ?? "";
@@ -42,12 +56,26 @@ export function parseMigration({ filename, content }: MigrationFile): ParsedMigr
     previous: previous === "-" ? undefined : checkedHash(filename, "Previous", previous),
     hash: checkedHash(filename, "Hash", requiredHeader(filename, headers, "Hash")),
     body: normalizeBody(lines.slice(line).join("\n")),
+    noTransaction,
   };
 }
 
-/** ADR-0008's chain hash: the previous hash (empty for the first file), a newline, and the body. */
-export async function migrationHash(previous: string | undefined, body: string): Promise<string> {
-  return `sha256:${await sha256(`${previous ?? ""}\n${body}`)}`;
+export type HashOptions = {
+  /** Whether the file has the `--! no-transaction` header, which the hash covers (ADR-0020). */
+  readonly noTransaction?: boolean | undefined;
+};
+
+/**
+ * ADR-0008's chain hash: the previous hash (empty for the first file), a newline, the
+ * `--! no-transaction` header and a newline when the file has it (ADR-0020), and the body.
+ */
+export async function migrationHash(
+  previous: string | undefined,
+  body: string,
+  { noTransaction = false }: HashOptions = {},
+): Promise<string> {
+  const header = noTransaction ? `${NO_TRANSACTION}\n` : "";
+  return `sha256:${await sha256(`${previous ?? ""}\n${header}${body}`)}`;
 }
 
 export type WrittenMigration = MigrationFile & {
@@ -60,13 +88,15 @@ export async function writeMigration(
   filename: string,
   previous: string | undefined,
   body: string,
+  options: HashOptions = {},
 ): Promise<WrittenMigration> {
   committedSequence(filename);
   const normalized = normalizeBody(body);
-  const hash = await migrationHash(previous, normalized);
+  const hash = await migrationHash(previous, normalized, options);
+  const header = options.noTransaction === true ? `${NO_TRANSACTION}\n` : "";
   return {
     filename,
-    content: `--! Previous: ${previous ?? "-"}\n--! Hash: ${hash}\n\n${normalized}`,
+    content: `--! Previous: ${previous ?? "-"}\n--! Hash: ${hash}\n${header}\n${normalized}`,
     hash,
   };
 }
@@ -109,6 +139,16 @@ export async function parseCurrent(content: string): Promise<ParsedCurrent> {
   }
   const body = normalizeBody(rest.join("\n"));
   return { body, edited: generated !== (await currentHash(body)) };
+}
+
+/**
+ * Splits the `--! no-transaction` header, a hand edit's first line, from a Current migration body.
+ * The body keeps the header as a comment, so the Current migration's hash covers it, and `commit`
+ * carries it into the Committed file (ADR-0020).
+ */
+export function splitCurrentHeader(body: string): { noTransaction: boolean; sql: string } {
+  if (body.split("\n", 1)[0] !== NO_TRANSACTION) return { noTransaction: false, sql: body };
+  return { noTransaction: true, sql: normalizeBody(body.slice(NO_TRANSACTION.length)) };
 }
 
 /** The hash `--! Generated` and the tracking schema's `current` table record for a Current migration body. */
