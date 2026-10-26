@@ -16,13 +16,16 @@ export function rebuiltColumns({ from, to }: Catalogs): ReadonlyMap<Key, Fact> {
   for (const [key, before] of from) {
     const after = to.get(key);
     if (before.kind !== "column" || after?.kind !== "column") continue;
-    const was = generation(from, before);
-    const now = generation(to, after);
-    if (was?.storage === now?.storage) continue;
-    if (now === undefined && was?.storage === "stored") continue;
-    rebuilt.set(key, after);
+    if (needsRebuild({ from, to }, before, after)) rebuilt.set(key, after);
   }
   return rebuilt;
+}
+
+function needsRebuild({ from, to }: Catalogs, before: Fact, after: Fact): boolean {
+  const was = generation(from, before);
+  const now = generation(to, after);
+  if (was?.storage === now?.storage) return false;
+  return !(now === undefined && was?.storage === "stored");
 }
 
 function generation(catalog: Catalog, column: Fact): GeneratedPayload | undefined {

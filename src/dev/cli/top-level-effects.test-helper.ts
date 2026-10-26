@@ -1,4 +1,5 @@
 import { parseSync } from "@swc/core";
+import { localFunctions, typeOf } from "./local-functions.test-helper.ts";
 
 /** Built-in constructors that build a value and do nothing else, so a module may call them at load. */
 const PURE_CONSTRUCTORS = new Set([
@@ -44,11 +45,6 @@ const FIELDS = new Set(["ClassProperty", "PrivateProperty"]);
 const PURE_ANNOTATION = /\/\*\s*[@#]__PURE__\s*\*\/$/u;
 
 const STRING_LITERAL = /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/gu;
-
-function typeOf(node: object): string {
-  const type: unknown = Reflect.get(node, "type");
-  return typeof type === "string" ? type : "";
-}
 
 function calleeName(node: object): string | undefined {
   const callee: unknown = Reflect.get(node, "callee");
@@ -100,6 +96,10 @@ function effectOf(node: object, source: Source, outerStart: number): string | nu
     return pureConstructor(node) || markedPure(node, source, outerStart) ? null : type;
   }
   if (type === "ImportDeclaration") return importEffect(node);
+  return plainEffect(node, type);
+}
+
+function plainEffect(node: object, type: string): string | null {
   if (type === "UnaryExpression") return Reflect.get(node, "operator") === "delete" ? type : null;
   return EFFECT_TYPES.has(type) ? type : null;
 }
@@ -143,65 +143,28 @@ function walk(node: unknown, source: Source, found: string[], outerStart = -1): 
     for (const item of node) walk(item, source, found, outerStart);
     return;
   }
-  if (DEFERRED.has(typeOf(node))) return;
-  if (deferredValue(node)) {
-    // The value runs later, but a computed key is evaluated when the class or object is defined.
-    walk(Reflect.get(node, "key"), source, found, outerStart);
-    return;
-  }
+  if (walkDeferred(node, source, found, outerStart)) walkNode(node, source, found, outerStart);
+}
+
+function walkNode(node: object, source: Source, found: string[], outerStart: number): void {
   const effect = effectOf(node, source, outerStart);
   if (effect !== null) found.push(`${effect}: ${snippet(node, source.bytes, source.base)}`);
   const next = enclosingStart(node, outerStart);
   for (const value of Object.values(node)) walk(value, source, found, next);
 }
 
+/** Whether `node` runs at load. A deferred value still has its computed key walked. */
+function walkDeferred(node: object, source: Source, found: string[], outerStart: number): boolean {
+  if (DEFERRED.has(typeOf(node))) return false;
+  if (!deferredValue(node)) return true;
+  // The value runs later, but a computed key is evaluated when the class or object is defined.
+  walk(Reflect.get(node, "key"), source, found, outerStart);
+  return false;
+}
+
 function enclosingStart(node: object, outerStart: number): number {
   const type = typeOf(node);
   return type === "CallExpression" || type === "NewExpression" ? startOf(node) : outerStart;
-}
-
-function functionDeclarationName(node: object): string | undefined {
-  if (typeOf(node) !== "FunctionDeclaration") return undefined;
-  const id: unknown = Reflect.get(node, "identifier");
-  const name: unknown = typeof id === "object" && id !== null ? Reflect.get(id, "value") : null;
-  return typeof name === "string" ? name : undefined;
-}
-
-function declaratorFunctionName(declarator: object): string | undefined {
-  const init: unknown = Reflect.get(declarator, "init");
-  const id: unknown = Reflect.get(declarator, "id");
-  const isFunction =
-    typeOf(init ?? {}) === "ArrowFunctionExpression" || typeOf(init ?? {}) === "FunctionExpression";
-  const name: unknown = typeof id === "object" && id !== null ? Reflect.get(id, "value") : null;
-  return isFunction && typeof name === "string" ? name : undefined;
-}
-
-function variableFunctionNames(node: object): string[] {
-  if (typeOf(node) !== "VariableDeclaration") return [];
-  const declarations: unknown = Reflect.get(node, "declarations");
-  if (!Array.isArray(declarations)) return [];
-  const names: string[] = [];
-  for (const declarator of declarations as readonly object[]) {
-    const name = declaratorFunctionName(declarator);
-    if (name !== undefined) names.push(name);
-  }
-  return names;
-}
-
-/** The names of the functions a module declares at its top level, exported or not. */
-function localFunctions(body: readonly object[]): Set<string> {
-  const names = new Set<string>();
-  const add = (node: unknown): void => {
-    if (typeof node !== "object" || node === null) return;
-    const declared = functionDeclarationName(node);
-    if (declared !== undefined) names.add(declared);
-    for (const name of variableFunctionNames(node)) names.add(name);
-  };
-  for (const item of body) {
-    add(item);
-    add(Reflect.get(item, "declaration"));
-  }
-  return names;
 }
 
 /**

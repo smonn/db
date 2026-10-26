@@ -134,20 +134,29 @@ function parseCommand(argv: readonly string[]): Command {
   const [name, ...args] = parsed.positionals;
   const config = parsed.values.config ?? DEFAULT_CONFIG;
   checkFlagScope(parsed.values, name);
+  return commandNamed(name, args, config, parsed.values);
+}
+
+function commandNamed(
+  name: string | undefined,
+  args: readonly string[],
+  config: string,
+  values: { readonly erase?: boolean; readonly onto?: string; readonly accept?: string },
+): Command {
   switch (name) {
     case "reset":
       checkNoArguments(name, args);
-      return { name, erase: parsed.values.erase === true, config };
+      return { name, erase: values.erase === true, config };
     case "rebase":
       checkNoArguments(name, args);
-      return { name, config, onto: parsed.values.onto };
+      return { name, config, onto: values.onto };
     case "generate":
     case "migrate":
     case "verify":
       checkNoArguments(name, args);
       return { name, config };
     case "commit":
-      return parseCommit(args, config, parsed.values.accept);
+      return parseCommit(args, config, values.accept);
     case undefined:
       throw new UsageError("name a command");
     default:
