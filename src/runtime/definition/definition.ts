@@ -206,7 +206,7 @@ export function defineDatabase<S extends Schemas>(schemas: S): Database<S> {
       ),
     ]),
   );
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries loses the keys.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `Object.fromEntries` types the result as string-indexed records, which don't overlap `Database<S>` enough for a direct cast (TS2352); it goes through `unknown`.
   return database as unknown as Database<S>;
 }
 
