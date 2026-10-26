@@ -29,6 +29,7 @@ where t.typtype = 'e' and ${KEPT_SCHEMA}
   and ${NOT_EXTENSION_MEMBER("pg_type", "t")}
 order by t.typname`;
 
+// A column of an array of a composite or range type is an Unmodeled object (ADR-0005, ADR-0023).
 export const COLUMNS: string = `
 select n.nspname as schema, c.relname as table, a.attname as name,
   format_type(a.atttypid, a.atttypmod) as type, a.attnotnull as not_null,
@@ -48,6 +49,10 @@ from pg_attribute a
   join pg_namespace n on n.oid = c.relnamespace
   left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
 where c.relkind = 'r' and a.attnum > 0 and not a.attisdropped and ${KEPT_SCHEMA}
+  and not exists (
+    select from pg_type t join pg_type e on e.oid = t.typelem
+    where t.oid = a.atttypid and t.typcategory = 'A' and e.typtype in ('c', 'r')
+  )
 order by a.attnum`;
 
 // Multi-column unique constraints wait for v0.2, so only a single `conkey` entry counts. A
