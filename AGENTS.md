@@ -17,6 +17,7 @@
 - Enforce a rule with a static check in CI whenever one can express it: a lint rule, a semantic-grep rule, a `scripts/` check, a type test, or mutation testing. Document only what no tool can check.
 - Write repo scripts in TypeScript under `scripts/`, run directly by Node. A shell file may only invoke one. Scripts get the same tests, lint, and formatting as `src/`.
 - Tests need Postgres: run `node scripts/test-db.ts` once per worktree, then plain `pnpm test`; `node scripts/test-db.ts stop` removes it.
+- Stryker mutates `src/` and `scripts/` weekly (`.github/workflows/mutation.yml`, also run by hand from the Actions tab), and `scripts/mutation-report.ts` rewrites the one open `mutation-report` issue with the surviving mutants. Run it locally with `pnpm mutation`, narrowed with `--mutate <file>`. It is not a required check.
 - Verify with `pnpm check`: it runs every check CI runs, continues past failures, and exits non-zero if any failed. Don't loop over the scripts by hand or pipe their output through `tail`.
 - A CI check can stay `in_progress` after its job finished (#172, a GitHub-side finalization lag; the workflows hold no cause). A job and its check run share an id. Suspect a stuck check when the run is `completed` but a job still reads `in_progress`: compare `gh api repos/smonn/db/actions/runs/<run-id> --jq '[.status,.conclusion]|@tsv'` with `gh api repos/smonn/db/actions/runs/<run-id>/jobs --jq '.jobs[]|[.id,.name,.status,.conclusion]|@tsv'`. Rerun only that job: `gh run rerun <run-id> --job <job-id>`.
 
