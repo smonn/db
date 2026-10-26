@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { catalogBuilder, type Catalog } from "../catalog/index.ts";
+import { catalogBuilder, type Catalog, type CatalogBuilder } from "../catalog/index.ts";
 import { diff } from "./diff.ts";
 import type { HazardKind } from "./hazards.ts";
 
@@ -12,6 +12,13 @@ type Column = {
 
 type Keys = { readonly primary?: readonly string[]; readonly unique?: string };
 
+function addAttributes(builder: CatalogBuilder, name: string, column: Column): void {
+  if (column.identity !== undefined) {
+    builder.columnIdentity("public", "t", name, { generated: column.identity });
+  }
+  if (column.default !== undefined) builder.columnDefault("public", "t", name, column.default);
+}
+
 function table(columns: Readonly<Record<string, Column>>, keys: Keys = {}): Catalog {
   const builder = catalogBuilder();
   builder.schema("public");
@@ -21,10 +28,7 @@ function table(columns: Readonly<Record<string, Column>>, keys: Keys = {}): Cata
       type: column.type ?? "text",
       notNull: column.notNull ?? false,
     });
-    if (column.identity !== undefined) {
-      builder.columnIdentity("public", "t", name, { generated: column.identity });
-    }
-    if (column.default !== undefined) builder.columnDefault("public", "t", name, column.default);
+    addAttributes(builder, name, column);
   }
   if (keys.primary !== undefined) {
     builder.primaryKey("public", "t", "t_pkey", { columns: keys.primary });

@@ -32,17 +32,8 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
   const keptFrom = without(from, rebuilt);
   const keptTo = without(to, rebuilt);
   const actions = renames.map((rename) => renameAction(rename, from));
-  for (const [key, fact] of from) {
-    const after = keptTo.get(key);
-    if (after === undefined) actions.push(...dropped(fact, keptTo));
-    // A fact can't change kind, nor can some change payload in place: the old one drops here,
-    // and `altered` adds the new one.
-    else if (replaced(fact, after)) actions.push(...dropped(fact, keptTo));
-    // Postgres refuses to retype a column whose default can't be cast, so it goes first.
-    else if (fact.kind === "default" && retyped(fact.parent, catalogs)) {
-      actions.push({ kind: "drop default", fact });
-    }
-  }
+  for (const [key, fact] of from)
+    actions.push(...sourceActions(fact, keptTo.get(key), keptTo, catalogs));
   for (const [key, fact] of to) {
     const before = keptFrom.get(key);
     actions.push(
@@ -59,6 +50,23 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
     })
     .join("\n");
   return { sql, hazards, hints: renameHints(from, to) };
+}
+
+/** What the source pass does with one fact of `from`, given its counterpart `after` in `keptTo`. */
+function sourceActions(
+  fact: Fact,
+  after: Fact | undefined,
+  keptTo: Catalog,
+  catalogs: Catalogs,
+): Action[] {
+  // A fact can't change kind, nor can some change payload in place: the old one drops here,
+  // and `altered` adds the new one.
+  if (after === undefined || replaced(fact, after)) return dropped(fact, keptTo);
+  // Postgres refuses to retype a column whose default can't be cast, so it goes first.
+  if (fact.kind === "default" && retyped(fact.parent, catalogs)) {
+    return [{ kind: "drop default", fact }];
+  }
+  return [];
 }
 
 type Kind = Fact["kind"];
