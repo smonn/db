@@ -1,8 +1,9 @@
 import { isEnum, type Enum, type Table } from "../../runtime/definition/index.ts";
-import { catalogBuilder, quoted, type Catalog, type CatalogBuilder } from "./catalog.ts";
+import { catalogBuilder, quoted, type CatalogBuilder } from "./catalog.ts";
 import { columnType } from "./column-type.ts";
 import { constraintNames, type ConstraintNames } from "./constraint-names.ts";
 import { enumTypeNames, labelsOf } from "./enums.ts";
+import type { Catalog } from "./fact.ts";
 
 /** The shape `defineDatabase` returns, loosened so any Definition fits. */
 export type DefinitionTables = {

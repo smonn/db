@@ -1,6 +1,7 @@
 import { isEnum } from "../../runtime/definition/index.ts";
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
-import { factAt, type Catalog } from "./catalog.ts";
+import { factAt } from "./catalog.ts";
+import type { Catalog } from "./fact.ts";
 import type { DefinitionTables } from "./definition-catalog.ts";
 
 /** A table the Definition renames: `name` is its SQL name now, `was` the name it had. */

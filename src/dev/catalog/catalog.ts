@@ -1,4 +1,12 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
+import {
+  DEFAULT_NAME,
+  GENERATED_NAME,
+  IDENTITY_NAME,
+  type Catalog,
+  type Fact,
+  type Key,
+} from "./fact.ts";
 import type {
   ColumnPayload,
   DefaultPayload,
@@ -11,100 +19,12 @@ import type {
   UniquePayload,
 } from "./payloads.ts";
 
-/** Schemas and tables carry nothing beyond their name in v0.1. */
-type NoPayload = Readonly<Record<string, never>>;
-
-/** Type-only: only this module builds keys, so every producer keys a chain of names the same way. */
-export type Key = string & { readonly "~key": true };
-
-export type Fact =
-  | {
-      readonly kind: "schema";
-      readonly name: string;
-      readonly parent: undefined;
-      readonly payload: NoPayload;
-    }
-  | {
-      readonly kind: "table";
-      readonly name: string;
-      readonly parent: Key;
-      readonly payload: NoPayload;
-    }
-  | {
-      readonly kind: "enum";
-      readonly name: string;
-      readonly parent: Key;
-      readonly payload: EnumPayload;
-    }
-  | {
-      readonly kind: "column";
-      readonly name: string;
-      readonly parent: Key;
-      readonly payload: ColumnPayload;
-    }
-  | {
-      readonly kind: "default";
-      readonly name: typeof DEFAULT_NAME;
-      readonly parent: Key;
-      readonly payload: DefaultPayload;
-    }
-  | {
-      readonly kind: "identity";
-      readonly name: typeof IDENTITY_NAME;
-      readonly parent: Key;
-      readonly payload: IdentityPayload;
-    }
-  | {
-      readonly kind: "generated";
-      readonly name: typeof GENERATED_NAME;
-      readonly parent: Key;
-      readonly payload: GeneratedPayload;
-    }
-  | {
-      /** Named by its constraint, since a drop must say which one. */
-      readonly kind: "primary key";
-      readonly name: string;
-      readonly parent: Key;
-      readonly payload: PrimaryKeyPayload;
-    }
-  | {
-      readonly kind: "unique";
-      readonly name: string;
-      readonly parent: Key;
-      readonly payload: UniquePayload;
-    }
-  | {
-      /** Named by its index, which shares the schema's relation names. */
-      readonly kind: "index";
-      readonly name: string;
-      readonly parent: Key;
-      readonly payload: IndexPayload;
-    }
-  | {
-      /** Named by its constraint; the payload names its target by schema, table, and columns. */
-      readonly kind: "foreign key";
-      readonly name: string;
-      readonly parent: Key;
-      readonly payload: ForeignKeyPayload;
-    };
-
 /** A fact on a column, before the builder gives it its parent. */
 type ColumnAttribute = Fact extends infer F
   ? F extends { readonly kind: "default" | "identity" | "generated" }
     ? Omit<F, "parent">
     : never
   : never;
-
-/** A column has at most one default, identity, and generation expression, so their names are fixed. */
-const DEFAULT_NAME = "default";
-const IDENTITY_NAME = "identity";
-const GENERATED_NAME = "generated";
-
-/**
- * Every modeled object, keyed by the chain of names from its schema down. The payload leaves out
- * the name, so a rename can be detected later.
- */
-export type Catalog = ReadonlyMap<Key, Fact>;
 
 export type CatalogBuilder = {
   schema(name: string): void;

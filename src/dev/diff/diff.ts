@@ -1,11 +1,13 @@
 import { arePayloadsEqual, type Catalog, type Fact, type Rename } from "../catalog/index.ts";
 import { hazardsOf, render, type Action, type Catalogs } from "./actions.ts";
-import { enumSwap, swapOf } from "./enum-swap.ts";
+import { swapOf } from "./enum-swap.ts";
+import type { Handling, HandlingTable } from "./handling.ts";
 import type { Hazard } from "./hazards.ts";
 import { renameHints } from "./hints.ts";
 import { order } from "./phases.ts";
 import { rebuiltColumns, retyped, without } from "./rebuilt.ts";
 import { renameAction } from "./renames.ts";
+import { TYPE_HANDLING } from "./type-handling.ts";
 
 export type Diff = {
   /** Each statement follows one `-- hazard: <kind>` comment per Hazard it carries. */
@@ -67,30 +69,6 @@ function sourceActions(
 type Kind = Fact["kind"];
 type FactOf<K extends Kind> = Extract<Fact, { readonly kind: K }>;
 
-/**
- * What the diff does with one kind of fact. Every field is required, so a new `Fact` kind fails to
- * compile until its author states each decision.
- */
-export type Handling<F extends { readonly kind: string }> = {
-  /** Whether dropping the parent drops this fact too, so it needs no action of its own. */
-  readonly parentDropCovers: boolean;
-  readonly drop: (fact: F) => Action[];
-  /** Whether creating the parent creates this fact inline, so it needs no action of its own. */
-  readonly parentCreateCovers: boolean;
-  readonly create: (fact: F) => Action[];
-  /** Whether a changed payload drops the fact and creates it again, rather than altering it. */
-  readonly replacedOnChange: boolean;
-  /** Compares two facts of this kind at one key that the source pass didn't replace. */
-  readonly alter: (before: F, after: F, catalogs: Catalogs) => Action[];
-  /** The columns of its parent table the fact names, so a rebuilt one drops and re-adds it. */
-  readonly columnsNamed: (fact: F) => readonly string[];
-};
-
-/** One `Handling` per kind of `F`; the test widens `F` to prove a new kind has to fill each field. */
-export type HandlingTable<F extends { readonly kind: string }> = {
-  readonly [K in F["kind"]]: Handling<Extract<F, { readonly kind: K }>>;
-};
-
 export const HANDLING: HandlingTable<Fact> = {
   // A schema drop without CASCADE refuses to drop what it holds, so its tables drop on their own.
   schema: {
@@ -102,30 +80,7 @@ export const HANDLING: HandlingTable<Fact> = {
     alter: () => [],
     columnsNamed: () => [],
   },
-  enum: {
-    // Postgres refuses to drop a schema that holds a type, so the type drops on its own.
-    parentDropCovers: false,
-    drop: (fact) => [{ kind: "drop enum", fact }],
-    parentCreateCovers: false,
-    create: (fact) => [{ kind: "create enum", fact }],
-    replacedOnChange: false,
-    // An added label is one statement. Postgres can't drop or move one, so a removed or moved
-    // label swaps the type, and `column.alter` retypes each column that uses it.
-    alter: (before, after, catalogs) => {
-      const swap = enumSwap(before, catalogs);
-      if (swap !== undefined) {
-        return [
-          { kind: "rename enum aside", fact: before, swap },
-          { kind: "create enum", fact: after },
-          { kind: "drop enum aside", fact: before, swap },
-        ];
-      }
-      return after.payload.labels
-        .filter((label) => !before.payload.labels.includes(label))
-        .map((label) => ({ kind: "add enum value", fact: after, before, label }));
-    },
-    columnsNamed: () => [],
-  },
+  ...TYPE_HANDLING,
   table: {
     parentDropCovers: false,
     drop: (fact) => [{ kind: "drop table", fact }],

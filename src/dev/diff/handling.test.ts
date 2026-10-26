@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Fact, Key } from "../catalog/index.ts";
-import { HANDLING, type Handling, type HandlingTable } from "./diff.ts";
+import { HANDLING } from "./diff.ts";
+import type { Handling, HandlingTable } from "./handling.ts";
 
 /** A kind the diff doesn't know yet, such as a domain kind. */
 type Domain = {

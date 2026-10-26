@@ -1,5 +1,6 @@
 export { catalogBuilder, childrenOf, factAt, namesOf, parentOf } from "./catalog.ts";
-export type { Catalog, CatalogBuilder, Fact, Key } from "./catalog.ts";
+export type { CatalogBuilder } from "./catalog.ts";
+export type { Catalog, Fact, Key } from "./fact.ts";
 export { arrayType, elementOf, typeName } from "./column-type.ts";
 export { definitionCatalog } from "./definition-catalog.ts";
 export type { DefinitionTables } from "./definition-catalog.ts";
