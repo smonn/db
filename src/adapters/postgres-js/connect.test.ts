@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { postgresJsConnect } from "./connect.ts";
-import { terminateBackendRunning, useTestDatabase } from "./test-database.test-helper.ts";
+import {
+  terminateBackendRunning,
+  testServerUrl,
+  useTestDatabase,
+} from "./test-database.test-helper.ts";
 
 const db = useTestDatabase();
 
@@ -44,7 +48,7 @@ describe("postgresJsConnect", () => {
   });
 
   it("keeps a caller's DateStyle order", async () => {
-    const connect = postgresJsConnect(String(process.env["DATABASE_URL"]), {
+    const connect = postgresJsConnect(testServerUrl(), {
       onnotice: () => {},
       connection: { DateStyle: "ISO, DMY" },
     });

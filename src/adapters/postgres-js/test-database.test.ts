@@ -1,8 +1,10 @@
-import { setImmediate } from "node:timers/promises";
+import { setImmediate, setTimeout } from "node:timers/promises";
 import postgres from "postgres";
 import { describe, expect, it } from "vitest";
+import { MIGRATION_LOCK_KEY } from "../../runtime/internal/index.ts";
 import {
   explainConnectionError,
+  testServerUrl,
   useTestDatabase,
   whileMigrationLockHeld,
 } from "./test-database.test-helper.ts";
@@ -38,7 +40,7 @@ async function connectError(url: string): Promise<unknown> {
 
 describe("explainConnectionError", () => {
   it("names DATABASE_URL's host and port when the server rejects the login", async () => {
-    const url = new URL(String(process.env["DATABASE_URL"]));
+    const url = new URL(testServerUrl());
     url.password = "wrong-password";
     const error = await connectError(url.href);
 
@@ -59,6 +61,20 @@ describe("explainConnectionError", () => {
 const failing = (): Promise<never> => Promise.reject(new Error("contender failed"));
 
 describe("whileMigrationLockHeld", () => {
+  it("waits for a slow contender to try the lock before it counts the queue", async () => {
+    const blockingAfterDelay = async (): Promise<void> => {
+      await setTimeout(400);
+      await db.driver.session(async (session) => {
+        await session.query(`select pg_advisory_lock(${MIGRATION_LOCK_KEY})`);
+      });
+    };
+
+    const held = await whileMigrationLockHeld(db.driver, blockingAfterDelay);
+
+    expect(held.queued).toBe(1);
+    expect(held.finishedWhileHeld).toBe(false);
+  });
+
   it("rejects with the contender's error", async () => {
     await expect(whileMigrationLockHeld(db.driver, failing)).rejects.toThrow("contender failed");
   });

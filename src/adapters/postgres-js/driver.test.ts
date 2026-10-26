@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { Driver, DriverRow, Queryable } from "../../runtime/ports/index.ts";
 import { postgresJsConnect } from "./connect.ts";
 import { postgresJsDriver } from "./driver.ts";
-import { useTestDatabase } from "./test-database.test-helper.ts";
+import { testServerUrl, useTestDatabase } from "./test-database.test-helper.ts";
 import { postgresJsConnection, postgresJsTypes } from "./value-types.ts";
 
 const db = useTestDatabase();
@@ -127,7 +127,7 @@ describe("postgresJsDriver releasing a session to a one-connection pool", () => 
   let pool: { readonly driver: Driver; readonly close: () => Promise<void> };
 
   beforeAll(async () => {
-    pool = await postgresJsConnect(String(process.env["DATABASE_URL"]), {
+    pool = await postgresJsConnect(testServerUrl(), {
       max: 1,
       onnotice: (notice) => {
         notices.push(notice["message"]);
@@ -191,7 +191,7 @@ describe("postgresJsDriver when a session's reset fails", () => {
   let swaps: string[] = [];
 
   beforeAll(() => {
-    const url = new URL(String(process.env["DATABASE_URL"]));
+    const url = new URL(testServerUrl());
     url.pathname = `/${db.name}`;
     sql = postgres(url.href, {
       max: 1,

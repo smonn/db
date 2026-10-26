@@ -29,26 +29,7 @@ const HASH = /^sha256:[0-9a-f]{64}$/u;
 export function parseMigration({ filename, content }: MigrationFile): ParsedMigration {
   const sequence = committedSequence(filename);
   const lines = content.replaceAll("\r\n", "\n").split("\n");
-  const headers = new Map<string, string>();
-  let noTransaction = false;
-  let line = 0;
-  for (; line < lines.length && lines[line]?.startsWith("--!") === true; line++) {
-    const header = lines[line] ?? "";
-    if (header === NO_TRANSACTION) {
-      if (noTransaction) throw new Error(`${filename}: repeats the ${NO_TRANSACTION} header`);
-      if (!headers.has("Hash")) {
-        throw new Error(`${filename}: put ${NO_TRANSACTION} below --! Hash`);
-      }
-      noTransaction = true;
-      continue;
-    }
-    const match = HEADER.exec(header);
-    if (match === null) throw new Error(`${filename}: unknown header ${header}`);
-    const name = match[1] ?? "";
-    if (headers.has(name)) throw new Error(`${filename}: repeats the --! ${name} header`);
-    headers.set(name, match[2] ?? "");
-  }
-
+  const { headers, noTransaction, line } = readHeaders(filename, lines);
   const previous = requiredHeader(filename, headers, "Previous");
   return {
     filename,
@@ -58,6 +39,44 @@ export function parseMigration({ filename, content }: MigrationFile): ParsedMigr
     body: normalizeBody(lines.slice(line).join("\n")),
     noTransaction,
   };
+}
+
+function readHeaders(
+  filename: string,
+  lines: readonly string[],
+): { headers: Map<string, string>; noTransaction: boolean; line: number } {
+  const headers = new Map<string, string>();
+  let noTransaction = false;
+  let line = 0;
+  for (; line < lines.length && lines[line]?.startsWith("--!") === true; line++) {
+    const header = lines[line] ?? "";
+    if (header === NO_TRANSACTION) {
+      checkNoTransaction(filename, headers, noTransaction);
+      noTransaction = true;
+    } else {
+      addHeader(filename, headers, header);
+    }
+  }
+  return { headers, noTransaction, line };
+}
+
+function checkNoTransaction(
+  filename: string,
+  headers: ReadonlyMap<string, string>,
+  seen: boolean,
+): void {
+  if (seen) throw new Error(`${filename}: repeats the ${NO_TRANSACTION} header`);
+  if (!headers.has("Hash")) {
+    throw new Error(`${filename}: put ${NO_TRANSACTION} below --! Hash`);
+  }
+}
+
+function addHeader(filename: string, headers: Map<string, string>, header: string): void {
+  const match = HEADER.exec(header);
+  if (match === null) throw new Error(`${filename}: unknown header ${header}`);
+  const name = match[1] ?? "";
+  if (headers.has(name)) throw new Error(`${filename}: repeats the --! ${name} header`);
+  headers.set(name, match[2] ?? "");
 }
 
 export type HashOptions = {
