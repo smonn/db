@@ -55,7 +55,7 @@ export async function loadVerifiedMigrations(source: MigrationSource): Promise<P
   if (fork !== undefined) throw new Error(describeFork(fork));
 
   const actualHashes = await Promise.all(
-    migrations.map((migration) => migrationHash(migration.previous, migration.body)),
+    migrations.map((migration) => migrationHash(migration.previous, migration.body, migration)),
   );
   migrations.forEach((migration, index) => {
     const expected = index + 1;

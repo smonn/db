@@ -166,7 +166,7 @@ async function checkMovingChain(
     throw new Error(`${first.filename}: follows ${first.previous}, which ${onto} lacks`);
   }
   const actualHashes = await Promise.all(
-    moving.map((migration) => migrationHash(migration.previous, migration.body)),
+    moving.map((migration) => migrationHash(migration.previous, migration.body, migration)),
   );
   moving.forEach((migration, index) => {
     const previous = moving[index - 1];
@@ -194,7 +194,12 @@ async function rewrite(
   for (const [index, from] of moving.entries()) {
     const sequence = String(tipSequence + index + 1).padStart(6, "0");
     // oxlint-disable-next-line eslint/no-await-in-loop -- each file chains onto the one before it.
-    const to = await writeMigration(from.filename.replace(/^\d+/u, sequence), previous, from.body);
+    const to = await writeMigration(
+      from.filename.replace(/^\d+/u, sequence),
+      previous,
+      from.body,
+      from,
+    );
     moves.push({ from, to });
     previous = to.hash;
   }

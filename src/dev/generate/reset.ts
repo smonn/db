@@ -6,13 +6,20 @@ import {
   parseCurrent,
   quoteIdentifier,
   readCommitted,
+  splitCurrentHeader,
   trackingSchema,
   type CurrentMigration,
   type ParsedMigration,
   type TrackingSchema,
 } from "../../runtime/internal/index.ts";
-import { applyInTransaction, loadVerifiedMigrations } from "../../runtime/migrator/index.ts";
-import type { Driver, FileSystem, MigrationSource, Queryable } from "../../runtime/ports/index.ts";
+import { applyMigration, loadVerifiedMigrations } from "../../runtime/migrator/index.ts";
+import type {
+  Driver,
+  FileSystem,
+  MigrationSource,
+  Queryable,
+  Session,
+} from "../../runtime/ports/index.ts";
 import { requireSupportedServer } from "../introspect/index.ts";
 import { withDevLock } from "./dev-lock.ts";
 
@@ -52,14 +59,16 @@ export async function requireDevDatabase(
 }
 
 /**
- * Drops every non-system schema, then replays the Committed migrations and the Current migration,
- * all in one transaction: a SQL error rolls the wipe back and leaves the Dev database as it was.
- * Every file is transactional (ADR-0008), so one outer transaction holds them all. A failure names
- * the file that raised it.
+ * Drops every non-system schema, then replays the Committed migrations and the Current migration.
+ * The wipe and the transactional files up to the first no-transaction file (ADR-0020) share one
+ * transaction: a SQL error in them rolls the wipe back and leaves the Dev database as it was. A
+ * no-transaction file breaks that transaction: what ran before it is committed, the file runs in
+ * autocommit, and the files after it share the next transaction. A failure after such a file
+ * leaves the Dev database wiped and partly replayed. A failure names the file that raised it.
  *
  * It holds the migrator's session lock, polled for, until its session ends, so a runtime `migrate`
- * waits instead of running on a Dev database mid-reset. A transaction-scoped lock wouldn't last:
- * reset breaks its transaction around a no-transaction file (ADR-0020).
+ * waits instead of running on a Dev database mid-reset. A transaction-scoped lock wouldn't last
+ * across the break.
  */
 export async function resetDevDatabase(
   driver: Driver,
@@ -71,16 +80,75 @@ export async function resetDevDatabase(
   const migrations = await loadVerifiedMigrations(committed);
   await driver.session(async (session) => {
     await acquireMigrationLock(session);
-    await session.transaction((tx) => wipeAndReplay(tx, migrations, tracking, current));
+    let rest = await session.transaction(async (tx) => {
+      await wipe(tx, tracking);
+      return replayInTransaction(session, tx, replaySteps(migrations, tracking, current));
+    });
+    while (rest.length > 0) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
+      rest = await replayNext(session, rest);
+    }
   });
 }
 
-async function wipeAndReplay(
-  tx: Queryable,
+async function replayNext(
+  session: Session,
+  steps: readonly ReplayStep[],
+): Promise<readonly ReplayStep[]> {
+  const [first] = steps;
+  if (first?.noTransaction === true) {
+    await replay(first.name, () => first.run(session, session));
+    return steps.slice(1);
+  }
+  return session.transaction((tx) => replayInTransaction(session, tx, steps));
+}
+
+type ReplayStep = {
+  readonly name: string;
+  readonly noTransaction: boolean;
+  /** `tx` is the open transaction, or the session itself for a no-transaction step. */
+  run(session: Queryable, tx: Queryable): Promise<void>;
+};
+
+function replaySteps(
   migrations: readonly ParsedMigration[],
   tracking: TrackingSchema,
   current: CurrentMigration | undefined,
-): Promise<void> {
+): ReplayStep[] {
+  const steps = migrations.map((migration): ReplayStep => ({
+    name: migration.filename,
+    noTransaction: migration.noTransaction,
+    run: (session, tx) => applyMigration(session, tracking, migration, (fn) => fn(tx)),
+  }));
+  if (current !== undefined) {
+    steps.push({
+      name: CURRENT_FILENAME,
+      noTransaction: splitCurrentHeader(current.body).noTransaction,
+      run: async (_session, tx) => {
+        await tx.execute(current.body);
+        await tracking.recordCurrent(tx, current.hash);
+      },
+    });
+  }
+  return steps;
+}
+
+/** Replays the steps up to the first no-transaction one on `tx`, and returns the steps left. */
+async function replayInTransaction(
+  session: Queryable,
+  tx: Queryable,
+  steps: readonly ReplayStep[],
+): Promise<readonly ReplayStep[]> {
+  const stop = steps.findIndex((step) => step.noTransaction);
+  const count = stop === -1 ? steps.length : stop;
+  for (const step of steps.slice(0, count)) {
+    // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
+    await replay(step.name, () => step.run(session, tx));
+  }
+  return steps.slice(count);
+}
+
+async function wipe(tx: Queryable, tracking: TrackingSchema): Promise<void> {
   const { rows: extensions } = await tx.query(EXTENSIONS);
   await tx.execute(
     extensions
@@ -94,15 +162,6 @@ async function wipeAndReplay(
   await tx.execute([...drops, RECREATE_PUBLIC].join("\n"));
   await tracking.createCurrentTable(tx);
   await tracking.ensureMigrationsTable(tx);
-  for (const migration of migrations) {
-    // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
-    await replay(migration.filename, () => applyInTransaction(tx, tracking, migration));
-  }
-  if (current === undefined) return;
-  await replay(CURRENT_FILENAME, async () => {
-    await tx.execute(current.body);
-    await tracking.recordCurrent(tx, current.hash);
-  });
 }
 
 async function replay(filename: string, run: () => Promise<void>): Promise<void> {

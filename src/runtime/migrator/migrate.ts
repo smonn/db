@@ -5,7 +5,7 @@ import {
   trackingSchema,
 } from "../internal/index.ts";
 import type { Driver, MigrationSource } from "../ports/index.ts";
-import { applyInTransaction } from "./apply.ts";
+import { applyMigration } from "./apply.ts";
 import { checkRecorded, loadVerifiedMigrations } from "./verify.ts";
 
 export type MigrateOptions = {
@@ -21,7 +21,8 @@ export type MigrateResult = {
 
 /**
  * Applies every Committed migration not yet recorded, each in its own transaction with its
- * tracking row. A session advisory lock, polled for, makes parallel runs wait, then find nothing left.
+ * tracking row, except a `--! no-transaction` file, which runs in autocommit between a `started`
+ * row and an `applied` or `failed` one (ADR-0020). A session advisory lock, polled for, makes parallel runs wait, then find nothing left.
  * Before applying anything, it refuses a broken file chain, recorded rows that aren't a prefix
  * of that chain, and a last row left `started` or `failed` (ADR-0020).
  * Refuses a Dev database (ADR-0016) when migrations are pending: the tracking schema's
@@ -62,7 +63,7 @@ export async function migrate({
     for (const migration of pending) {
       try {
         // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
-        await session.transaction((tx) => applyInTransaction(tx, tracking, migration));
+        await applyMigration(session, tracking, migration, (fn) => session.transaction(fn));
       } catch (error) {
         throw explainBlockerError(error, {
           source: { kind: "committed", filename: migration.filename },
