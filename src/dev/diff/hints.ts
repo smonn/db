@@ -12,20 +12,27 @@ type FactOf<K extends Fact["kind"]> = Extract<Fact, { readonly kind: K }>;
 /**
  * What to add to the Definition when a drop and an add look like a rename (ADR-0024): a table that
  * drops one column and adds one of the same type, or a schema that drops one table and adds one
- * with identical columns. A guess only prints; it never reaches the SQL.
+ * with identical columns, or an enum that removes one label and adds one at the same position.
+ * A guess only prints; it never reaches the SQL.
  */
 export function renameHints(from: Catalog, to: Catalog): string[] {
   const hints: string[] = [];
   for (const [key, fact] of to) {
     const before = from.get(key);
-    if (before?.kind === "table" && fact.kind === "table") {
-      hints.push(...columnHints(from, to, before, fact));
-    }
-    if (before?.kind === "schema" && fact.kind === "schema") {
-      hints.push(...tableHints(from, to, before, fact));
-    }
+    if (before !== undefined) hints.push(...hintsFor(from, to, before, fact));
   }
   return hints;
+}
+
+function hintsFor(from: Catalog, to: Catalog, before: Fact, after: Fact): string[] {
+  if (before.kind === "table" && after.kind === "table") {
+    return columnHints(from, to, before, after);
+  }
+  if (before.kind === "schema" && after.kind === "schema") {
+    return tableHints(from, to, before, after);
+  }
+  if (before.kind === "enum" && after.kind === "enum") return labelHints(to, before, after);
+  return [];
 }
 
 function columnHints(
@@ -62,6 +69,19 @@ function tableHints(
   if (columns === "[]" || columns !== signature(columnsOf(to, add))) return [];
   return [
     `table ${qualified(add, to)} may be a rename of ${JSON.stringify(drop.name)}: add renamedFrom: ${JSON.stringify(drop.name)} to its second callback`,
+  ];
+}
+
+function labelHints(to: Catalog, before: FactOf<"enum">, after: FactOf<"enum">): string[] {
+  const removed = before.payload.labels.filter((label) => !after.payload.labels.includes(label));
+  const added = after.payload.labels.filter((label) => !before.payload.labels.includes(label));
+  const [drop, add] = [removed[0], added[0]];
+  if (removed.length !== 1 || added.length !== 1 || drop === undefined || add === undefined) {
+    return [];
+  }
+  if (before.payload.labels.indexOf(drop) !== after.payload.labels.indexOf(add)) return [];
+  return [
+    `enum ${qualified(after, to)} may rename the label ${JSON.stringify(drop)} to ${JSON.stringify(add)}: add renamedLabels: { ${JSON.stringify(add)}: ${JSON.stringify(drop)} } to its options`,
   ];
 }
 
