@@ -120,7 +120,7 @@ Run each as `smonndb <command>`, with `--config <path>` to pick a config file ot
 
 Results go to stdout and errors to stderr, as plain text with no colors. `generate` prints the file it wrote, each Hazard with its statement, each rename hint, and whether it reset the Dev database. Exit codes: 0 on success, 1 on a refusal or failure (a missing folder, a held Dev lock, a bad hash chain), 2 on a usage error.
 
-### Renaming a table or column
+### Renaming a table, column, enum, or domain
 
 Rename a key in the Definition and `generate` sees a drop and a create, which it flags as `data_loss`. It prints a hint when it spots a likely rename: a table that drops one column and adds one of the same type, or a schema that drops one table and adds one with identical columns.
 
@@ -144,6 +144,16 @@ people: defineTable(
   (c) => ({ id: c.text().notNull(), name: c.text() }),
   () => ({ renamedFrom: "users" }),
 ),
+```
+
+An enum and a domain take the same marker in their options, and an enum also takes `renamedLabels`, keyed new label to old. Without it, a renamed label is a type swap that rewrites every table using the enum, and `generate` prints a hint naming the entry to add when an enum removes one label and adds one at the same position. A domain check renames on its own when its expression stays the same.
+
+```ts
+mood: defineEnum(["great", "bad"], {
+  renamedFrom: "old_mood",
+  renamedLabels: { great: "good" },
+}),
+posint: defineDomain((c) => c.integer(), { renamedFrom: "old_posint" }),
 ```
 
 `generate` then writes `ALTER ... RENAME` in place of the drop and create, and keeps the data. Each rename carries the `rename` Hazard, because app code still on the old name breaks between `migrate` and its deploy.
