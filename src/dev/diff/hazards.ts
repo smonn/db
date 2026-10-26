@@ -1,4 +1,4 @@
-export const HAZARD_KINDS = ["data_loss", "rewrite", "access_exclusive_lock"] as const;
+export const HAZARD_KINDS = ["data_loss", "rewrite", "access_exclusive_lock", "rename"] as const;
 
 export type HazardKind = (typeof HAZARD_KINDS)[number];
 

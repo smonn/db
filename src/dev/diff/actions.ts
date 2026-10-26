@@ -1,11 +1,22 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
-import { childrenOf, parentOf, qualified, type Catalog, type Fact } from "../catalog/index.ts";
+import {
+  childrenOf,
+  parentOf,
+  qualified,
+  type Catalog,
+  type ColumnRename,
+  type Fact,
+  type TableRename,
+} from "../catalog/index.ts";
 import { HAZARD_KINDS, LONG_LOCK, REWRITE, retypeHazards, type HazardKind } from "./hazards.ts";
+import { renameSql } from "./renames.ts";
 
 type FactOf<K extends Fact["kind"]> = Extract<Fact, { readonly kind: K }>;
 
 /** The kind of fact each action acts on. */
 type Target = {
+  "rename table": "table";
+  "rename column": "column";
   "drop unique": "unique";
   "drop primary key": "primary key";
   "drop column": "column";
@@ -34,6 +45,9 @@ export type ActionKind = keyof Target;
 type Carries = {
   /** The column as the `from` catalog has it, since a type change's hazards depend on both types. */
   "alter type": { readonly before: FactOf<"column"> };
+  /** The renamed object's fact is the `from` catalog's, which already holds the renamed object. */
+  "rename table": { readonly rename: TableRename };
+  "rename column": { readonly rename: ColumnRename };
 };
 
 /**
@@ -49,7 +63,7 @@ export type Action<A extends ActionKind = ActionKind> = {
 export type Catalogs = { readonly from: Catalog; readonly to: Catalog };
 
 type Step<A extends ActionKind> = {
-  readonly render: (fact: FactOf<Target[A]>, catalogs: Catalogs) => string;
+  readonly render: (fact: FactOf<Target[A]>, catalogs: Catalogs, action: Action<A>) => string;
   /** Classified from the catalogs the action reads, never from the SQL it renders. */
   readonly hazards: (action: Action<A>, catalogs: Catalogs) => readonly HazardKind[];
 };
@@ -67,6 +81,9 @@ const always =
  * created in the same migration is empty, so only changes to a table `from` has can be slow.
  */
 const STEPS: { readonly [A in ActionKind]: Step<A> } = {
+  // Only the catalog changes, but app code on the old name breaks until it deploys (ADR-0024).
+  "rename table": { render: renameStatement, hazards: always("rename") },
+  "rename column": { render: renameStatement, hazards: always("rename") },
   "drop unique": { render: dropConstraint, hazards: none },
   "drop primary key": { render: dropConstraint, hazards: none },
   "drop column": {
@@ -157,7 +174,15 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
 };
 
 export function render<A extends ActionKind>(action: Action<A>, catalogs: Catalogs): string {
-  return STEPS[action.kind].render(action.fact, catalogs);
+  return STEPS[action.kind].render(action.fact, catalogs, action);
+}
+
+function renameStatement(
+  _fact: unknown,
+  _catalogs: Catalogs,
+  { rename }: Action<"rename table" | "rename column">,
+): string {
+  return renameSql(rename);
 }
 
 /** In `HAZARD_KINDS` order, so the `-- hazard:` comments above a statement always read alike. */
