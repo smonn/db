@@ -1,5 +1,14 @@
-export { catalogBuilder, childrenOf, definitionCatalog, namesOf, parentOf } from "./catalog.ts";
+export {
+  catalogBuilder,
+  childrenOf,
+  definitionCatalog,
+  factAt,
+  namesOf,
+  parentOf,
+} from "./catalog.ts";
 export { arePayloadsEqual, qualified } from "./compare.ts";
+export { appliedRenames, declaredRenames } from "./renames.ts";
+export type { ColumnRename, Rename, TableRename } from "./renames.ts";
 export type {
   Catalog,
   CatalogBuilder,
