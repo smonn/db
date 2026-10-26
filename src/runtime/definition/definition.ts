@@ -1,4 +1,5 @@
 import { type ColumnFactories, type Columns, factories } from "./column.ts";
+import { type ForeignKey, foreignKeysOf, placesOf } from "./foreign-keys.ts";
 
 /** A table without its name or schema, which `defineDatabase` gives it. */
 export type TableDefinition<C extends Columns = Columns, K extends string = string> = {
@@ -15,6 +16,8 @@ export type Table<C extends Columns = Columns, K extends string = string> = Tabl
 > & {
   readonly schema: string;
   readonly name: string;
+  /** The foreign keys its columns declare, with each target's table named. */
+  readonly foreignKeys: readonly ForeignKey[];
 };
 
 type KeyedColumns<C extends Columns> = {
@@ -183,19 +186,27 @@ export type Database<S extends Schemas> = {
 };
 
 export function defineDatabase<S extends Schemas>(schemas: S): Database<S> {
+  const places = placesOf(schemas);
   const database = Object.fromEntries(
     Object.entries(schemas).map(([schema, tables]) => [
       schema,
       Object.fromEntries(
         Object.entries(tables).map(([name, { columns, primaryKey, primaryKeyName }]) => [
           name,
-          { schema, name, columns, primaryKey, primaryKeyName },
+          {
+            schema,
+            name,
+            columns,
+            primaryKey,
+            primaryKeyName,
+            foreignKeys: foreignKeysOf(places, schema, name, columns),
+          },
         ]),
       ),
     ]),
   );
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries loses the keys.
-  return database as Database<S>;
+  return database as unknown as Database<S>;
 }
 
 type TypesOf<Col> = Col extends {

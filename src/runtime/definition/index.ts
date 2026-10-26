@@ -1,4 +1,13 @@
-export type { Column, ColumnFactories, Columns, ColumnState } from "./column.ts";
+export type {
+  Column,
+  ColumnFactories,
+  Columns,
+  ColumnState,
+  ForeignKeyAction,
+  ForeignKeyOptions,
+  Target,
+} from "./column.ts";
+export type { ForeignKey } from "./foreign-keys.ts";
 export type { Codec } from "./codec.ts";
 export { plainDate } from "./plain-date.ts";
 export type { PlainDate } from "./plain-date.ts";

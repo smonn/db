@@ -14,6 +14,39 @@ export type ColumnState = {
   readonly unique: boolean;
   /** The name `.primaryKey({ name })` or `.unique({ name })` gave its constraint. */
   readonly constraintName: string | undefined;
+  /** What `.references()` was given, apart from `constraintName`; `defineDatabase` resolves the target. */
+  readonly references: ColumnReference | undefined;
+};
+
+export type ForeignKeyAction = "no action" | "restrict" | "cascade" | "set null" | "set default";
+
+export type ForeignKeyOptions = {
+  /** Replaces the name Postgres would derive, `<table>_<column>_fkey`. */
+  readonly name?: string;
+  /** Defaults to `"no action"`. */
+  readonly onDelete?: ForeignKeyAction;
+  /** Defaults to `"no action"`. */
+  readonly onUpdate?: ForeignKeyAction;
+  /** Makes the constraint `DEFERRABLE` with this initial mode; without it the constraint is not deferrable. */
+  readonly deferrable?: "immediate" | "deferred";
+};
+
+/** A column's foreign key before `defineDatabase` finds the table its target belongs to. */
+export type ColumnReference = {
+  /** A thunk, so tables in two files that import each other load in either order. */
+  readonly target: () => Target<unknown>;
+  readonly options: ForeignKeyOptions;
+};
+
+/** What a foreign key may point at: a primary key or unique column holding a `V`. */
+export type Target<V> = {
+  readonly state: ColumnState;
+  readonly "~types": {
+    readonly value: V;
+    readonly notNull: boolean;
+    readonly primaryKey: boolean;
+    readonly key: true;
+  };
 };
 
 /** Replaces the name Postgres would derive, such as `users_pkey` or `users_email_key`. */
@@ -22,7 +55,8 @@ type ConstraintOptions = { readonly name: string };
 /**
  * `Int` is true for the types Postgres allows an identity on. `Gen` is true once the column has a
  * default or an identity, which Postgres allows only one of. `Pk` is true once `.primaryKey()` ran,
- * and `Key` once `.primaryKey()` or `.unique()` ran, since a primary key is already unique.
+ * and `Key` once `.primaryKey()` or `.unique()` ran, since a primary key is already unique. `Fk` is
+ * true once `.references()` ran.
  */
 export type Column<
   V,
@@ -32,36 +66,55 @@ export type Column<
   Pk extends boolean = false,
   Key extends boolean = false,
   Co extends boolean = false,
+  Fk extends boolean = false,
 > = {
   readonly state: ColumnState;
   /** Runtime-only: the codec `.codec()` set. It stays out of `state`, so it never reaches the catalog. */
   readonly "~codec": RuntimeCodec | undefined;
-  /** Type-only: the value a row holds, whether the column is NOT NULL, and whether it is the primary key. */
-  readonly "~types": { readonly value: V; readonly notNull: N; readonly primaryKey: Pk };
-  notNull(): Column<V, true, Int, Gen, Pk, Key, Co>;
+  /** Type-only: the value a row holds, whether the column is NOT NULL, the primary key, or a key a foreign key may point at. */
+  readonly "~types": {
+    readonly value: V;
+    readonly notNull: N;
+    readonly primaryKey: Pk;
+    readonly key: Key;
+  };
+  notNull(): Column<V, true, Int, Gen, Pk, Key, Co, Fk>;
 } & (Co extends true
   ? unknown
   : {
       /** Overrides the TypeScript mapping; the query layer runs it and the catalog never sees it. A column takes one. */
-      codec<Value>(codec: Codec<V, Value>): Column<Value, N, Int, Gen, Pk, Key, true>;
+      codec<Value>(codec: Codec<V, Value>): Column<Value, N, Int, Gen, Pk, Key, true, Fk>;
     }) &
   (Key extends true
     ? unknown
     : {
         /** The table's whole primary key. A composite key goes in `defineTable`'s second callback. */
-        primaryKey(options?: ConstraintOptions): Column<V, true, Int, Gen, true, true, Co>;
+        primaryKey(options?: ConstraintOptions): Column<V, true, Int, Gen, true, true, Co, Fk>;
         /** A unique constraint on this column alone. */
-        unique(options?: ConstraintOptions): Column<V, N, Int, Gen, Pk, true, Co>;
+        unique(options?: ConstraintOptions): Column<V, N, Int, Gen, Pk, true, Co, Fk>;
+      }) &
+  (Fk extends true
+    ? unknown
+    : {
+        /**
+         * A foreign key to another table's primary key or unique column holding the same value. The
+         * thunk reads the target late; two tables that point at each other need one thunk to name
+         * its type, such as `(): Target<number> => orders.columns.id`.
+         */
+        references(
+          target: () => Target<V>,
+          options?: ForeignKeyOptions,
+        ): Column<V, N, Int, Gen, Pk, Key, Co, true>;
       }) &
   (Gen extends true
     ? unknown
     : {
         /** Takes a SQL expression, such as `now()`; a string literal needs its quotes (`"'new'"`). */
-        default(expression: string): Column<V, N, Int, true, Pk, Key, Co>;
+        default(expression: string): Column<V, N, Int, true, Pk, Key, Co, Fk>;
       } & (Int extends true
         ? {
             /** Generates the value from a sequence. */
-            identity(generated?: Identity): Column<V, true, Int, true, Pk, Key, Co>;
+            identity(generated?: Identity): Column<V, true, Int, true, Pk, Key, Co, Fk>;
           }
         : unknown));
 
@@ -73,6 +126,7 @@ type AnyColumn = {
     readonly value: unknown;
     readonly notNull: boolean;
     readonly primaryKey: boolean;
+    readonly key: boolean;
   };
 };
 
@@ -84,7 +138,8 @@ function column<
   Pk extends boolean,
   Key extends boolean,
   Co extends boolean,
->(state: ColumnState, codec?: RuntimeCodec): Column<V, N, Int, Gen, Pk, Key, Co> {
+  Fk extends boolean,
+>(state: ColumnState, codec?: RuntimeCodec): Column<V, N, Int, Gen, Pk, Key, Co, Fk> {
   const parts = {
     state,
     "~codec": codec,
@@ -96,10 +151,12 @@ function column<
       column({ ...state, notNull: true, primaryKey: true, constraintName: options?.name }, codec),
     unique: (options?: ConstraintOptions) =>
       column({ ...state, unique: true, constraintName: options?.name }, codec),
+    references: (target: () => Target<unknown>, options: ForeignKeyOptions = {}) =>
+      column({ ...state, references: { target, options } }, codec),
     codec: (given: Codec<never, unknown>) => column(state, given as RuntimeCodec),
   };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- "~types" exists only in types, so `parts` doesn't overlap `Column` enough for a direct cast (TS2352); it goes through `unknown`.
-  return parts as unknown as Column<V, N, Int, Gen, Pk, Key, Co>;
+  return parts as unknown as Column<V, N, Int, Gen, Pk, Key, Co, Fk>;
 }
 
 export type ColumnFactories = {
@@ -122,7 +179,7 @@ export type ColumnFactories = {
 };
 
 function of<V, Int extends boolean = false>(sqlType: string): Column<V, false, Int> {
-  return column<V, false, Int, false, false, false, false>({
+  return column<V, false, Int, false, false, false, false, false>({
     sqlType,
     notNull: false,
     default: undefined,
@@ -130,6 +187,7 @@ function of<V, Int extends boolean = false>(sqlType: string): Column<V, false, I
     primaryKey: false,
     unique: false,
     constraintName: undefined,
+    references: undefined,
   });
 }
 
