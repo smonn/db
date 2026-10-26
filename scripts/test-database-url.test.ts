@@ -30,8 +30,16 @@ test("without DATABASE_URL the url and env come from .env.test", () => {
   expect(testEnv({}, file)).toEqual({ DATABASE_URL: "postgres://file/db" });
 });
 
+test("an empty DATABASE_URL counts as unset", () => {
+  writeFileSync(file, "DATABASE_URL=postgres://file/db\n");
+  const processEnv = { DATABASE_URL: "" };
+  expect(testDatabaseUrl(processEnv, file)).toBe("postgres://file/db");
+  expect(testEnv(processEnv, file)).toEqual({ DATABASE_URL: "postgres://file/db" });
+});
+
 test("without DATABASE_URL or .env.test there is no url", () => {
   expect(testDatabaseUrl({}, file)).toBeUndefined();
+  expect(testDatabaseUrl({ DATABASE_URL: "" }, file)).toBeUndefined();
   expect(testEnv({}, file)).toEqual({});
 });
 
