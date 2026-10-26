@@ -7,6 +7,8 @@
  * share its number with one another open PR adds (docs/adr/TEMPLATE.md numbers one past the highest
  * on `main` or in an open PR, and nothing else catches a clash before the second merge).
  *
+ * A closing keyword in `PR_BODY` must not name an issue outside `smonn/db` (`check-closing-keywords.ts`).
+ *
  * Run with `PR_TITLE` and `PR_BRANCH` set, as `pnpm check:pr`; CI runs it in the Metadata job (`.github/workflows/pr.yml`).
  * Set `PR_DIFF_BASE` to a git revision (CI uses `HEAD^1`, the base side of the merge commit) to
  * also check the ADRs the PR changes; without it the ADR check is skipped. Set `PR_NUMBER` as well
@@ -17,6 +19,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { checkClosingKeywords } from "./check-closing-keywords.ts";
 import { checkAdrClash, readOpenPrAdds, type OpenPrAdd } from "./check-adr-clash.ts";
 
 const types = [
@@ -117,14 +120,24 @@ export function main(
   readAdrs: (base: string) => ChangedAdr[] = readChangedAdrs,
   readOpenAdds: (exclude: string) => OpenPrAdd[] = readOpenPrAdds,
 ): void {
-  const { PR_TITLE: title, PR_BRANCH: branch, PR_DIFF_BASE: base, PR_NUMBER: number } = env;
+  const {
+    PR_TITLE: title,
+    PR_BRANCH: branch,
+    PR_DIFF_BASE: base,
+    PR_NUMBER: number,
+    PR_BODY: body,
+  } = env;
   if (title === undefined || branch === undefined) {
     console.error("Set PR_TITLE and PR_BRANCH");
     process.exitCode = 1;
     return;
   }
   const adrs = base === undefined ? [] : readAdrs(base);
-  const problems = [...checkPr(title, branch, adrs), ...clashProblems(adrs, number, readOpenAdds)];
+  const problems = [
+    ...checkPr(title, branch, adrs),
+    ...checkClosingKeywords(body ?? ""),
+    ...clashProblems(adrs, number, readOpenAdds),
+  ];
   report(problems);
 }
 
