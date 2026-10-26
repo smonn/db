@@ -19,6 +19,8 @@ export type ColumnState = {
   readonly unique: boolean;
   /** The name `.primaryKey({ name })` or `.unique({ name })` gave its constraint. */
   readonly constraintName: string | undefined;
+  /** The SQL name the column had before a rename, for generate to turn into a `RENAME`. */
+  readonly renamedFrom: string | undefined;
   /** What `.references()` was given, apart from `constraintName`; `defineDatabase` resolves the target. */
   readonly references: ColumnReference | undefined;
 };
@@ -53,6 +55,11 @@ export type Column<
     readonly key: Key;
   };
   notNull(): Column<V, true, Int, Gen, Pk, Key, Co, Fk>;
+  /**
+   * Renames the column from `oldName`, its SQL name before this change. Generate ignores the
+   * marker once the old name is gone, so remove it after the rename ships.
+   */
+  renamedFrom(oldName: string): Column<V, N, Int, Gen, Pk, Key, Co, Fk>;
 } & (Co extends true
   ? unknown
   : {
@@ -118,6 +125,7 @@ export function column<
     state,
     "~codec": codec,
     notNull: () => column({ ...state, notNull: true }, codec),
+    renamedFrom: (oldName: string) => column({ ...state, renamedFrom: oldName }, codec),
     default: (expression: string) => column({ ...state, default: expression }, codec),
     identity: (generated: Identity = "by default") =>
       column({ ...state, notNull: true, identity: generated }, codec),

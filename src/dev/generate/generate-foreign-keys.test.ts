@@ -95,6 +95,7 @@ create table public.orders (id integer primary key, user_id integer references p
 
     expect(await run(fileSystem, shop())).toStrictEqual({
       path: CURRENT,
+      hints: [],
       sql: undefined,
       reset: true,
       hazards: [],

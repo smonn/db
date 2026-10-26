@@ -74,6 +74,7 @@ create table public.memberships (
       sql: undefined,
       reset: true,
       hazards: [],
+      hints: [],
     });
   });
 });

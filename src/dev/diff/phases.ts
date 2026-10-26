@@ -34,6 +34,8 @@ export type PlaceTable<K extends string> = { readonly [A in K]: Place };
  * changed key is rebuilt around the column changes it spans.
  */
 export const PLACES: PlaceTable<ActionKind> = {
+  "rename table": ["rename", 0],
+  "rename column": ["rename", 2],
   "drop foreign key": ["drop key or index", 0],
   "drop unique": ["drop key or index", 2],
   "drop primary key": ["drop key or index", 3],
