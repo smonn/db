@@ -1,4 +1,5 @@
 import type { Queryable } from "../ports/index.ts";
+import { decoderOf } from "./codecs.ts";
 import type { Query, Statement } from "./from.ts";
 
 export type Client = {
@@ -14,8 +15,9 @@ export function createClient(queryable: Queryable): Client {
   async function all<R>(query: Query<R>): Promise<R[]> {
     const { text, params } = query.toSql();
     const { rows } = await queryable.query(text, params);
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The query's row type describes what Postgres returns.
-    return rows as R[];
+    const decode = decoderOf(query);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The query's row type describes what Postgres returns, decoded by its codecs.
+    return (decode === undefined ? rows : rows.map((row) => decode(row))) as R[];
   }
 
   return {

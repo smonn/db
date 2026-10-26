@@ -1,5 +1,6 @@
 import {
   CURRENT_FILENAME,
+  committedFilenames,
   migrationHash,
   parseMigration,
   readCommitted,
@@ -17,8 +18,8 @@ export type RebaseOptions = {
   readonly base: MigrationSource;
   /** The base ref's name, for messages, such as `origin/main`. */
   readonly onto: string;
-  /** The paths under `migrations` that differ from the last commit or that git doesn't track. */
-  readonly uncommitted: readonly string[];
+  /** The paths under `migrations`, relative to it, that differ from the last commit, are untracked, or are gitignored. */
+  readonly unheld: readonly string[];
 };
 
 export type RebaseResult = {
@@ -40,7 +41,7 @@ type Move = {
  */
 export async function rebase(options: RebaseOptions): Promise<RebaseResult> {
   const { fileSystem, migrations, onto } = options;
-  checkCommitted(options.uncommitted, migrations);
+  checkHeld(options.unheld, migrations);
   const base = await verifiedBase(options.base, onto);
   const local = await readCommitted(fileSystem, migrations);
   const parsed = local
@@ -78,13 +79,17 @@ export async function rebase(options: RebaseOptions): Promise<RebaseResult> {
   return { moved: moves.map(({ from, to }) => ({ from: from.filename, to: to.filename })) };
 }
 
-/** current.sql doesn't count: rebase never reads or writes it. */
-function checkCommitted(uncommitted: readonly string[], migrations: string): void {
-  const paths = uncommitted.filter((path) => path !== CURRENT_FILENAME);
+/** Only the top-level files rebase reads or writes count: Committed migrations and leftover `.sql.tmp` files. */
+function checkHeld(unheld: readonly string[], migrations: string): void {
+  const topLevel = unheld.filter((path) => !path.includes("/"));
+  const paths = [
+    ...committedFilenames(topLevel),
+    ...topLevel.filter((path) => path.endsWith(".sql.tmp")),
+  ].toSorted();
   if (paths.length === 0) return;
   // Naming the files fails once one is deleted in the index: git stashes, then rejects the pathspec.
   throw new Error(
-    `${migrations} has uncommitted changes to ${paths.join(", ")}; set them aside with git -C ${shellQuote(migrations)} stash push --include-untracked -- . ':(exclude)${CURRENT_FILENAME}', then rerun rebase`,
+    `${migrations} has changes git doesn't hold: ${paths.join(", ")}; set them aside with git -C ${shellQuote(migrations)} stash push --include-untracked -- . ':(exclude)${CURRENT_FILENAME}', then rerun rebase`,
   );
 }
 

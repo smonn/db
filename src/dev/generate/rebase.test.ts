@@ -33,14 +33,14 @@ function folder(...files: MigrationFile[]): MemoryFileSystem {
 function rebaseFolder(
   fileSystem: MemoryFileSystem,
   base: MigrationFile[],
-  uncommitted: string[] = [],
+  unheld: string[] = [],
 ): Promise<RebaseResult> {
   return rebase({
     fileSystem,
     migrations: MIGRATIONS,
     base: source(...base),
     onto: ONTO,
-    uncommitted,
+    unheld,
   });
 }
 
@@ -133,14 +133,14 @@ describe("rebase", () => {
     expect(fileSystem.files.get(`${MIGRATIONS}/current.sql`)).toBe("select 1;\n");
   });
 
-  it("refuses, writing nothing, naming each file git doesn't hold as committed", async () => {
+  it("refuses, writing nothing, naming each file git doesn't hold", async () => {
     const fileSystem = folder(A, B, X, Y);
     const before = new Map(fileSystem.files);
 
     await expect(
       rebaseFolder(fileSystem, [A, B], ["000002-x.sql", "000003-y.sql"]),
     ).rejects.toThrow(
-      `${MIGRATIONS} has uncommitted changes to 000002-x.sql, 000003-y.sql; set them aside with git -C 'db/migrations' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase`,
+      `${MIGRATIONS} has changes git doesn't hold: 000002-x.sql, 000003-y.sql; set them aside with git -C 'db/migrations' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase`,
     );
     expect(fileSystem.files).toStrictEqual(before);
   });
@@ -152,14 +152,30 @@ describe("rebase", () => {
         migrations: "my db/it's",
         base: source(),
         onto: ONTO,
-        uncommitted: ["000002-x.sql"],
+        unheld: ["000002-x.sql"],
       }),
     ).rejects.toThrow(
       "git -C 'my db/it'\\''s' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase",
     );
   });
 
-  it("moves files past an uncommitted current.sql", async () => {
+  it("refuses on a leftover .sql.tmp", async () => {
+    await expect(rebaseFolder(folder(A, B, X), [A, B], ["000003-x.sql.tmp"])).rejects.toThrow(
+      `${MIGRATIONS} has changes git doesn't hold: 000003-x.sql.tmp;`,
+    );
+  });
+
+  it("ignores paths rebase never reads or writes", async () => {
+    const result = await rebaseFolder(
+      folder(A, B, X),
+      [A, B],
+      [".DS_Store", "x.sql.swp", "sub/nested.sql", "sub/000009-z.sql.tmp", "README.md"],
+    );
+
+    expect(result).toStrictEqual({ moved: [{ from: "000002-x.sql", to: "000003-x.sql" }] });
+  });
+
+  it("moves files past a changed current.sql", async () => {
     const fileSystem = folder(A, B, X);
 
     const result = await rebaseFolder(fileSystem, [A, B], ["current.sql"]);
