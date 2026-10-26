@@ -84,8 +84,9 @@ order by k.conname`;
 // CONCURRENTLY leaves one that the planner never uses). An index that backs a primary key,
 // unique, or exclusion constraint is the constraint's fact, so it is skipped too; a foreign
 // key's `conindid` is the referenced table's index, which stays an index. `columns` and
-// `expressions` hold one entry per key, empty where the key is the other kind (no name or expression is empty, and the driver reads a NULL in a text array as the string "NULL"); `orders` holds
-// one `<asc|desc> nulls <first|last>` per key, read from `indoption`. Postgres deparses an
+// `expressions` hold one entry per key, empty where the key is the other kind (no name or
+// expression is empty, and the driver reads a NULL in a text array as the string "NULL"); `orders`
+// holds one `<asc|desc> nulls <first|last>` per key, read from `indoption`. Postgres deparses an
 // expression key as `pg_get_indexdef` does, with the predicate through `pg_get_expr`, so a
 // spacing or cast difference in the source reads the same on both sides, as a default does.
 export const INDEXES: string = `
@@ -139,8 +140,12 @@ where am.amname in ('btree', 'hash', 'gin', 'gist', 'brin')
   and not exists (
     select from unnest(i.indkey::int2[], i.indcollation::oid[]) with ordinality
         as k(attnum, coll, position)
-      join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
-    where k.position <= i.indnkeyatts and k.coll <> a.attcollation
+      left join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
+      join pg_attribute ia on ia.attrelid = i.indexrelid and ia.attnum = k.position
+      join pg_type t on t.oid = ia.atttypid
+    where k.position <= i.indnkeyatts
+      -- an expression key has no table column (attnum 0), so it compares to its type's collation
+      and k.coll <> case when k.attnum = 0 then t.typcollation else a.attcollation end
   )
   and c.relkind = 'r' and not c.relispartition and ${KEPT_SCHEMA}
   and ${NOT_EXTENSION_MEMBER("pg_class", "c")}

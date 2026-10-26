@@ -85,6 +85,18 @@ describe("introspect skips Unmodeled indexes", () => {
     ]);
   });
 
+  it("skips an expression key with a non-default collation and keeps one with the default", async () => {
+    await db.driver.execute(`
+      create table t (b text);
+      create index by_collation on t ((lower(b)) collate "C");
+      create index by_default on t (lower(b));
+    `);
+
+    expect(indexes(await introspect(db.driver)).map(([name]) => name)).toStrictEqual([
+      "public.t.by_default",
+    ]);
+  });
+
   it("skips the index of a primary key, a unique, and an exclusion constraint", async () => {
     await db.driver.execute(`
       create table t (
