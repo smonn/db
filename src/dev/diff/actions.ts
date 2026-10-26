@@ -11,7 +11,7 @@ import {
   type HazardKind,
 } from "./hazards.ts";
 import { renameSql } from "./rename-sql.ts";
-import { TYPE_STEPS, type TypeTarget } from "./type-steps.ts";
+import { TYPE_STEPS, type TypeCarries, type TypeTarget } from "./type-steps.ts";
 import { createIndex, dropIndex } from "./index-statements.ts";
 import {
   addConstraint,
@@ -62,7 +62,7 @@ type Target = TypeTarget & {
 export type ActionKind = keyof Target;
 
 /** What an action needs beyond its fact. */
-type Carries = {
+type Carries = TypeCarries & {
   /** The column as the `from` catalog has it, since a type change's hazards depend on both types. */
   "alter type": { readonly before: FactOf<"column"> };
   /** The renamed object's fact is the `from` catalog's, which already holds the renamed object. */

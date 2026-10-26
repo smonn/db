@@ -42,7 +42,11 @@ export type PlaceTable<K extends string> = { readonly [A in K]: Place };
 export const PLACES: PlaceTable<ActionKind> = {
   "rename table": ["rename", 0],
   "rename column": ["rename", 2],
+  "rename enum": ["rename", 4],
+  "rename enum label": ["rename", 5],
+  "rename domain": ["rename", 6],
   "rename enum aside": ["rename", 8],
+  "rename domain check": ["rename by payload", 0],
   "drop foreign key": ["drop key or index", 0],
   "drop index": ["drop key or index", 1],
   "drop unique": ["drop key or index", 2],

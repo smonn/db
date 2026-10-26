@@ -20,6 +20,8 @@ export type Domain<V = unknown, N extends boolean = boolean> = {
   readonly default: string | undefined;
   /** Each check's expression, where `value` names the value checked, keyed by its constraint name. */
   readonly checks: Readonly<Record<string, string>>;
+  /** The SQL name the domain had before a rename, for generate to turn into a `RENAME`. */
+  readonly renamedFrom: string | undefined;
   /** Type-only: the value a column of the domain holds, and whether the domain is NOT NULL. */
   readonly "~types": { readonly value: V; readonly notNull: N };
 };
