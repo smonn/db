@@ -57,3 +57,46 @@ describe("defineDatabase options", () => {
     ).toThrow("The table's name takes its SQL name as a string");
   });
 });
+
+describe("defineDatabase refuses a SQL name Postgres can't hold", () => {
+  const fix = "takes a SQL name of 1 to 63 bytes";
+
+  it("for an empty explicit name", () => {
+    const column = defineTable((c) => ({ a: c.text().name("") }));
+    expect(() => defineDatabase({ s: { t: column } })).toThrow(
+      `The column key "a" of "s"."t" ${fix}, not ""`,
+    );
+    const table = defineTable(
+      (c) => ({ a: c.text() }),
+      () => ({ name: "" }),
+    );
+    expect(() => defineDatabase({ s: { t: table } })).toThrow(
+      `The key "t" of schema "s" ${fix}, not ""`,
+    );
+  });
+
+  it("for an explicit name that isn't a string", () => {
+    // @ts-expect-error -- the name is a string.
+    const mood = defineEnum(["x"], { name: 5 });
+    expect(() => defineDatabase({ s: { mood } })).toThrow(
+      `The key "mood" of schema "s" ${fix}, not 5`,
+    );
+    // @ts-expect-error -- the name is a string.
+    const column = defineTable((c) => ({ a: c.text().name(5) }));
+    expect(() => defineDatabase({ s: { t: column } })).toThrow(
+      `The column key "a" of "s"."t" ${fix}`,
+    );
+  });
+
+  it("for a mapped name over 63 bytes, counted in UTF-8", () => {
+    const key = "aB".repeat(22);
+    const long = defineTable((c) => ({ [key]: c.text() }));
+    expect(() => defineDatabase({ s: { t: long } })).not.toThrow();
+    expect(() => defineDatabase({ s: { t: long } }, { casing: "snake_case" })).toThrow(
+      `The column key "${key}" of "s"."t" ${fix}`,
+    );
+    expect(() => defineDatabase({ ["é".repeat(32)]: {} })).toThrow(
+      `The schema key "${"é".repeat(32)}" ${fix}`,
+    );
+  });
+});
