@@ -3,7 +3,6 @@ import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { catalogBuilder, type Catalog } from "./catalog.ts";
 import { appliedRenames, declaredRenames, type Rename } from "./renames.ts";
 
-/** Schema `app` holding each table, which has the columns named. */
 function shadow(tables: Readonly<Record<string, readonly string[]>>): Catalog {
   const builder = catalogBuilder();
   builder.schema("app");

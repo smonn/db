@@ -4,7 +4,6 @@ import { diff } from "./diff.ts";
 
 type Columns = Readonly<Record<string, string>>;
 
-/** Table `people` in `app`, with each column's name and type. */
 function people(columns: Columns, table = "people"): Catalog {
   const builder = catalogBuilder();
   builder.schema("app");
@@ -67,6 +66,17 @@ describe("diff with renames", () => {
       `alter table "app"."people" drop column "gone";`,
       `alter table "app"."people" add column "fresh" text;`,
     ]);
+  });
+
+  it("refuses a rename the catalog doesn't hold under the new name", () => {
+    const catalog = people({ id: "text" });
+
+    expect(() => diff(catalog, catalog, [renameColumn])).toThrow(
+      "the renamed column app.people.full_name isn't in the catalog",
+    );
+    expect(() => diff(catalog, catalog, [{ ...renameTable, name: "gone" }])).toThrow(
+      "the renamed table app.gone isn't in the catalog",
+    );
   });
 
   it("stays a plain diff with no renames", () => {

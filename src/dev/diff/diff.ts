@@ -1,7 +1,6 @@
 import {
   arePayloadsEqual,
   childrenOf,
-  factAt,
   type Catalog,
   type Fact,
   type GeneratedPayload,
@@ -11,6 +10,7 @@ import {
 import { hazardsOf, render, type Action, type Catalogs } from "./actions.ts";
 import type { Hazard } from "./hazards.ts";
 import { renameHints } from "./hints.ts";
+import { renameAction } from "./renames.ts";
 import { order } from "./phases.ts";
 
 export type Diff = {
@@ -60,21 +60,6 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
     })
     .join("\n");
   return { sql, hazards, hints: renameHints(from, to) };
-}
-
-function renameAction(rename: Rename, from: Catalog): Action {
-  const names =
-    rename.kind === "table"
-      ? [rename.schema, rename.name]
-      : [rename.schema, rename.table, rename.name];
-  const fact = factAt(from, ...names);
-  if (rename.kind === "table" && fact?.kind === "table") {
-    return { kind: "rename table", fact, rename };
-  }
-  if (rename.kind === "column" && fact?.kind === "column") {
-    return { kind: "rename column", fact, rename };
-  }
-  throw new Error(`the renamed ${rename.kind} ${names.join(".")} isn't in the catalog`);
 }
 
 type Kind = Fact["kind"];

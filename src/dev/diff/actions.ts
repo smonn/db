@@ -9,7 +9,7 @@ import {
   type TableRename,
 } from "../catalog/index.ts";
 import { HAZARD_KINDS, LONG_LOCK, REWRITE, retypeHazards, type HazardKind } from "./hazards.ts";
-import { renameSql } from "./renames.ts";
+import { renameSql } from "./rename-sql.ts";
 
 type FactOf<K extends Fact["kind"]> = Extract<Fact, { readonly kind: K }>;
 

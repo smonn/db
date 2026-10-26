@@ -4,7 +4,6 @@ import { diff } from "./diff.ts";
 
 type Tables = Readonly<Record<string, Readonly<Record<string, string>>>>;
 
-/** Schema `app` holding each table with its columns' names and types. */
 function schema(tables: Tables): Catalog {
   const builder = catalogBuilder();
   builder.schema("app");

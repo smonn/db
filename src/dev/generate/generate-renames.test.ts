@@ -13,7 +13,6 @@ beforeEach(async () => {
   );
 });
 
-/** Generates the Definition against one Committed migration that runs `committed`. */
 async function generateFrom(
   committed: string,
   definition: Parameters<typeof generate>[0]["definition"],
@@ -30,21 +29,20 @@ async function generateFrom(
   });
 }
 
+const RENAMED = defineDatabase({
+  public: {
+    users: defineTable((c) => ({
+      id: c.integer().notNull(),
+      full_name: c.text().notNull().renamedFrom("name"),
+    })),
+  },
+});
+
 const USERS = "create table public.users (id integer not null, name text not null);";
 
 describe("a column rename", () => {
   it("renames the column with the rename Hazard, not a drop and add", async () => {
-    const result = await generateFrom(
-      USERS,
-      defineDatabase({
-        public: {
-          users: defineTable((c) => ({
-            id: c.integer().notNull(),
-            full_name: c.text().notNull().renamedFrom("name"),
-          })),
-        },
-      }),
-    );
+    const result = await generateFrom(USERS, RENAMED);
 
     const statement = `alter table "public"."users" rename column "name" to "full_name";`;
     expect(result.sql).toBe(`-- hazard: rename\n${statement}\n`);
@@ -75,14 +73,7 @@ describe("a column rename", () => {
   it("ignores a marker whose old name is gone", async () => {
     const result = await generateFrom(
       "create table public.users (id integer not null, full_name text not null);",
-      defineDatabase({
-        public: {
-          users: defineTable((c) => ({
-            id: c.integer().notNull(),
-            full_name: c.text().notNull().renamedFrom("name"),
-          })),
-        },
-      }),
+      RENAMED,
     );
 
     expect(result.sql).toBeUndefined();
