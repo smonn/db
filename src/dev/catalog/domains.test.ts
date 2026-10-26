@@ -26,7 +26,7 @@ describe("definitionCatalog domains", () => {
       kind: "domain",
       name: "posint",
       parent: "public",
-      payload: { base: "integer", notNull: true, default: "1" },
+      payload: { base: "integer", notNull: true, default: "1", defaultVolatile: false },
     });
     expect(facts["public\0posint\0positive"]).toStrictEqual({
       kind: "domain check",

@@ -1,5 +1,5 @@
 import { childrenOf, type Catalog } from "../catalog/index.ts";
-import { domainTypes } from "./domains.ts";
+import { domainTypes, type DeclaredDomain } from "./domains.ts";
 import { enumTypes } from "./enums.ts";
 import { retypeHazards, type HazardKind } from "./hazards.ts";
 import type { FactOf } from "./statements.ts";
@@ -20,16 +20,22 @@ export function columnRetypeHazards(
 
 /**
  * Whether adding `column` writes every row: an identity fills each from its sequence, as a
- * volatile default does, a stored expression computes each, and a constrained domain checks each.
+ * volatile default does, its own or its domain's, a stored expression computes each, and a
+ * constrained domain checks each.
  */
 export function fillsEachRow(column: FactOf<"column">, to: Catalog): boolean {
-  return (
-    domainTypes(to).get(column.payload.type)?.constrained === true ||
-    childrenOf(to, column).some(
-      (child) =>
-        child.kind === "identity" ||
-        (child.kind === "default" && child.payload.volatile) ||
-        (child.kind === "generated" && child.payload.storage === "stored"),
-    )
+  const children = childrenOf(to, column);
+  const domain = domainTypes(to).get(column.payload.type);
+  if (domain !== undefined && domainFillsEachRow(domain, children.length === 0)) return true;
+  return children.some(
+    (child) =>
+      child.kind === "identity" ||
+      (child.kind === "default" && child.payload.volatile) ||
+      (child.kind === "generated" && child.payload.storage === "stored"),
   );
+}
+
+/** A column with no default, identity, or expression of its own takes its domain's default. */
+function domainFillsEachRow(domain: DeclaredDomain, takesDomainDefault: boolean): boolean {
+  return domain.constrained || (takesDomainDefault && domain.volatileDefault);
 }
