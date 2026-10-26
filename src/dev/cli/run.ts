@@ -47,10 +47,18 @@ function runOn(driver: Driver, command: DatabaseCommand, project: Project): Prom
   const { migrationsFolder: migrations, trackingSchema } = project;
   const tracking = trackingSchema === undefined ? {} : { trackingSchema };
   const context = { driver, project, migrations, tracking };
-  if (command.name === "generate") return runGenerate(context);
-  if (command.name === "commit") return runCommit(context, command.slug, command.accept);
-  if (command.name === "reset") return runReset(context, command.erase);
-  return runMigrate(context);
+  switch (command.name) {
+    case "generate":
+      return runGenerate(context);
+    case "migrate":
+      return runMigrate(context);
+    case "commit":
+      return runCommit(context, command.slug, command.accept);
+    case "reset":
+      return runReset(context, command.erase);
+    default:
+      return command satisfies never;
+  }
 }
 
 async function runGenerate({ driver, project, migrations, tracking }: Context): Promise<void> {
