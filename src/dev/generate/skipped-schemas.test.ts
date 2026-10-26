@@ -35,6 +35,20 @@ describe("generate with a Definition schema that introspect skips", () => {
     expect(fileSystem.files.size).toBe(0);
   });
 
+  it("refuses a schema key that casing maps to a skipped name", async () => {
+    await expect(
+      generate({
+        driver,
+        connect,
+        fileSystem: memoryFileSystem(),
+        definition: defineDatabase({ smonnDb: {} }, { casing: "snake_case" }),
+        migrations: "db/migrations",
+      }),
+    ).rejects.toThrow(
+      `the Definition names schema "smonn_db", which generate skips as the tracking schema`,
+    );
+  });
+
   it("refuses the configured tracking schema", async () => {
     await expect(
       generate({

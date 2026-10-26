@@ -16,6 +16,8 @@ export type Domain<V = unknown, N extends boolean = boolean> = {
   readonly kind: "domain";
   readonly base: DomainBase;
   readonly notNull: boolean;
+  /** The SQL name `options.name` gave, which wins over the casing `defineDatabase` maps keys with. */
+  readonly explicitName: string | undefined;
   /** A SQL expression, written as it would follow `default` in DDL. */
   readonly default: string | undefined;
   /** Each check's expression, where `value` names the value checked, keyed by its constraint name. */
