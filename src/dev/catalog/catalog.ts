@@ -202,39 +202,48 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
   for (const [schema, tables] of Object.entries(definition)) {
     builder.schema(schema);
     const names = constraintNames(schema, tables);
-    for (const [table, { columns, primaryKey, primaryKeyName }] of Object.entries(tables)) {
-      builder.table(schema, table);
-      const entries = Object.entries(columns);
-      for (const [column, { state }] of entries) {
-        builder.column(schema, table, column, {
-          type: postgresType(state.sqlType),
-          notNull: state.notNull || primaryKey.includes(column) || state.identity !== undefined,
-        });
-        if (state.default !== undefined) {
-          // introspect reads the real volatility from the Definition database.
-          builder.columnDefault(schema, table, column, {
-            expression: state.default,
-            volatile: false,
-          });
-        }
-        if (state.identity !== undefined) {
-          builder.columnIdentity(schema, table, column, { generated: state.identity });
-        }
-      }
-      if (primaryKey.length > 0) {
-        builder.primaryKey(schema, table, names.primaryKey(table, primaryKey, primaryKeyName), {
-          columns: [...primaryKey],
-        });
-      }
-      for (const [column, { state }] of entries) {
-        if (state.unique) {
-          const name = names.unique(table, column, state.constraintName);
-          builder.unique(schema, table, name, { column });
-        }
-      }
+    for (const [table, tableDefinition] of Object.entries(tables)) {
+      addDefinitionTable(builder, names, { schema, table }, tableDefinition);
     }
   }
   return builder.build();
+}
+
+function addDefinitionTable(
+  builder: CatalogBuilder,
+  names: ReturnType<typeof constraintNames>,
+  { schema, table }: { schema: string; table: string },
+  { columns, primaryKey, primaryKeyName }: Table,
+): void {
+  builder.table(schema, table);
+  const entries = Object.entries(columns);
+  for (const [column, { state }] of entries) {
+    builder.column(schema, table, column, {
+      type: postgresType(state.sqlType),
+      notNull: state.notNull || primaryKey.includes(column) || state.identity !== undefined,
+    });
+    if (state.default !== undefined) {
+      // introspect reads the real volatility from the Definition database.
+      builder.columnDefault(schema, table, column, {
+        expression: state.default,
+        volatile: false,
+      });
+    }
+    if (state.identity !== undefined) {
+      builder.columnIdentity(schema, table, column, { generated: state.identity });
+    }
+  }
+  if (primaryKey.length > 0) {
+    builder.primaryKey(schema, table, names.primaryKey(table, primaryKey, primaryKeyName), {
+      columns: [...primaryKey],
+    });
+  }
+  for (const [column, { state }] of entries) {
+    if (state.unique) {
+      const name = names.unique(table, column, state.constraintName);
+      builder.unique(schema, table, name, { column });
+    }
+  }
 }
 
 const TYPE_NAMES: Readonly<Record<string, string>> = {

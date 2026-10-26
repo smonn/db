@@ -176,7 +176,7 @@ describe("renamed Definition keys", () => {
     ]);
   });
 
-  it("drops a renamed schema after its tables and creates it with them", () => {
+  it("creates a renamed schema with its tables and drops the old one last", () => {
     const from = catalog((b) => {
       b.schema("old");
       b.table("old", "t");
@@ -188,9 +188,9 @@ describe("renamed Definition keys", () => {
 
     expect(diff(from, to).split("\n\n")).toStrictEqual([
       `drop table "old"."t";`,
-      `drop schema "old";`,
       `create schema "fresh";`,
-      `create table "fresh"."t" ();\n`,
+      `create table "fresh"."t" ();`,
+      `drop schema "old";\n`,
     ]);
   });
 });

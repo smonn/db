@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
+import {
+  testServerUrl,
+  useTestDatabase,
+} from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { createClient, from, insert } from "../../runtime/query/index.ts";
 import { main } from "./main.ts";
@@ -37,7 +40,7 @@ export default defineConfig({
 `;
 
 function urlOf(name: string): string {
-  const url = new URL(process.env["DATABASE_URL"] ?? "");
+  const url = new URL(testServerUrl());
   url.pathname = `/${name}`;
   return url.href;
 }

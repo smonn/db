@@ -3,7 +3,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
+import {
+  testServerUrl,
+  useTestDatabase,
+} from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { nameOf, repo, usePackedPackage } from "./packed-package.test-helper.ts";
 
 const dev = useTestDatabase();
@@ -54,7 +57,7 @@ function filesOf(blocks: readonly Block[]): Block[] {
 }
 
 function urlOf(name: string): string {
-  const url = new URL(process.env["DATABASE_URL"] ?? "");
+  const url = new URL(testServerUrl());
   url.pathname = `/${name}`;
   return url.href;
 }
