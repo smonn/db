@@ -53,6 +53,27 @@ function keyName(key: Node): string | undefined {
   return undefined;
 }
 
+function enclosingTypeDeclaration(start: Node) {
+  let declaration: Node = start;
+  while (
+    declaration.type !== "TSTypeAliasDeclaration" &&
+    declaration.type !== "TSInterfaceDeclaration"
+  ) {
+    if (declaration.parent === null) return null;
+    declaration = declaration.parent;
+  }
+  return declaration;
+}
+
+function isOptionalBrand(
+  node: Extract<Node, { type: "TSPropertySignature" }>,
+  name: string | undefined,
+): boolean {
+  if (!node.optional || name?.startsWith("~") !== true) return false;
+  // `?: never` forbids the key rather than branding the type.
+  return node.typeAnnotation?.typeAnnotation.type !== "TSNeverKeyword";
+}
+
 const requiredBrand: Rule = {
   meta: {
     type: "problem",
@@ -62,17 +83,9 @@ const requiredBrand: Rule = {
     return {
       TSPropertySignature(node) {
         const name = keyName(node.key);
-        if (!node.optional || name?.startsWith("~") !== true) return;
-        // `?: never` forbids the key rather than branding the type.
-        if (node.typeAnnotation?.typeAnnotation.type === "TSNeverKeyword") return;
-        let declaration: Node = node;
-        while (
-          declaration.type !== "TSTypeAliasDeclaration" &&
-          declaration.type !== "TSInterfaceDeclaration"
-        ) {
-          if (declaration.parent === null) return;
-          declaration = declaration.parent;
-        }
+        if (!isOptionalBrand(node, name)) return;
+        const declaration = enclosingTypeDeclaration(node);
+        if (declaration === null) return;
         if (!isExported(declaration, declaration.id.name, context.sourceCode.ast)) return;
         context.report({
           node,
@@ -115,20 +128,21 @@ const errorMessageQualifier: Rule = {
 
 const CHILD_PROCESS = "node:child_process";
 
-function isViMockOfChildProcess(node: Node): boolean {
-  if (node.type !== "CallExpression") return false;
-  const { callee } = node;
-  const [first] = node.arguments;
+function isViMockCallee(callee: Node): boolean {
   return (
     callee.type === "MemberExpression" &&
     !callee.computed &&
     callee.object.type === "Identifier" &&
     callee.object.name === "vi" &&
     callee.property.type === "Identifier" &&
-    callee.property.name === "mock" &&
-    first?.type === "Literal" &&
-    first.value === CHILD_PROCESS
+    callee.property.name === "mock"
   );
+}
+
+function isViMockOfChildProcess(node: Node): boolean {
+  if (node.type !== "CallExpression") return false;
+  const [first] = node.arguments;
+  return isViMockCallee(node.callee) && first?.type === "Literal" && first.value === CHILD_PROCESS;
 }
 
 const mockChildProcess: Rule = {

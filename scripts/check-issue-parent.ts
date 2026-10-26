@@ -220,6 +220,19 @@ function commentUnlessAttached(gh: Gh, target: Target, parents: number[], wait: 
   gh(["issue", "comment", String(issueNumber), "--repo", repo, "--body", body]);
 }
 
+function checkEvent(event: ParentEvent, gh: Gh, wait: Wait): void {
+  if (!needsParentCheck(event)) return;
+  const { issue, repository } = event;
+  const issuePath = `repos/${repository.full_name}/issues/${issue.number}`;
+  const current = getOne(gh, issuePath);
+  if (!qualifies(current) || current.milestone === null) return;
+  if (hasParentOrChildren(current)) return;
+  const target = { repo: repository.full_name, number: issue.number };
+  const parents = parentsToName(gh, target, current, current.milestone.number);
+  if (parents.length === 0) return;
+  commentUnlessAttached(gh, target, parents, wait);
+}
+
 export function main(
   env: NodeJS.ProcessEnv = process.env,
   gh: Gh = runGh,
@@ -231,17 +244,7 @@ export function main(
     process.exitCode = 1;
     return;
   }
-  const event = readEvent(parseJson(readFileSync(eventPath, "utf8"), eventPath), "$");
-  if (!needsParentCheck(event)) return;
-  const { issue, repository } = event;
-  const issuePath = `repos/${repository.full_name}/issues/${issue.number}`;
-  const current = getOne(gh, issuePath);
-  if (!qualifies(current) || current.milestone === null) return;
-  if (hasParentOrChildren(current)) return;
-  const target = { repo: repository.full_name, number: issue.number };
-  const parents = parentsToName(gh, target, current, current.milestone.number);
-  if (parents.length === 0) return;
-  commentUnlessAttached(gh, target, parents, wait);
+  checkEvent(readEvent(parseJson(readFileSync(eventPath, "utf8"), eventPath), "$"), gh, wait);
 }
 
 if (import.meta.main) main();

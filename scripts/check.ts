@@ -51,31 +51,37 @@ const hasTestDatabase = async (): Promise<boolean> => {
   return url !== undefined && (await isReachable(url));
 };
 
+function selectScripts(args: readonly string[]): readonly string[] {
+  const unknown = args.filter((arg) => arg !== "--static");
+  if (unknown.length > 0)
+    throw new Error(`Unknown argument "${unknown.join(" ")}"; expected --static.`);
+  return args.includes("--static") ? checks.filter((script) => script !== "coverage") : checks;
+}
+
+function reportResult(failed: readonly string[], total: number, databaseMissing: boolean): void {
+  if (failed.length === 0) {
+    console.log(`\nAll ${total} checks passed`);
+    return;
+  }
+  console.error(`\n${failed.length} of ${total} checks failed: ${failed.join(", ")}`);
+  if (failed.includes("format:check")) console.error("Run `pnpm run format` to fix formatting.");
+  if (databaseMissing) console.error(noDatabaseHint);
+  process.exitCode = 1;
+}
+
 export async function main(
   run: Run = runScript,
   args: readonly string[] = process.argv.slice(2),
   hasDatabase: () => Promise<boolean> = hasTestDatabase,
 ): Promise<void> {
-  const unknown = args.filter((arg) => arg !== "--static");
-  if (unknown.length > 0)
-    throw new Error(`Unknown argument "${unknown.join(" ")}"; expected --static.`);
-  const scripts: readonly string[] = args.includes("--static")
-    ? checks.filter((script) => script !== "coverage")
-    : checks;
+  const scripts = selectScripts(args);
   const databaseMissing = scripts.includes("coverage") && !(await hasDatabase());
   const failed = runChecks(scripts, (script) => {
     if (script !== "coverage" || !databaseMissing) return run(script);
     console.error("Skipped: no reachable test database.");
     return false;
   });
-  if (failed.length === 0) {
-    console.log(`\nAll ${scripts.length} checks passed`);
-    return;
-  }
-  console.error(`\n${failed.length} of ${scripts.length} checks failed: ${failed.join(", ")}`);
-  if (failed.includes("format:check")) console.error("Run `pnpm run format` to fix formatting.");
-  if (databaseMissing) console.error(noDatabaseHint);
-  process.exitCode = 1;
+  reportResult(failed, scripts.length, databaseMissing);
 }
 
 if (import.meta.main) await main();
