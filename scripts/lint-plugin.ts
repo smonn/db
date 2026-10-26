@@ -102,6 +102,14 @@ function isErrorConstructor(callee: Node): boolean {
   return callee.type === "Identifier" && callee.name.endsWith("Error");
 }
 
+function dottedInterpolations(node: Extract<Node, { type: "NewExpression" }>): Node[] {
+  const [text] = node.arguments;
+  if (!isErrorConstructor(node.callee) || text?.type !== "TemplateLiteral") return [];
+  return text.expressions.filter((_, index) =>
+    DOTTED_NAME.test(text.quasis[index + 1]?.value.raw ?? ""),
+  );
+}
+
 const errorMessageQualifier: Rule = {
   meta: {
     type: "problem",
@@ -110,11 +118,7 @@ const errorMessageQualifier: Rule = {
   create(context) {
     return {
       NewExpression(node) {
-        const [text] = node.arguments;
-        if (!isErrorConstructor(node.callee) || text?.type !== "TemplateLiteral") return;
-        for (const [index, expression] of text.expressions.entries()) {
-          const after = text.quasis[index + 1]?.value.raw ?? "";
-          if (!DOTTED_NAME.test(after)) continue;
+        for (const expression of dottedInterpolations(node)) {
           context.report({
             node: expression,
             message:

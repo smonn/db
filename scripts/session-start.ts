@@ -67,15 +67,20 @@ function syncWithMain(cwd: string): void {
   }
 }
 
-function hookField(input: string, field: string): string | undefined {
+function parseHookObject(input: string): object | undefined {
   try {
     const parsed: unknown = JSON.parse(input);
-    if (typeof parsed !== "object" || parsed === null) return undefined;
-    const value: unknown = Object.entries(parsed).find(([key]) => key === field)?.[1];
-    return typeof value === "string" && value !== "" ? value : undefined;
+    return typeof parsed === "object" && parsed !== null ? parsed : undefined;
   } catch {
     return undefined;
   }
+}
+
+function hookField(input: string, field: string): string | undefined {
+  const value: unknown = Object.entries(parseHookObject(input) ?? {}).find(
+    ([key]) => key === field,
+  )?.[1];
+  return typeof value === "string" && value !== "" ? value : undefined;
 }
 
 export function hookCwd(input: string, fallback: string): string {

@@ -9,129 +9,65 @@
  */
 import { permissionsProblems, type WorkflowLine } from "./workflow-permissions.ts";
 
+import {
+  endsLine,
+  flowEnd,
+  indentOf,
+  quotedEnd,
+  refuseNodeStart,
+  refuseTrailing,
+  skipSpaces,
+  Unreadable,
+} from "./workflow-yaml-flow.ts";
+
 type Key = NonNullable<WorkflowLine["key"]>;
 
-class Unreadable extends Error {}
-
-const indentOf = (text: string): number => text.length - text.trimStart().length;
-const skipSpaces = (text: string, at: number): number => {
-  let index = at;
-  while (text[index] === " ") index += 1;
-  return index;
-};
-const endsLine = (text: string, at: number): boolean => at >= text.length || text[at] === "#";
-
-const nodeForms: Record<string, string> = {
-  "?": "an explicit key (?)",
-  "&": "an anchor (&)",
-  "*": "an alias (*)",
-  "!": "a tag (!)",
-};
-
-function refuseNodeStart(text: string, at: number): void {
-  const form = nodeForms[text[at] ?? ""];
-  if (form !== undefined) throw new Unreadable(form);
-}
-
-function quotedEnd(text: string, at: number): number {
-  const quote = text[at];
-  for (let index = at + 1; index < text.length; index += 1) {
-    if (quote === '"' && text[index] === "\\")
-      throw new Unreadable("an escape in a double-quoted scalar");
-    if (text[index] !== quote) continue;
-    if (quote === "'" && text[index + 1] === "'") index += 1;
-    else return index + 1;
+function refuseBlockHeader(text: string, at: number): void {
+  if (!/^[|>][-+0-9]*\s*(?:#.*)?$/u.test(text.slice(at))) {
+    throw new Unreadable("a block scalar header");
   }
-  throw new Unreadable("a quoted scalar across lines");
 }
 
-const flowStop = /[,[\]{}]|:(?=[\s,[\]{}]|$)|\s#/u;
-
-function flowNodeEnd(text: string, at: number, keys: string[]): number {
-  refuseNodeStart(text, at);
+function refuseValueTrailing(text: string, at: number, flowKeys: string[]): void {
   const char = text[at];
-  if (char === "{" || char === "[") return flowEnd(text, at, keys);
-  if (char === '"' || char === "'") return quotedEnd(text, at);
-  const stop = flowStop.exec(text.slice(at));
-  return stop === null ? text.length : at + stop.index;
-}
-
-function flowKeyBefore(text: string, start: number, end: number, close: string): string | null {
-  // A key with no colon is still a key in a flow map: `{a, b}` reads as `{a: null, b: null}`.
-  const bare = close === "}" && (text[end] === "," || text[end] === close);
-  if (text[end] !== ":" && !bare) return null;
-  return text
-    .slice(start, end)
-    .trim()
-    .replace(/^(["'])(.*)\1$/u, "$2");
-}
-
-function refuseFlowEnd(text: string, position: number): void {
-  if (endsLine(text, position)) throw new Unreadable("a flow collection across lines");
-}
-
-function flowValueEnd(text: string, colon: number, close: string, keys: string[]): number {
-  const index = skipSpaces(text, colon + 1);
-  refuseFlowEnd(text, index);
-  if (text[index] === "," || text[index] === close) return index;
-  return skipSpaces(text, flowNodeEnd(text, index, keys));
-}
-
-function flowEntryEnd(text: string, start: number, close: string, keys: string[]): number {
-  const index = skipSpaces(text, flowNodeEnd(text, start, keys));
-  const key = flowKeyBefore(text, start, index, close);
-  if (key !== null) keys.push(key);
-  return text[index] === ":" ? flowValueEnd(text, index, close, keys) : index;
-}
-
-function flowEnd(text: string, at: number, keys: string[]): number {
-  const close = text[at] === "{" ? "}" : "]";
-  let index = skipSpaces(text, at + 1);
-  while (text[index] !== close) {
-    refuseFlowEnd(text, index);
-    index = flowEntryEnd(text, index, close, keys);
-    refuseFlowEnd(text, index);
-    if (text[index] === ",") index = skipSpaces(text, index + 1);
-    else if (text[index] !== close) throw new Unreadable("a malformed flow collection");
+  if (char === "{" || char === "[") {
+    refuseTrailing(text, flowEnd(text, at, flowKeys), "a flow collection");
+  } else if (char === '"' || char === "'") {
+    refuseTrailing(text, quotedEnd(text, at), "a quoted scalar");
   }
-  return index + 1;
-}
-
-function refuseTrailing(text: string, at: number, after: string): void {
-  if (!endsLine(text, skipSpaces(text, at))) throw new Unreadable(`text after ${after}`);
 }
 
 // Returns whether the value starts a block scalar.
 function readValue(text: string, at: number, flowKeys: string[]): boolean {
   refuseNodeStart(text, at);
-  const char = text[at];
-  if (char === "|" || char === ">") {
-    if (!/^[|>][-+0-9]*\s*(?:#.*)?$/u.test(text.slice(at)))
-      throw new Unreadable("a block scalar header");
+  if (text[at] === "|" || text[at] === ">") {
+    refuseBlockHeader(text, at);
     return true;
   }
-  if (char === "{" || char === "[")
-    refuseTrailing(text, flowEnd(text, at, flowKeys), "a flow collection");
-  else if (char === '"' || char === "'")
-    refuseTrailing(text, quotedEnd(text, at), "a quoted scalar");
+  refuseValueTrailing(text, at, flowKeys);
   return false;
 }
 
 const plainKey = /^([^#]*?)\s*:(?:\s|$)/u;
 
+function readQuotedKey(text: string, at: number): { key: Key; next: number } | undefined {
+  const end = quotedEnd(text, at);
+  const colon = skipSpaces(text, end);
+  if (text[colon] !== ":") return undefined;
+  return { key: { name: text.slice(at + 1, end - 1), column: at }, next: colon + 1 };
+}
+
+function readPlainKey(text: string, at: number): { key: Key; next: number } | undefined {
+  const match = plainKey.exec(text.slice(at));
+  if (match?.[1] === undefined) return undefined;
+  return { key: { name: match[1], column: at }, next: at + match[0].length };
+}
+
 function readKey(text: string, at: number): { key: Key; next: number } | undefined {
   const char = text[at];
   if (char === "{" || char === "[") return undefined;
-  if (char === '"' || char === "'") {
-    const end = quotedEnd(text, at);
-    const colon = skipSpaces(text, end);
-    if (text[colon] !== ":") return undefined;
-    return { key: { name: text.slice(at + 1, end - 1), column: at }, next: colon + 1 };
-  }
-  const rest = text.slice(at);
-  const match = plainKey.exec(rest);
-  if (match?.[1] === undefined) return undefined;
-  return { key: { name: match[1], column: at }, next: at + match[0].length };
+  if (char === '"' || char === "'") return readQuotedKey(text, at);
+  return readPlainKey(text, at);
 }
 
 function skipDashes(text: string): { at: number; dash: number } {
@@ -149,9 +85,14 @@ type Read = { line: WorkflowLine; scalarAbove?: number };
 const blockOwnerColumn = (keyColumn: number | undefined, dash: number, indent: number): number =>
   keyColumn ?? (dash === -1 ? indent : dash);
 
-function readLine(number: number, text: string): Read {
-  if (/^(?:---|\.\.\.)(?:\s|$)|^%/u.test(text))
+function refuseDocumentMarker(text: string): void {
+  if (/^(?:---|\.\.\.)(?:\s|$)|^%/u.test(text)) {
     throw new Unreadable("a document marker or directive");
+  }
+}
+
+function readLine(number: number, text: string): Read {
+  refuseDocumentMarker(text);
   const start = skipDashes(text);
   let at = start.at;
   const dash = start.dash;
@@ -191,6 +132,9 @@ function readOrProblem(number: number, text: string, file: string): Step {
   }
 }
 
+const continuesScalar = (text: string, scalarAbove: number | undefined): boolean =>
+  scalarAbove !== undefined && (text.trim() === "" || indentOf(text) > scalarAbove);
+
 function stepLine(
   text: string,
   number: number,
@@ -199,8 +143,7 @@ function stepLine(
 ): Step {
   const outside = outsideAsciiProblem(text, number, file);
   if (outside !== undefined) return { problem: outside, scalarAbove };
-  if (scalarAbove !== undefined && (text.trim() === "" || indentOf(text) > scalarAbove))
-    return { scalarAbove };
+  if (continuesScalar(text, scalarAbove)) return { scalarAbove };
   if (text.trim() === "" || text.trimStart().startsWith("#")) return {};
   return readOrProblem(number, text, file);
 }

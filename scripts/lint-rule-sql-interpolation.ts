@@ -24,18 +24,14 @@ function calleeName(node: Node): string | undefined {
 
 type Variable = NonNullable<ReturnType<Scope["set"]["get"]>>;
 
+const isConstDeclaration = (parent: Node | null | undefined): boolean =>
+  parent?.type === "VariableDeclaration" && parent.kind === "const";
+
 function constDeclarator(variable: Variable) {
   const [definition] = variable.defs;
-  if (
-    variable.defs.length !== 1 ||
-    definition?.type !== "Variable" ||
-    definition.parent?.type !== "VariableDeclaration" ||
-    definition.parent.kind !== "const" ||
-    definition.node.type !== "VariableDeclarator"
-  ) {
-    return null;
-  }
-  return definition.node;
+  if (variable.defs.length !== 1 || definition?.type !== "Variable") return null;
+  if (!isConstDeclaration(definition.parent)) return null;
+  return definition.node.type === "VariableDeclarator" ? definition.node : null;
 }
 
 function constBinding(node: Extract<Node, { type: "Identifier" }>, context: Context) {
@@ -53,16 +49,34 @@ function constBinding(node: Extract<Node, { type: "Identifier" }>, context: Cont
   return null;
 }
 
-function isQuoted(node: Node, context: Context, seen: Set<Node>): boolean {
-  if (node.type === "CallExpression") {
-    const name = calleeName(node.callee);
-    return name !== undefined && QUOTERS.has(name);
-  }
-  if (node.type !== "Identifier" || seen.has(node)) return false;
-  seen.add(node);
+function isQuoterCall(node: Extract<Node, { type: "CallExpression" }>): boolean {
+  const name = calleeName(node.callee);
+  return name !== undefined && QUOTERS.has(name);
+}
+
+function isQuotedIdentifier(
+  node: Extract<Node, { type: "Identifier" }>,
+  context: Context,
+  seen: Set<Node>,
+): boolean {
   const binding = constBinding(node, context);
   if (binding === null) return false;
-  return binding.atModule || (binding.init !== null && isQuoted(binding.init, context, seen));
+  if (binding.atModule) return true;
+  return binding.init !== null && isQuoted(binding.init, context, seen);
+}
+
+function isQuoted(node: Node, context: Context, seen: Set<Node>): boolean {
+  if (node.type === "CallExpression") return isQuoterCall(node);
+  if (node.type !== "Identifier" || seen.has(node)) return false;
+  seen.add(node);
+  return isQuotedIdentifier(node, context, seen);
+}
+
+function isSqlTemplate(
+  name: string | undefined,
+  text: Node | undefined,
+): text is Extract<Node, { type: "TemplateLiteral" }> {
+  return name !== undefined && SQL_METHODS.has(name) && text?.type === "TemplateLiteral";
 }
 
 export const sqlInterpolation: Rule = {
@@ -75,9 +89,7 @@ export const sqlInterpolation: Rule = {
       CallExpression(node) {
         const name = calleeName(node.callee);
         const [text] = node.arguments;
-        if (name === undefined || !SQL_METHODS.has(name) || text?.type !== "TemplateLiteral") {
-          return;
-        }
+        if (!isSqlTemplate(name, text)) return;
         for (const expression of text.expressions) {
           if (isQuoted(expression, context, new Set())) continue;
           context.report({
