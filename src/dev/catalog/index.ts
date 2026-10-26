@@ -9,6 +9,7 @@ export type {
   DefaultPayload,
   Fact,
   GeneratedPayload,
+  ForeignKeyPayload,
   IdentityPayload,
   Key,
   PrimaryKeyPayload,

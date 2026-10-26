@@ -1,4 +1,9 @@
-export const HAZARD_KINDS = ["data_loss", "rewrite", "access_exclusive_lock"] as const;
+export const HAZARD_KINDS = [
+  "data_loss",
+  "rewrite",
+  "access_exclusive_lock",
+  "share_row_exclusive_lock",
+] as const;
 
 export type HazardKind = (typeof HAZARD_KINDS)[number];
 
@@ -11,6 +16,11 @@ export type Hazard = {
 
 /** A rewrite holds ACCESS EXCLUSIVE while it copies the table, so it carries both kinds. */
 export const REWRITE: readonly HazardKind[] = ["rewrite", "access_exclusive_lock"];
+/**
+ * Adding a foreign key to an existing table scans it while holding SHARE ROW EXCLUSIVE on it and
+ * on the table it points at, which blocks writes but not reads.
+ */
+export const WRITE_LOCK: readonly HazardKind[] = ["share_row_exclusive_lock"];
 /**
  * Every `ALTER TABLE` takes ACCESS EXCLUSIVE, but only a scan or an index build holds it for
  * work that grows with the table, so only those carry the kind.

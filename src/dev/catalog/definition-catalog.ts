@@ -12,7 +12,9 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
   for (const [schema, tables] of Object.entries(definition)) {
     builder.schema(schema);
     const names = constraintNames(schema, tables);
-    for (const [table, { columns, primaryKey, primaryKeyName }] of Object.entries(tables)) {
+    for (const [table, { columns, primaryKey, primaryKeyName, foreignKeys }] of Object.entries(
+      tables,
+    )) {
       builder.table(schema, table);
       const entries = Object.entries(columns);
       for (const [column, { state }] of entries) {
@@ -41,6 +43,12 @@ export function definitionCatalog(definition: DefinitionTables): Catalog {
           const name = names.unique(table, column, state.constraintName);
           builder.unique(schema, table, name, { column });
         }
+      }
+      for (const { name, columns: from, ...payload } of foreignKeys) {
+        builder.foreignKey(schema, table, names.foreignKey(table, from, name), {
+          columns: from,
+          ...payload,
+        });
       }
     }
   }

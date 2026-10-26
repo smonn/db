@@ -1,3 +1,4 @@
+import type { ForeignKey, ForeignKeyAction } from "../../runtime/definition/index.ts";
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
 
 export type ColumnPayload = {
@@ -35,6 +36,20 @@ export type PrimaryKeyPayload = {
 
 export type UniquePayload = {
   readonly column: string;
+};
+
+export type ForeignKeyPayload = {
+  /** In key order, pairing with the target's columns by position. */
+  readonly columns: readonly string[];
+  readonly target: {
+    readonly schema: string;
+    readonly table: string;
+    readonly columns: readonly string[];
+  };
+  readonly onDelete: ForeignKeyAction;
+  readonly onUpdate: ForeignKeyAction;
+  readonly match: ForeignKey["match"];
+  readonly deferrable: ForeignKey["deferrable"];
 };
 
 /** Schemas and tables carry nothing beyond their name in v0.1. */
@@ -92,6 +107,13 @@ export type Fact =
       readonly name: string;
       readonly parent: Key;
       readonly payload: UniquePayload;
+    }
+  | {
+      /** Named by its constraint; the payload names its target by schema, table, and columns. */
+      readonly kind: "foreign key";
+      readonly name: string;
+      readonly parent: Key;
+      readonly payload: ForeignKeyPayload;
     };
 
 /** A fact on a column, before the builder gives it its parent. */
@@ -121,10 +143,14 @@ export type CatalogBuilder = {
   columnGenerated(schema: string, table: string, column: string, payload: GeneratedPayload): void;
   primaryKey(schema: string, table: string, name: string, payload: PrimaryKeyPayload): void;
   unique(schema: string, table: string, name: string, payload: UniquePayload): void;
+  foreignKey(schema: string, table: string, name: string, payload: ForeignKeyPayload): void;
   build(): Catalog;
 };
 
-/** Throws when a fact names a parent, or a key names a column, not added yet. */
+/**
+ * Throws when a fact names a parent, or a key names a column, not added yet. A foreign key's
+ * target may be added after it, so `build` checks the target.
+ */
 export function catalogBuilder(): CatalogBuilder {
   const catalog = new Map<Key, Fact>();
   const added = (kind: Fact["kind"], ...names: string[]): Key => {
@@ -157,18 +183,69 @@ export function catalogBuilder(): CatalogBuilder {
     columnGenerated(schema, table, column, payload) {
       attribute(schema, table, column, { kind: "generated", name: GENERATED_NAME, payload });
     },
-    primaryKey(schema, table, name, payload) {
-      const parent = added("table", schema, table);
-      for (const column of payload.columns) added("column", schema, table, column);
-      catalog.set(constraintKey(parent, name), { kind: "primary key", name, parent, payload });
+    ...constraintMethods(catalog, added),
+    build() {
+      for (const fact of catalog.values()) {
+        if (fact.kind === "foreign key") requireTarget(fact.payload.target, added);
+      }
+      return new Map(catalog);
     },
-    unique(schema, table, name, payload) {
-      const parent = added("table", schema, table);
-      added("column", schema, table, payload.column);
-      catalog.set(constraintKey(parent, name), { kind: "unique", name, parent, payload });
-    },
-    build: () => new Map(catalog),
   };
+}
+
+type Added = (kind: Fact["kind"], ...names: string[]) => Key;
+
+/** The keys, which each check their table and columns before adding their fact. */
+function constraintMethods(
+  catalog: Map<Key, Fact>,
+  added: Added,
+): Pick<CatalogBuilder, "primaryKey" | "unique" | "foreignKey"> {
+  const add = (
+    schema: string,
+    table: string,
+    columns: readonly string[],
+    make: (parent: Key) => Fact,
+  ) => {
+    const parent = added("table", schema, table);
+    for (const column of columns) added("column", schema, table, column);
+    const fact = make(parent);
+    catalog.set(constraintKey(parent, fact.name), fact);
+  };
+  return {
+    primaryKey: (schema, table, name, payload) => {
+      add(schema, table, payload.columns, (parent) => ({
+        kind: "primary key",
+        name,
+        parent,
+        payload,
+      }));
+    },
+    unique: (schema, table, name, payload) => {
+      add(schema, table, [payload.column], (parent) => ({
+        kind: "unique",
+        name,
+        parent,
+        payload,
+      }));
+    },
+    foreignKey: (schema, table, name, payload) => {
+      add(schema, table, payload.columns, (parent) => ({
+        kind: "foreign key",
+        name,
+        parent,
+        payload,
+      }));
+    },
+  };
+}
+
+/** A foreign key's target may be added after the key, so `build` checks it once all are in. */
+function requireTarget(
+  { schema, table, columns }: ForeignKeyPayload["target"],
+  added: Added,
+): void {
+  added("table", schema, table);
+  for (const column of columns) added("column", schema, table, column);
 }
 
 export function parentOf(catalog: Catalog, fact: Fact): Fact {
@@ -208,7 +285,7 @@ function constraintKey(table: Key, name: string): Key {
 
 function keyOf(fact: Fact): Key {
   if (fact.parent === undefined) return key(fact.name);
-  return fact.kind === "primary key" || fact.kind === "unique"
+  return fact.kind === "primary key" || fact.kind === "unique" || fact.kind === "foreign key"
     ? constraintKey(fact.parent, fact.name)
     : key(fact.parent, fact.name);
 }

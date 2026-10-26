@@ -182,6 +182,17 @@ export const HANDLING: HandlingTable<Fact> = {
     alter: () => [],
     columnsNamed: (fact) => [fact.payload.column],
   },
+  "foreign key": {
+    // Its target may drop before the table it sits on, and Postgres refuses to drop a key a
+    // foreign key still needs, so every foreign key gets its own `DROP CONSTRAINT`.
+    parentDropCovers: false,
+    drop: (fact) => [{ kind: "drop foreign key", fact }],
+    parentCreateCovers: false,
+    create: (fact) => [{ kind: "add foreign key", fact }],
+    replacedOnChange: true,
+    alter: () => [],
+    columnsNamed: (fact) => fact.payload.columns,
+  },
 };
 
 function handlingOf<K extends Kind>(fact: FactOf<K>): Handling<FactOf<K>> {
