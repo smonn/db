@@ -1,0 +1,41 @@
+import {
+  childrenOf,
+  type Catalog,
+  type Fact,
+  type GeneratedPayload,
+  type Key,
+} from "../catalog/index.ts";
+import type { Catalogs } from "./actions.ts";
+
+/**
+ * The columns `ALTER COLUMN` can't convert: Postgres can't make a plain column generated, switch
+ * a column between stored and virtual, or drop the expression of a virtual one.
+ */
+export function rebuiltColumns({ from, to }: Catalogs): ReadonlyMap<Key, Fact> {
+  const rebuilt = new Map<Key, Fact>();
+  for (const [key, before] of from) {
+    const after = to.get(key);
+    if (before.kind !== "column" || after?.kind !== "column") continue;
+    const was = generation(from, before);
+    const now = generation(to, after);
+    if (was?.storage === now?.storage) continue;
+    if (now === undefined && was?.storage === "stored") continue;
+    rebuilt.set(key, after);
+  }
+  return rebuilt;
+}
+
+function generation(catalog: Catalog, column: Fact): GeneratedPayload | undefined {
+  const child = childrenOf(catalog, column).find((fact) => fact.kind === "generated");
+  return child?.kind === "generated" ? child.payload : undefined;
+}
+
+export function retyped(column: Key, { from, to }: Catalogs): boolean {
+  const before = from.get(column);
+  const after = to.get(column);
+  return (
+    before?.kind === "column" &&
+    after?.kind === "column" &&
+    before.payload.type !== after.payload.type
+  );
+}

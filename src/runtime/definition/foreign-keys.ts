@@ -22,13 +22,19 @@ type Place = { readonly schema: string; readonly table: string; readonly column:
 
 export type Places = ReadonlyMap<unknown, readonly Place[]>;
 
-type Tables = Readonly<Record<string, Readonly<Record<string, { readonly columns: Columns }>>>>;
+type Tables = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+
+function hasColumns(entry: unknown): entry is { readonly columns: Columns } {
+  return typeof entry === "object" && entry !== null && "columns" in entry;
+}
 
 /** Records where each column value lives; `defineDatabase` is the first point where tables have names. */
 export function placesOf(schemas: Tables): Places {
   const places = new Map<unknown, Place[]>();
   for (const [schema, tables] of Object.entries(schemas)) {
-    for (const [table, { columns }] of Object.entries(tables)) {
+    for (const [table, entry] of Object.entries(tables)) {
+      if (!hasColumns(entry)) continue;
+      const { columns } = entry;
       for (const [column, value] of Object.entries(columns)) {
         places.set(value, [...(places.get(value) ?? []), { schema, table, column }]);
       }

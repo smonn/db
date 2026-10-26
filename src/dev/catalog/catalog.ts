@@ -1,56 +1,14 @@
-import type { ForeignKey, ForeignKeyAction } from "../../runtime/definition/index.ts";
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
-
-export type ColumnPayload = {
-  /** The type as `format_type` renders it, such as `character varying(20)`. */
-  readonly type: string;
-  /** True for a Postgres 18 `pg_constraint` NOT NULL row too, whatever its constraint name. */
-  readonly notNull: boolean;
-};
-
-export type DefaultPayload = {
-  /** The expression as `pg_get_expr` renders it, such as `now()` or `'new'::text`. */
-  readonly expression: string;
-  /**
-   * True when the expression calls a volatile function, such as `random()` or `nextval`, so
-   * adding the column evaluates it once per row instead of once for the table.
-   */
-  readonly volatile: boolean;
-};
-
-export type IdentityPayload = {
-  readonly generated: "always" | "by default";
-};
-
-export type GeneratedPayload = {
-  /** The expression as `pg_get_expr` renders it, such as `(a * 2)`. */
-  readonly expression: string;
-  /** Postgres 18 defaults to `virtual`; only `stored` keeps its values on disk. */
-  readonly storage: "stored" | "virtual";
-};
-
-export type PrimaryKeyPayload = {
-  /** In key order, which is the order the index sorts by. */
-  readonly columns: readonly string[];
-};
-
-export type UniquePayload = {
-  readonly column: string;
-};
-
-export type ForeignKeyPayload = {
-  /** In key order, pairing with the target's columns by position. */
-  readonly columns: readonly string[];
-  readonly target: {
-    readonly schema: string;
-    readonly table: string;
-    readonly columns: readonly string[];
-  };
-  readonly onDelete: ForeignKeyAction;
-  readonly onUpdate: ForeignKeyAction;
-  readonly match: ForeignKey["match"];
-  readonly deferrable: ForeignKey["deferrable"];
-};
+import type {
+  ColumnPayload,
+  DefaultPayload,
+  EnumPayload,
+  ForeignKeyPayload,
+  GeneratedPayload,
+  IdentityPayload,
+  PrimaryKeyPayload,
+  UniquePayload,
+} from "./payloads.ts";
 
 /** Schemas and tables carry nothing beyond their name in v0.1. */
 type NoPayload = Readonly<Record<string, never>>;
@@ -70,6 +28,12 @@ export type Fact =
       readonly name: string;
       readonly parent: Key;
       readonly payload: NoPayload;
+    }
+  | {
+      readonly kind: "enum";
+      readonly name: string;
+      readonly parent: Key;
+      readonly payload: EnumPayload;
     }
   | {
       readonly kind: "column";
@@ -137,6 +101,7 @@ export type Catalog = ReadonlyMap<Key, Fact>;
 export type CatalogBuilder = {
   schema(name: string): void;
   table(schema: string, name: string): void;
+  enumType(schema: string, name: string, payload: EnumPayload): void;
   column(schema: string, table: string, name: string, payload: ColumnPayload): void;
   columnDefault(schema: string, table: string, column: string, payload: DefaultPayload): void;
   columnIdentity(schema: string, table: string, column: string, payload: IdentityPayload): void;
@@ -169,6 +134,10 @@ export function catalogBuilder(): CatalogBuilder {
     table(schema, name) {
       const parent = added("schema", schema);
       catalog.set(key(schema, name), { kind: "table", name, parent, payload: {} });
+    },
+    enumType(schema, name, payload) {
+      const parent = added("schema", schema);
+      catalog.set(key(schema, name), { kind: "enum", name, parent, payload });
     },
     column(schema, table, name, payload) {
       const parent = added("table", schema, table);
@@ -289,6 +258,6 @@ function keyOf(fact: Fact): Key {
     : key(fact.parent, fact.name);
 }
 
-function quoted(names: readonly string[]): string {
+export function quoted(names: readonly string[]): string {
   return names.map((name) => quoteIdentifier(name)).join(".");
 }

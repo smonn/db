@@ -1,10 +1,14 @@
 import type { Codec, RuntimeCodec } from "./codec.ts";
+import type { Enum } from "./enum.ts";
 import type { ColumnReference, ForeignKeyOptions, Target } from "./references.ts";
 
 type Identity = "always" | "by default";
 
 export type ColumnState = {
+  /** Empty for an enum column, whose type is `enumType`. */
   readonly sqlType: string;
+  /** The enum itself, since the rollup gives its type a name. */
+  readonly enumType: Enum | undefined;
   /** True for a primary key or identity column too, as Postgres makes them. */
   readonly notNull: boolean;
   /** A SQL expression, written as it would follow `default` in DDL. */

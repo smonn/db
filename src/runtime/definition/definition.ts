@@ -1,6 +1,7 @@
 import type { Columns } from "./column.ts";
+import { isEnum, type Enum } from "./enum.ts";
 import { type ColumnFactories, factories } from "./factories.ts";
-import { type ForeignKey, foreignKeysOf, placesOf } from "./foreign-keys.ts";
+import { type ForeignKey, foreignKeysOf, placesOf, type Places } from "./foreign-keys.ts";
 
 /** A table without its name or schema, which `defineDatabase` gives it. */
 export type TableDefinition<C extends Columns = Columns, K extends string = string> = {
@@ -175,16 +176,34 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
   } as unknown as TableDefinition<C, KeyOf<C, Args>>;
 }
 
-type Schemas = Record<string, Record<string, TableDefinition>>;
+/** What a schema holds: tables and enums, which share one pool of names in Postgres. */
+type SchemaEntry = TableDefinition | Enum;
+
+type Schemas = Record<string, Record<string, SchemaEntry>>;
 
 export type Database<S extends Schemas> = {
   readonly [Schema in keyof S]: {
-    readonly [Name in keyof S[Schema]]: Table<
-      S[Schema][Name]["columns"],
-      S[Schema][Name]["primaryKey"][number]
-    >;
+    readonly [Name in keyof S[Schema]]: S[Schema][Name] extends TableDefinition
+      ? Table<S[Schema][Name]["columns"], S[Schema][Name]["primaryKey"][number]>
+      : S[Schema][Name];
   };
 };
+
+function tableOf(
+  places: Places,
+  schema: string,
+  name: string,
+  { columns, primaryKey, primaryKeyName }: TableDefinition,
+): Table {
+  return {
+    schema,
+    name,
+    columns,
+    primaryKey,
+    primaryKeyName,
+    foreignKeys: foreignKeysOf(places, schema, name, columns),
+  };
+}
 
 export function defineDatabase<S extends Schemas>(schemas: S): Database<S> {
   const places = placesOf(schemas);
@@ -192,16 +211,10 @@ export function defineDatabase<S extends Schemas>(schemas: S): Database<S> {
     Object.entries(schemas).map(([schema, tables]) => [
       schema,
       Object.fromEntries(
-        Object.entries(tables).map(([name, { columns, primaryKey, primaryKeyName }]) => [
+        Object.entries(tables).map(([name, entry]) => [
           name,
-          {
-            schema,
-            name,
-            columns,
-            primaryKey,
-            primaryKeyName,
-            foreignKeys: foreignKeysOf(places, schema, name, columns),
-          },
+          // An enum stays the value its columns hold, since the catalog finds its name by identity.
+          isEnum(entry) ? entry : tableOf(places, schema, name, entry),
         ]),
       ),
     ]),

@@ -1,17 +1,16 @@
 export { catalogBuilder, childrenOf, namesOf, parentOf } from "./catalog.ts";
+export type { Catalog, CatalogBuilder, Fact, Key } from "./catalog.ts";
+export { typeName } from "./column-type.ts";
 export { definitionCatalog } from "./definition-catalog.ts";
 export type { DefinitionTables } from "./definition-catalog.ts";
 export { arePayloadsEqual, qualified } from "./compare.ts";
 export type {
-  Catalog,
-  CatalogBuilder,
   ColumnPayload,
   DefaultPayload,
-  Fact,
-  GeneratedPayload,
+  EnumPayload,
   ForeignKeyPayload,
+  GeneratedPayload,
   IdentityPayload,
-  Key,
   PrimaryKeyPayload,
   UniquePayload,
-} from "./catalog.ts";
+} from "./payloads.ts";

@@ -1,35 +1,49 @@
-import type { Table } from "../../runtime/definition/index.ts";
-import { catalogBuilder, type Catalog, type CatalogBuilder } from "./catalog.ts";
-import { constraintNames } from "./constraint-names.ts";
+import { isEnum, type Enum, type Table } from "../../runtime/definition/index.ts";
+import { catalogBuilder, quoted, type Catalog, type CatalogBuilder } from "./catalog.ts";
+import { columnType } from "./column-type.ts";
+import { constraintNames, type ConstraintNames } from "./constraint-names.ts";
+import { enumTypeNames, labelsOf } from "./enums.ts";
 
 /** The shape `defineDatabase` returns, loosened so any Definition fits. */
 export type DefinitionTables = {
-  readonly [schema: string]: { readonly [table: string]: Table };
+  readonly [schema: string]: { readonly [name: string]: Table | Enum };
 };
 
 export function definitionCatalog(definition: DefinitionTables): Catalog {
   const builder = catalogBuilder();
-  for (const [schema, tables] of Object.entries(definition)) {
+  const enums = enumTypeNames(definition);
+  for (const [schema, entries] of Object.entries(definition)) {
     builder.schema(schema);
+    const tables: Record<string, Table> = {};
+    for (const [name, entry] of Object.entries(entries)) {
+      if (isEnum(entry)) builder.enumType(schema, name, { labels: labelsOf(schema, name, entry) });
+      else tables[name] = entry;
+    }
     const names = constraintNames(schema, tables);
     for (const [table, tableDefinition] of Object.entries(tables)) {
-      addDefinitionTable(builder, names, { schema, table }, tableDefinition);
+      addDefinitionTable(builder, { schema, table, names, enums }, tableDefinition);
     }
   }
   return builder.build();
 }
 
+type TableContext = {
+  readonly schema: string;
+  readonly table: string;
+  readonly names: ConstraintNames;
+  readonly enums: ReadonlyMap<Enum, string>;
+};
+
 function addDefinitionTable(
   builder: CatalogBuilder,
-  names: ReturnType<typeof constraintNames>,
-  { schema, table }: { schema: string; table: string },
+  { schema, table, names, enums }: TableContext,
   { columns, primaryKey, primaryKeyName, foreignKeys }: Table,
 ): void {
   builder.table(schema, table);
   const entries = Object.entries(columns);
   for (const [column, { state }] of entries) {
     builder.column(schema, table, column, {
-      type: postgresType(state.sqlType),
+      type: columnType(state, enums, quoted([schema, table, column])),
       notNull: state.notNull || primaryKey.includes(column) || state.identity !== undefined,
     });
     if (state.default !== undefined) {
@@ -60,21 +74,4 @@ function addDefinitionTable(
       ...payload,
     });
   }
-}
-
-const TYPE_NAMES: Readonly<Record<string, string>> = {
-  varchar: "character varying",
-  timestamp: "timestamp without time zone",
-  timestamptz: "timestamp with time zone",
-};
-
-/** Rewrites the Definition's `sqlType` the way `format_type` renders it, so both catalogs agree. */
-function postgresType(sqlType: string): string {
-  const [name = sqlType, modifiers = ""] = sqlType.split(/(?=\()/u);
-  // Postgres reads `numeric(10)` back as `numeric(10,0)`.
-  const spelled =
-    name === "numeric" && /^\(\d+\)$/u.test(modifiers)
-      ? `(${modifiers.slice(1, -1)},0)`
-      : modifiers;
-  return `${TYPE_NAMES[name] ?? name}${spelled}`;
 }

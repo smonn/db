@@ -11,6 +11,7 @@ const pair = (c: ColumnFactories) => ({ a: c.integer(), b: c.integer() });
 
 const PLAIN = {
   sqlType: "",
+  enumType: undefined,
   notNull: false,
   default: undefined,
   identity: undefined,
