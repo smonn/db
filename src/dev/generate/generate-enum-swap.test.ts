@@ -76,8 +76,13 @@ describe("generate with an enum type swap", () => {
 create domain public.moods as public.mood[];
 `;
 
-    await expect(generateFrom(withMood("c", "b", "a"), sql)).rejects.toThrow(
+    const refused = generateFrom(withMood("c", "b", "a"), sql);
+
+    await expect(refused).rejects.toThrow(
       /^Generate can't remove or reorder a label of the enum "public"\."mood" while a domain depends on it: "public"\."calm", "public"\."moods"\. /u,
+    );
+    await expect(refused).rejects.toThrow(
+      / Generate wrote no migration: write this one by hand, dropping each domain before the swap and creating it again after, or drop the domains in an earlier migration\.$/u,
     );
   });
 

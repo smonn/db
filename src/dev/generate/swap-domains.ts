@@ -35,7 +35,7 @@ export async function refuseSwapUnderDomains(
       (row) => `${quoteIdentifier(String(row["schema"]))}.${quoteIdentifier(String(row["name"]))}`,
     );
     throw new Error(
-      `Generate can't remove or reorder a label of the enum ${qualified(before, catalogs.from)} while a domain depends on it: ${domains.join(", ")}. Postgres can't move a domain to a new type, so the swap couldn't drop the old one. Hand edit the Current migration to drop each domain before the swap and create it again after.`,
+      `Generate can't remove or reorder a label of the enum ${qualified(before, catalogs.from)} while a domain depends on it: ${domains.join(", ")}. Postgres can't move a domain to a new type, so the swap couldn't drop the old one. Generate wrote no migration: write this one by hand, dropping each domain before the swap and creating it again after, or drop the domains in an earlier migration.`,
     );
   }
 }
