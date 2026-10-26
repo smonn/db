@@ -1,3 +1,4 @@
+export { explainBlockerError, type BlockerSource } from "./blocker-errors.ts";
 export {
   committedFilenames,
   CURRENT_FILENAME,

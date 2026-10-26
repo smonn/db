@@ -58,11 +58,11 @@ describe("verifyInShadow", () => {
     await expect(
       verifyInShadow(db.driver, "drop table public.users;", definition(), tracking),
     ).rejects.toThrow(
-      /cannot drop table users because other objects depend on it.*\n {2}view user_ids depends on table users\n.*by hand/su,
+      /cannot drop table users because other objects depend on it:\n {2}view user_ids depends on table users\nGenerate never uses CASCADE.*Hand edit the Current migration/su,
     );
   });
 
-  it("names the column and points to the hand edit when a type change needs USING (42804)", async () => {
+  it("offers a USING clause or a default change when a type change can't be cast (42804)", async () => {
     await db.driver.execute("create table public.users (id text not null);");
 
     await expect(
@@ -73,8 +73,21 @@ describe("verifyInShadow", () => {
         tracking,
       ),
     ).rejects.toThrow(
-      /column "id" cannot be cast automatically.*Edit the Current migration by hand/su,
+      /column "id" cannot be cast automatically.*\nGenerate writes a plain ALTER COLUMN \.\.\. TYPE with no USING.*add a USING clause or change the column's default/su,
     );
+  });
+
+  it("keeps the hint true when a default that can't be cast raises 42804", async () => {
+    await db.driver.execute("create table public.users (id text not null default '1');");
+
+    const failure = verifyInShadow(
+      db.driver,
+      "alter table public.users alter column id type integer using id::integer;",
+      definition(),
+      tracking,
+    );
+    await expect(failure).rejects.toThrow(/default for column "id" cannot be cast automatically/u);
+    await expect(failure).rejects.toThrow(/or change the column's default/u);
   });
 
   it("names the view and column when a type change alters a column a view uses (0A000)", async () => {
@@ -90,8 +103,47 @@ describe("verifyInShadow", () => {
         tracking,
       ),
     ).rejects.toThrow(
-      /cannot alter type of a column used by a view or rule:\n.*view user_ids depends on column "id".*\ngenerate never alters a view.*by hand/su,
+      /cannot alter type of a column used by a view or rule:\n.*view user_ids depends on column "id".*\nGenerate never uses CASCADE or alters an Unmodeled object.*Hand edit the Current migration/su,
     );
+  });
+
+  it("names the rule when a rule uses the column (0A000)", async () => {
+    await db.driver.execute(
+      "create table public.users (id text not null); create rule log_users as on insert to public.users do also select new.id;",
+    );
+
+    await expect(
+      verifyInShadow(
+        db.driver,
+        "alter table public.users alter column id type varchar;",
+        definition(),
+        tracking,
+      ),
+    ).rejects.toThrow(
+      /used by a view or rule:\n {2}rule log_users on table users depends on column "id"/u,
+    );
+  });
+
+  it("passes a 0A000 for a column used in a policy or trigger through unchanged", async () => {
+    await db.driver.execute(
+      `create table public.users (id text not null);
+       create policy own on public.users using (id <> '');
+       create function public.noop() returns trigger language plpgsql as 'begin return new; end';
+       create table public.audited (id text not null);
+       create trigger audit before update of id on public.audited for each row execute function public.noop();`,
+    );
+
+    for (const table of ["users", "audited"]) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- one failure per table.
+      await expect(
+        verifyInShadow(
+          db.driver,
+          `alter table public.${table} alter column id type varchar;`,
+          definition(),
+          tracking,
+        ),
+      ).rejects.toThrow(/^cannot alter type of a column used in a (?:policy|trigger) definition$/u);
+    }
   });
 
   it("passes other SQL errors through", async () => {

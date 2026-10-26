@@ -1,4 +1,4 @@
-import { DEFAULT_TRACKING_SCHEMA, trackingSchema } from "../internal/index.ts";
+import { DEFAULT_TRACKING_SCHEMA, explainBlockerError, trackingSchema } from "../internal/index.ts";
 import type { Driver, MigrationSource } from "../ports/index.ts";
 import { checkRecorded, loadVerifiedMigrations } from "./verify.ts";
 
@@ -46,11 +46,17 @@ export async function migrate({
 
     const applied: string[] = [];
     for (const migration of pending) {
-      // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
-      await session.transaction(async (tx) => {
-        await tx.execute(migration.body);
-        await tracking.recordMigration(tx, migration);
-      });
+      try {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
+        await session.transaction(async (tx) => {
+          await tx.execute(migration.body);
+          await tracking.recordMigration(tx, migration);
+        });
+      } catch (error) {
+        throw explainBlockerError(error, {
+          source: { kind: "committed", filename: migration.filename },
+        });
+      }
       applied.push(migration.filename);
     }
     return { applied };

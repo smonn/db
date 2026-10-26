@@ -148,7 +148,7 @@ describe("generate with a hand-edited current.sql", () => {
       migrations: "db/migrations",
     });
 
-    await expect(failure).rejects.toThrow(/add the USING clause to the ALTER COLUMN/u);
+    await expect(failure).rejects.toThrow(/\nAdd a USING clause to the ALTER COLUMN/u);
     await expect(failure).rejects.not.toThrow(/no USING/u);
   });
 
@@ -167,8 +167,10 @@ describe("generate with a hand-edited current.sql", () => {
     });
 
     await expect(failure).rejects.toThrow(/cannot alter type of a column used by a view/u);
-    await expect(failure).rejects.toThrow(/\ndrop or change the view by hand/u);
-    await expect(failure).rejects.not.toThrow(/generate never alters/u);
+    await expect(failure).rejects.toThrow(
+      /\nAn Unmodeled object blocks it\. Hand edit the Current/u,
+    );
+    await expect(failure).rejects.not.toThrow(/Generate never/u);
   });
 
   it("words the blocked-drop hint for a hand edit, not for generated SQL", async () => {
@@ -185,7 +187,9 @@ describe("generate with a hand-edited current.sql", () => {
       migrations: "db/migrations",
     });
 
-    await expect(failure).rejects.toThrow(/an Unmodeled object blocks it/u);
+    await expect(failure).rejects.toThrow(
+      /\nAn Unmodeled object blocks it\. Hand edit the Current/u,
+    );
     await expect(failure).rejects.not.toThrow(/never uses CASCADE/u);
   });
 
@@ -210,7 +214,7 @@ describe("generate with a hand-edited current.sql", () => {
     };
     await fileSystem.remove(CURRENT);
     await expect(generate(options)).rejects.toThrow(
-      /^cannot drop column extra of table users because other objects depend on it; generate never uses CASCADE, so an Unmodeled object blocks it:\n {2}view v depends on column extra of table users\n/u,
+      /^cannot drop column extra of table users because other objects depend on it:\n {2}view v depends on column extra of table users\nGenerate never uses CASCADE or alters an Unmodeled object, so one blocks it\./u,
     );
     await fileSystem.writeFile(CURRENT, body);
 

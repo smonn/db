@@ -31,7 +31,7 @@ export async function leftoverAfter(
   try {
     await shadow.execute(sql);
   } catch (error) {
-    throw explainShadowError(error, context.handEdited);
+    throw explainShadowError(error, { handEdited: context.handEdited });
   }
   const remaining = differences(await introspect(shadow, context.tracking), definition);
   if (remaining.length === 0) return undefined;
