@@ -107,6 +107,11 @@ function clashProblems(
   return checkAdrClash(adrs, readOpenAdds(number));
 }
 
+function report(problems: readonly string[]): void {
+  for (const problem of problems) console.error(problem);
+  if (problems.length > 0) process.exitCode = 1;
+}
+
 export function main(
   env: NodeJS.ProcessEnv = process.env,
   readAdrs: (base: string) => ChangedAdr[] = readChangedAdrs,
@@ -120,8 +125,7 @@ export function main(
   }
   const adrs = base === undefined ? [] : readAdrs(base);
   const problems = [...checkPr(title, branch, adrs), ...clashProblems(adrs, number, readOpenAdds)];
-  for (const problem of problems) console.error(problem);
-  if (problems.length > 0) process.exitCode = 1;
+  report(problems);
 }
 
 if (import.meta.main) main();
