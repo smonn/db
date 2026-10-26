@@ -16,10 +16,8 @@
     "reportUnusedDisableDirectives": "error"
   },
   "rules": {
-    // Baseline: complexity 8 (install in scripts/actionlint.ts, among others; list them with
-    // node scripts/complexity.ts 7); it was 21 at adoption (2026-10-22). Target: 6.
-    // Lower it as functions are split.
-    "complexity": ["error", { "max": 8 }],
+    // The target of 6 is reached (adopted at 21 on 2026-10-22).
+    "complexity": ["error", { "max": 6 }],
     "max-params": ["error", { "max": 4 }],
     "max-depth": ["error", { "max": 4 }],
     // A backstop; fta judges file maintainability, so this stays above the largest file.

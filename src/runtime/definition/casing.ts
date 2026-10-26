@@ -11,8 +11,7 @@ export type DatabaseOptions = {
 
 const OPTION_KEYS = new Set(["casing"]);
 
-/** The function that maps a key to its SQL name under `options`. */
-export function casingOf(options: unknown): (key: string) => string {
+function checkedOptions(options: unknown): object {
   if (typeof options !== "object" || options === null) {
     throw new TypeError("defineDatabase takes its options as { casing? }");
   }
@@ -20,7 +19,13 @@ export function casingOf(options: unknown): (key: string) => string {
   if (unexpected !== undefined) {
     throw new TypeError(`defineDatabase does not take the option "${unexpected}"`);
   }
-  const casing: unknown = "casing" in options ? options.casing : undefined;
+  return options;
+}
+
+/** The function that maps a key to its SQL name under `options`. */
+export function casingOf(options: unknown): (key: string) => string {
+  const checked = checkedOptions(options);
+  const casing: unknown = "casing" in checked ? checked.casing : undefined;
   if (casing === undefined) return (key) => key;
   if (casing === "snake_case") return snakeCase;
   throw new TypeError(`defineDatabase takes casing "snake_case", not ${JSON.stringify(casing)}`);

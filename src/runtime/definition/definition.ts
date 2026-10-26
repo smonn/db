@@ -80,6 +80,15 @@ function declaredExtras<C extends Columns>(
   return extras?.(own as unknown as ColumnRefs<C>);
 }
 
+function keysOf(columns: Columns, own: RuntimeRefs, declared: Extras | undefined) {
+  return {
+    primaryKey: primaryKeyOf(columns, own, declared?.primaryKey),
+    uniques: uniquesOf(own, declared?.unique),
+    declaredForeignKeys: declaredForeignKeysOf(own, declared?.foreignKeys),
+    indexes: indexesOf(own, declared?.indexes),
+  };
+}
+
 export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>(
   define: (c: ColumnFactories) => C,
   ...args: Args
@@ -87,10 +96,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>
   const columns = define(factories);
   const own = refsOf(columns);
   const declared = declaredExtras<C>(own, args[0]);
-  const primaryKey = primaryKeyOf(columns, own, declared?.primaryKey);
-  const uniques = uniquesOf(own, declared?.unique);
-  const declaredForeignKeys = declaredForeignKeysOf(own, declared?.foreignKeys);
-  const indexes = indexesOf(own, declared?.indexes);
+  const { primaryKey, uniques, declaredForeignKeys, indexes } = keysOf(columns, own, declared);
   const renamedFrom = renamedFromOf(declared?.renamedFrom);
   const explicitName = sqlNameOf(declared?.name);
   refuseKeyAndUnique(columns);
