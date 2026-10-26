@@ -46,6 +46,11 @@ describe("readChangedAdrs against a real git repository", () => {
   };
 
   beforeEach(() => {
+    // A pre-push hook in a linked worktree exports GIT_DIR, which overrides cwd and would point
+    // every git call here, ours and readChangedAdrs's, at the pushing repository.
+    for (const name of Object.keys(process.env).filter((key) => key.startsWith("GIT_"))) {
+      vi.stubEnv(name, undefined);
+    }
     dir = mkdtempSync(join(tmpdir(), "check-pr-git-"));
     git("init", "--quiet");
     mkdirSync(join(dir, "docs", "adr"), { recursive: true });
@@ -53,6 +58,7 @@ describe("readChangedAdrs against a real git repository", () => {
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+    vi.unstubAllEnvs();
   });
 
   test("reads the base status of a modified ADR and none for an added one", () => {
