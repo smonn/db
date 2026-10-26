@@ -3,7 +3,7 @@ import {
   terminateBackendRunning,
   useTestDatabase,
 } from "../../adapters/postgres-js/test-database.test-helper.ts";
-import { writeMigration } from "../internal/index.ts";
+import { acquireMigrationLock, writeMigration } from "../internal/index.ts";
 import type { MigrationFile, MigrationSource } from "../ports/index.ts";
 import { migrate } from "./migrate.ts";
 
@@ -91,6 +91,22 @@ describe("migrate", () => {
     expect(results.map((result) => result.applied.length).toSorted((a, b) => a - b)).toStrictEqual([
       0, 2,
     ]);
+  });
+
+  it("waits for a held migration lock by polling, without queuing for it", async () => {
+    await db.driver.session(async (holder) => {
+      await acquireMigrationLock(holder);
+      const waiting = migrate({ driver: db.driver, source: source(CREATE_USERS) });
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 150);
+      });
+      const { rows } = await db.driver.query(
+        "select count(*)::int as n from pg_locks where locktype = 'advisory' and not granted",
+      );
+      expect(rows).toStrictEqual([{ n: 0 }]);
+      await holder.query("select pg_advisory_unlock_all()");
+      await expect(waiting).resolves.toStrictEqual({ applied: ["000001-create-users.sql"] });
+    });
   });
 
   it("rolls back a failing file with its record and keeps the files before it", async () => {

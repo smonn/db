@@ -1,4 +1,9 @@
-import { DEFAULT_TRACKING_SCHEMA, explainBlockerError, trackingSchema } from "../internal/index.ts";
+import {
+  acquireMigrationLock,
+  DEFAULT_TRACKING_SCHEMA,
+  explainBlockerError,
+  trackingSchema,
+} from "../internal/index.ts";
 import type { Driver, MigrationSource } from "../ports/index.ts";
 import { checkRecorded, loadVerifiedMigrations } from "./verify.ts";
 
@@ -13,12 +18,9 @@ export type MigrateResult = {
   readonly applied: readonly string[];
 };
 
-// "SMONNDBMIGRATE" on a phone keypad, per ADR-0008.
-const LOCK_KEY = "76666326447283";
-
 /**
  * Applies every Committed migration not yet recorded, each in its own transaction with its
- * tracking row. A session advisory lock makes parallel runs wait, then find nothing left.
+ * tracking row. A session advisory lock, polled for, makes parallel runs wait, then find nothing left.
  * Before applying anything, it refuses a broken file chain and recorded rows that aren't a prefix
  * of that chain.
  * Refuses a Dev database (ADR-0016) when migrations are pending: the tracking schema's
@@ -33,7 +35,7 @@ export async function migrate({
   const migrations = await loadVerifiedMigrations(source);
 
   return driver.session(async (session) => {
-    await session.query(`select pg_advisory_lock(${LOCK_KEY})`);
+    await acquireMigrationLock(session);
     await tracking.ensureMigrationsTable(session);
     const recorded = await tracking.readRecorded(session);
     checkRecorded(migrations, recorded);
