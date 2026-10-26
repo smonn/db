@@ -2,16 +2,21 @@
  * Checks that a pull request title is a Conventional Commit, since release-please builds releases
  * from squash-merged titles (ADR-0018), and that its head branch is a Conventional Branch. A
  * `docs(adr): propose ...` title must not change an ADR to `status: accepted`, and a
- * `docs(adr): accept ...` title needs every changed ADR to be accepted.
+ * `docs(adr): accept ...` title needs every changed ADR to be accepted. An ADR the PR adds must not
+ * share its number with one another open PR adds (docs/adr/TEMPLATE.md numbers one past the highest
+ * on `main` or in an open PR, and nothing else catches a clash before the second merge).
  *
  * Run with `PR_TITLE` and `PR_BRANCH` set, as `pnpm check:pr`; CI runs it in the Metadata job (`.github/workflows/pr.yml`).
  * Set `PR_DIFF_BASE` to a git revision (CI uses `HEAD^1`, the base side of the merge commit) to
- * also check the ADRs the PR changes; without it the ADR check is skipped.
+ * also check the ADRs the PR changes; without it the ADR check is skipped. Set `PR_NUMBER` as well
+ * to compare the ADRs it adds with those other open PRs add, read through `gh` (needs `GH_TOKEN`
+ * and `GH_REPO` in CI).
  * `check-branch.ts` applies the branch rule to the checked-out branch before a push.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { checkAdrClash, readOpenPrAdds, type OpenPrAdd } from "./check-adr-clash.ts";
 
 const types = [
   "build",
@@ -36,7 +41,7 @@ const statusPattern = /^status:\s*(\S+)\s*$/mu;
 const branchPattern = /^(feature|bugfix|hotfix|release|chore)\/[a-z0-9]+([.-][a-z0-9]+)*$/u;
 const botBranchPrefixes = ["renovate/", "release-please--"];
 
-export type ChangedAdr = { file: string; status: string };
+export type ChangedAdr = { file: string; status: string; added: boolean };
 
 export function checkBranch(branch: string): string[] {
   const isBot = botBranchPrefixes.some((prefix) => branch.startsWith(prefix));
@@ -76,27 +81,36 @@ export function checkPr(title: string, branch: string, adrs: readonly ChangedAdr
 }
 
 export function readChangedAdrs(base: string, cwd: string = process.cwd()): ChangedAdr[] {
-  const diff = execFileSync("git", ["diff", "--name-only", "--diff-filter=d", base, "HEAD"], {
-    cwd,
-    encoding: "utf8",
+  // Without rename detection, a renamed ADR is one added file, so it counts as added.
+  const diff = execFileSync(
+    "git",
+    ["diff", "--name-status", "--no-renames", "--diff-filter=d", base, "HEAD"],
+    { cwd, encoding: "utf8" },
+  );
+  return diff.split("\n").flatMap((line) => {
+    const [letter, file] = line.split("\t");
+    if (letter === undefined || file === undefined || !adrPathPattern.test(file)) return [];
+    const status = parseAdrStatus(readFileSync(join(cwd, file), "utf8"));
+    return [{ file, status, added: letter === "A" }];
   });
-  return diff
-    .split("\n")
-    .filter((file) => adrPathPattern.test(file))
-    .map((file) => ({ file, status: parseAdrStatus(readFileSync(join(cwd, file), "utf8")) }));
 }
 
 export function main(
   env: NodeJS.ProcessEnv = process.env,
   readAdrs: (base: string) => ChangedAdr[] = readChangedAdrs,
+  readOpenAdds: (exclude: string) => OpenPrAdd[] = readOpenPrAdds,
 ): void {
-  const { PR_TITLE: title, PR_BRANCH: branch, PR_DIFF_BASE: base } = env;
+  const { PR_TITLE: title, PR_BRANCH: branch, PR_DIFF_BASE: base, PR_NUMBER: number } = env;
   if (title === undefined || branch === undefined) {
     console.error("Set PR_TITLE and PR_BRANCH");
     process.exitCode = 1;
     return;
   }
-  const problems = checkPr(title, branch, base === undefined ? [] : readAdrs(base));
+  const adrs = base === undefined ? [] : readAdrs(base);
+  const problems = checkPr(title, branch, adrs);
+  if (number !== undefined && adrs.some((adr) => adr.added)) {
+    problems.push(...checkAdrClash(adrs, readOpenAdds(number)));
+  }
   for (const problem of problems) console.error(problem);
   if (problems.length > 0) process.exitCode = 1;
 }
