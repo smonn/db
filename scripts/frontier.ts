@@ -154,6 +154,21 @@ function hasOpenBlocker(ticket: number): boolean {
   return blockers.some((blocker) => blocker.state === "open");
 }
 
+function report(arg: string | undefined, map: number): void {
+  const tickets = arg === undefined ? openTickets() : children(map);
+  const frontier = pickFrontier(tickets, hasOpenBlocker);
+  console.log(
+    frontier.length > 0
+      ? frontier.map((child) => formatTicket(child)).join("\n")
+      : "No frontier tickets.",
+  );
+  if (arg !== undefined) {
+    for (const child of unlinkedClosed(tickets, () => mapBody(map))) {
+      console.warn(formatUnlinked(child));
+    }
+  }
+}
+
 export function main(arg: string | undefined = process.argv[2]): void {
   const map = Number(arg);
   if (arg !== undefined && (!Number.isInteger(map) || map <= 0)) {
@@ -161,18 +176,7 @@ export function main(arg: string | undefined = process.argv[2]): void {
     process.exit(2);
   }
   try {
-    const tickets = arg === undefined ? openTickets() : children(map);
-    const frontier = pickFrontier(tickets, hasOpenBlocker);
-    console.log(
-      frontier.length > 0
-        ? frontier.map((child) => formatTicket(child)).join("\n")
-        : "No frontier tickets.",
-    );
-    if (arg !== undefined) {
-      for (const child of unlinkedClosed(tickets, () => mapBody(map))) {
-        console.warn(formatUnlinked(child));
-      }
-    }
+    report(arg, map);
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);

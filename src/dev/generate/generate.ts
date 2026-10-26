@@ -125,7 +125,7 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
   const current = await writeCurrent(sql);
   await fileSystem.writeFile(path, current.content);
   const reset = await needsReset(driver, tracking, committed, current.hash);
-  if (reset) await resetDevDatabase(driver, source, tracking, current);
+  if (reset) await resetDevDatabase(driver, source, tracking, { current });
   return { path, sql: current.body, reset, hazards, hints };
 }
 
@@ -145,7 +145,7 @@ async function replayEdited(
 ): Promise<GenerateResult> {
   const current = { body: edited, hash: await currentHash(edited) };
   const reset = await needsReset(driver, tracking, committed, current.hash);
-  if (reset) await resetDevDatabase(driver, source, tracking, current);
+  if (reset) await resetDevDatabase(driver, source, tracking, { current });
   const generated = await writeCurrent(sql);
   const diff = lineDiff(edited, generated.body);
   return {

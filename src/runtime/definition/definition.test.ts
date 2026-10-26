@@ -1,6 +1,6 @@
 import { assert, describe, expect, expectTypeOf, it } from "vitest";
-import type { ColumnFactories } from "./column.ts";
-import { defineDatabase, defineTable, type Refs, type Row } from "./definition.ts";
+import type { ColumnFactories } from "./factories.ts";
+import { defineDatabase, defineTable, type ColumnRefs, type Row } from "./definition.ts";
 
 const users = defineTable((c) => ({
   id: c.text().notNull(),
@@ -11,6 +11,7 @@ const pair = (c: ColumnFactories) => ({ a: c.integer(), b: c.integer() });
 
 const PLAIN = {
   sqlType: "",
+  enumType: undefined,
   notNull: false,
   default: undefined,
   identity: undefined,
@@ -18,6 +19,7 @@ const PLAIN = {
   unique: false,
   constraintName: undefined,
   renamedFrom: undefined,
+  references: undefined,
 };
 
 describe("defineTable", () => {
@@ -130,7 +132,7 @@ describe("defineTable", () => {
   });
 
   it("rejects another table's references, by type where the columns differ and at load always", () => {
-    const held: { refs?: Refs<ReturnType<typeof pair>> } = {};
+    const held: { refs?: ColumnRefs<ReturnType<typeof pair>> } = {};
     defineTable(pair, (t) => {
       held.refs = t;
       return {};
@@ -273,6 +275,7 @@ describe("defineDatabase", () => {
       primaryKey: [],
       primaryKeyName: undefined,
       renamedFrom: undefined,
+      foreignKeys: [],
     });
     expect(db.auth.sessions).toStrictEqual({
       schema: "auth",
@@ -281,6 +284,7 @@ describe("defineDatabase", () => {
       primaryKey: [],
       primaryKeyName: undefined,
       renamedFrom: undefined,
+      foreignKeys: [],
     });
   });
 

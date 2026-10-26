@@ -1,21 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  advisoryLocksHeld,
   backendRunning,
+  untilMigrationLockAttempted,
   useTestDatabase,
 } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { writeMigration } from "../../runtime/internal/index.ts";
-import { migrate } from "../../runtime/migrator/index.ts";
+import { migrate, type MigrateResult } from "../../runtime/migrator/index.ts";
 import type { DriverRow } from "../../runtime/ports/index.ts";
 import { filesIn, memoryFileSystem } from "./memory-file-system.test-helper.ts";
 import { reset } from "./reset.ts";
 
 const db = useTestDatabase();
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
 
 const MIGRATIONS = "db/migrations";
 
@@ -87,13 +83,14 @@ describe("reset around a no-transaction file (ADR-0020)", () => {
         error: expect.stringContaining('could not create unique index "users_id"') as unknown,
       },
     ]);
+    expect(await advisoryLocksHeld(db.driver)).toBe(0);
   });
 
   it("holds the migrator's lock across the break, so a migrate waits, then finds nothing left", async () => {
     const fileSystem = memoryFileSystem(filesIn(MIGRATIONS, [CREATE_USERS, INDEX_ID]));
     const events: string[] = [];
     let resetting: Promise<unknown> = Promise.resolve();
-    let migrating: Promise<unknown> = Promise.resolve();
+    let migrating: Promise<MigrateResult | undefined> = Promise.resolve(undefined);
 
     // A transaction with an older snapshot holds the CONCURRENTLY build, which runs after the break.
     await db.driver.session(async (holder) => {
@@ -106,13 +103,17 @@ describe("reset around a no-transaction file (ADR-0020)", () => {
       migrating = migrate({
         driver: db.driver,
         source: { list: () => Promise.resolve([CREATE_USERS, INDEX_ID]) },
-      }).then(() => events.push("migrate"));
-      await sleep(250);
+      }).then((result) => {
+        events.push("migrate");
+        return result;
+      });
+      await untilMigrationLockAttempted(db.driver, { gaveUp: () => events.length > 0 });
       expect(events).toStrictEqual([]);
       await holder.execute("commit");
     });
-    await Promise.all([resetting, migrating]);
+    await resetting;
 
+    expect(await migrating).toStrictEqual({ applied: [] });
     expect(events).toStrictEqual(["reset", "migrate"]);
   });
 });

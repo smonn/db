@@ -1,4 +1,10 @@
-export const HAZARD_KINDS = ["data_loss", "rewrite", "access_exclusive_lock", "rename"] as const;
+export const HAZARD_KINDS = [
+  "data_loss",
+  "rewrite",
+  "access_exclusive_lock",
+  "share_row_exclusive_lock",
+  "rename",
+] as const;
 
 export type HazardKind = (typeof HAZARD_KINDS)[number];
 
@@ -12,6 +18,11 @@ export type Hazard = {
 /** A rewrite holds ACCESS EXCLUSIVE while it copies the table, so it carries both kinds. */
 export const REWRITE: readonly HazardKind[] = ["rewrite", "access_exclusive_lock"];
 /**
+ * Adding a foreign key to an existing table scans it while holding SHARE ROW EXCLUSIVE on it and
+ * on the table it points at, which blocks writes but not reads.
+ */
+export const WRITE_LOCK: readonly HazardKind[] = ["share_row_exclusive_lock"];
+/**
  * Every `ALTER TABLE` takes ACCESS EXCLUSIVE, but only a scan or an index build holds it for
  * work that grows with the table, so only those carry the kind.
  */
@@ -20,7 +31,8 @@ export const LONG_LOCK: readonly HazardKind[] = ["access_exclusive_lock"];
 type Type =
   | { readonly name: "character varying"; readonly length: number | undefined }
   | { readonly name: "numeric"; readonly precision: number | undefined; readonly scale: number }
-  | { readonly name: SimpleName };
+  | { readonly name: SimpleName }
+  | { readonly name: "enum" };
 
 type Varchar = Extract<Type, { readonly name: "character varying" }>;
 type Numeric = Extract<Type, { readonly name: "numeric" }>;
@@ -43,8 +55,9 @@ const SIMPLE_NAMES = [
 
 type SimpleName = (typeof SIMPLE_NAMES)[number];
 
-/** Reads a type as `format_type` spells it, or `undefined` for one v0.1 doesn't classify. */
-function parse(type: string): Type | undefined {
+/** Reads a type as `format_type` spells it, or `undefined` for one the diff doesn't classify. */
+function parse(type: string, enums: ReadonlySet<string>): Type | undefined {
+  if (enums.has(type)) return { name: "enum" };
   const varchar = /^character varying(?:\((\d+)\))?$/u.exec(type);
   if (varchar !== null) {
     return { name: "character varying", length: toNumber(varchar[1]) };
@@ -62,17 +75,32 @@ function toNumber(digits: string | undefined): number | undefined {
 }
 
 /**
- * The hazards of `alter column ... type` from `before` to `after`, with no `USING`. A type v0.1
- * doesn't classify gets every hazard, since only a gate can say it is safe.
+ * The hazards of `alter column ... type` from `before` to `after`, with no `USING`. `enums` holds
+ * the types spelled as enums. A type the diff doesn't classify gets every hazard, since only a gate
+ * can say it is safe.
  */
-export function retypeHazards(before: string, after: string): readonly HazardKind[] {
-  const from = parse(before);
-  const to = parse(after);
+export function retypeHazards(
+  before: string,
+  after: string,
+  enums: ReadonlySet<string> = new Set(),
+): readonly HazardKind[] {
+  const from = parse(before, enums);
+  const to = parse(after, enums);
   if (from === undefined || to === undefined) return HAZARD_KINDS;
+  if (from.name === "enum" || to.name === "enum") return enumRetypeHazards(from, to);
   return [
     ...(losesData(from, to) ? (["data_loss"] as const) : []),
     ...(rewrites(from, to) ? REWRITE : []),
   ];
+}
+
+/**
+ * Text to an enum, an enum to text, and one enum to another rewrite. A row that fits no label
+ * fails the statement, so it loses nothing. Any other pair with an enum gets every hazard.
+ */
+function enumRetypeHazards(from: Type, to: Type): readonly HazardKind[] {
+  const known = (type: Type): boolean => type.name === "enum" || type.name === "text";
+  return known(from) && known(to) ? REWRITE : HAZARD_KINDS;
 }
 
 /**

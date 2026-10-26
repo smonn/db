@@ -49,6 +49,19 @@ function endOfBlockComment(text: string, from: number): number {
   return index;
 }
 
+// Returns the text a token covers, moving the scan past a block comment or a dollar-quoted string.
+function copyToken(text: string, token: string, start: number, scan: RegExp): string {
+  if (token === "/*") {
+    scan.lastIndex = endOfBlockComment(text, scan.lastIndex);
+  } else if (token.length > 1 && token.startsWith("$")) {
+    const close = text.indexOf(token, scan.lastIndex);
+    scan.lastIndex = close === -1 ? text.length : close + token.length;
+  } else {
+    return token;
+  }
+  return text.slice(start, scan.lastIndex);
+}
+
 // Gives every use of a Date param after the first a param of its own, holding the same value.
 // Returns undefined when the text uses a param that doesn't exist, so Postgres refuses it as sent.
 function splitDateUses(
@@ -63,15 +76,8 @@ function splitDateUses(
   let highest = 0;
   for (let match = scan.exec(text); match !== null; match = scan.exec(text)) {
     const [token, digits] = match;
-    if (token === "/*") {
-      scan.lastIndex = endOfBlockComment(text, scan.lastIndex);
-      result += text.slice(match.index, scan.lastIndex);
-    } else if (digits === undefined && token.length > 1 && token.startsWith("$")) {
-      const close = text.indexOf(token, scan.lastIndex);
-      scan.lastIndex = close === -1 ? text.length : close + token.length;
-      result += text.slice(match.index, scan.lastIndex);
-    } else if (digits === undefined) {
-      result += token;
+    if (digits === undefined) {
+      result += copyToken(text, token, match.index, scan);
     } else {
       const number = Number(digits);
       highest = Math.max(highest, number);

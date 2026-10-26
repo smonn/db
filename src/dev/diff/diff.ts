@@ -1,17 +1,16 @@
 import {
   arePayloadsEqual,
-  childrenOf,
   type Catalog,
   type Fact,
-  type GeneratedPayload,
   type Key,
   type Rename,
 } from "../catalog/index.ts";
 import { hazardsOf, render, type Action, type Catalogs } from "./actions.ts";
 import type { Hazard } from "./hazards.ts";
 import { renameHints } from "./hints.ts";
-import { renameAction } from "./renames.ts";
 import { order } from "./phases.ts";
+import { rebuiltColumns, retyped } from "./rebuilt.ts";
+import { renameAction } from "./renames.ts";
 
 export type Diff = {
   /** Each statement follows one `-- hazard: <kind>` comment per Hazard it carries. */
@@ -98,6 +97,21 @@ export const HANDLING: HandlingTable<Fact> = {
     create: (fact) => [{ kind: "create schema", fact }],
     replacedOnChange: false,
     alter: () => [],
+    columnsNamed: () => [],
+  },
+  enum: {
+    // Postgres refuses to drop a schema that holds a type, so the type drops on its own.
+    parentDropCovers: false,
+    drop: (fact) => [{ kind: "drop enum", fact }],
+    parentCreateCovers: false,
+    create: (fact) => [{ kind: "create enum", fact }],
+    replacedOnChange: false,
+    // Only an added label is one statement. A removed or reordered label (#438) leaves the
+    // payloads apart, which Shadow verification refuses.
+    alter: (before, after) =>
+      after.payload.labels
+        .filter((label) => !before.payload.labels.includes(label))
+        .map((label) => ({ kind: "add enum value", fact: after, before, label })),
     columnsNamed: () => [],
   },
   table: {
@@ -190,6 +204,17 @@ export const HANDLING: HandlingTable<Fact> = {
     alter: () => [],
     columnsNamed: (fact) => [fact.payload.column],
   },
+  "foreign key": {
+    // Its target may drop before the table it sits on, and Postgres refuses to drop a key a
+    // foreign key still needs, so every foreign key gets its own `DROP CONSTRAINT`.
+    parentDropCovers: false,
+    drop: (fact) => [{ kind: "drop foreign key", fact }],
+    parentCreateCovers: false,
+    create: (fact) => [{ kind: "add foreign key", fact }],
+    replacedOnChange: true,
+    alter: () => [],
+    columnsNamed: (fact) => fact.payload.columns,
+  },
 };
 
 function handlingOf<K extends Kind>(fact: FactOf<K>): Handling<FactOf<K>> {
@@ -233,29 +258,6 @@ function replaced(before: Fact, after: Fact): boolean {
   );
 }
 
-/**
- * The columns `ALTER COLUMN` can't convert: Postgres can't make a plain column generated, switch
- * a column between stored and virtual, or drop the expression of a virtual one.
- */
-function rebuiltColumns({ from, to }: Catalogs): ReadonlyMap<Key, Fact> {
-  const rebuilt = new Map<Key, Fact>();
-  for (const [key, before] of from) {
-    const after = to.get(key);
-    if (before.kind !== "column" || after?.kind !== "column") continue;
-    const was = generation(from, before);
-    const now = generation(to, after);
-    if (was?.storage === now?.storage) continue;
-    if (now === undefined && was?.storage === "stored") continue;
-    rebuilt.set(key, after);
-  }
-  return rebuilt;
-}
-
-function generation(catalog: Catalog, column: Fact): GeneratedPayload | undefined {
-  const child = childrenOf(catalog, column).find((fact) => fact.kind === "generated");
-  return child?.kind === "generated" ? child.payload : undefined;
-}
-
 /** `catalog` without the rebuilt columns, the facts under them, and the facts that name them. */
 function without(catalog: Catalog, rebuilt: ReadonlyMap<Key, Fact>): Catalog {
   const columns = [...rebuilt.values()];
@@ -270,15 +272,5 @@ function without(catalog: Catalog, rebuilt: ReadonlyMap<Key, Fact>): Catalog {
             handlingOf(fact).columnsNamed(fact).includes(column.name),
         ),
     ),
-  );
-}
-
-function retyped(column: Key, { from, to }: Catalogs): boolean {
-  const before = from.get(column);
-  const after = to.get(column);
-  return (
-    before?.kind === "column" &&
-    after?.kind === "column" &&
-    before.payload.type !== after.payload.type
   );
 }

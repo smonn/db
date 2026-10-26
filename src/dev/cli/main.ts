@@ -14,7 +14,8 @@ commands:
   generate        write current.sql and replay it into the Dev database
   commit <slug> [--accept <kind,...>]
                   freeze current.sql into the next Committed migration; --accept names
-                  the Hazard kinds to allow (data_loss, rewrite, access_exclusive_lock, rename)
+                  the Hazard kinds to allow (data_loss, rewrite, access_exclusive_lock,
+                  share_row_exclusive_lock, rename)
   reset [--erase] rebuild the Dev database from the migration files
   migrate         apply the pending Committed migrations
   verify          check the Committed migrations' hash chain, with no database
@@ -91,10 +92,9 @@ function checkNoArguments(name: string, args: readonly string[]): void {
   if (args.length > 0) throw new UsageError(`${name} takes no arguments: ${args.join(" ")}`);
 }
 
-function parseCommand(argv: readonly string[]): Command {
-  let parsed;
+function parseFlags(argv: readonly string[]) {
   try {
-    parsed = parseArgs({
+    return parseArgs({
       args: [...argv],
       allowPositionals: true,
       options: {
@@ -107,13 +107,33 @@ function parseCommand(argv: readonly string[]): Command {
   } catch (error) {
     throw new UsageError(error instanceof Error ? error.message : String(error), { cause: error });
   }
-  const [name, ...args] = parsed.positionals;
-  const config = parsed.values.config ?? DEFAULT_CONFIG;
+}
+
+function checkFlagScope(values: object, name: string | undefined): void {
   for (const [flag, command] of Object.entries(FLAG_COMMANDS)) {
-    if (Object.hasOwn(parsed.values, flag) && name !== command) {
+    if (Object.hasOwn(values, flag) && name !== command) {
       throw new UsageError(`--${flag} applies only to ${command}`);
     }
   }
+}
+
+function parseCommit(
+  args: readonly string[],
+  config: string,
+  accept: string | undefined,
+): DatabaseCommand {
+  const [slug] = args;
+  if (slug === undefined || args.length > 1) {
+    throw new UsageError("commit takes one argument, the slug");
+  }
+  return { name: "commit", slug, config, accept: parseAccept(accept) };
+}
+
+function parseCommand(argv: readonly string[]): Command {
+  const parsed = parseFlags(argv);
+  const [name, ...args] = parsed.positionals;
+  const config = parsed.values.config ?? DEFAULT_CONFIG;
+  checkFlagScope(parsed.values, name);
   switch (name) {
     case "reset":
       checkNoArguments(name, args);
@@ -126,13 +146,8 @@ function parseCommand(argv: readonly string[]): Command {
     case "verify":
       checkNoArguments(name, args);
       return { name, config };
-    case "commit": {
-      const [slug] = args;
-      if (slug === undefined || args.length > 1) {
-        throw new UsageError("commit takes one argument, the slug");
-      }
-      return { name, slug, config, accept: parseAccept(parsed.values.accept) };
-    }
+    case "commit":
+      return parseCommit(args, config, parsed.values.accept);
     case undefined:
       throw new UsageError("name a command");
     default:

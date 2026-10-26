@@ -42,6 +42,22 @@ describe("retypeHazards", () => {
     expect(retypeHazards("numeric(12,2)", "numeric(8,2)")).not.toContain("data_loss");
   });
 
+  it("flags text to an enum, an enum to text, and one enum to another as a rewrite", () => {
+    const enums = new Set(["public.mood", "public.feeling"]);
+    const rewrite = ["rewrite", "access_exclusive_lock"];
+
+    expect(retypeHazards("text", "public.mood", enums)).toStrictEqual(rewrite);
+    expect(retypeHazards("public.mood", "text", enums)).toStrictEqual(rewrite);
+    expect(retypeHazards("public.mood", "public.feeling", enums)).toStrictEqual(rewrite);
+  });
+
+  it("flags every hazard for an enum and a type other than text or an enum", () => {
+    const enums = new Set(["public.mood"]);
+
+    expect(retypeHazards("integer", "public.mood", enums)).toStrictEqual(HAZARD_KINDS);
+    expect(retypeHazards("public.mood", "character varying(5)", enums)).toStrictEqual(HAZARD_KINDS);
+  });
+
   it("flags every hazard for a type it doesn't classify", () => {
     expect(retypeHazards("integer[]", "bigint[]")).toStrictEqual(HAZARD_KINDS);
     expect(retypeHazards("integer", "citext")).toStrictEqual(HAZARD_KINDS);

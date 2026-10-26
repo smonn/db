@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
-import { definitionCatalog } from "./catalog.ts";
+import { definitionCatalog } from "./definition-catalog.ts";
 
 const pkeyCatalog = (table: string) =>
   definitionCatalog(

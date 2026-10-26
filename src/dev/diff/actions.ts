@@ -1,28 +1,46 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
 import {
   childrenOf,
-  parentOf,
   qualified,
   type Catalog,
   type ColumnRename,
-  type Fact,
   type TableRename,
 } from "../catalog/index.ts";
-import { HAZARD_KINDS, LONG_LOCK, REWRITE, retypeHazards, type HazardKind } from "./hazards.ts";
+import { enumTypes, labelPosition, quoteLiteral } from "./enums.ts";
+import {
+  HAZARD_KINDS,
+  LONG_LOCK,
+  REWRITE,
+  WRITE_LOCK,
+  retypeHazards,
+  type HazardKind,
+} from "./hazards.ts";
 import { renameSql } from "./rename-sql.ts";
-
-type FactOf<K extends Fact["kind"]> = Extract<Fact, { readonly kind: K }>;
+import {
+  addConstraint,
+  alterColumn,
+  alterTable,
+  columnDefinition,
+  columnList,
+  defaultClause,
+  identityClause,
+  type FactOf,
+} from "./statements.ts";
 
 /** The kind of fact each action acts on. */
 type Target = {
   "rename table": "table";
   "rename column": "column";
+  "drop foreign key": "foreign key";
   "drop unique": "unique";
   "drop primary key": "primary key";
   "drop column": "column";
   "drop table": "table";
   "drop schema": "schema";
   "create schema": "schema";
+  "create enum": "enum";
+  "add enum value": "enum";
+  "drop enum": "enum";
   "create table": "table";
   "add column": "column";
   "drop default": "default";
@@ -37,6 +55,7 @@ type Target = {
   "set expression": "generated";
   "add primary key": "primary key";
   "add unique": "unique";
+  "add foreign key": "foreign key";
 };
 
 export type ActionKind = keyof Target;
@@ -48,6 +67,8 @@ type Carries = {
   /** The renamed object's fact is the `from` catalog's, which already holds the renamed object. */
   "rename table": { readonly rename: TableRename };
   "rename column": { readonly rename: ColumnRename };
+  /** The enum as the `from` catalog has it, and the label to add to it. */
+  "add enum value": { readonly before: FactOf<"enum">; readonly label: string };
 };
 
 /**
@@ -63,6 +84,7 @@ export type Action<A extends ActionKind = ActionKind> = {
 export type Catalogs = { readonly from: Catalog; readonly to: Catalog };
 
 type Step<A extends ActionKind> = {
+  /** Most steps read only their fact; a step that also needs what its action carries takes the action. */
   readonly render: (fact: FactOf<Target[A]>, catalogs: Catalogs, action: Action<A>) => string;
   /** Classified from the catalogs the action reads, never from the SQL it renders. */
   readonly hazards: (action: Action<A>, catalogs: Catalogs) => readonly HazardKind[];
@@ -84,6 +106,7 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
   // Only the catalog changes, but app code on the old name breaks until it deploys (ADR-0024).
   "rename table": { render: renameStatement, hazards: always("rename") },
   "rename column": { render: renameStatement, hazards: always("rename") },
+  "drop foreign key": { render: dropConstraint, hazards: none },
   "drop unique": { render: dropConstraint, hazards: none },
   "drop primary key": { render: dropConstraint, hazards: none },
   "drop column": {
@@ -101,6 +124,22 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
   },
   "create schema": {
     render: (schema) => `create schema ${quoteIdentifier(schema.name)};`,
+    hazards: none,
+  },
+  "create enum": {
+    render: (type, { to }) =>
+      `create type ${qualified(type, to)} as enum (${type.payload.labels.map(quoteLiteral).join(", ")});`,
+    hazards: none,
+  },
+  // Adding a label rewrites no row. Using it in the same transaction fails (55P04), which
+  // `explainShadowError` words.
+  "add enum value": {
+    render: (fact, { to }, { before, label }) =>
+      `alter type ${qualified(fact, to)} add value ${quoteLiteral(label)}${labelPosition(fact, before, label)};`,
+    hazards: none,
+  },
+  "drop enum": {
+    render: (type, { from }) => `drop type ${qualified(type, from)};`,
     hazards: none,
   },
   "create table": { render: createTable, hazards: none },
@@ -134,7 +173,8 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
   },
   "alter type": {
     render: (column, { to }) => `${alterColumn(column, to)} type ${column.payload.type};`,
-    hazards: ({ before, fact }) => retypeHazards(before.payload.type, fact.payload.type),
+    hazards: ({ before, fact }, catalogs) =>
+      retypeHazards(before.payload.type, fact.payload.type, enumTypes(catalogs.from, catalogs.to)),
   },
   // Reads every row under the lock to prove none is null.
   "set not null": {
@@ -170,6 +210,11 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
   "add unique": {
     render: (key, { to }) => addConstraint(key, "unique", [key.payload.column], to),
     hazards: indexBuild,
+  },
+  "add foreign key": {
+    render: addForeignKey,
+    // A table created in the same migration is empty, so only an existing table has rows to scan.
+    hazards: ({ fact }, { from }) => (from.has(fact.parent) ? WRITE_LOCK : []),
   },
 };
 
@@ -213,53 +258,22 @@ function createTable(table: FactOf<"table">, { to }: Catalogs): string {
   return `create table ${qualified(table, to)} ${body};`;
 }
 
-function columnDefinition(column: FactOf<"column">, to: Catalog): string {
-  const { type, notNull } = column.payload;
-  const parts = [quoteIdentifier(column.name), type];
-  if (notNull) parts.push("not null");
-  for (const child of childrenOf(to, column)) {
-    if (child.kind === "identity") parts.push(identityClause(child));
-    if (child.kind === "default") parts.push(`default ${defaultClause(child)}`);
-    if (child.kind === "generated") {
-      parts.push(`generated always as (${child.payload.expression}) ${child.payload.storage}`);
-    }
-  }
-  return parts.join(" ");
-}
-
-function dropConstraint(key: FactOf<"primary key" | "unique">, { from }: Catalogs): string {
+function dropConstraint(
+  key: FactOf<"primary key" | "unique" | "foreign key">,
+  { from }: Catalogs,
+): string {
   return `${alterTable(key, from)} drop constraint ${quoteIdentifier(key.name)};`;
 }
 
-function addConstraint(
-  key: FactOf<"primary key" | "unique">,
-  clause: string,
-  columns: readonly string[],
-  to: Catalog,
-): string {
-  const list = columns.map((column) => quoteIdentifier(column)).join(", ");
-  return `${alterTable(key, to)} add constraint ${quoteIdentifier(key.name)} ${clause} (${list});`;
-}
-
-/** `alter table` for the table that holds `fact`, a column or key. */
-function alterTable(fact: Fact, catalog: Catalog): string {
-  return `alter table ${qualified(parentOf(catalog, fact), catalog)}`;
-}
-
-/** `alter column` for `fact`, a column or one of its attributes. */
-function alterColumn(
-  fact: FactOf<"column" | "default" | "identity" | "generated">,
-  catalog: Catalog,
-): string {
-  const column = fact.kind === "column" ? fact : parentOf(catalog, fact);
-  return `${alterTable(column, catalog)} alter column ${quoteIdentifier(column.name)}`;
-}
-
-function identityClause(identity: FactOf<"identity">): string {
-  return `generated ${identity.payload.generated} as identity`;
-}
-
-/** Parenthesized, so any expression the Definition writes parses as a default. */
-function defaultClause(fact: FactOf<"default">): string {
-  return `(${fact.payload.expression})`;
+/** Leaves out the clauses at Postgres's defaults, so the statement reads like the SQL one writes. */
+function addForeignKey(key: FactOf<"foreign key">, { to }: Catalogs): string {
+  const { columns, target, onDelete, onUpdate, match, deferrable } = key.payload;
+  const clauses = [
+    match === "full" ? "match full" : "",
+    onDelete === "no action" ? "" : `on delete ${onDelete}`,
+    onUpdate === "no action" ? "" : `on update ${onUpdate}`,
+    deferrable === "not deferrable" ? "" : `deferrable initially ${deferrable}`,
+  ].filter((clause) => clause !== "");
+  const references = `${quoteIdentifier(target.schema)}.${quoteIdentifier(target.table)} (${columnList(target.columns)})`;
+  return `${alterTable(key, to)} add constraint ${quoteIdentifier(key.name)} foreign key (${columnList(columns)}) references ${[references, ...clauses].join(" ")};`;
 }

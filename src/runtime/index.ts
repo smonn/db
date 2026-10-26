@@ -1,4 +1,4 @@
-export { defineDatabase, defineTable, plainDate } from "./definition/index.ts";
+export { defineDatabase, defineEnum, defineTable, plainDate } from "./definition/index.ts";
 export type {
   Codec,
   Column,
@@ -6,10 +6,15 @@ export type {
   Columns,
   ColumnState,
   Database,
+  Enum,
+  ForeignKey,
+  ForeignKeyAction,
+  ForeignKeyOptions,
   PlainDate,
   Row,
   Table,
   TableDefinition,
+  Target,
 } from "./definition/index.ts";
 export { migrate, verify } from "./migrator/index.ts";
 export type { MigrateOptions, MigrateResult, VerifyResult } from "./migrator/index.ts";

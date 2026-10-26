@@ -81,21 +81,25 @@ function markedPure(node: object, source: Source, outerStart: number): boolean {
   return !line.replaceAll(STRING_LITERAL, "").includes("//");
 }
 
+function callEffect(node: object, source: Source, outerStart: number): string | null {
+  const name = calleeName(node);
+  return (name !== undefined && source.local.has(name)) || markedPure(node, source, outerStart)
+    ? null
+    : "CallExpression";
+}
+
+function importEffect(node: object): string | null {
+  const specifiers: unknown = Reflect.get(node, "specifiers");
+  return Array.isArray(specifiers) && specifiers.length === 0 ? "ImportDeclaration" : null;
+}
+
 function effectOf(node: object, source: Source, outerStart: number): string | null {
   const type = typeOf(node);
-  if (type === "CallExpression") {
-    const name = calleeName(node);
-    return (name !== undefined && source.local.has(name)) || markedPure(node, source, outerStart)
-      ? null
-      : type;
-  }
+  if (type === "CallExpression") return callEffect(node, source, outerStart);
   if (type === "NewExpression") {
     return pureConstructor(node) || markedPure(node, source, outerStart) ? null : type;
   }
-  if (type === "ImportDeclaration") {
-    const specifiers: unknown = Reflect.get(node, "specifiers");
-    return Array.isArray(specifiers) && specifiers.length === 0 ? type : null;
-  }
+  if (type === "ImportDeclaration") return importEffect(node);
   if (type === "UnaryExpression") return Reflect.get(node, "operator") === "delete" ? type : null;
   return EFFECT_TYPES.has(type) ? type : null;
 }
@@ -127,6 +131,11 @@ function startOf(node: object): number {
   return typeof start === "number" ? start : -1;
 }
 
+function deferredValue(node: object): boolean {
+  const type = typeOf(node);
+  return METHODS.has(type) || (FIELDS.has(type) && Reflect.get(node, "isStatic") !== true);
+}
+
 /** `outerStart` is where the nearest enclosing call or `new` begins, or -1 outside one. */
 function walk(node: unknown, source: Source, found: string[], outerStart = -1): void {
   if (typeof node !== "object" || node === null) return;
@@ -135,20 +144,20 @@ function walk(node: unknown, source: Source, found: string[], outerStart = -1): 
     return;
   }
   if (DEFERRED.has(typeOf(node))) return;
-  if (METHODS.has(typeOf(node))) {
-    walk(Reflect.get(node, "key"), source, found, outerStart);
-    return;
-  }
-  if (FIELDS.has(typeOf(node)) && Reflect.get(node, "isStatic") !== true) {
-    // The value runs at construction, but a computed key is evaluated when the class is defined.
+  if (deferredValue(node)) {
+    // The value runs later, but a computed key is evaluated when the class or object is defined.
     walk(Reflect.get(node, "key"), source, found, outerStart);
     return;
   }
   const effect = effectOf(node, source, outerStart);
   if (effect !== null) found.push(`${effect}: ${snippet(node, source.bytes, source.base)}`);
-  const type = typeOf(node);
-  const next = type === "CallExpression" || type === "NewExpression" ? startOf(node) : outerStart;
+  const next = enclosingStart(node, outerStart);
   for (const value of Object.values(node)) walk(value, source, found, next);
+}
+
+function enclosingStart(node: object, outerStart: number): number {
+  const type = typeOf(node);
+  return type === "CallExpression" || type === "NewExpression" ? startOf(node) : outerStart;
 }
 
 function functionDeclarationName(node: object): string | undefined {
