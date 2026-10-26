@@ -27,13 +27,9 @@ export function diff(from: Catalog, to: Catalog): Diff {
   for (const [key, fact] of from) {
     const after = keptTo.get(key);
     if (after === undefined) actions.push(...dropped(fact, keptTo));
-    // A key can't change in place, nor can a fact change kind: the old one drops here, and
-    // `altered` adds the new one.
-    else if (
-      fact.kind !== after.kind ||
-      (isKey(fact) && !arePayloadsEqual(fact.payload, after.payload))
-    )
-      actions.push(...dropped(fact, keptTo));
+    // A fact can't change kind, nor can some change payload in place: the old one drops here,
+    // and `altered` adds the new one.
+    else if (replaced(fact, after)) actions.push(...dropped(fact, keptTo));
     // Postgres refuses to retype a column whose default can't be cast, so it goes first.
     else if (fact.kind === "default" && retyped(fact.parent, catalogs)) {
       actions.push({ kind: "drop default", fact });
@@ -59,7 +55,6 @@ export function diff(from: Catalog, to: Catalog): Diff {
 
 type Kind = Fact["kind"];
 type FactOf<K extends Kind> = Extract<Fact, { readonly kind: K }>;
-type KeyFact = FactOf<"primary key" | "unique">;
 
 /**
  * What the diff does with one kind of fact. Every field is required, so a new `Fact` kind fails to
@@ -72,8 +67,12 @@ export type Handling<F extends { readonly kind: string }> = {
   /** Whether creating the parent creates this fact inline, so it needs no action of its own. */
   readonly parentCreateCovers: boolean;
   readonly create: (fact: F) => Action[];
-  /** Compares two facts of this kind at one key, after the source pass dropped any other kind. */
+  /** Whether a changed payload drops the fact and creates it again, rather than altering it. */
+  readonly replacedOnChange: boolean;
+  /** Compares two facts of this kind at one key that the source pass didn't replace. */
   readonly alter: (before: F, after: F, catalogs: Catalogs) => Action[];
+  /** The columns of its parent table the fact names, so a rebuilt one drops and re-adds it. */
+  readonly columnsNamed: (fact: F) => readonly string[];
 };
 
 /** One `Handling` per kind of `F`; the test widens `F` to prove a new kind has to fill each field. */
@@ -88,20 +87,25 @@ export const HANDLING: HandlingTable<Fact> = {
     drop: (fact) => [{ kind: "drop schema", fact }],
     parentCreateCovers: false,
     create: (fact) => [{ kind: "create schema", fact }],
+    replacedOnChange: false,
     alter: () => [],
+    columnsNamed: () => [],
   },
   table: {
     parentDropCovers: false,
     drop: (fact) => [{ kind: "drop table", fact }],
     parentCreateCovers: false,
     create: (fact) => [{ kind: "create table", fact }],
+    replacedOnChange: false,
     alter: () => [],
+    columnsNamed: () => [],
   },
   column: {
     parentDropCovers: true,
     drop: (fact) => [{ kind: "drop column", fact }],
     parentCreateCovers: true,
     create: (fact) => [{ kind: "add column", fact }],
+    replacedOnChange: false,
     alter: (before, after) => {
       const actions: Action[] = [];
       if (before.payload.type !== after.payload.type) {
@@ -115,27 +119,32 @@ export const HANDLING: HandlingTable<Fact> = {
       }
       return actions;
     },
+    columnsNamed: () => [],
   },
   default: {
     parentDropCovers: true,
     drop: (fact) => [{ kind: "drop default", fact }],
     parentCreateCovers: true,
     create: (fact) => [{ kind: "set default", fact }],
+    replacedOnChange: false,
     alter: (before, after, catalogs) =>
       // A retyped column's default was dropped first, whether or not it changed.
       arePayloadsEqual(before.payload, after.payload) && !retyped(after.parent, catalogs)
         ? []
         : [{ kind: "set default", fact: after }],
+    columnsNamed: () => [],
   },
   identity: {
     parentDropCovers: true,
     drop: (fact) => [{ kind: "drop identity", fact }],
     parentCreateCovers: true,
     create: (fact) => [{ kind: "add identity", fact }],
+    replacedOnChange: false,
     alter: (before, after) =>
       arePayloadsEqual(before.payload, after.payload)
         ? []
         : [{ kind: "set identity mode", fact: after }],
+    columnsNamed: () => [],
   },
   generated: {
     parentDropCovers: true,
@@ -145,10 +154,12 @@ export const HANDLING: HandlingTable<Fact> = {
     // Postgres can't make a plain column generated, so a new expression is on a rebuilt column,
     // which `add column` renders whole.
     create: () => [],
+    replacedOnChange: false,
     alter: (before, after) =>
       arePayloadsEqual(before.payload, after.payload)
         ? []
         : [{ kind: "set expression", fact: after }],
+    columnsNamed: () => [],
   },
   "primary key": {
     parentDropCovers: true,
@@ -156,21 +167,21 @@ export const HANDLING: HandlingTable<Fact> = {
     // Never inline: CREATE TABLE silently drops a unique that duplicates the primary key.
     parentCreateCovers: false,
     create: (fact) => [{ kind: "add primary key", fact }],
-    alter: alteredKey,
+    // A key can't change in place.
+    replacedOnChange: true,
+    alter: () => [],
+    columnsNamed: (fact) => fact.payload.columns,
   },
   unique: {
     parentDropCovers: true,
     drop: (fact) => [{ kind: "drop unique", fact }],
     parentCreateCovers: false,
     create: (fact) => [{ kind: "add unique", fact }],
-    alter: alteredKey,
+    replacedOnChange: true,
+    alter: () => [],
+    columnsNamed: (fact) => [fact.payload.column],
   },
 };
-
-/** A key can't change in place: a new payload re-adds it, after the source pass dropped the old one. */
-function alteredKey(before: KeyFact, after: KeyFact, { from }: Catalogs): Action[] {
-  return arePayloadsEqual(before.payload, after.payload) ? [] : created(after, from);
-}
 
 function handlingOf<K extends Kind>(fact: FactOf<K>): Handling<FactOf<K>> {
   // The types prove every kind has handling; at run time, a kind this diff predates has none.
@@ -200,13 +211,17 @@ function parentAbsent(fact: Fact, catalog: Catalog): boolean {
 }
 
 function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {
-  // The old kind was dropped in the source pass, whatever the payloads say.
-  if (before.kind !== after.kind) return created(after, catalogs.from);
+  // The source pass dropped the old fact, so the new one is created whole.
+  if (replaced(before, after)) return created(after, catalogs.from);
   return handlingOf(before).alter(before, after, catalogs);
 }
 
-function isKey(fact: Fact): fact is Extract<Fact, { readonly kind: "primary key" | "unique" }> {
-  return fact.kind === "primary key" || fact.kind === "unique";
+/** Whether the fact at one key changed kind, or changed a payload its kind can't alter. */
+function replaced(before: Fact, after: Fact): boolean {
+  return (
+    before.kind !== after.kind ||
+    (handlingOf(before).replacedOnChange && !arePayloadsEqual(before.payload, after.payload))
+  );
 }
 
 /**
@@ -232,7 +247,7 @@ function generation(catalog: Catalog, column: Fact): GeneratedPayload | undefine
   return child?.kind === "generated" ? child.payload : undefined;
 }
 
-/** `catalog` without the rebuilt columns, the facts under them, and the keys that name them. */
+/** `catalog` without the rebuilt columns, the facts under them, and the facts that name them. */
 function without(catalog: Catalog, rebuilt: ReadonlyMap<Key, Fact>): Catalog {
   const columns = [...rebuilt.values()];
   return new Map(
@@ -240,21 +255,13 @@ function without(catalog: Catalog, rebuilt: ReadonlyMap<Key, Fact>): Catalog {
       ([key, fact]) =>
         !rebuilt.has(key) &&
         !(fact.parent !== undefined && rebuilt.has(fact.parent)) &&
-        !(
-          isKey(fact) &&
-          columns.some((column) => column.parent === fact.parent && namesColumn(fact, column.name))
+        !columns.some(
+          (column) =>
+            column.parent === fact.parent &&
+            handlingOf(fact).columnsNamed(fact).includes(column.name),
         ),
     ),
   );
-}
-
-function namesColumn(
-  key: Extract<Fact, { readonly kind: "primary key" | "unique" }>,
-  column: string,
-): boolean {
-  return key.kind === "unique"
-    ? key.payload.column === column
-    : key.payload.columns.includes(column);
 }
 
 function retyped(column: Key, { from, to }: Catalogs): boolean {

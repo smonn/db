@@ -3,7 +3,7 @@ import { nodeFileSystem, nodeMigrationSource } from "../../adapters/node/index.t
 import { verify } from "../../runtime/migrator/index.ts";
 import { HAZARD_KINDS, type HazardKind } from "../diff/index.ts";
 import { rebase } from "../generate/index.ts";
-import { defaultBaseRef, gitMigrationSource, uncommittedPaths } from "./git.ts";
+import { defaultBaseRef, gitMigrationSource, unheldPaths } from "./git.ts";
 import { loadMigrationsFolder, loadProject } from "./project.ts";
 import { rebaseReport } from "./report.ts";
 import { print, run, type DatabaseCommand } from "./run.ts";
@@ -65,9 +65,9 @@ async function runOffline(command: OfflineCommand): Promise<string[]> {
   // Git can't run in a missing folder; listing it first fails the way verify does.
   await fileSystem.list(migrations);
   const onto = command.onto ?? (await defaultBaseRef(migrations));
-  const uncommitted = await uncommittedPaths(migrations);
+  const unheld = await unheldPaths(migrations);
   const base = gitMigrationSource(migrations, onto);
-  return rebaseReport(await rebase({ fileSystem, migrations, base, onto, uncommitted }), onto);
+  return rebaseReport(await rebase({ fileSystem, migrations, base, onto, unheld }), onto);
 }
 
 function parseAccept(value: string | undefined): HazardKind[] {
