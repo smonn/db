@@ -71,12 +71,18 @@ function primaryKeyOf(columns: Columns, own: RuntimeRefs, declared: unknown): Pr
 
 function keyEntry(declared: unknown): { name: string | undefined; columns: unknown } {
   if (Array.isArray(declared)) return { name: undefined, columns: declared };
-  if (typeof declared === "object" && declared !== null && "name" in declared) {
-    const { name } = declared;
-    if (typeof name === "string")
-      return { name, columns: "columns" in declared && declared.columns };
+  const named = namedKeyEntry(declared);
+  if (named === undefined) {
+    throw new TypeError("The table's primaryKey takes a list of columns or { name, columns }");
   }
-  throw new TypeError("The table's primaryKey takes a list of columns or { name, columns }");
+  return named;
+}
+
+function namedKeyEntry(declared: unknown): { name: string; columns: unknown } | undefined {
+  if (typeof declared !== "object" || declared === null || !("name" in declared)) return undefined;
+  const { name } = declared;
+  if (typeof name !== "string") return undefined;
+  return { name, columns: "columns" in declared && declared.columns };
 }
 
 function refuseKeyAndUnique(columns: Columns): void {
@@ -93,23 +99,29 @@ function renamedFromOf(declared: unknown): string | undefined {
   throw new TypeError("The table's renamedFrom takes the old SQL name as a string");
 }
 
+type Extras = {
+  readonly primaryKey?: unknown;
+  readonly unique?: unknown;
+  readonly foreignKeys?: unknown;
+  readonly indexes?: unknown;
+  readonly renamedFrom?: unknown;
+};
+
+function declaredExtras<C extends Columns>(
+  own: ReturnType<typeof refsOf>,
+  extras: ((t: ColumnRefs<C>) => Extras) | undefined,
+): Extras | undefined {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- refsOf builds one Ref per key; "~table" exists only in types.
+  return extras?.(own as unknown as ColumnRefs<C>);
+}
+
 export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>(
   define: (c: ColumnFactories) => C,
   ...args: Args
 ): TableDefinition<C, KeyOf<C, Args>> {
   const columns = define(factories);
-  const extras:
-    | ((t: ColumnRefs<C>) => {
-        readonly primaryKey?: unknown;
-        readonly unique?: unknown;
-        readonly foreignKeys?: unknown;
-        readonly indexes?: unknown;
-        readonly renamedFrom?: unknown;
-      })
-    | undefined = args[0];
   const own = refsOf(columns);
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- refsOf builds one Ref per key; "~table" exists only in types.
-  const declared = extras?.(own as unknown as ColumnRefs<C>);
+  const declared = declaredExtras<C>(own, args[0]);
   const primaryKey = primaryKeyOf(columns, own, declared?.primaryKey);
   const uniques = uniquesOf(own, declared?.unique);
   const declaredForeignKeys = declaredForeignKeysOf(own, declared?.foreignKeys);

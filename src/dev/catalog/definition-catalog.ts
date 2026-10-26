@@ -62,7 +62,24 @@ function addDefinitionTable(
       columns: [...primaryKey],
     });
   }
-  for (const [column, { state }] of entries) {
+  addUniques(builder, context, columns, uniques);
+  addIndexes(builder, context, columns, indexes);
+  for (const { name, columns: from, ...payload } of foreignKeys) {
+    builder.foreignKey(schema, table, names.foreignKey(table, from, name), {
+      columns: from,
+      ...payload,
+    });
+  }
+}
+
+/** A column's `.unique()` calls come first, in column order, then the second callback's `unique`. */
+function addUniques(
+  builder: CatalogBuilder,
+  { schema, table, names }: TableContext,
+  columns: Table["columns"],
+  uniques: Table["uniques"],
+): void {
+  for (const [column, { state }] of Object.entries(columns)) {
     if (state.unique) {
       const name = names.unique(table, [column], state.constraintName);
       builder.unique(schema, table, name, { columns: [column], nullsNotDistinct: false });
@@ -72,13 +89,6 @@ function addDefinitionTable(
     builder.unique(schema, table, names.unique(table, listed, name), {
       columns: [...listed],
       nullsNotDistinct,
-    });
-  }
-  addIndexes(builder, context, columns, indexes);
-  for (const { name, columns: from, ...payload } of foreignKeys) {
-    builder.foreignKey(schema, table, names.foreignKey(table, from, name), {
-      columns: from,
-      ...payload,
     });
   }
 }
