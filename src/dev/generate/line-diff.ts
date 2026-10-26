@@ -30,13 +30,17 @@ function diffLines(a: readonly string[], b: readonly string[], lcs: readonly num
     if (i < a.length && j < b.length && a[i] === b[j]) {
       i++;
       j++;
-    } else if (j === b.length || (i < a.length && lcs[i + 1]![j]! >= lcs[i]![j + 1]!)) {
+    } else if (removesNext(lcs, i, j)) {
       out += `-${a[i++]}\n`;
     } else {
       out += `+${b[j++]}\n`;
     }
   }
   return out;
+}
+
+function removesNext(lcs: readonly number[][], i: number, j: number): boolean {
+  return j === lcs[0]!.length - 1 || (i < lcs.length - 1 && lcs[i + 1]![j]! >= lcs[i]![j + 1]!);
 }
 
 function lines(text: string): string[] {
