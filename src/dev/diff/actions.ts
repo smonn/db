@@ -9,6 +9,7 @@ import {
 import { enumTypes, labelPosition, quoteLiteral } from "./enums.ts";
 import {
   HAZARD_KINDS,
+  INDEX_LOCK,
   LONG_LOCK,
   REWRITE,
   WRITE_LOCK,
@@ -22,7 +23,9 @@ import {
   alterTable,
   columnDefinition,
   columnList,
+  createIndex,
   defaultClause,
+  dropIndex,
   identityClause,
   type FactOf,
 } from "./statements.ts";
@@ -33,6 +36,7 @@ type Target = {
   "rename column": "column";
   "drop foreign key": "foreign key";
   "drop unique": "unique";
+  "drop index": "index";
   "drop primary key": "primary key";
   "drop column": "column";
   "drop table": "table";
@@ -55,6 +59,7 @@ type Target = {
   "set expression": "generated";
   "add primary key": "primary key";
   "add unique": "unique";
+  "add index": "index";
   "add foreign key": "foreign key";
 };
 
@@ -108,6 +113,8 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
   "rename column": { render: renameStatement, hazards: always("rename") },
   "drop foreign key": { render: dropConstraint, hazards: none },
   "drop unique": { render: dropConstraint, hazards: none },
+  // Only the catalog changes, like dropping a key.
+  "drop index": { render: dropIndex, hazards: none },
   "drop primary key": { render: dropConstraint, hazards: none },
   "drop column": {
     render: (column, { from }) =>
@@ -216,6 +223,11 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
         to,
       ),
     hazards: indexBuild,
+  },
+  "add index": {
+    render: (index, { to }) => createIndex(index, to),
+    // A table created in the same migration is empty, so only an existing table has rows to read.
+    hazards: ({ fact }, { from }) => (from.has(fact.parent) ? INDEX_LOCK : []),
   },
   "add foreign key": {
     render: addForeignKey,

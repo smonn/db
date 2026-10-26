@@ -212,6 +212,19 @@ export const HANDLING: HandlingTable<Fact> = {
     alter: () => [],
     columnsNamed: (fact) => fact.payload.columns,
   },
+  index: {
+    parentDropCovers: true,
+    drop: (fact) => [{ kind: "drop index", fact }],
+    parentCreateCovers: false,
+    create: (fact) => [{ kind: "add index", fact }],
+    // No ALTER INDEX changes a key, the method, INCLUDE, or uniqueness.
+    replacedOnChange: true,
+    alter: () => [],
+    columnsNamed: ({ payload }) => [
+      ...payload.keys.map(({ column }) => column),
+      ...payload.include,
+    ],
+  },
   "foreign key": {
     // Its target may drop before the table it sits on, and Postgres refuses to drop a key a
     // foreign key still needs, so every foreign key gets its own `DROP CONSTRAINT`.

@@ -12,7 +12,8 @@ import {
   type GeneratedPayload,
   type IdentityPayload,
 } from "../catalog/index.ts";
-import { COLUMNS, CONSTRAINTS, ENUMS, FOREIGN_KEYS, SCHEMAS, TABLES } from "./queries.ts";
+import { addIndex, indexColumns } from "./indexes.ts";
+import { COLUMNS, CONSTRAINTS, ENUMS, FOREIGN_KEYS, INDEXES, SCHEMAS, TABLES } from "./queries.ts";
 
 /** Why `SCHEMAS` skips `schema`, or `undefined` when introspect reads it. */
 export function skippedSchemaReason(
@@ -90,6 +91,7 @@ export async function requireSupportedServer(tx: Queryable): Promise<void> {
 type TableRows = {
   readonly columns: readonly DriverRow[];
   readonly constraints: readonly DriverRow[];
+  readonly indexes: readonly DriverRow[];
   readonly foreignKeys: readonly DriverRow[];
 };
 
@@ -99,10 +101,12 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
   const { rows: enums } = await tx.query(ENUMS, [trackingName]);
   const { rows: columns } = await tx.query(COLUMNS, [trackingName]);
   const { rows: constraints } = await tx.query(CONSTRAINTS, [trackingName]);
+  const { rows: indexes } = await tx.query(INDEXES, [trackingName]);
   const { rows: foreignKeys } = await tx.query(FOREIGN_KEYS, [trackingName]);
   const rows = {
     columns,
     constraints: onModeledColumns(constraints, columns),
+    indexes: onModeledColumns(indexes, columns, indexColumns),
     foreignKeys: onModeledColumns(modeledForeignKeys(foreignKeys, schemas, tables), columns),
   };
 
@@ -138,14 +142,18 @@ function modeledForeignKeys(
 }
 
 /** Drops a key that names a column `COLUMNS` skips, such as an array of a range: it is Unmodeled. */
-function onModeledColumns(keys: readonly DriverRow[], columns: readonly DriverRow[]): DriverRow[] {
+function onModeledColumns(
+  keys: readonly DriverRow[],
+  columns: readonly DriverRow[],
+  columnsOf: (row: DriverRow) => string[] = (row) => names(row["columns"]),
+): DriverRow[] {
   const modeled = new Set(
     columns.map(
       (row) => `${String(row["schema"])}\0${String(row["table"])}\0${String(row["name"])}`,
     ),
   );
   return keys.filter((row) =>
-    names(row["columns"]).every((column) =>
+    columnsOf(row).every((column) =>
       modeled.has(`${String(row["schema"])}\0${String(row["table"])}\0${column}`),
     ),
   );
@@ -161,6 +169,7 @@ function addTable(
   const here = (row: DriverRow): boolean => row["schema"] === schema && row["table"] === tableName;
   for (const column of rows.columns.filter(here)) addColumn(builder, schema, tableName, column);
   for (const row of rows.constraints.filter(here)) addKey(builder, schema, tableName, row);
+  for (const row of rows.indexes.filter(here)) addIndex(builder, schema, tableName, row);
   for (const row of rows.foreignKeys.filter(here)) addForeignKey(builder, schema, tableName, row);
 }
 

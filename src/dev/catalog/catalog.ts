@@ -6,6 +6,7 @@ import type {
   ForeignKeyPayload,
   GeneratedPayload,
   IdentityPayload,
+  IndexPayload,
   PrimaryKeyPayload,
   UniquePayload,
 } from "./payloads.ts";
@@ -73,6 +74,13 @@ export type Fact =
       readonly payload: UniquePayload;
     }
   | {
+      /** Named by its index, which shares the schema's relation names. */
+      readonly kind: "index";
+      readonly name: string;
+      readonly parent: Key;
+      readonly payload: IndexPayload;
+    }
+  | {
       /** Named by its constraint; the payload names its target by schema, table, and columns. */
       readonly kind: "foreign key";
       readonly name: string;
@@ -108,6 +116,7 @@ export type CatalogBuilder = {
   columnGenerated(schema: string, table: string, column: string, payload: GeneratedPayload): void;
   primaryKey(schema: string, table: string, name: string, payload: PrimaryKeyPayload): void;
   unique(schema: string, table: string, name: string, payload: UniquePayload): void;
+  index(schema: string, table: string, name: string, payload: IndexPayload): void;
   foreignKey(schema: string, table: string, name: string, payload: ForeignKeyPayload): void;
   build(): Catalog;
 };
@@ -167,7 +176,7 @@ type Added = (kind: Fact["kind"], ...names: string[]) => Key;
 function constraintMethods(
   catalog: Map<Key, Fact>,
   added: Added,
-): Pick<CatalogBuilder, "primaryKey" | "unique" | "foreignKey"> {
+): Pick<CatalogBuilder, "primaryKey" | "unique" | "index" | "foreignKey"> {
   const add = (
     schema: string,
     table: string,
@@ -195,6 +204,14 @@ function constraintMethods(
         parent,
         payload,
       }));
+    },
+    index: (schema, table, name, payload) => {
+      add(
+        schema,
+        table,
+        [...payload.keys.map(({ column }) => column), ...payload.include],
+        (parent) => ({ kind: "index", name, parent, payload }),
+      );
     },
     foreignKey: (schema, table, name, payload) => {
       add(schema, table, payload.columns, (parent) => ({
@@ -258,7 +275,10 @@ function constraintKey(table: Key, name: string): Key {
 
 function keyOf(fact: Fact): Key {
   if (fact.parent === undefined) return key(fact.name);
-  return fact.kind === "primary key" || fact.kind === "unique" || fact.kind === "foreign key"
+  return fact.kind === "primary key" ||
+    fact.kind === "unique" ||
+    fact.kind === "index" ||
+    fact.kind === "foreign key"
     ? constraintKey(fact.parent, fact.name)
     : key(fact.parent, fact.name);
 }

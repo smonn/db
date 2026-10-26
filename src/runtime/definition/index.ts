@@ -2,6 +2,7 @@ export type { Column, Columns, ColumnState } from "./column.ts";
 export type { ColumnFactories } from "./factories.ts";
 export type { ForeignKeyAction, ForeignKeyOptions, Target } from "./references.ts";
 export type { ForeignKey } from "./foreign-keys.ts";
+export { INDEX_METHODS } from "./index-options.ts";
 export type { IndexMethod, IndexOptions } from "./index-options.ts";
 export type { Codec } from "./codec.ts";
 export { plainDate } from "./plain-date.ts";

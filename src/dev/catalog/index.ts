@@ -13,6 +13,8 @@ export type {
   ForeignKeyPayload,
   GeneratedPayload,
   IdentityPayload,
+  IndexKeyPayload,
+  IndexPayload,
   PrimaryKeyPayload,
   UniquePayload,
 } from "./payloads.ts";
