@@ -1,6 +1,7 @@
 import { assert, describe, expect, expectTypeOf, it } from "vitest";
 import type { ColumnFactories } from "./factories.ts";
-import { defineTable, type ColumnRefs, type Row } from "./definition.ts";
+import { defineTable, type Row } from "./definition.ts";
+import type { ColumnRefs } from "./refs.ts";
 
 const users = defineTable((c) => ({
   id: c.text().notNull(),

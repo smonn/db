@@ -16,7 +16,7 @@ export function refsOf(columns: Columns): RuntimeRefs {
 }
 
 /** The column key `ref` names, once it proves to be one of this table's own references. */
-function columnOf(own: RuntimeRefs, ref: unknown, entry: string): string {
+export function columnOf(own: RuntimeRefs, ref: unknown, entry: string): string {
   const name = typeof ref === "object" && ref !== null && "~ref" in ref ? ref["~ref"] : undefined;
   if (typeof name !== "string") {
     throw new TypeError(`The table's ${entry} names something that is not one of its columns`);

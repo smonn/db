@@ -96,7 +96,9 @@ export type Column<
         /**
          * A foreign key to another table's primary key or unique column holding the same value. The
          * thunk reads the target late; two tables that point at each other need one thunk to name
-         * its type, such as `(): Target<number> => orders.columns.id`.
+         * its type, such as `(): Target<number> => orders.columns.id`. A self reference or a
+         * composite key goes in the second callback's `foreignKeys`; `defineDatabase` refuses a
+         * self reference here.
          */
         references(
           target: () => Target<V>,

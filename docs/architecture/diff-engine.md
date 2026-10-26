@@ -4,7 +4,7 @@ How generate turns the Definition into the Current migration. ADR-0005 and ADR-0
 
 ## What v0.1 models
 
-Schemas, tables, columns (type, NOT NULL, default, identity), single and composite primary keys, unique constraints over one or more columns (ADR-0021), one-column foreign keys (ADR-0019), and enums (ADR-0023): exactly what the Definition can express. Indexes wait for v0.2.
+Schemas, tables, columns (type, NOT NULL, default, identity), single and composite primary keys, unique constraints over one or more columns (ADR-0021), foreign keys (ADR-0019), and enums (ADR-0023): exactly what the Definition can express. Indexes wait for v0.2.
 
 Both introspections skip the Tracking schema (`smonn_db` unless configured), `pg_catalog`, `information_schema`, `pg_toast*`, `pg_temp*`, extension members, and every kind outside this list (ADR-0005). Generate refuses a Definition that names one of these schemas, since its tables would vanish from the diff.
 
@@ -38,9 +38,9 @@ Each is a child fact of the table, named by its constraint, since a drop must sa
 
 ### Foreign keys
 
-A foreign key is a child fact of its table, named by its constraint and keyed like a key. Its payload holds its columns, the target's schema, table, and columns (paired by position), `onDelete`, `onUpdate`, `match`, and `deferrable` (`not deferrable`, `immediate`, or `deferred`). A changed payload drops the constraint and adds it back. A `NOT VALID` foreign key is the same fact as a valid one.
+A foreign key is a child fact of its table, named by its constraint and keyed like a key. Its payload holds its columns, the target's schema, table, and columns (paired by position), `onDelete`, `onUpdate`, `match`, and `deferrable`. A changed payload drops the constraint and adds it back. A `NOT VALID` foreign key is the same fact as a valid one.
 
-`defineDatabase` resolves each target column to its table by identity, so the catalog reads names only; the builder checks the target at `build`, since a target may come after the foreign key. The name is the one `.references(target, { name })` gives, or Postgres's default, `<table>_<columns joined by _>_fkey`. `definitionCatalog` refuses a name over 63 bytes, and two constraints on one table that take one name; a foreign key has no index, so it clashes with nothing else.
+`defineDatabase` resolves each target column to its table by identity, so the catalog reads names only; the builder checks the target at `build`, since a target may come after the foreign key. A column's `.references()` and a `foreignKeys` entry in the second callback yield the same fact. The name is the one the Definition gives, or Postgres's default, `<table>_<columns joined by _>_fkey`. `definitionCatalog` refuses a name over 63 bytes, and two constraints on one table that take one name.
 
 `introspect` skips as Unmodeled a foreign key that is `NOT ENFORCED`, uses `PERIOD`, names a column list on `SET NULL` or `SET DEFAULT`, or points at an Unmodeled table, such as a partitioned one or one in a skipped schema.
 
