@@ -229,7 +229,43 @@ describe("migrate", () => {
 
     expect(result).toStrictEqual({ applied: ["000002-add-email.sql"] });
   });
+
+  describe("a Committed migration blocked by another object", () => {
+    it("names the file and the blocker of a drop, and says the fix is a new migration (2BP01)", async () => {
+      const failure = migrateBlocked("drop table users;\n");
+
+      await expect(failure).rejects.toThrow(
+        /^cannot drop table users because other objects depend on it:\n {2}view user_ids depends on table users\n000002-change\.sql rolled back\..*fix it in a new migration/su,
+      );
+      expect(await recorded()).toMatchObject([{ filename: "000001-users.sql" }]);
+    });
+
+    it("names the file and the blocker of a retype (0A000)", async () => {
+      const failure = migrateBlocked("alter table users alter column id type varchar;\n");
+
+      await expect(failure).rejects.toThrow(
+        /^cannot alter type of a column used by a view or rule:\n {2}rule _RETURN on view user_ids depends on column "id"\n000002-change\.sql rolled back\..*fix it in a new migration/su,
+      );
+    });
+
+    it("passes other SQL errors through", async () => {
+      await expect(migrateBlocked("select * from nope;\n")).rejects.toThrow(
+        /^relation "nope" does not exist$/u,
+      );
+    });
+  });
 });
+
+/** Runs a first file that leaves a view on `users`, then a second whose `body` the view blocks. */
+async function migrateBlocked(body: string): Promise<unknown> {
+  const first = await writeMigration(
+    "000001-users.sql",
+    undefined,
+    "create table users (id text not null);\ncreate view user_ids as select id from users;\n",
+  );
+  const second = await writeMigration("000002-change.sql", first.hash, body);
+  return migrate({ driver: db.driver, source: source(first, second) });
+}
 
 function withPrevious(file: MigrationFile, previous: string): MigrationFile {
   return {
