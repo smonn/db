@@ -102,8 +102,8 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
   const { rows: foreignKeys } = await tx.query(FOREIGN_KEYS, [trackingName]);
   const rows = {
     columns,
-    constraints,
-    foreignKeys: modeledForeignKeys(foreignKeys, schemas, tables),
+    constraints: onModeledColumns(constraints, columns),
+    foreignKeys: onModeledColumns(modeledForeignKeys(foreignKeys, schemas, tables), columns),
   };
 
   const builder = catalogBuilder();
@@ -134,6 +134,20 @@ function modeledForeignKeys(
   );
   return foreignKeys.filter((row) =>
     modeled.has(`${String(row["target_schema"])}\0${String(row["target_table"])}`),
+  );
+}
+
+/** Drops a key that names a column `COLUMNS` skips, such as an array of a range: it is Unmodeled. */
+function onModeledColumns(keys: readonly DriverRow[], columns: readonly DriverRow[]): DriverRow[] {
+  const modeled = new Set(
+    columns.map(
+      (row) => `${String(row["schema"])}\0${String(row["table"])}\0${String(row["name"])}`,
+    ),
+  );
+  return keys.filter((row) =>
+    names(row["columns"]).every((column) =>
+      modeled.has(`${String(row["schema"])}\0${String(row["table"])}\0${column}`),
+    ),
   );
 }
 
