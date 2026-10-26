@@ -1,4 +1,4 @@
-import type { TrackingSchema } from "../../runtime/internal/index.ts";
+import { splitCurrentHeader, type TrackingSchema } from "../../runtime/internal/index.ts";
 import type { Driver } from "../../runtime/ports/index.ts";
 import { arePayloadsEqual, qualified, type Catalog, type Fact } from "../catalog/index.ts";
 import { introspect } from "../introspect/index.ts";
@@ -29,7 +29,11 @@ export async function leftoverAfter(
   context: { readonly tracking: TrackingSchema; readonly handEdited?: boolean },
 ): Promise<string | undefined> {
   try {
-    await shadow.execute(sql);
+    // Outside a transaction only for a no-transaction hand edit, so a statement that needs that
+    // fails here, as it would in `migrate` and `reset`, unless the edit says so (ADR-0020).
+    await (splitCurrentHeader(sql).noTransaction
+      ? shadow.execute(sql)
+      : shadow.transaction((tx) => tx.execute(sql)));
   } catch (error) {
     throw explainShadowError(error, { handEdited: context.handEdited });
   }

@@ -152,7 +152,7 @@ describe("reset", () => {
 
       await expect(
         reset({ driver: db.driver, fileSystem, migrations: MIGRATIONS }),
-      ).rejects.toThrow(`relation "public.missing" does not exist`);
+      ).rejects.toThrow(/^current\.sql: .*relation "public\.missing" does not exist/u);
 
       await survives();
     });
