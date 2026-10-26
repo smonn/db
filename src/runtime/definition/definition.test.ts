@@ -17,6 +17,7 @@ const PLAIN = {
   identity: undefined,
   primaryKey: false,
   unique: false,
+  indexes: [],
   constraintName: undefined,
   renamedFrom: undefined,
   references: undefined,
@@ -272,21 +273,18 @@ describe("defineDatabase", () => {
       primaryKey: [],
       primaryKeyName: undefined,
       uniques: [],
+      indexes: [],
       renamedFrom: undefined,
       foreignKeys: [],
     };
-    expect(db.public.users).toStrictEqual({
-      schema: "public",
-      name: "users",
-      columns: users.columns,
+    const named = (schema: string, name: string, columns: object) => ({
+      schema,
+      name,
+      columns,
       ...bare,
     });
-    expect(db.auth.sessions).toStrictEqual({
-      schema: "auth",
-      name: "sessions",
-      columns: sessions.columns,
-      ...bare,
-    });
+    expect(db.public.users).toStrictEqual(named("public", "users", users.columns));
+    expect(db.auth.sessions).toStrictEqual(named("auth", "sessions", sessions.columns));
   });
 
   it("infers a row type from a standalone or rolled-up table", () => {

@@ -2,6 +2,8 @@ import type { Columns } from "./column.ts";
 import { isEnum, type Enum } from "./enum.ts";
 import { type ColumnFactories, factories } from "./factories.ts";
 import { type ForeignKey, foreignKeysOf, placesOf, type Places } from "./foreign-keys.ts";
+import type { IndexMethod } from "./index-options.ts";
+import { indexesOf, type TableIndex } from "./indexes.ts";
 import {
   keyColumns,
   refsOf,
@@ -19,6 +21,8 @@ export type TableDefinition<C extends Columns = Columns, K extends string = stri
   readonly primaryKeyName: string | undefined;
   /** The unique constraints over two or more columns that the second callback declares. */
   readonly uniques: readonly UniqueConstraint[];
+  /** The indexes the second callback declares; a column's `.index()` stays in its state. */
+  readonly indexes: readonly TableIndex[];
   /** The SQL name the table had before a rename, for generate to turn into a `RENAME`. */
   readonly renamedFrom: string | undefined;
 };
@@ -76,11 +80,36 @@ type UniqueEntry<C extends Columns> = {
   readonly nullsNotDistinct?: boolean;
 };
 
-/** The table-level entries, keyed by kind. Later kinds (indexes, checks) join here. */
+/** One key of an index: a column, or a column with its order and where NULLs sort. */
+type IndexKeyEntry<C extends Columns> =
+  | OwnRef<C>
+  | {
+      readonly key: OwnRef<C>;
+      /** Defaults to `"asc"`. */
+      readonly order?: "asc" | "desc";
+      /** Defaults to `"last"` for `"asc"` and `"first"` for `"desc"`, as in Postgres. */
+      readonly nulls?: "first" | "last";
+    };
+
+type IndexEntry<C extends Columns> = {
+  readonly columns: readonly [IndexKeyEntry<C>, ...IndexKeyEntry<C>[]];
+  /** Columns stored in the index beyond its keys, so a query can read them without the table. */
+  readonly include?: readonly OwnRef<C>[];
+  /** Defaults to `"btree"`. */
+  readonly method?: IndexMethod;
+  readonly unique?: boolean;
+  /** Treats NULLs as equal in a unique index. */
+  readonly nullsNotDistinct?: boolean;
+  /** Replaces the derived name, `<table>_<columns joined by _>_idx`. */
+  readonly name?: string;
+};
+
+/** The table-level entries, keyed by kind. Later kinds (checks) join here. */
 type TableExtras<C extends Columns> = {
   /** The table's SQL name before this change; generate ignores it once the old name is gone. */
   readonly renamedFrom?: string;
   readonly unique?: readonly UniqueEntry<C>[];
+  readonly indexes?: readonly IndexEntry<C>[];
 } & ([KeyedColumns<C>] extends [never]
   ? { readonly primaryKey?: KeyEntry<C> }
   : { readonly primaryKey?: never });
@@ -151,6 +180,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
     | ((t: ColumnRefs<C>) => {
         readonly primaryKey?: unknown;
         readonly unique?: unknown;
+        readonly indexes?: unknown;
         readonly renamedFrom?: unknown;
       })
     | undefined = args[0];
@@ -159,6 +189,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
   const declared = extras?.(own as unknown as ColumnRefs<C>);
   const primaryKey = primaryKeyOf(columns, own, declared?.primaryKey);
   const uniques = uniquesOf(own, declared?.unique);
+  const indexes = indexesOf(own, declared?.indexes);
   const renamedFrom = renamedFromOf(declared?.renamedFrom);
   const both = Object.entries(columns).find(([, { state }]) => state.primaryKey && state.unique);
   if (both !== undefined) {
@@ -172,6 +203,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C>>(
     primaryKey: primaryKey.columns,
     primaryKeyName: primaryKey.name,
     uniques,
+    indexes,
     renamedFrom,
   } as unknown as TableDefinition<C, KeyOf<C, Args>>;
 }
@@ -193,7 +225,7 @@ function tableOf(
   places: Places,
   schema: string,
   name: string,
-  { columns, primaryKey, primaryKeyName, uniques, renamedFrom }: TableDefinition,
+  { columns, primaryKey, primaryKeyName, uniques, indexes, renamedFrom }: TableDefinition,
 ): Table {
   return {
     schema,
@@ -202,6 +234,7 @@ function tableOf(
     primaryKey,
     primaryKeyName,
     uniques,
+    indexes,
     renamedFrom,
     foreignKeys: foreignKeysOf(places, schema, name, columns),
   };
