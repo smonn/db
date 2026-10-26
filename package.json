@@ -46,6 +46,7 @@
     "deps": "rev-dep config run",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
+    "complexity": "node scripts/complexity.ts",
     "fta": "node scripts/fta-check.ts",
     "fta:update": "node scripts/fta-check.ts --update",
     "knip": "knip",
