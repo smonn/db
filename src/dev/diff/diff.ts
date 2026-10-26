@@ -6,6 +6,7 @@ import {
   type Rename,
 } from "../catalog/index.ts";
 import { hazardsOf, render, type Action, type Catalogs } from "./actions.ts";
+import { enumSwap, swapOf } from "./enum-swap.ts";
 import type { Hazard } from "./hazards.ts";
 import { renameHints } from "./hints.ts";
 import { order } from "./phases.ts";
@@ -114,12 +115,21 @@ export const HANDLING: HandlingTable<Fact> = {
     parentCreateCovers: false,
     create: (fact) => [{ kind: "create enum", fact }],
     replacedOnChange: false,
-    // Only an added label is one statement. A removed or reordered label (#438) leaves the
-    // payloads apart, which Shadow verification refuses.
-    alter: (before, after) =>
-      after.payload.labels
+    // An added label is one statement. Postgres can't drop or move one, so a removed or moved
+    // label swaps the type, and `column.alter` retypes each column that uses it.
+    alter: (before, after, catalogs) => {
+      const swap = enumSwap(before, catalogs);
+      if (swap !== undefined) {
+        return [
+          { kind: "rename enum aside", fact: before, swap },
+          { kind: "create enum", fact: after },
+          { kind: "drop enum aside", fact: before, swap },
+        ];
+      }
+      return after.payload.labels
         .filter((label) => !before.payload.labels.includes(label))
-        .map((label) => ({ kind: "add enum value", fact: after, before, label })),
+        .map((label) => ({ kind: "add enum value", fact: after, before, label }));
+    },
     columnsNamed: () => [],
   },
   table: {
@@ -137,9 +147,12 @@ export const HANDLING: HandlingTable<Fact> = {
     parentCreateCovers: true,
     create: (fact) => [{ kind: "add column", fact }],
     replacedOnChange: false,
-    alter: (before, after) => {
+    alter: (before, after, catalogs) => {
       const actions: Action[] = [];
-      if (before.payload.type !== after.payload.type) {
+      if (before.payload.type === after.payload.type) {
+        const swap = swapOf(after.payload.type, catalogs);
+        if (swap !== undefined) actions.push({ kind: "swap retype", fact: after, swap });
+      } else {
         actions.push({ kind: "alter type", fact: after, before });
       }
       if (before.payload.notNull !== after.payload.notNull) {

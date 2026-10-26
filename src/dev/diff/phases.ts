@@ -36,6 +36,7 @@ export type PlaceTable<K extends string> = { readonly [A in K]: Place };
 export const PLACES: PlaceTable<ActionKind> = {
   "rename table": ["rename", 0],
   "rename column": ["rename", 2],
+  "rename enum aside": ["rename", 8],
   "drop foreign key": ["drop key or index", 0],
   "drop unique": ["drop key or index", 2],
   "drop primary key": ["drop key or index", 3],
@@ -50,6 +51,7 @@ export const PLACES: PlaceTable<ActionKind> = {
   "drop identity": ["create or alter table", 3],
   "drop expression": ["create or alter table", 3],
   "alter type": ["create or alter table", 4],
+  "swap retype": ["create or alter table", 4],
   "set not null": ["create or alter table", 5],
   "drop not null": ["create or alter table", 5],
   "set default": ["create or alter table", 6],
@@ -60,6 +62,7 @@ export const PLACES: PlaceTable<ActionKind> = {
   "add unique": ["add key or index", 1],
   "add foreign key": ["add key or index", 3],
   "drop enum": ["drop type", 2],
+  "drop enum aside": ["drop type", 2],
   "drop schema": ["drop schema", 0],
 };
 

@@ -6,6 +6,7 @@ import {
   type ColumnRename,
   type TableRename,
 } from "../catalog/index.ts";
+import { SWAP_STEPS, type Swap } from "./enum-swap.ts";
 import { enumTypes, labelPosition, quoteLiteral } from "./enums.ts";
 import {
   HAZARD_KINDS,
@@ -41,6 +42,9 @@ type Target = {
   "create enum": "enum";
   "add enum value": "enum";
   "drop enum": "enum";
+  "rename enum aside": "enum";
+  "drop enum aside": "enum";
+  "swap retype": "column";
   "create table": "table";
   "add column": "column";
   "drop default": "default";
@@ -69,6 +73,9 @@ type Carries = {
   "rename column": { readonly rename: ColumnRename };
   /** The enum as the `from` catalog has it, and the label to add to it. */
   "add enum value": { readonly before: FactOf<"enum">; readonly label: string };
+  "rename enum aside": { readonly swap: Swap };
+  "drop enum aside": { readonly swap: Swap };
+  "swap retype": { readonly swap: Swap };
 };
 
 /**
@@ -142,6 +149,7 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
     render: (type, { from }) => `drop type ${qualified(type, from)};`,
     hazards: none,
   },
+  ...SWAP_STEPS,
   "create table": { render: createTable, hazards: none },
   "add column": {
     render: (column, { to }) =>

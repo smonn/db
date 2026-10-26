@@ -6,6 +6,7 @@ import {
   type Key,
 } from "../catalog/index.ts";
 import type { Catalogs } from "./actions.ts";
+import { swapOf } from "./enum-swap.ts";
 
 /**
  * The columns `ALTER COLUMN` can't convert: Postgres can't make a plain column generated, switch
@@ -33,12 +34,14 @@ function generation(catalog: Catalog, column: Fact): GeneratedPayload | undefine
   return child?.kind === "generated" ? child.payload : undefined;
 }
 
-export function retyped(column: Key, { from, to }: Catalogs): boolean {
-  const before = from.get(column);
-  const after = to.get(column);
+/** Whether the column changes type, or keeps the name of an enum that swaps (ADR-0023). */
+export function retyped(column: Key, catalogs: Catalogs): boolean {
+  const before = catalogs.from.get(column);
+  const after = catalogs.to.get(column);
   return (
     before?.kind === "column" &&
     after?.kind === "column" &&
-    before.payload.type !== after.payload.type
+    (before.payload.type !== after.payload.type ||
+      swapOf(after.payload.type, catalogs) !== undefined)
   );
 }

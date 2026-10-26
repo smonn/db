@@ -5,16 +5,9 @@ import { definitionCatalog, type Catalog } from "../catalog/index.ts";
 import { introspect } from "../introspect/index.ts";
 import { bareDiff } from "./bare-sql.test-helper.ts";
 import { diff } from "./diff.ts";
+import { withMood } from "./enums.test-helper.ts";
 
 const db = useTestDatabase();
-
-/** A Definition with one `public` schema holding `mood` with `labels` and a table that uses it. */
-function withMood(...labels: string[]): Catalog {
-  const mood = defineEnum(labels);
-  return definitionCatalog(
-    defineDatabase({ public: { mood, users: defineTable((c) => ({ mood: c.enum(mood) })) } }),
-  );
-}
 
 /** A Definition with `mood` alone in `public`. */
 function onlyMood(...labels: string[]): Catalog {

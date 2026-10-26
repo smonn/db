@@ -50,7 +50,9 @@ An enum is a fact under its schema, keyed like a table (a type and a table share
 
 `definitionCatalog` names an enum by its key in the schema's object and finds it from a column by the identity of the value `c.enum(mood)` holds. It refuses a label that is empty, repeated, or over 63 bytes, an enum rolled up under two names, and a column whose enum is not in the Definition.
 
-A created enum lists all its labels. A label added to an existing enum is one `ALTER TYPE ... ADD VALUE ... BEFORE|AFTER` at its declared position, in phase 5 with no Hazard, and a drop is `DROP TYPE` in phase 8. A removed or reordered label (#438) is not yet a migration: the payloads stay apart, so Shadow verification refuses. Postgres refuses to use a new label before its transaction commits (`55P04`), so generate rethrows that Shadow error with the fix: commit the label, then use it in the next migration. A type created in the same migration is exempt.
+A created enum lists all its labels. A label added to an existing enum is one `ALTER TYPE ... ADD VALUE ... BEFORE|AFTER` at its declared position, in phase 5 with no Hazard, and a drop is `DROP TYPE` in phase 8. Postgres refuses to use a new label before its transaction commits (`55P04`), so generate rethrows that Shadow error with the fix: commit the label, then use it in the next migration. A type created in the same migration is exempt.
+
+Removing or moving a label swaps the type, which a domain on it blocks.
 
 ## Ordering
 
@@ -83,7 +85,7 @@ Within phase 6, each drop runs before the change it would block: Postgres refuse
 - Primary keys and unique constraints drop with `ALTER TABLE ... DROP CONSTRAINT` in phase 3 and add with `ALTER TABLE ... ADD CONSTRAINT` in phase 7, never inline in `CREATE TABLE`, which also silently drops an inline unique that duplicates the primary key.
 - Foreign keys add with `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY` in phase 7 after the tables and keys they need, never inline, so self references and cycles work. The statement leaves out the clauses at Postgres's defaults (`NO ACTION`, `MATCH SIMPLE`, not deferrable). Each drops with its own `DROP CONSTRAINT` in phase 3 before the keys it needs, even under a dropped table, since its target table may drop first.
 - A new column appends; column order differences are ignored, since Postgres can't reorder columns.
-- A type change is a plain `ALTER COLUMN ... TYPE` with no `USING`. When a cast is needed, edit the Current migration by hand.
+- A type change is a plain `ALTER COLUMN ... TYPE` with no `USING`, except an enum swap's retype. When a cast is needed, edit the Current migration by hand.
 - A table or column with a `renamedFrom` marker renames with `ALTER TABLE ... RENAME TO` or `ALTER TABLE ... RENAME COLUMN` in phase 1, tables first, so the column statements and every later statement use the new names. A rename combined with a retype emits the `RENAME` first. Without a marker, a renamed key drops and creates, flagged as data loss (ADR-0010, ADR-0024).
 
 ## Hazards
