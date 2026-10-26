@@ -1,7 +1,7 @@
 import type { IndexMethod } from "./index-options.ts";
 
 /** One key of an index: a column, or a column with its order and where NULLs sort. */
-export type IndexKeyEntry<R> =
+type IndexKeyEntry<R> =
   | R
   | {
       readonly key: R;
