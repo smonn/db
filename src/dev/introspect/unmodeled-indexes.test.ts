@@ -70,16 +70,18 @@ describe("introspect skips Unmodeled indexes", () => {
     }
   });
 
-  it("skips an expression index and a partial index, which wait for #442", async () => {
+  it("keeps an expression index and a partial index, but skips an expression with a non-default opclass", async () => {
     await db.driver.execute(`
       create table t (a integer, b text);
       create index by_expression on t (lower(b));
       create index by_predicate on t (a) where a > 0;
-      create index plain on t (a);
+      create index by_pattern on t (lower(b) text_pattern_ops);
+      create index by_param on t (lower(b)) with (fillfactor = 70);
     `);
 
     expect(indexes(await introspect(db.driver)).map(([name]) => name)).toStrictEqual([
-      "public.t.plain",
+      "public.t.by_expression",
+      "public.t.by_predicate",
     ]);
   });
 

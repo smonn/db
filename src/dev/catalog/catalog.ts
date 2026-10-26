@@ -1,14 +1,15 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
-import type {
-  ColumnPayload,
-  DefaultPayload,
-  EnumPayload,
-  ForeignKeyPayload,
-  GeneratedPayload,
-  IdentityPayload,
-  IndexPayload,
-  PrimaryKeyPayload,
-  UniquePayload,
+import {
+  plainKeyColumns,
+  type ColumnPayload,
+  type DefaultPayload,
+  type EnumPayload,
+  type ForeignKeyPayload,
+  type GeneratedPayload,
+  type IdentityPayload,
+  type IndexPayload,
+  type PrimaryKeyPayload,
+  type UniquePayload,
 } from "./payloads.ts";
 
 /** Schemas and tables carry nothing beyond their name in v0.1. */
@@ -206,12 +207,12 @@ function constraintMethods(
       }));
     },
     index: (schema, table, name, payload) => {
-      add(
-        schema,
-        table,
-        [...payload.keys.map(({ column }) => column), ...payload.include],
-        (parent) => ({ kind: "index", name, parent, payload }),
-      );
+      add(schema, table, [...plainKeyColumns(payload.keys), ...payload.include], (parent) => ({
+        kind: "index",
+        name,
+        parent,
+        payload,
+      }));
     },
     foreignKey: (schema, table, name, payload) => {
       add(schema, table, payload.columns, (parent) => ({

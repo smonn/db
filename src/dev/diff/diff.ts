@@ -1,4 +1,10 @@
-import { arePayloadsEqual, type Catalog, type Fact, type Rename } from "../catalog/index.ts";
+import {
+  arePayloadsEqual,
+  plainKeyColumns,
+  type Catalog,
+  type Fact,
+  type Rename,
+} from "../catalog/index.ts";
 import { hazardsOf, render, type Action, type Catalogs } from "./actions.ts";
 import { enumSwap, swapOf } from "./enum-swap.ts";
 import type { Hazard } from "./hazards.ts";
@@ -227,10 +233,7 @@ export const HANDLING: HandlingTable<Fact> = {
     // No ALTER INDEX changes a key, the method, INCLUDE, or uniqueness.
     replacedOnChange: true,
     alter: () => [],
-    columnsNamed: ({ payload }) => [
-      ...payload.keys.map(({ column }) => column),
-      ...payload.include,
-    ],
+    columnsNamed: ({ payload }) => [...plainKeyColumns(payload.keys), ...payload.include],
   },
   "foreign key": {
     // Its target may drop before the table it sits on, and Postgres refuses to drop a key a
