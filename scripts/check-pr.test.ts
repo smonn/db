@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { OpenPrAdd } from "./check-adr-clash.ts";
 import { checkPr, main, parseAdrStatus, readChangedAdrs, type ChangedAdr } from "./check-pr.ts";
 
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn<typeof execFileSync>() }));
@@ -93,8 +94,8 @@ describe("parseAdrStatus", () => {
 
 describe("checkPr ADR title", () => {
   const branch = "chore/adr-title";
-  const accepted = { file: "docs/adr/0021-indexes.md", status: "accepted" };
-  const proposed = { file: "docs/adr/0026-new.md", status: "proposed" };
+  const accepted = { file: "docs/adr/0021-indexes.md", status: "accepted", added: false };
+  const proposed = { file: "docs/adr/0026-new.md", status: "proposed", added: true };
 
   test("rejects a propose title over an accepted ADR, naming the file and status", () => {
     expect(checkPr("docs(adr): propose indexes", branch, [accepted, proposed])).toEqual([
@@ -143,21 +144,25 @@ describe("readChangedAdrs", () => {
     rmSync(repo, { recursive: true, force: true });
   });
 
-  test("lists the changed ADRs with their status, and skips other files", () => {
+  test("lists the changed ADRs with their status and whether the PR adds them, and skips other files", () => {
     vi.mocked(execFileSync).mockReturnValue(
-      "docs/adr/0001-old.md\ndocs/adr/0003-new.md\ndocs/adr/TEMPLATE.md\ndocs/notes.md\n",
+      "M\tdocs/adr/0001-old.md\nA\tdocs/adr/0003-new.md\nA\tdocs/adr/TEMPLATE.md\nM\tdocs/notes.md\n",
     );
     expect(readChangedAdrs("HEAD^1", repo)).toEqual([
-      { file: "docs/adr/0001-old.md", status: "accepted" },
-      { file: "docs/adr/0003-new.md", status: "proposed" },
+      { file: "docs/adr/0001-old.md", status: "accepted", added: false },
+      { file: "docs/adr/0003-new.md", status: "proposed", added: true },
     ]);
     expect(execFileSync).toHaveBeenCalledWith(
       "git",
-      ["diff", "--name-only", "--diff-filter=d", "HEAD^1", "HEAD"],
+      ["diff", "--name-status", "--no-renames", "--diff-filter=d", "HEAD^1", "HEAD"],
       { cwd: repo, encoding: "utf8" },
     );
   });
 });
+
+const addsAdr0023 = (): ChangedAdr[] => [
+  { file: "docs/adr/0023-x.md", status: "proposed", added: true },
+];
 
 describe("main", () => {
   beforeEach(() => {
@@ -184,7 +189,7 @@ describe("main", () => {
 
   test("checks the ADRs changed since PR_DIFF_BASE", () => {
     const readAdrs = vi.fn<(base: string) => ChangedAdr[]>(() => [
-      { file: "docs/adr/0021-x.md", status: "accepted" },
+      { file: "docs/adr/0021-x.md", status: "accepted", added: false },
     ]);
     main(
       { PR_TITLE: "docs(adr): propose x", PR_BRANCH: "chore/x", PR_DIFF_BASE: "HEAD^1" },
@@ -195,6 +200,48 @@ describe("main", () => {
       'PR title says "propose" but docs/adr/0021-x.md has status: accepted',
     );
     expect(process.exitCode).toBe(1);
+  });
+
+  describe("with PR_NUMBER", () => {
+    const env = {
+      PR_TITLE: "docs(adr): propose x",
+      PR_BRANCH: "chore/x",
+      PR_DIFF_BASE: "HEAD^1",
+      PR_NUMBER: "426",
+    };
+    test("fails when another open PR adds the same ADR number", () => {
+      const readOpenAdds = vi.fn<(exclude: string) => OpenPrAdd[]>(() => [
+        { pr: 424, file: "docs/adr/0023-y.md" },
+      ]);
+      main(env, addsAdr0023, readOpenAdds);
+      expect(readOpenAdds).toHaveBeenCalledWith("426");
+      expect(console.error).toHaveBeenCalledWith(
+        "docs/adr/0023-x.md reuses ADR number 0023, which open PR #424 adds as docs/adr/0023-y.md",
+      );
+      expect(process.exitCode).toBe(1);
+    });
+
+    test("passes when no other open PR adds the number", () => {
+      main(env, addsAdr0023, () => []);
+      expect(console.error).not.toHaveBeenCalled();
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    test("does not list open PRs when the PR adds no ADR", () => {
+      const readOpenAdds = vi.fn<(exclude: string) => OpenPrAdd[]>(() => []);
+      main(
+        env,
+        () => [{ file: "docs/adr/0021-x.md", status: "proposed", added: false }],
+        readOpenAdds,
+      );
+      expect(readOpenAdds).not.toHaveBeenCalled();
+    });
+
+    test("does not list open PRs without PR_NUMBER", () => {
+      const readOpenAdds = vi.fn<(exclude: string) => OpenPrAdd[]>(() => []);
+      main({ ...env, PR_NUMBER: undefined }, addsAdr0023, readOpenAdds);
+      expect(readOpenAdds).not.toHaveBeenCalled();
+    });
   });
 
   test("skips the ADR check without PR_DIFF_BASE", () => {
