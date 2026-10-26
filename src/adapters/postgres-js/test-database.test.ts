@@ -1,6 +1,6 @@
 import { setImmediate, setTimeout } from "node:timers/promises";
 import postgres from "postgres";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MIGRATION_LOCK_KEY } from "../../runtime/internal/index.ts";
 import {
   explainConnectionError,
@@ -85,5 +85,24 @@ describe("whileMigrationLockHeld", () => {
     );
 
     expect(reasons).toStrictEqual([]);
+  });
+});
+
+describe("testServerUrl", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("returns DATABASE_URL when set", () => {
+    vi.stubEnv("DATABASE_URL", "postgres://example.test/db");
+    expect(testServerUrl()).toBe("postgres://example.test/db");
+  });
+
+  it.each([
+    ["empty", ""],
+    ["unset", undefined],
+  ])("points at test-db.ts when DATABASE_URL is %s", (_label, value) => {
+    vi.stubEnv("DATABASE_URL", value);
+    expect(() => testServerUrl()).toThrow("node scripts/test-db.ts");
   });
 });
