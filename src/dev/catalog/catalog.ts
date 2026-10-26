@@ -186,7 +186,7 @@ function constraintMethods(
     const parent = added("table", schema, table);
     for (const column of columns) added("column", schema, table, column);
     const fact = make(parent);
-    catalog.set(constraintKey(parent, fact.name), fact);
+    catalog.set(keyOf(fact), fact);
   };
   return {
     primaryKey: (schema, table, name, payload) => {
@@ -267,10 +267,11 @@ function key(...names: string[]): Key {
 
 /**
  * An empty segment can't be a Postgres name, so a constraint never keys like a column of the
- * same name on its table.
+ * same name on its table. An index shares its schema's relation names, not the table's constraint
+ * names, so it keys under a segment of its own.
  */
-function constraintKey(table: Key, name: string): Key {
-  return key(table, "", name);
+function constraintKey(table: Key, name: string, kind: Fact["kind"]): Key {
+  return kind === "index" ? key(table, "", "index", name) : key(table, "", name);
 }
 
 function keyOf(fact: Fact): Key {
@@ -279,7 +280,7 @@ function keyOf(fact: Fact): Key {
     fact.kind === "unique" ||
     fact.kind === "index" ||
     fact.kind === "foreign key"
-    ? constraintKey(fact.parent, fact.name)
+    ? constraintKey(fact.parent, fact.name, fact.kind)
     : key(fact.parent, fact.name);
 }
 

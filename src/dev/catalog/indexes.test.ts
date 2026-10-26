@@ -119,8 +119,8 @@ describe("an index in the Definition", () => {
 
     expect([...catalog.keys()].filter((key) => key.includes("\0\0"))).toStrictEqual([
       "public\0t\0\0t_a_key",
-      "public\0t\0\0t_a_idx",
-      "public\0t\0\0t_a_b_idx",
+      "public\0t\0\0index\0t_a_idx",
+      "public\0t\0\0index\0t_a_b_idx",
     ]);
   });
 
@@ -203,19 +203,21 @@ describe("an index in the Definition", () => {
     ).toThrow('both take the index name "shared"');
 
     // A foreign key is a constraint, not a relation, so an index may share its name.
-    expect(() =>
-      definitionCatalog(
-        defineDatabase({
-          public: {
-            user,
-            order: defineTable(
-              (c) => ({ user_id: c.integer().references(() => user.columns.id, { name: "same" }) }),
-              (r) => ({ indexes: [{ columns: [r.user_id], name: "same" }] }),
-            ),
-          },
-        }),
-      ),
-    ).not.toThrow();
+    const catalog = definitionCatalog(
+      defineDatabase({
+        public: {
+          user,
+          order: defineTable(
+            (c) => ({ user_id: c.integer().references(() => user.columns.id, { name: "same" }) }),
+            (r) => ({ indexes: [{ columns: [r.user_id], name: "same" }] }),
+          ),
+        },
+      }),
+    );
+
+    expect(
+      [...catalog.values()].filter(({ name }) => name === "same").map(({ kind }) => kind),
+    ).toStrictEqual(["index", "foreign key"]);
   });
 
   it("allows the same index name in two schemas", () => {

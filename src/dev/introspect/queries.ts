@@ -81,7 +81,8 @@ order by k.conname`;
 
 // An index is Unmodeled (ADR-0005) when it has another method, an opclass or collation other than
 // the default, storage parameters, a tablespace, an expression key, or a predicate (expression
-// keys and WHERE wait for #442). An index that backs a primary key, unique, or exclusion
+// keys and WHERE wait for #442), or is invalid (a failed CREATE INDEX CONCURRENTLY leaves one
+// that the planner never uses). An index that backs a primary key, unique, or exclusion
 // constraint is the constraint's fact, so it is skipped too; a foreign key's `conindid` is the
 // referenced table's index, which stays an index. `orders` holds one `<asc|desc> nulls <first|last>`
 // per key, read from `indoption`.
@@ -115,7 +116,7 @@ from pg_index i
   join pg_class c on c.oid = i.indrelid
   join pg_namespace n on n.oid = c.relnamespace
 where am.amname in ('btree', 'hash', 'gin', 'gist', 'brin')
-  and i.indexprs is null and i.indpred is null
+  and i.indisvalid and i.indexprs is null and i.indpred is null
   and ic.reloptions is null and ic.reltablespace = 0
   and not exists (
     select from pg_constraint k

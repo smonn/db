@@ -40,7 +40,7 @@ Each is a child fact of the table, named by its constraint, since a drop must sa
 
 An index is a child fact of its table, named by the index and keyed like a key. Its payload holds `unique`, `method`, its keys in order (a column with `descending` and `nullsFirst`), `include`, and `nullsNotDistinct`. A changed payload drops and creates it again, since no `ALTER INDEX` changes any of these. An unnamed index takes `<table>_<columns joined by _>_idx`. `definitionCatalog` refuses a name over 63 bytes and one another relation of the schema holds (a table, sequence, key, or index), as two unnamed `.index()` calls on a column do. An index and a foreign key may share a name.
 
-`introspect` skips as Unmodeled (ADR-0005) an index with a method but btree, hash, gin, gist, or brin, an opclass or collation other than the default, storage parameters, a tablespace, an expression key, or a predicate (#442 models the last two), and an index that backs a primary key, unique, or exclusion constraint, since the constraint is the fact.
+`introspect` skips as Unmodeled (ADR-0005) an index with a method but btree, hash, gin, gist, or brin, an opclass or collation other than the default, storage parameters, a tablespace, an expression key, or a predicate (#442 models the last two), an invalid one (a failed `CREATE INDEX CONCURRENTLY`), and an index that backs a primary key, unique, or exclusion constraint, since the constraint is the fact.
 
 ### Foreign keys
 
@@ -95,7 +95,7 @@ Dropping a table or column drops what it holds, so no separate drop is emitted f
 
 ## Hazards
 
-Each action kind declares its Hazards (`data_loss`, `rewrite`, `access_exclusive_lock`, `share_lock`, `share_row_exclusive_lock`, `rename`) in a table, classified from the catalog, not the SQL text. Each Hazard is written as a `-- hazard: <kind>` comment above its statement, and generate returns them with their statements. Generation never blocks on a Hazard; commit does, per kind (ADR-0015).
+Each action kind declares its Hazards (`data_loss`, `rewrite`, `access_exclusive_lock`, `share_lock`, `share_row_exclusive_lock`, `rename`) in a table, classified from the catalog, not the SQL text. Each Hazard is written as a `-- hazard: <kind>` comment above its statement, and generate returns them with their statements. Generation never blocks on a Hazard; commit does, per kind (ADR-0015). Commit also refuses a near-miss `-- hazard:` comment (indented, unspaced, recased, trailing, or mid-statement), since that would drop its gate by accident.
 
 - `data_loss`: a dropped column or table (so a rename too, ADR-0010, unless a `renamedFrom` marker declares it, which carries `rename` instead, ADR-0024), and a type change that converts values without an error but not back, such as `numeric(10,2)` to `integer`, `timestamptz` to `date`, or `double precision` to `real`. A change that fails on a value that doesn't fit, such as `bigint` to `integer`, loses nothing, since the statement rolls back.
 - `rewrite`: a type change Postgres can't make in place (text to an enum, an enum to text, and one enum to another among them), and a new column whose default calls a volatile function, that is an identity, or that is stored generated, and a new expression on a stored generated column, because each row needs its own value. A virtual column computes on read and rewrites nothing.

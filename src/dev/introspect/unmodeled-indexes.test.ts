@@ -129,6 +129,19 @@ describe("introspect skips Unmodeled indexes", () => {
     expect(indexes(await introspect(db.driver))).toStrictEqual([]);
   });
 
+  it("skips an invalid index, which a failed CREATE INDEX CONCURRENTLY leaves behind", async () => {
+    await db.driver.execute(`
+      create table t (a integer);
+      create index failed on t (a);
+      create index plain on t (a);
+      update pg_index set indisvalid = false where indexrelid = 'failed'::regclass;
+    `);
+
+    expect(indexes(await introspect(db.driver)).map(([name]) => name)).toStrictEqual([
+      "public.t.plain",
+    ]);
+  });
+
   it("skips an index on a column an array of a range makes Unmodeled", async () => {
     await db.driver.execute(`
       create table t (a integer, r int4range[]);
