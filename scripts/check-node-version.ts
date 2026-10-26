@@ -31,6 +31,29 @@ function nodeRange(pkg: unknown): string | undefined {
   return undefined;
 }
 
+function importerProblems(importer: RegExpExecArray, range: string, asdf: string): string[] {
+  const problems: string[] = [];
+  if (importer[1] !== `runtime:${range}`)
+    problems.push(
+      `pnpm-lock.yaml node specifier is ${importer[1]}, expected runtime:${range} (devEngines.runtime)`,
+    );
+  if (importer[2] !== `runtime:${asdf}`)
+    problems.push(
+      `pnpm-lock.yaml node version is ${importer[2]}, expected runtime:${asdf} (.tool-versions)`,
+    );
+  return problems;
+}
+
+function runtimeKeyProblems(lockfile: string, asdf: string): string[] {
+  const keys = [...lockfile.matchAll(/^ {2}node@runtime:(\S+?):/gmu)].map((m) => m[1]);
+  const problems: string[] = [];
+  if (keys.length === 0) problems.push("pnpm-lock.yaml has no node@runtime package entry");
+  for (const key of new Set(keys))
+    if (key !== asdf)
+      problems.push(`pnpm-lock.yaml has node@runtime:${key}, expected ${asdf} (.tool-versions)`);
+  return problems;
+}
+
 export function checkNodeVersion(sources: NodeVersionSources): string[] {
   const asdf = /^nodejs[ \t]+(\S+)[ \t]*$/mu.exec(sources.toolVersions)?.[1];
   if (asdf === undefined) return [".tool-versions has no nodejs entry"];
@@ -41,21 +64,10 @@ export function checkNodeVersion(sources: NodeVersionSources): string[] {
   const importer = /^ {6}node:\n {8}specifier: (\S+)\n {8}version: (\S+)$/mu.exec(sources.lockfile);
   if (importer === null) return ["pnpm-lock.yaml has no node runtime importer entry"];
 
-  const problems: string[] = [];
-  if (importer[1] !== `runtime:${range}`)
-    problems.push(
-      `pnpm-lock.yaml node specifier is ${importer[1]}, expected runtime:${range} (devEngines.runtime)`,
-    );
-  if (importer[2] !== `runtime:${asdf}`)
-    problems.push(
-      `pnpm-lock.yaml node version is ${importer[2]}, expected runtime:${asdf} (.tool-versions)`,
-    );
-  const keys = [...sources.lockfile.matchAll(/^ {2}node@runtime:(\S+?):/gmu)].map((m) => m[1]);
-  if (keys.length === 0) problems.push("pnpm-lock.yaml has no node@runtime package entry");
-  for (const key of new Set(keys))
-    if (key !== asdf)
-      problems.push(`pnpm-lock.yaml has node@runtime:${key}, expected ${asdf} (.tool-versions)`);
-  return problems;
+  return [
+    ...importerProblems(importer, range, asdf),
+    ...runtimeKeyProblems(sources.lockfile, asdf),
+  ];
 }
 
 export function main(cwd = "."): void {

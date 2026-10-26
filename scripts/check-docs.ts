@@ -2,13 +2,15 @@
  * Checks the repo's Markdown against the glossary and ADR template: no `_Avoid_` term from
  * GLOSSARY.md outside its own entry, no `_Avoid_` term that is also a headword, no ADR body over
  * three sentences, no case variant of a multi-word headword, no two ADRs sharing a number, and
- * no em-dashes. Also rejects literal em-dashes in `scripts/` and `src/` TypeScript. Prints
- * `file:line: problem` and exits 1 on any problem.
+ * no em-dashes. Also rejects literal em-dashes in `scripts/` and `src/` TypeScript, and runs the
+ * link and word-budget checks in `doc-shape.ts`. Prints `file:line: problem` and exits 1 on any
+ * problem.
  *
  * Run from the repo root with `pnpm check:docs`; CI runs it in the Docs job.
  */
 import { globSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { checkBudgets, checkLinks, readRepoPath, type Problem } from "./doc-shape.ts";
 import { markdownFiles } from "./markdown-files.ts";
 
 export type GlossaryEntry = {
@@ -16,12 +18,6 @@ export type GlossaryEntry = {
   avoid: string[];
   startLine: number;
   endLine: number;
-};
-
-export type Problem = {
-  file: string;
-  line: number;
-  message: string;
 };
 
 const MAX_ADR_SENTENCES = 3;
@@ -155,13 +151,27 @@ export function checkAdrNumbers(files: string[]): Problem[] {
   });
 }
 
-export function main(cwd = "."): void {
+// Lowered as a file shrinks and raised only with the maintainer (#511).
+const DOC_BUDGETS: Record<string, number> = {
+  "docs/architecture/README.md": 690,
+  "docs/architecture/cli.md": 1030,
+  "docs/architecture/diff-engine.md": 2670,
+};
+
+export function main(cwd = ".", budgets: Record<string, number> = DOC_BUDGETS): void {
   const files = markdownFiles(cwd);
   const glossary = parseGlossary(readFileSync(join(cwd, "GLOSSARY.md"), "utf8"));
-  const problems = [...checkGlossary(glossary), ...checkAdrNumbers(files)];
+  const problems = [
+    ...checkGlossary(glossary),
+    ...checkAdrNumbers(files),
+    ...checkBudgets(cwd, budgets),
+  ];
   for (const file of files) {
     const text = readFileSync(join(cwd, file), "utf8");
-    problems.push(...checkEmDashes(file, text));
+    problems.push(
+      ...checkEmDashes(file, text),
+      ...checkLinks(file, text, (path) => readRepoPath(cwd, path)),
+    );
     if (file === "README.md" || file === "GLOSSARY.md" || file.startsWith("docs/")) {
       problems.push(
         ...checkAvoidTerms(file, text, glossary),

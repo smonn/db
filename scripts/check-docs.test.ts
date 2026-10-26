@@ -196,7 +196,8 @@ describe("main", () => {
 
   test("passes a clean tree", () => {
     write("scripts/a.ts", "export const a = 1;\n");
-    main(root);
+    write("notes.md", "[adr](docs/adr/) [first](docs/adr/0001-first.md#first)\n");
+    main(root, { "docs/adr/0001-first.md": 10 });
     expect(reported()).toEqual([]);
     expect(process.exitCode).toBeUndefined();
   });
@@ -204,11 +205,14 @@ describe("main", () => {
   test("reports every kind of problem as file:line: message and exits 1", () => {
     write("README.md", `A Namespace ${emDash} here.\nA current Migration too.\n`);
     write("docs/adr/0001-second.md", "# Second\n\nOne. Two. Three. Four.\n");
-    write("notes.md", `Namespace ${emDash}\n`);
+    write("notes.md", `Namespace ${emDash}\n[gone](gone.md)\n`);
     write("src/b.ts", `export const b = "${emDash}";\n`);
-    main(root);
+    main(root, { "docs/adr/0001-first.md": 1, "docs/missing.md": 10 });
     expect(reported().toSorted()).toEqual(
       [
+        "notes.md:2: link to missing file gone.md",
+        "docs/adr/0001-first.md:1: 5 words; the cap is 1. Move behavior inside one module to its TSDoc, a decision to an ADR, or cut",
+        "docs/missing.md:1: budgeted file is missing; update its cap in scripts/check-docs.ts",
         "README.md:1: em-dash",
         'README.md:1: avoid "Namespace" (use "Schema")',
         'README.md:2: write "Current migration", not "current Migration"',
