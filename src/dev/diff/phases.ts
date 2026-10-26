@@ -1,15 +1,16 @@
 import type { Action, ActionKind } from "./actions.ts";
 
 /**
- * The phases `order` sorts actions into, in order. `docs/architecture.md` (Ordering) lists the
- * kinds each holds and why fixed phases suffice until a kind references its own kind.
+ * The phases `order` sorts actions into, in order. `docs/architecture.md` (Ordering) numbers them
+ * by position here, lists the kinds each holds, and says why fixed phases suffice until a kind
+ * references its own kind.
  */
 const PHASES = [
   "rename",
   "rename by payload",
   "drop key or index",
   "drop column or table",
-  "create schema or type",
+  "create or alter schema or type",
   "create or alter table",
   "add key or index",
   "drop type",
@@ -25,17 +26,19 @@ type Place = readonly [phase: Phase, rank: number];
 export type PlaceTable<K extends string> = { readonly [A in K]: Place };
 
 /**
+ * Ranks follow #381's listed order; the gaps belong to kinds that land later (index, foreign key).
+ *
  * Within its phase, each drop runs before the changes it would block: Postgres refuses to add an
  * identity to a column that has a default or isn't NOT NULL, to drop NOT NULL from an identity
  * column, and to retype a column whose default can't be cast. Keys drop first and add last, so a
  * changed key is rebuilt around the column changes it spans.
  */
 export const PLACES: PlaceTable<ActionKind> = {
-  "drop unique": ["drop key or index", 0],
-  "drop primary key": ["drop key or index", 1],
+  "drop unique": ["drop key or index", 2],
+  "drop primary key": ["drop key or index", 3],
   "drop column": ["drop column or table", 0],
   "drop table": ["drop column or table", 1],
-  "create schema": ["create schema or type", 0],
+  "create schema": ["create or alter schema or type", 0],
   "create table": ["create or alter table", 0],
   "add column": ["create or alter table", 1],
   "drop default": ["create or alter table", 2],

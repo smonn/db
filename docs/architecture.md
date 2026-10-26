@@ -300,13 +300,13 @@ A flat `Map<key, fact>`. A key is the chain of names from the schema down (`publ
 
 ### Ordering
 
-Each action is one statement-sized change, such as create table, add column, or set default. One `order(actions)` function sorts them into fixed phases (#381). A phase table in `diff/phases.ts` gives each action kind its phase and its rank within the phase, so a new kind fails to compile until it names one. The phases, with the kinds each will hold once v0.2 lands:
+Each action is one statement-sized change, such as create table, add column, or set default. One `order(actions)` function sorts them into fixed phases (#381). A phase table in `diff/phases.ts` gives each action kind its phase and its rank within the phase, so a new kind fails to compile until it names one. The phases, with the kinds each will hold once v0.2 lands. Phase _n_ is the _n_th entry of `PHASES`, so #381 and this list cite phases by number and the code by name:
 
 1. `RENAME` of tables, columns, enums, domains, labels, and an enum type swap's old type.
 2. Payload-matched renames of constraints, indexes, sequences, and domain checks, which compare under the names phase 1 gives.
 3. Drop foreign key, index, unique constraint, primary key.
 4. Drop column, then table.
-5. Create schema, enum, domain; domain alters and checks, before columns so a new column gets the new domain default.
+5. Create or alter schema or type: create schema, enum, domain; domain alters and checks; enum `ADD VALUE`. All before columns, so a new column gets the new domain default.
 6. Create table, add column, then column alters: drop default, drop identity or expression, type (an enum swap's retypes included), NOT NULL, set default or expression, add identity or switch identity mode.
 7. Add primary key, unique constraint, index, foreign key.
 8. Drop domain, then enum, after the retypes.
@@ -314,7 +314,7 @@ Each action is one statement-sized change, such as create table, add column, or 
 
 Phases suffice because every dependency edge runs between kinds, never between two objects of one kind: a foreign key needs its tables and keys, a column its enum or domain, a domain its enum. Phases place each edge's two ends apart, so they never meet a cycle. A topological sort waits for a kind that references its own kind, such as a view or function (v0.5).
 
-Within a rank, ties keep catalog order, which `introspect` sorts by name for schemas, tables, and constraints and by position for columns, so new columns follow the Definition. Drops, including the drop half of a changed primary key or unique constraint, follow the source catalog and everything else the target catalog. Dropping a table or column drops what it holds, so no separate drop is emitted for its children. A schema drop without `CASCADE` refuses while the schema holds anything, so each of its tables drops first, without its children. Within phase 6, each drop runs before the change it would block: Postgres refuses to add an identity to a column that has a default or isn't NOT NULL, and to drop NOT NULL from an identity column. A type change drops the old default first, because Postgres refuses to retype a column whose default can't be cast and otherwise keeps the default cast to the old type, and sets it again afterward. Keys drop in phase 3 and add in phase 7, so a changed key is rebuilt around the column changes it spans.
+Ranks within a phase follow #381's listed order and leave gaps for kinds that land later, so adding one never renumbers another. Within a rank, ties keep catalog order, which `introspect` sorts by name for schemas, tables, and constraints and by position for columns, so new columns follow the Definition. Drops, including the drop half of a changed primary key or unique constraint, follow the source catalog and everything else the target catalog. Dropping a table or column drops what it holds, so no separate drop is emitted for its children. A schema drop without `CASCADE` refuses while the schema holds anything, so each of its tables drops first, without its children. Within phase 6, each drop runs before the change it would block: Postgres refuses to add an identity to a column that has a default or isn't NOT NULL, and to drop NOT NULL from an identity column. A type change drops the old default first, because Postgres refuses to retype a column whose default can't be cast and otherwise keeps the default cast to the old type, and sets it again afterward. Keys drop in phase 3 and add in phase 7, so a changed key is rebuilt around the column changes it spans.
 
 ### SQL rules
 
