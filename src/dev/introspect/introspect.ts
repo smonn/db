@@ -8,6 +8,7 @@ import {
   catalogBuilder,
   type Catalog,
   type CatalogBuilder,
+  type ForeignKeyPayload,
   type GeneratedPayload,
   type IdentityPayload,
 } from "../catalog/index.ts";
@@ -86,6 +87,46 @@ where (k.contype = 'p' or (k.contype = 'u' and cardinality(k.conkey) = 1))
   and ${NOT_EXTENSION_MEMBER("pg_class", "c")}
 order by k.conname`;
 
+// A foreign key reads like a plain one unless it is NOT ENFORCED, uses PERIOD, or names a column
+// list on SET NULL or SET DEFAULT, each of which is an Unmodeled object (ADR-0005). NOT VALID is
+// the same fact as a valid key. A key to an Unmodeled table is skipped in `read`, which knows the
+// tables it modeled.
+const FOREIGN_KEYS = `
+select n.nspname as schema, c.relname as table, k.conname as name,
+  tn.nspname as target_schema, tc.relname as target_table,
+  array(
+    select a.attname::text
+    from unnest(k.conkey) with ordinality as key(attnum, position)
+      join pg_attribute a on a.attrelid = k.conrelid and a.attnum = key.attnum
+    order by key.position
+  ) as columns,
+  array(
+    select a.attname::text
+    from unnest(k.confkey) with ordinality as key(attnum, position)
+      join pg_attribute a on a.attrelid = k.confrelid and a.attnum = key.attnum
+    order by key.position
+  ) as target_columns,
+  k.confdeltype as on_delete, k.confupdtype as on_update, k.confmatchtype as match,
+  k.condeferrable as deferrable, k.condeferred as deferred
+from pg_constraint k
+  join pg_class c on c.oid = k.conrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  join pg_class tc on tc.oid = k.confrelid
+  join pg_namespace tn on tn.oid = tc.relnamespace
+where k.contype = 'f' and k.conenforced and not k.conperiod and k.confdelsetcols is null
+  and c.relkind = 'r' and not c.relispartition and ${KEPT_SCHEMA}
+  and ${NOT_EXTENSION_MEMBER("pg_class", "c")}
+order by k.conname`;
+
+/** The `pg_constraint.confdeltype` and `confupdtype` codes. */
+const FOREIGN_KEY_ACTIONS: Readonly<Record<string, ForeignKeyPayload["onDelete"]>> = {
+  a: "no action",
+  r: "restrict",
+  c: "cascade",
+  n: "set null",
+  d: "set default",
+};
+
 /** The `pg_attribute.attidentity` codes; an empty string means no identity. */
 const IDENTITY_KINDS: Readonly<Record<string, IdentityPayload["generated"]>> = {
   a: "always",
@@ -129,34 +170,102 @@ export async function requireSupportedServer(tx: Queryable): Promise<void> {
   );
 }
 
+type TableRows = {
+  readonly columns: readonly DriverRow[];
+  readonly constraints: readonly DriverRow[];
+  readonly foreignKeys: readonly DriverRow[];
+};
+
 async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
   const { rows: schemas } = await tx.query(SCHEMAS, [trackingName]);
   const { rows: tables } = await tx.query(TABLES, [trackingName]);
   const { rows: columns } = await tx.query(COLUMNS, [trackingName]);
   const { rows: constraints } = await tx.query(CONSTRAINTS, [trackingName]);
+  const { rows: foreignKeys } = await tx.query(FOREIGN_KEYS, [trackingName]);
+  const rows = {
+    columns,
+    constraints,
+    foreignKeys: modeledForeignKeys(foreignKeys, schemas, tables),
+  };
 
   const builder = catalogBuilder();
   for (const { name } of schemas) {
     const schema = String(name);
     builder.schema(schema);
     for (const table of tables.filter((row) => row["schema"] === schema)) {
-      const tableName = String(table["name"]);
-      builder.table(schema, tableName);
-      for (const column of columns) {
-        if (column["schema"] !== schema || column["table"] !== tableName) continue;
-        addColumn(builder, schema, tableName, column);
-      }
-      for (const row of constraints) {
-        if (row["schema"] !== schema || row["table"] !== tableName) continue;
-        const constraint = String(row["name"]);
-        const keyColumns = Array.isArray(row["columns"]) ? row["columns"].map(String) : [];
-        if (row["type"] === "p")
-          builder.primaryKey(schema, tableName, constraint, { columns: keyColumns });
-        else builder.unique(schema, tableName, constraint, { column: keyColumns[0] ?? "" });
-      }
+      addTable(builder, schema, String(table["name"]), rows);
     }
   }
   return builder.build();
+}
+
+/** Drops a foreign key to a table this read skips, such as a partitioned one: it is Unmodeled. */
+function modeledForeignKeys(
+  foreignKeys: readonly DriverRow[],
+  schemas: readonly DriverRow[],
+  tables: readonly DriverRow[],
+): DriverRow[] {
+  const modeled = new Set(
+    tables
+      .filter((table) => schemas.some(({ name }) => name === table["schema"]))
+      .map((table) => `${String(table["schema"])}\0${String(table["name"])}`),
+  );
+  return foreignKeys.filter((row) =>
+    modeled.has(`${String(row["target_schema"])}\0${String(row["target_table"])}`),
+  );
+}
+
+function addTable(
+  builder: CatalogBuilder,
+  schema: string,
+  tableName: string,
+  rows: TableRows,
+): void {
+  builder.table(schema, tableName);
+  const here = (row: DriverRow): boolean => row["schema"] === schema && row["table"] === tableName;
+  for (const column of rows.columns.filter(here)) addColumn(builder, schema, tableName, column);
+  for (const row of rows.constraints.filter(here)) addKey(builder, schema, tableName, row);
+  for (const row of rows.foreignKeys.filter(here)) addForeignKey(builder, schema, tableName, row);
+}
+
+function addKey(builder: CatalogBuilder, schema: string, tableName: string, row: DriverRow): void {
+  const constraint = String(row["name"]);
+  const keyColumns = names(row["columns"]);
+  if (row["type"] === "p") {
+    builder.primaryKey(schema, tableName, constraint, { columns: keyColumns });
+  } else {
+    builder.unique(schema, tableName, constraint, { column: keyColumns[0] ?? "" });
+  }
+}
+
+function names(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String) : [];
+}
+
+function addForeignKey(
+  builder: CatalogBuilder,
+  schema: string,
+  tableName: string,
+  row: DriverRow,
+): void {
+  builder.foreignKey(schema, tableName, String(row["name"]), {
+    columns: names(row["columns"]),
+    target: {
+      schema: String(row["target_schema"]),
+      table: String(row["target_table"]),
+      columns: names(row["target_columns"]),
+    },
+    onDelete: FOREIGN_KEY_ACTIONS[String(row["on_delete"])] ?? "no action",
+    onUpdate: FOREIGN_KEY_ACTIONS[String(row["on_update"])] ?? "no action",
+    // `confmatchtype` is `f` or `s`; Postgres has no `MATCH PARTIAL`.
+    match: row["match"] === "f" ? "full" : "simple",
+    deferrable: deferrableOf(row),
+  });
+}
+
+function deferrableOf(row: DriverRow): ForeignKeyPayload["deferrable"] {
+  if (row["deferrable"] !== true) return "not deferrable";
+  return row["deferred"] === true ? "deferred" : "immediate";
 }
 
 function addColumn(
