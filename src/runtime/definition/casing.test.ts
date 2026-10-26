@@ -82,6 +82,17 @@ describe("defineDatabase casing", () => {
     expect(db.public.people.columnNames).toStrictEqual({ id: "person_id" });
   });
 
+  it("names a table's foreign key targets by SQL names, as its own schema and name are", () => {
+    const teams = defineTable((c) => ({ teamId: c.text().primaryKey() }));
+    const members = defineTable((c) => ({
+      teamRef: c.text().references(() => teams.columns.teamId),
+    }));
+    const db = defineDatabase({ appData: { teamList: teams, members } }, { casing: "snake_case" });
+    expect(db.appData.members.foreignKeys.map(({ target }) => target)).toStrictEqual([
+      { schema: "app_data", table: "team_list", columns: ["team_id"] },
+    ]);
+  });
+
   it("keys the SQL view's tables, keys, and foreign key targets by SQL names", () => {
     const teams = defineTable((c) => ({ teamId: c.text().primaryKey() }));
     const members = defineTable(

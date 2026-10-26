@@ -1,10 +1,9 @@
-import { quoteIdentifier } from "../internal/index.ts";
 import { casingOf, type DatabaseOptions } from "./casing.ts";
 import { isDomain, type Domain } from "./domain.ts";
 import { isEnum, type Enum } from "./enum.ts";
-import { foreignKeysOf, placesOf, type Places } from "./foreign-keys.ts";
+import { type ForeignKey, foreignKeysOf, placesOf, type Places } from "./foreign-keys.ts";
 import { withSqlDefinition } from "./sql-definition.ts";
-import { columnNamesOf, sqlNamesOf, type SqlNames } from "./sql-names.ts";
+import { sqlNamesOf, type SqlNames } from "./sql-names.ts";
 import type { Table, TableDefinition } from "./table.ts";
 
 /** What a schema holds: tables, enums, and domains, which share one pool of names in Postgres. */
@@ -20,25 +19,33 @@ export type Database<S extends Schemas> = {
   };
 };
 
-type Naming = { readonly names: SqlNames; readonly cased: (key: string) => string };
+/** `key` with the target `foreignKeysOf` named by keys named by SQL names. */
+function withSqlTarget(names: SqlNames, key: ForeignKey): ForeignKey {
+  const { schema, table, columns } = key.target;
+  const columnNames = names.columns(schema, table);
+  const target = {
+    schema: names.schema(schema),
+    table: names.entry(schema, table),
+    columns: columns.map((column) => columnNames[column] ?? column),
+  };
+  return { ...key, target };
+}
 
-/** `schema` and `name` are keys; the table takes their SQL names, and its foreign keys read keys. */
+/** `schema` and `name` are keys; the table and its foreign key targets take their SQL names. */
 function tableOf(
   places: Places,
-  { names, cased }: Naming,
+  names: SqlNames,
   [schema, name]: readonly [schema: string, name: string],
   definition: TableDefinition,
 ): Table {
   const { columns, primaryKey, declaredForeignKeys } = definition;
-  const sqlSchema = names.schema(schema);
-  const sqlName = names.entry(schema, name);
-  const where = `${quoteIdentifier(sqlSchema)}.${quoteIdentifier(sqlName)}`;
+  const keyed = { columns, primaryKey, declaredForeignKeys };
   return {
     ...definition,
-    schema: sqlSchema,
-    name: sqlName,
-    columnNames: columnNamesOf(columns, cased, where),
-    foreignKeys: foreignKeysOf(places, schema, name, { columns, primaryKey, declaredForeignKeys }),
+    schema: names.schema(schema),
+    name: names.entry(schema, name),
+    columnNames: names.columns(schema, name),
+    foreignKeys: foreignKeysOf(places, schema, name, keyed).map((key) => withSqlTarget(names, key)),
   };
 }
 
@@ -50,8 +57,7 @@ export function defineDatabase<S extends Schemas>(
   schemas: S,
   options: DatabaseOptions = {},
 ): Database<S> {
-  const cased = casingOf(options);
-  const naming = { names: sqlNamesOf(schemas, cased), cased };
+  const names = sqlNamesOf(schemas, casingOf(options));
   const places = placesOf(schemas);
   const database = Object.fromEntries(
     Object.entries(schemas).map(([schema, tables]) => [
@@ -60,11 +66,11 @@ export function defineDatabase<S extends Schemas>(
         Object.entries(tables).map(([name, entry]) => [
           name,
           // A type stays the value its columns hold, since the catalog finds its name by identity.
-          isEnum(entry) || isDomain(entry) ? entry : tableOf(places, naming, [schema, name], entry),
+          isEnum(entry) || isDomain(entry) ? entry : tableOf(places, names, [schema, name], entry),
         ]),
       ),
     ]),
   );
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `Object.fromEntries` types the result as string-indexed records, which don't overlap `Database<S>` enough for a direct cast (TS2352); it goes through `unknown`.
-  return withSqlDefinition(database, naming.names) as unknown as Database<S>;
+  return withSqlDefinition(database, names) as unknown as Database<S>;
 }

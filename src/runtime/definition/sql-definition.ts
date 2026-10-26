@@ -1,6 +1,5 @@
 import { isDomain, type Domain } from "./domain.ts";
 import { isEnum, type Enum } from "./enum.ts";
-import type { ForeignKey } from "./foreign-keys.ts";
 import { renamedExpression } from "./index-expressions.ts";
 import type { TableIndex } from "./indexes.ts";
 import type { SqlNames } from "./sql-names.ts";
@@ -31,7 +30,7 @@ export function withSqlDefinition<D extends SqlDefinition>(database: D, names: S
       Object.fromEntries(
         Object.entries(entries).map(([key, entry]) => [
           names.entry(schema, key),
-          isEnum(entry) || isDomain(entry) ? entry : viewTable(database, entry),
+          isEnum(entry) || isDomain(entry) ? entry : viewTable(entry),
         ]),
       ),
     ]),
@@ -51,7 +50,7 @@ function isView(value: unknown): value is SqlDefinition {
   return typeof value === "object" && value !== null;
 }
 
-function viewTable(database: SqlDefinition, table: Table): Table {
+function viewTable(table: Table): Table {
   const column = (key: string): string => table.columnNames[key] ?? key;
   const names = Object.values(table.columnNames);
   return {
@@ -69,11 +68,7 @@ function viewTable(database: SqlDefinition, table: Table): Table {
           : declared.references.map(column),
     })),
     indexes: table.indexes.map((index) => viewIndex(index, column)),
-    foreignKeys: table.foreignKeys.map((key) => ({
-      ...key,
-      columns: key.columns.map(column),
-      target: viewTarget(database, key.target),
-    })),
+    foreignKeys: table.foreignKeys.map((key) => ({ ...key, columns: key.columns.map(column) })),
   };
 }
 
@@ -88,16 +83,5 @@ function viewIndex(index: TableIndex, column: (key: string) => string): TableInd
     include: index.include.map(column),
     where:
       index.where === undefined ? undefined : (renamedExpression(index, column) ?? index.where),
-  };
-}
-
-/** A foreign key's target is named by its keys until here. */
-function viewTarget(database: SqlDefinition, target: ForeignKey["target"]): ForeignKey["target"] {
-  const table = database[target.schema]?.[target.table];
-  if (table === undefined || isEnum(table) || isDomain(table)) return target;
-  return {
-    schema: table.schema,
-    table: table.name,
-    columns: target.columns.map((key) => table.columnNames[key] ?? key),
   };
 }

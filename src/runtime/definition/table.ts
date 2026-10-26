@@ -32,6 +32,6 @@ export type Table<C extends Columns = Columns, K extends string = string> = Tabl
   readonly name: string;
   /** Each column key's SQL name. */
   readonly columnNames: Readonly<Record<string, string>>;
-  /** The foreign keys its columns and second callback declare, named by keys, each target's table too; the SQL view names them in SQL. */
+  /** The foreign keys its columns and second callback declare: `columns` are keys, which the SQL view names in SQL, and `target` is named in SQL, as `schema` and `name` are. */
   readonly foreignKeys: readonly ForeignKey[];
 };
