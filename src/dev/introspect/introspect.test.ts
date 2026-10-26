@@ -168,8 +168,8 @@ describe("introspect", () => {
       .filter((fact) => ["primary key", "unique"].includes(fact.kind))
       .map((fact) => [fact.kind, namesOf(catalog, fact).join("."), fact.payload]);
     expect(keys).toStrictEqual([
-      ["unique", "public.t.c_uq", { column: "c" }],
-      ["unique", "public.t.d_uq", { column: "d" }],
+      ["unique", "public.t.c_uq", { columns: ["c"], nullsNotDistinct: false }],
+      ["unique", "public.t.d_uq", { columns: ["d"], nullsNotDistinct: false }],
       ["primary key", "public.t.pk", { columns: ["b", "a"] }],
     ]);
   });

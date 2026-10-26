@@ -22,7 +22,7 @@ function table(keys: Keys, names: readonly string[] = ["a", "b", "c"]): Catalog 
     builder.primaryKey("public", "t", name, { columns });
   }
   for (const [name, column] of Object.entries(keys.unique ?? {})) {
-    builder.unique("public", "t", name, { column });
+    builder.unique("public", "t", name, { columns: [column], nullsNotDistinct: false });
   }
   return builder.build();
 }

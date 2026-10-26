@@ -8,7 +8,7 @@ function table(): Catalog {
   builder.schema("public");
   builder.table("public", "t");
   builder.column("public", "t", "a", { type: "text", notNull: true });
-  builder.unique("public", "t", "t_key", { column: "a" });
+  builder.unique("public", "t", "t_key", { columns: ["a"], nullsNotDistinct: false });
   return builder.build();
 }
 

@@ -128,7 +128,7 @@ describe("definitionCatalog", () => {
       "public.users.a.identity": { generated: "always" },
       "public.users.c.default": { expression: "'new'", volatile: false },
       "public.users..users_pkey": { columns: ["a", "b"] },
-      "public.users..users_c_key": { column: "c" },
+      "public.users..users_c_key": { columns: ["c"], nullsNotDistinct: false },
     });
   });
 
@@ -210,7 +210,10 @@ describe("keys", () => {
   it("keeps a primary key and a unique constraint as facts under their table, by constraint name", () => {
     const builder = usersBuilder();
     builder.primaryKey("public", "users", "users_pkey", { columns: ["id"] });
-    builder.unique("public", "users", "users_email_key", { column: "email" });
+    builder.unique("public", "users", "users_email_key", {
+      columns: ["email"],
+      nullsNotDistinct: false,
+    });
     const catalog = builder.build();
 
     expect([...catalog.values()].slice(-2)).toStrictEqual([
@@ -224,7 +227,7 @@ describe("keys", () => {
         kind: "unique",
         name: "users_email_key",
         parent: "public\0users",
-        payload: { column: "email" },
+        payload: { columns: ["email"], nullsNotDistinct: false },
       },
     ]);
     expect(childrenOf(catalog, tableFact(catalog)).map((fact) => fact.kind)).toStrictEqual([
@@ -237,7 +240,7 @@ describe("keys", () => {
 
   it("keys a constraint apart from a column of the same name", () => {
     const builder = usersBuilder();
-    builder.unique("public", "users", "email", { column: "email" });
+    builder.unique("public", "users", "email", { columns: ["email"], nullsNotDistinct: false });
     const catalog = builder.build();
 
     expect(catalog.size).toBe(5);
@@ -255,10 +258,10 @@ describe("keys", () => {
       builder.primaryKey("public", "users", "pk", { columns: ["id", "gone"] });
     }).toThrow(`column "public"."users"."gone" isn't in the catalog`);
     expect(() => {
-      builder.unique("public", "users", "u", { column: "gone" });
+      builder.unique("public", "users", "u", { columns: ["gone"], nullsNotDistinct: false });
     }).toThrow(`column "public"."users"."gone" isn't in the catalog`);
     expect(() => {
-      builder.unique("public", "missing", "u", { column: "id" });
+      builder.unique("public", "missing", "u", { columns: ["id"], nullsNotDistinct: false });
     }).toThrow(`table "public"."missing" isn't in the catalog`);
   });
 });

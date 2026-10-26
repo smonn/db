@@ -53,7 +53,7 @@ function addDefinitionTable(
   for (const [column, { state }] of entries) {
     if (state.unique) {
       const name = names.unique(table, column, state.constraintName);
-      builder.unique(schema, table, name, { column });
+      builder.unique(schema, table, name, { columns: [column], nullsNotDistinct: false });
     }
   }
   for (const { name, columns: from, ...payload } of foreignKeys) {
