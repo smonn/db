@@ -10,6 +10,8 @@ export type ColumnState = {
   readonly sqlType: string;
   /** The enum itself, since the rollup gives its type a name. */
   readonly enumType: Enum | undefined;
+  /** True once `.array()` ran: a one-dimensional array of `sqlType` or `enumType`. */
+  readonly array: boolean;
   /** True for a primary key or identity column too, as Postgres makes them. */
   readonly notNull: boolean;
   /** A SQL expression, written as it would follow `default` in DDL. */
@@ -35,7 +37,8 @@ type ConstraintOptions = { readonly name: string };
  * `Int` is true for the types Postgres allows an identity on. `Gen` is true once the column has a
  * default or an identity, which Postgres allows only one of. `Pk` is true once `.primaryKey()` ran,
  * and `Key` once `.primaryKey()` or `.unique()` ran, since a primary key is already unique. `Fk` is
- * true once `.references()` ran.
+ * true once `.references()` ran. `Fresh` is true until a modifier (anything but `.renamedFrom()`)
+ * or `.array()` ran, since `.array()` must come first.
  */
 export type Column<
   V,
@@ -46,6 +49,7 @@ export type Column<
   Key extends boolean = false,
   Co extends boolean = false,
   Fk extends boolean = false,
+  Fresh extends boolean = true,
 > = {
   readonly state: ColumnState;
   /** Runtime-only: the codec `.codec()` set. It stays out of `state`, so it never reaches the catalog. */
@@ -57,30 +61,42 @@ export type Column<
     readonly primaryKey: Pk;
     readonly key: Key;
   };
-  notNull(): Column<V, true, Int, Gen, Pk, Key, Co, Fk>;
+  notNull(): Column<V, true, Int, Gen, Pk, Key, Co, Fk, false>;
   /**
    * Renames the column from `oldName`, its SQL name before this change. Generate ignores the
    * marker once the old name is gone, so remove it after the rename ships.
    */
-  renamedFrom(oldName: string): Column<V, N, Int, Gen, Pk, Key, Co, Fk>;
+  renamedFrom(oldName: string): Column<V, N, Int, Gen, Pk, Key, Co, Fk, Fresh>;
   /**
    * An index on this column alone. Call it again for a second index, giving each a name. An index
    * over several columns, or with more options, goes in the second callback's `indexes`.
    */
-  index(options?: IndexOptions): Column<V, N, Int, Gen, Pk, Key, Co, Fk>;
-} & (Co extends true
-  ? unknown
-  : {
-      /** Overrides the TypeScript mapping; the query layer runs it and the catalog never sees it. A column takes one. */
-      codec<Value>(codec: Codec<V, Value>): Column<Value, N, Int, Gen, Pk, Key, true, Fk>;
-    }) &
+  index(options?: IndexOptions): Column<V, N, Int, Gen, Pk, Key, Co, Fk, Fresh>;
+} & (Fresh extends true
+  ? {
+      /**
+       * A one-dimensional array of this type, which reads as `(V | null)[]` since Postgres can't
+       * make elements NOT NULL. Call it before any modifier, so `.notNull()` and `.default()` mean
+       * the whole column. Postgres ignores declared dimensions, so there is no way to ask for more.
+       */
+      array(): Column<(V | null)[], false, false, false, false, false, false, false, false>;
+    }
+  : unknown) &
+  (Co extends true
+    ? unknown
+    : {
+        /** Overrides the TypeScript mapping; the query layer runs it and the catalog never sees it. A column takes one. */
+        codec<Value>(codec: Codec<V, Value>): Column<Value, N, Int, Gen, Pk, Key, true, Fk, false>;
+      }) &
   (Key extends true
     ? unknown
     : {
         /** The table's whole primary key. A composite key goes in `defineTable`'s second callback. */
-        primaryKey(options?: ConstraintOptions): Column<V, true, Int, Gen, true, true, Co, Fk>;
+        primaryKey(
+          options?: ConstraintOptions,
+        ): Column<V, true, Int, Gen, true, true, Co, Fk, false>;
         /** A unique constraint on this column alone. */
-        unique(options?: ConstraintOptions): Column<V, N, Int, Gen, Pk, true, Co, Fk>;
+        unique(options?: ConstraintOptions): Column<V, N, Int, Gen, Pk, true, Co, Fk, false>;
       }) &
   (Fk extends true
     ? unknown
@@ -93,17 +109,17 @@ export type Column<
         references(
           target: () => Target<V>,
           options?: ForeignKeyOptions,
-        ): Column<V, N, Int, Gen, Pk, Key, Co, true>;
+        ): Column<V, N, Int, Gen, Pk, Key, Co, true, false>;
       }) &
   (Gen extends true
     ? unknown
     : {
         /** Takes a SQL expression, such as `now()`; a string literal needs its quotes (`"'new'"`). */
-        default(expression: string): Column<V, N, Int, true, Pk, Key, Co, Fk>;
+        default(expression: string): Column<V, N, Int, true, Pk, Key, Co, Fk, false>;
       } & (Int extends true
         ? {
             /** Generates the value from a sequence. */
-            identity(generated?: Identity): Column<V, true, Int, true, Pk, Key, Co, Fk>;
+            identity(generated?: Identity): Column<V, true, Int, true, Pk, Key, Co, Fk, false>;
           }
         : unknown));
 
@@ -128,10 +144,12 @@ export function column<
   Key extends boolean,
   Co extends boolean,
   Fk extends boolean,
->(state: ColumnState, codec?: RuntimeCodec): Column<V, N, Int, Gen, Pk, Key, Co, Fk> {
+  Fresh extends boolean,
+>(state: ColumnState, codec?: RuntimeCodec): Column<V, N, Int, Gen, Pk, Key, Co, Fk, Fresh> {
   const parts = {
     state,
     "~codec": codec,
+    array: () => column({ ...state, array: true }, codec),
     notNull: () => column({ ...state, notNull: true }, codec),
     renamedFrom: (oldName: string) => column({ ...state, renamedFrom: oldName }, codec),
     index: (options?: IndexOptions) =>
@@ -148,7 +166,7 @@ export function column<
     codec: (given: Codec<never, unknown>) => column(state, given as RuntimeCodec),
   };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- "~types" exists only in types, so `parts` doesn't overlap `Column` enough for a direct cast (TS2352); it goes through `unknown`.
-  return parts as unknown as Column<V, N, Int, Gen, Pk, Key, Co, Fk>;
+  return parts as unknown as Column<V, N, Int, Gen, Pk, Key, Co, Fk, Fresh>;
 }
 
 export type Columns = Record<string, AnyColumn>;

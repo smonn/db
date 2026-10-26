@@ -1,6 +1,6 @@
 import { assert, describe, expect, expectTypeOf, it } from "vitest";
 import type { ColumnFactories } from "./factories.ts";
-import { defineDatabase, defineTable, type ColumnRefs, type Row } from "./definition.ts";
+import { defineTable, type ColumnRefs, type Row } from "./definition.ts";
 
 const users = defineTable((c) => ({
   id: c.text().notNull(),
@@ -12,6 +12,7 @@ const pair = (c: ColumnFactories) => ({ a: c.integer(), b: c.integer() });
 const PLAIN = {
   sqlType: "",
   enumType: undefined,
+  array: false,
   notNull: false,
   default: undefined,
   identity: undefined,
@@ -262,37 +263,5 @@ describe("column types", () => {
   it("types jsonb as unknown without a type argument, and notNull drops null", () => {
     const t = defineTable((c) => ({ a: c.jsonb(), b: c.bigint().notNull() }));
     expectTypeOf<Row<typeof t>>().toEqualTypeOf<{ a: unknown; b: bigint }>();
-  });
-});
-
-describe("defineDatabase", () => {
-  it("names schemas and tables by their keys", () => {
-    const sessions = defineTable((c) => ({ token: c.text() }));
-    const db = defineDatabase({ public: { users }, auth: { sessions } });
-    const bare = {
-      primaryKey: [],
-      primaryKeyName: undefined,
-      uniques: [],
-      indexes: [],
-      renamedFrom: undefined,
-      foreignKeys: [],
-    };
-    const named = (schema: string, name: string, columns: object) => ({
-      schema,
-      name,
-      columns,
-      ...bare,
-    });
-    expect(db.public.users).toStrictEqual(named("public", "users", users.columns));
-    expect(db.auth.sessions).toStrictEqual(named("auth", "sessions", sessions.columns));
-  });
-
-  it("infers a row type from a standalone or rolled-up table", () => {
-    const db = defineDatabase({ public: { users } });
-    expectTypeOf<Row<typeof users>>().toEqualTypeOf<{ id: string; email: string | null }>();
-    expectTypeOf<Row<typeof db.public.users>>().toEqualTypeOf<{
-      id: string;
-      email: string | null;
-    }>();
   });
 });

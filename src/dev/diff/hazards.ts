@@ -1,3 +1,5 @@
+import { elementOf } from "../catalog/index.ts";
+
 export const HAZARD_KINDS = [
   "data_loss",
   "rewrite",
@@ -32,7 +34,8 @@ type Type =
   | { readonly name: "character varying"; readonly length: number | undefined }
   | { readonly name: "numeric"; readonly precision: number | undefined; readonly scale: number }
   | { readonly name: SimpleName }
-  | { readonly name: "enum" };
+  | { readonly name: "enum" }
+  | { readonly name: "array"; readonly element: Type };
 
 type Varchar = Extract<Type, { readonly name: "character varying" }>;
 type Numeric = Extract<Type, { readonly name: "numeric" }>;
@@ -58,6 +61,11 @@ type SimpleName = (typeof SIMPLE_NAMES)[number];
 /** Reads a type as `format_type` spells it, or `undefined` for one the diff doesn't classify. */
 function parse(type: string, enums: ReadonlySet<string>): Type | undefined {
   if (enums.has(type)) return { name: "enum" };
+  const elementName = elementOf(type);
+  if (elementName !== undefined) {
+    const element = parse(elementName, enums);
+    return element === undefined ? undefined : { name: "array", element };
+  }
   const varchar = /^character varying(?:\((\d+)\))?$/u.exec(type);
   if (varchar !== null) {
     return { name: "character varying", length: toNumber(varchar[1]) };
@@ -87,11 +95,26 @@ export function retypeHazards(
   const from = parse(before, enums);
   const to = parse(after, enums);
   if (from === undefined || to === undefined) return HAZARD_KINDS;
+  return pairHazards(from, to);
+}
+
+function pairHazards(from: Type, to: Type): readonly HazardKind[] {
+  if (from.name === "array" || to.name === "array") return arrayRetypeHazards(from, to);
   if (from.name === "enum" || to.name === "enum") return enumRetypeHazards(from, to);
   return [
     ...(losesData(from, to) ? (["data_loss"] as const) : []),
     ...(rewrites(from, to) ? REWRITE : []),
   ];
+}
+
+/**
+ * Any change to an array's element type rewrites, even `varchar(20)[]` to `varchar(40)[]`, and
+ * keeps the element pair's other hazards. Scalar to array and back gets every hazard.
+ */
+function arrayRetypeHazards(from: Type, to: Type): readonly HazardKind[] {
+  if (from.name !== "array" || to.name !== "array") return HAZARD_KINDS;
+  const kept = new Set([...pairHazards(from.element, to.element), ...REWRITE]);
+  return HAZARD_KINDS.filter((kind) => kept.has(kind));
 }
 
 /**
