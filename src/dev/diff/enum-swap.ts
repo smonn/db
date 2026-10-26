@@ -80,7 +80,6 @@ function asideName(
 ): string {
   const taken = new Set([
     ...catalogs.flatMap((catalog) => namesUnder(catalog, type.parent)),
-
     ...chosen,
   ]);
   for (let attempt = 0; ; attempt += 1) {

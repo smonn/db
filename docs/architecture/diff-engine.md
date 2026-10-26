@@ -52,7 +52,7 @@ An enum is a fact under its schema, keyed like a table (a type and a table share
 
 A created enum lists all its labels. A label added to an existing enum is one `ALTER TYPE ... ADD VALUE ... BEFORE|AFTER` at its declared position, in phase 5 with no Hazard, and a drop is `DROP TYPE` in phase 8. Postgres refuses to use a new label before its transaction commits (`55P04`), so generate rethrows that Shadow error with the fix: commit the label, then use it in the next migration. A type created in the same migration is exempt.
 
-Removing or moving a label swaps the type (ADR-0023), unless a domain uses it.
+Removing or moving a label swaps the type, which a domain on it blocks.
 
 ## Ordering
 
