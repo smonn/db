@@ -66,17 +66,20 @@ test("isReachable is false for a url it cannot parse", async () => {
   expect(await isReachable("not a url")).toBe(false);
 });
 
-test("isReachable gives up after its timeout and defaults to port 5432", async () => {
-  const timeouts: number[] = [];
-  class Silent extends Socket {
-    override setTimeout(ms: number) {
-      timeouts.push(ms);
-      queueMicrotask(() => {
-        this.emit("timeout");
-      });
-      return this;
-    }
+const timeouts: number[] = [];
+
+class Silent extends Socket {
+  override setTimeout(ms: number) {
+    timeouts.push(ms);
+    queueMicrotask(() => {
+      this.emit("timeout");
+    });
+    return this;
   }
+}
+
+test("isReachable gives up after its timeout and defaults to port 5432", async () => {
+  timeouts.length = 0;
   const dialed: unknown[] = [];
   const reachable = await isReachable("postgres://db.invalid/db", 50, (...args) => {
     dialed.push(args);
@@ -85,4 +88,13 @@ test("isReachable gives up after its timeout and defaults to port 5432", async (
   expect(reachable).toBe(false);
   expect(timeouts).toEqual([50]);
   expect(dialed).toEqual([[5432, "db.invalid"]]);
+});
+
+test("isReachable dials an IPv6 literal host without its brackets", async () => {
+  const dialed: unknown[] = [];
+  await isReachable("postgres://u@[::1]:5433/db", 50, (...args) => {
+    dialed.push(args);
+    return new Silent();
+  });
+  expect(dialed).toEqual([[5433, "::1"]]);
 });

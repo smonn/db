@@ -41,7 +41,9 @@ export function isReachable(
     return Promise.resolve(false);
   }
   return new Promise((resolve) => {
-    const socket = connect(Number(target.port === "" ? 5432 : target.port), target.hostname);
+    // `URL.hostname` keeps the brackets of an IPv6 literal, which net.createConnection can't dial.
+    const host = target.hostname.replace(/^\[(.*)\]$/u, "$1");
+    const socket = connect(Number(target.port === "" ? 5432 : target.port), host);
     const done = (reachable: boolean) => {
       socket.destroy();
       resolve(reachable);
