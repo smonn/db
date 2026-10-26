@@ -120,6 +120,42 @@ Run each as `smonndb <command>`, with `--config <path>` to pick a config file ot
 
 Results go to stdout and errors to stderr, as plain text with no colors. `generate` prints the file it wrote, each Hazard with its statement, each rename hint, and whether it reset the Dev database. Exit codes: 0 on success, 1 on a refusal or failure (a missing folder, a held Dev lock, a bad hash chain), 2 on a usage error.
 
+### Renaming a table or column
+
+Rename a key in the Definition and `generate` sees a drop and a create, which it flags as `data_loss`. It prints a hint when it spots a likely rename: a table that drops one column and adds one of the same type, or a schema that drops one table and adds one with identical columns.
+
+```text
+hint: column "public"."users"."full_name" may be a rename of "name": add .renamedFrom("name") to it
+```
+
+Add the marker it names. A column takes `.renamedFrom("old_name")`:
+
+```ts
+users: defineTable((c) => ({
+  id: c.text().notNull(),
+  full_name: c.text().renamedFrom("name"),
+})),
+```
+
+A table takes `renamedFrom: "old_name"` in its second callback:
+
+```ts
+people: defineTable(
+  (c) => ({ id: c.text().notNull(), name: c.text() }),
+  () => ({ renamedFrom: "users" }),
+),
+```
+
+`generate` then writes `ALTER ... RENAME` in place of the drop and create, and keeps the data. Each rename carries the `rename` Hazard, because app code still on the old name breaks between `migrate` and its deploy.
+
+```text
+hazard rename: alter table "public"."users" rename column "name" to "full_name";
+```
+
+The marker takes the old SQL name, as the database holds it, not the old key. A hint is only a guess, and `generate` never writes one into the SQL, so a rename with no marker stays a drop and create.
+
+Remove the marker once you have run `commit`. From then on the Committed migrations hold the new name, so `generate` skips a marker whose old name is gone. Until then, keep it: each `generate` rebuilds `current.sql` from the Definition, and without the marker the rename turns back into a drop. If both the old and the new name exist, `generate` throws.
+
 ### Rebasing a Forked chain
 
 When two branches each commit a Migration on the same tip, `migrate` and `verify` refuse the pair as a Forked chain. Merge the base branch into yours, then run `smonndb rebase`: it renumbers and rehashes each Committed migration the base branch lacks onto the base branch's tip, and leaves every other file as it is. `--onto <ref>` names the base branch, which defaults to the remote's default branch (`origin/HEAD`). It needs no database, does nothing on a straight chain, and can run unattended in CI. `actions/checkout` clones at depth 1 without `origin/HEAD`, so a CI job must fetch the base branch and pass `--onto`. It needs git 2.30 or newer, and refuses while git shows a changed, untracked, or gitignored top-level `.sql` file other than `current.sql`, or a `.sql.tmp` file, so git always holds what it rewrites. Each file is written under a temporary name and then renamed into place. If a run fails or stops partway, run `smonndb rebase` again: it names the files to set aside with `git stash`, and the run after that finishes. A Dev database that applied a moved file no longer matches the files, so run `smonndb reset` afterward.
