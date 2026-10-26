@@ -101,14 +101,19 @@ export function readChangedAdrs(base: string, cwd: string = process.cwd()): Chan
   });
 }
 
+// git show's wording when the path is absent on the base ref.
+const missingPathPattern = /path '.*' (does not exist in|exists on disk, but not in) '/u;
+
 // A file the base lacks (any status but M can leave one) counts as added.
+// Any other git failure propagates rather than reading as "added".
 function readBaseStatus(base: string, file: string, cwd: string): string | undefined {
   try {
     return parseAdrStatus(
       execFileSync("git", ["show", `${base}:${file}`], { cwd, encoding: "utf8" }),
     );
-  } catch {
-    return undefined;
+  } catch (error) {
+    if (error instanceof Error && missingPathPattern.test(error.message)) return undefined;
+    throw error;
   }
 }
 
