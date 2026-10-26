@@ -208,7 +208,13 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
     hazards: indexBuild,
   },
   "add unique": {
-    render: (key, { to }) => addConstraint(key, "unique", [key.payload.column], to),
+    render: (key, { to }) =>
+      addConstraint(
+        key,
+        key.payload.nullsNotDistinct ? "unique nulls not distinct" : "unique",
+        key.payload.columns,
+        to,
+      ),
     hazards: indexBuild,
   },
   "add foreign key": {

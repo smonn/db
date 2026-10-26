@@ -170,7 +170,10 @@ function addKey(builder: CatalogBuilder, schema: string, tableName: string, row:
   if (row["type"] === "p") {
     builder.primaryKey(schema, tableName, constraint, { columns: keyColumns });
   } else {
-    builder.unique(schema, tableName, constraint, { column: keyColumns[0] ?? "" });
+    builder.unique(schema, tableName, constraint, {
+      columns: keyColumns,
+      nullsNotDistinct: row["nulls_not_distinct"] === true,
+    });
   }
 }
 

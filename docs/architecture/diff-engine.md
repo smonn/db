@@ -4,7 +4,7 @@ How generate turns the Definition into the Current migration. ADR-0005 and ADR-0
 
 ## What v0.1 models
 
-Schemas, tables, columns (type, NOT NULL, default, identity), single and composite primary keys, single-column unique constraints, one-column foreign keys (ADR-0019), and enums (ADR-0023): exactly what the Definition can express. Indexes and multi-column unique wait for v0.2.
+Schemas, tables, columns (type, NOT NULL, default, identity), single and composite primary keys, unique constraints over one or more columns (ADR-0021), one-column foreign keys (ADR-0019), and enums (ADR-0023): exactly what the Definition can express. Indexes wait for v0.2.
 
 Both introspections skip the Tracking schema (`smonn_db` unless configured), `pg_catalog`, `information_schema`, `pg_toast*`, `pg_temp*`, extension members, and every kind outside this list (ADR-0005). Generate refuses a Definition that names one of these schemas, since its tables would vanish from the diff.
 
@@ -30,11 +30,11 @@ A default is a child fact named `default` whose payload is the expression as `pg
 
 ### Primary keys and unique constraints
 
-Each is a child fact of the table, named by its constraint, since a drop must say which one; a rename is a drop and an add. The key puts an empty segment before the name (`public\0users\0\0users_pkey`), which no Postgres name can be, so a constraint never keys like a column of the same name. A primary key's payload lists its columns in key order, and a unique constraint's names its one column. Postgres makes primary key columns NOT NULL, so a catalog that names a primary key marks them NOT NULL, as `introspect` reads them.
+Each is a child fact of the table, named by its constraint, since a drop must say which one; a rename is a drop and an add. The key puts an empty segment before the name (`public\0users\0\0users_pkey`), which no Postgres name can be, so a constraint never keys like a column of the same name. A primary key's payload lists its columns in key order; a unique constraint's also says whether it is `NULLS NOT DISTINCT`. Postgres makes primary key columns NOT NULL, so a catalog that names a primary key marks them NOT NULL, as `introspect` reads them.
 
-`definitionCatalog` takes the name the Definition gives a key (`.primaryKey({ name })`, `.unique({ name })`, `{ name, columns }`) or derives Postgres's default (`users_pkey`, `users_email_key`). It refuses a name over 63 bytes, which Postgres would truncate, and two keys in one schema that take one name, since each key's index shares the schema's relation names.
+`definitionCatalog` takes the name the Definition gives a key (`.primaryKey({ name })`, `.unique({ name })`, `{ name, columns }`, a `unique` entry's `name`) or derives Postgres's default (`users_pkey`, `users_email_key`, and `<table>_<columns joined by _>_key` for a multi-column unique). It refuses a name over 63 bytes, which Postgres would truncate, and two keys in one schema that take one name, since each key's index shares the schema's relation names. Only the second callback's `unique` entry declares a multi-column unique, with at least two columns of its own table, in key order, plus `name` and `nullsNotDistinct`.
 
-`introspect` reads no other unique constraint. It skips as Unmodeled (ADR-0005) a key that is `DEFERRABLE`, `NULLS NOT DISTINCT`, has `INCLUDE` columns, or (primary key) `WITHOUT OVERLAPS`: each reads like a plain key but changes what the key means.
+`introspect` reads a unique constraint over any number of columns, with its `NULLS NOT DISTINCT` setting. It skips as Unmodeled (ADR-0005) a key that is `DEFERRABLE`, has `INCLUDE` columns, or (primary key) `WITHOUT OVERLAPS`, and a single-column `NULLS NOT DISTINCT` unique, which no Definition can declare (a `unique` entry needs two columns): each reads like a plain key but changes what the key means. A changed column list or setting is a drop and an add.
 
 ### Foreign keys
 
