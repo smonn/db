@@ -24,6 +24,15 @@ export class Fragment {
     this.#parts = parts;
   }
 
+  /**
+   * The text with each value replaced by what `inline` returns, for DDL, which binds nothing.
+   * `undefined` when `piece` is no Fragment.
+   */
+  static inline(piece: unknown, inline: (value: unknown) => string): string | undefined {
+    if (!(piece instanceof Fragment)) return undefined;
+    return piece.#parts.map((part) => ("text" in part ? part.text : inline(part.value))).join("");
+  }
+
   /** Numbers the values `$1`, `$2`, and so on, as the Driver's `query` binds them. */
   toSql(): RenderedSql {
     let text = "";
@@ -43,6 +52,11 @@ export class Fragment {
 /** Binds each interpolated value as a param, except a Fragment, whose SQL is inlined. */
 export function fragment(strings: TemplateStringsArray, ...values: unknown[]): Fragment {
   return new Fragment(strings, values);
+}
+
+/** `piece` as DDL text, with each value replaced by what `inline` returns; `undefined` for a non-Fragment. */
+export function inlineSql(piece: unknown, inline: (value: unknown) => string): string | undefined {
+  return Fragment.inline(piece, inline);
 }
 
 export function identifier(name: string): Fragment {

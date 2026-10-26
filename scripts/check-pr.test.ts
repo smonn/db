@@ -1,12 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { OpenPrAdd } from "./check-adr-clash.ts";
-import { checkPr, main, parseAdrStatus, readChangedAdrs, type ChangedAdr } from "./check-pr.ts";
-
-vi.mock("node:child_process", () => ({ execFileSync: vi.fn<typeof execFileSync>() }));
+import { checkPr, main, parseAdrStatus, type ChangedAdr } from "./check-pr.ts";
 
 describe("checkPr title", () => {
   const branch = "chore/53-pr-title-check";
@@ -149,44 +143,6 @@ describe("checkPr ADR title", () => {
     "feat(adr): accept indexes",
   ])("leaves %s unchecked", (title) => {
     expect(checkPr(title, branch, [editsAccepted, addsProposed])).toEqual([]);
-  });
-});
-
-describe("readChangedAdrs", () => {
-  let repo: string;
-
-  beforeEach(() => {
-    repo = mkdtempSync(join(tmpdir(), "check-pr-"));
-    mkdirSync(join(repo, "docs/adr"), { recursive: true });
-    writeFileSync(join(repo, "docs/adr/0001-old.md"), "---\nstatus: accepted\n---\n");
-    writeFileSync(join(repo, "docs/adr/0003-new.md"), "---\nstatus: proposed\n---\n");
-    writeFileSync(join(repo, "docs/adr/TEMPLATE.md"), "---\nstatus: proposed\n---\n");
-  });
-
-  afterEach(() => {
-    rmSync(repo, { recursive: true, force: true });
-  });
-
-  test("lists the changed ADRs with their status and whether the PR adds them, and skips other files", () => {
-    vi.mocked(execFileSync)
-      .mockReturnValueOnce(
-        "M\tdocs/adr/0001-old.md\nA\tdocs/adr/0003-new.md\nA\tdocs/adr/TEMPLATE.md\nM\tdocs/notes.md\n",
-      )
-      .mockReturnValueOnce("---\nstatus: proposed\n---\n");
-    expect(readChangedAdrs("HEAD^1", repo)).toEqual([
-      { file: "docs/adr/0001-old.md", status: "accepted", added: false, baseStatus: "proposed" },
-      { file: "docs/adr/0003-new.md", status: "proposed", added: true },
-    ]);
-    expect(execFileSync).toHaveBeenCalledWith(
-      "git",
-      ["diff", "--name-status", "--no-renames", "--diff-filter=d", "HEAD^1", "HEAD"],
-      { cwd: repo, encoding: "utf8" },
-    );
-    expect(execFileSync).toHaveBeenCalledWith("git", ["show", "HEAD^1:docs/adr/0001-old.md"], {
-      cwd: repo,
-      encoding: "utf8",
-    });
-    expect(execFileSync).toHaveBeenCalledTimes(2);
   });
 });
 

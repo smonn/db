@@ -1,4 +1,10 @@
-import { arePayloadsEqual, type Catalog, type Fact, type Rename } from "../catalog/index.ts";
+import {
+  arePayloadsEqual,
+  plainKeyColumns,
+  type Catalog,
+  type Fact,
+  type Rename,
+} from "../catalog/index.ts";
 import { hazardsOf, render, type Action, type Catalogs } from "./actions.ts";
 import { swapOf } from "./enum-swap.ts";
 import type { Handling, HandlingTable } from "./handling.ts";
@@ -6,7 +12,7 @@ import type { Hazard } from "./hazards.ts";
 import { renameHints } from "./hints.ts";
 import { order } from "./phases.ts";
 import { rebuiltColumns, retyped, without } from "./rebuilt.ts";
-import { renameAction } from "./renames.ts";
+import { renameAction, renameChecks } from "./renames.ts";
 import { TYPE_HANDLING } from "./type-handling.ts";
 
 export type Diff = {
@@ -38,7 +44,7 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
     );
   }
   const hazards: Hazard[] = [];
-  const sql = order(actions)
+  const sql = order(renameChecks(actions))
     .map((action) => {
       const statement = render(action, catalogs);
       const kinds = hazardsOf(action, catalogs);
@@ -182,10 +188,7 @@ export const HANDLING: HandlingTable<Fact> = {
     // No ALTER INDEX changes a key, the method, INCLUDE, or uniqueness.
     replacedOnChange: true,
     alter: () => [],
-    columnsNamed: ({ payload }) => [
-      ...payload.keys.map(({ column }) => column),
-      ...payload.include,
-    ],
+    columnsNamed: ({ payload }) => [...plainKeyColumns(payload.keys), ...payload.include],
   },
   "foreign key": {
     // Its target may drop before the table it sits on, and Postgres refuses to drop a key a

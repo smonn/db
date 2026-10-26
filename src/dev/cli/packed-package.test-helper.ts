@@ -21,13 +21,17 @@ async function acquire(lock: string): Promise<void> {
     await mkdir(lock);
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
-    // A run killed mid-build leaves its lock behind; a build never takes this long.
-    const held = await stat(lock).catch(() => null);
-    if (held !== null && Date.now() - held.mtimeMs > 120_000) {
-      await rm(lock, { recursive: true, force: true });
-    }
+    await clearStale(lock);
     await setTimeout(100);
     await acquire(lock);
+  }
+}
+
+/** A run killed mid-build leaves its lock behind; a build never takes this long. */
+async function clearStale(lock: string): Promise<void> {
+  const held = await stat(lock).catch(() => null);
+  if (held !== null && Date.now() - held.mtimeMs > 120_000) {
+    await rm(lock, { recursive: true, force: true });
   }
 }
 

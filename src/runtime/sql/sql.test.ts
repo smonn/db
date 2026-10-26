@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { fragment, identifier, join } from "./sql.ts";
+import { fragment, identifier, inlineSql, join } from "./sql.ts";
+
+describe("inlineSql", () => {
+  it("replaces each value, nested ones included, with what the callback returns", () => {
+    const built = fragment`a = ${1} and ${fragment`b = ${2}`}`;
+
+    expect(inlineSql(built, (value) => `<${String(value)}>`)).toBe("a = <1> and b = <2>");
+  });
+
+  it("is undefined for anything but a fragment", () => {
+    expect(inlineSql("a = 1", String)).toBeUndefined();
+    expect(inlineSql({ toSql: () => ({ text: "a", params: [] }) }, String)).toBeUndefined();
+  });
+});
 
 describe("fragment", () => {
   it("renders text without params", () => {
