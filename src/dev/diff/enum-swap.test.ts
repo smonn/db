@@ -204,6 +204,20 @@ drop type "public"."mood_old";
     expect(await remaining(sql, to)).toBe("");
   });
 
+  it("gives two swapped enums that shorten alike different aside names", async () => {
+    const [first, second] = ["a", "b"].map((last) => `${"m".repeat(59)}${last}`);
+    await db.driver.execute(`create type public."${first}" as enum ('a', 'b');
+create type public."${second}" as enum ('a', 'b');`);
+    const from = await introspect(db.driver);
+    const to = relabeled(relabeled(from, ["b", "a"], first), ["b", "a"], second);
+
+    const { sql } = diff(from, to);
+
+    expect(sql).toContain(`rename to "${"m".repeat(59)}_old";`);
+    expect(sql).toContain(`rename to "${"m".repeat(58)}_old1";`);
+    expect(await remaining(sql, to)).toBe("");
+  });
+
   it("writes no USING for any other retype", () => {
     const mood = defineEnum(["a"]);
     const from = definitionCatalog(

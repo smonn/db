@@ -118,7 +118,7 @@ export const HANDLING: HandlingTable<Fact> = {
     // An added label is one statement. Postgres can't drop or move one, so a removed or moved
     // label swaps the type, and `column.alter` retypes each column that uses it.
     alter: (before, after, catalogs) => {
-      const swap = enumSwap(before, after, catalogs);
+      const swap = enumSwap(before, catalogs);
       if (swap !== undefined) {
         return [
           { kind: "rename enum aside", fact: before, swap },

@@ -35,27 +35,24 @@ export function enumSwaps(catalogs: Catalogs): ReadonlyMap<string, Swap> {
   for (const [key, before] of catalogs.from) {
     const after = catalogs.to.get(key);
     if (before.kind !== "enum" || after?.kind !== "enum") continue;
-    const swap = enumSwap(before, after, catalogs);
-    if (swap !== undefined) {
-      swaps.set(typeName(parentOf(catalogs.from, before).name, before.name), swap);
-    }
+    if (inOrder(before.payload.labels, after.payload.labels)) continue;
+    // Two long names can shorten to one aside, so each swap also avoids the asides chosen before it.
+    const chosen = [...swaps.values()]
+      .filter((swap) => swap.before.parent === before.parent)
+      .map((swap) => swap.aside);
+    swaps.set(typeName(parentOf(catalogs.from, before).name, before.name), {
+      before,
+      after,
+      aside: asideName(before, [catalogs.from, catalogs.to], chosen),
+      removesLabel: before.payload.labels.some((label) => !after.payload.labels.includes(label)),
+    });
   }
   return swaps;
 }
 
-/** The swap from `before` to `after`, one enum at one key, or `undefined` when `ADD VALUE` suffices. */
-export function enumSwap(
-  before: EnumFact,
-  after: EnumFact,
-  { from, to }: Catalogs,
-): Swap | undefined {
-  if (inOrder(before.payload.labels, after.payload.labels)) return undefined;
-  return {
-    before,
-    after,
-    aside: asideName(before, [from, to]),
-    removesLabel: before.payload.labels.some((label) => !after.payload.labels.includes(label)),
-  };
+/** The swap of the enum `before`, or `undefined` when `ADD VALUE` reaches its new labels. */
+export function enumSwap(before: EnumFact, catalogs: Catalogs): Swap | undefined {
+  return enumSwaps(catalogs).get(typeName(parentOf(catalogs.from, before).name, before.name));
 }
 
 /** The swap that retypes a column of `type`, an enum or an array of one, if any. */
@@ -73,11 +70,19 @@ function inOrder(labels: readonly string[], next: readonly string[]): boolean {
 const MAX_NAME_BYTES = 63;
 
 /**
- * `<name>_old`, or `_old1`, `_old2`, and on while a table or type in the schema takes it, cut to
- * fit 63 bytes, since Postgres would truncate a longer name.
+ * `<name>_old`, or `_old1`, `_old2`, and on while a table or type in the schema or a `chosen`
+ * aside takes it, cut to fit 63 bytes, since Postgres would truncate a longer name.
  */
-function asideName(type: EnumFact, catalogs: readonly Catalog[]): string {
-  const taken = new Set(catalogs.flatMap((catalog) => namesUnder(catalog, type.parent)));
+function asideName(
+  type: EnumFact,
+  catalogs: readonly Catalog[],
+  chosen: readonly string[],
+): string {
+  const taken = new Set([
+    ...catalogs.flatMap((catalog) => namesUnder(catalog, type.parent)),
+
+    ...chosen,
+  ]);
   for (let attempt = 0; ; attempt += 1) {
     const suffix = attempt === 0 ? "_old" : `_old${attempt}`;
     const candidate = `${fitting(type.name, MAX_NAME_BYTES - suffix.length)}${suffix}`;
