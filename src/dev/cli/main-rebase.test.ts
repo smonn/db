@@ -135,7 +135,7 @@ describe("main rebase", () => {
 
     expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
     expect(cli.stderr).toBe(
-      `${folder} has changes git doesn't hold: 000002-x.sql, 000003-y.sql; set them aside with git -C '${folder}' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase\n`,
+      `${folder} has changes git doesn't hold: 000002-x.sql, 000003-y.sql; set them aside with git -C '${folder}' stash push --all -- . ':(exclude)current.sql', then rerun rebase\n`,
     );
     expect(await folderContents()).toStrictEqual(before);
   });
@@ -161,24 +161,20 @@ describe("main rebase", () => {
     ]);
   });
 
-  it("refuses on a gitignored migration", async () => {
+  it("refuses on a gitignored migration and .sql.tmp, then finishes after the step it names", async () => {
     await forkedRepo();
     const folder = join(cli.dir, "migrations");
     const X3 = await writeMigration("000003-x.sql", B.hash, "create table x (n int);");
     await writeFile(join(folder, X3.filename), X3.content);
-    await writeFile(join(cli.dir, ".gitignore"), "000003-x.sql\n");
+    await writeFile(join(folder, "000003-y.sql.tmp"), "half");
+    await writeFile(join(cli.dir, ".gitignore"), "000003-x.sql\n*.tmp\n");
 
     expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
-    expect(cli.stderr).toContain("has changes git doesn't hold: 000003-x.sql;");
-  });
+    expect(cli.stderr).toContain("000003-x.sql, 000003-y.sql.tmp;");
+    runPrintedStep(cli.stderr, cli.dir);
 
-  it("refuses on a gitignored leftover .sql.tmp", async () => {
-    await forkedRepo();
-    await writeFile(join(cli.dir, "migrations", "000003-x.sql.tmp"), "half");
-    await writeFile(join(cli.dir, ".gitignore"), "*.tmp\n");
-
-    expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
-    expect(cli.stderr).toContain("has changes git doesn't hold: 000003-x.sql.tmp;");
+    expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(0);
+    expect(await migrationNames()).toStrictEqual(["000001-a.sql", "000002-b.sql", "000003-x.sql"]);
   });
 
   it("finishes on a rerun after the step it names when a run stopped before its removes", async () => {
@@ -189,7 +185,7 @@ describe("main rebase", () => {
 
     expect(await main(["rebase", "--onto", "main", "--config", config])).toBe(1);
     expect(cli.stderr).toBe(
-      `${folder} has changes git doesn't hold: 000003-x.sql; set them aside with git -C '${folder}' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase\n`,
+      `${folder} has changes git doesn't hold: 000003-x.sql; set them aside with git -C '${folder}' stash push --all -- . ':(exclude)current.sql', then rerun rebase\n`,
     );
     runPrintedStep(cli.stderr, cli.dir);
 

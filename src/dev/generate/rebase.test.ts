@@ -140,7 +140,7 @@ describe("rebase", () => {
     await expect(
       rebaseFolder(fileSystem, [A, B], ["000002-x.sql", "000003-y.sql"]),
     ).rejects.toThrow(
-      `${MIGRATIONS} has changes git doesn't hold: 000002-x.sql, 000003-y.sql; set them aside with git -C 'db/migrations' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase`,
+      `${MIGRATIONS} has changes git doesn't hold: 000002-x.sql, 000003-y.sql; set them aside with git -C 'db/migrations' stash push --all -- . ':(exclude)current.sql', then rerun rebase`,
     );
     expect(fileSystem.files).toStrictEqual(before);
   });
@@ -155,7 +155,7 @@ describe("rebase", () => {
         unheld: ["000002-x.sql"],
       }),
     ).rejects.toThrow(
-      "git -C 'my db/it'\\''s' stash push --include-untracked -- . ':(exclude)current.sql', then rerun rebase",
+      "git -C 'my db/it'\\''s' stash push --all -- . ':(exclude)current.sql', then rerun rebase",
     );
   });
 
