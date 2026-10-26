@@ -23,7 +23,7 @@
 ## Coding standards
 
 - Read `CODING_STANDARDS.md` before writing or reviewing code.
-- Layers and modules are design intent: read `docs/architecture.md` (Import rules) before adding a module or an import across one.
+- Layers and modules are design intent. Read `docs/architecture/README.md` (Import rules) before adding a module or an import across one, `docs/architecture/cli.md` before changing a command in `dev/cli` or `dev/generate`, and `docs/architecture/diff-engine.md` before changing `dev/catalog`, `dev/introspect`, or `dev/diff`.
 
 ## Design decisions
 

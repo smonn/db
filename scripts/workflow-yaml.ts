@@ -66,25 +66,31 @@ function flowKeyBefore(text: string, start: number, end: number, close: string):
     .replace(/^(["'])(.*)\1$/u, "$2");
 }
 
+function refuseFlowEnd(text: string, position: number): void {
+  if (endsLine(text, position)) throw new Unreadable("a flow collection across lines");
+}
+
+function flowValueEnd(text: string, colon: number, close: string, keys: string[]): number {
+  const index = skipSpaces(text, colon + 1);
+  refuseFlowEnd(text, index);
+  if (text[index] === "," || text[index] === close) return index;
+  return skipSpaces(text, flowNodeEnd(text, index, keys));
+}
+
+function flowEntryEnd(text: string, start: number, close: string, keys: string[]): number {
+  const index = skipSpaces(text, flowNodeEnd(text, start, keys));
+  const key = flowKeyBefore(text, start, index, close);
+  if (key !== null) keys.push(key);
+  return text[index] === ":" ? flowValueEnd(text, index, close, keys) : index;
+}
+
 function flowEnd(text: string, at: number, keys: string[]): number {
   const close = text[at] === "{" ? "}" : "]";
   let index = skipSpaces(text, at + 1);
-  const refuseEnd = (position: number): void => {
-    if (endsLine(text, position)) throw new Unreadable("a flow collection across lines");
-  };
   while (text[index] !== close) {
-    refuseEnd(index);
-    const start = index;
-    index = skipSpaces(text, flowNodeEnd(text, index, keys));
-    const key = flowKeyBefore(text, start, index, close);
-    if (key !== null) keys.push(key);
-    if (text[index] === ":") {
-      index = skipSpaces(text, index + 1);
-      refuseEnd(index);
-      if (text[index] !== "," && text[index] !== close)
-        index = skipSpaces(text, flowNodeEnd(text, index, keys));
-    }
-    refuseEnd(index);
+    refuseFlowEnd(text, index);
+    index = flowEntryEnd(text, index, close, keys);
+    refuseFlowEnd(text, index);
     if (text[index] === ",") index = skipSpaces(text, index + 1);
     else if (text[index] !== close) throw new Unreadable("a malformed flow collection");
   }
@@ -140,6 +146,9 @@ function skipDashes(text: string): { at: number; dash: number } {
 
 type Read = { line: WorkflowLine; scalarAbove?: number };
 
+const blockOwnerColumn = (keyColumn: number | undefined, dash: number, indent: number): number =>
+  keyColumn ?? (dash === -1 ? indent : dash);
+
 function readLine(number: number, text: string): Read {
   if (/^(?:---|\.\.\.)(?:\s|$)|^%/u.test(text))
     throw new Unreadable("a document marker or directive");
@@ -160,7 +169,7 @@ function readLine(number: number, text: string): Read {
     .replace(/\s+#.*$/u, "")
     .trim();
   if (!readValue(text, at, line.flowKeys)) return { line };
-  return { line, scalarAbove: read?.key.column ?? (dash === -1 ? line.indent : dash) };
+  return { line, scalarAbove: blockOwnerColumn(read?.key.column, dash, line.indent) };
 }
 
 function outsideAsciiProblem(text: string, number: number, file: string): string | undefined {
@@ -170,28 +179,41 @@ function outsideAsciiProblem(text: string, number: number, file: string): string
   return `${file} line ${number} holds U+${code}, outside printable ASCII; this check reads printable ASCII only`;
 }
 
+type Step = { scalarAbove?: number | undefined; line?: WorkflowLine; problem?: string };
+
+function readOrProblem(number: number, text: string, file: string): Step {
+  try {
+    const read = readLine(number, text);
+    return { line: read.line, scalarAbove: read.scalarAbove };
+  } catch (error) {
+    if (!(error instanceof Unreadable)) throw error;
+    return { problem: `${file} line ${number} uses ${error.message}, which this check can't read` };
+  }
+}
+
+function stepLine(
+  text: string,
+  number: number,
+  file: string,
+  scalarAbove: number | undefined,
+): Step {
+  const outside = outsideAsciiProblem(text, number, file);
+  if (outside !== undefined) return { problem: outside, scalarAbove };
+  if (scalarAbove !== undefined && (text.trim() === "" || indentOf(text) > scalarAbove))
+    return { scalarAbove };
+  if (text.trim() === "" || text.trimStart().startsWith("#")) return {};
+  return readOrProblem(number, text, file);
+}
+
 export function workflowYamlProblems(workflow: string, file: string): string[] {
   const problems: string[] = [];
   const lines: WorkflowLine[] = [];
   let scalarAbove: number | undefined;
   for (const [index, text] of workflow.split("\n").entries()) {
-    const number = index + 1;
-    const outside = outsideAsciiProblem(text, number, file);
-    if (outside !== undefined) {
-      problems.push(outside);
-      continue;
-    }
-    if (scalarAbove !== undefined && (text.trim() === "" || indentOf(text) > scalarAbove)) continue;
-    scalarAbove = undefined;
-    if (text.trim() === "" || text.trimStart().startsWith("#")) continue;
-    try {
-      const read = readLine(number, text);
-      scalarAbove = read.scalarAbove;
-      lines.push(read.line);
-    } catch (error) {
-      if (!(error instanceof Unreadable)) throw error;
-      problems.push(`${file} line ${number} uses ${error.message}, which this check can't read`);
-    }
+    const step = stepLine(text, index + 1, file, scalarAbove);
+    scalarAbove = step.scalarAbove;
+    if (step.problem !== undefined) problems.push(step.problem);
+    if (step.line !== undefined) lines.push(step.line);
   }
   return [...problems, ...permissionsProblems(lines, file)];
 }
