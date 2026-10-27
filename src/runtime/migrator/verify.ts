@@ -76,11 +76,14 @@ function checkSequence(migration: ParsedMigration, expected: number): void {
 
 function checkChained(migration: ParsedMigration, previous: string | undefined): void {
   if (migration.previous !== previous) {
-    const expected = previous ?? "-";
-    // Stryker disable next-line StringLiteral: a file after the first that starts the chain is refused as a fork before this check runs.
-    const found = migration.previous ?? "-";
-    throw new Error(`${migration.filename}: --! Previous should be ${expected}, not ${found}`);
+    throw new Error(
+      `${migration.filename}: --! Previous should be ${shown(previous)}, not ${shown(migration.previous)}`,
+    );
   }
+}
+
+function shown(hash: string | undefined): string {
+  return hash ?? "-";
 }
 
 function checkHash(migration: ParsedMigration, actual: string | undefined): void {
