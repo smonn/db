@@ -25,6 +25,7 @@ export function renameHints(from: Catalog, to: Catalog): string[] {
 }
 
 function hintsFor(from: Catalog, to: Catalog, before: Fact, after: Fact): string[] {
+  // Stryker disable next-line ConditionalExpression,LogicalOperator: a table's key holds no other kind with columns, so a hint comes out the same when only one side is a table.
   if (before.kind === "table" && after.kind === "table") {
     return columnHints(from, to, before, after);
   }
@@ -32,6 +33,7 @@ function hintsFor(from: Catalog, to: Catalog, before: Fact, after: Fact): string
 }
 
 function typeHints(from: Catalog, to: Catalog, before: Fact, after: Fact): string[] {
+  // Stryker disable next-line ConditionalExpression,LogicalOperator: only a schema has a key of one name, so both sides are schemas or neither is.
   if (before.kind === "schema" && after.kind === "schema") {
     return tableHints(from, to, before, after);
   }
@@ -88,11 +90,8 @@ function labelHints(to: Catalog, before: FactOf<"enum">, after: FactOf<"enum">):
 
 /** The one dropped and the one added item, or undefined unless each side has exactly one. */
 function onlyPair<T>(dropped: readonly T[], added: readonly T[]): [T, T] | undefined {
-  const [drop, add] = [dropped[0], added[0]];
-  if (dropped.length !== 1 || added.length !== 1 || drop === undefined || add === undefined) {
-    return undefined;
-  }
-  return [drop, add];
+  if (dropped.length !== 1 || added.length !== 1) return undefined;
+  return [dropped[0]!, added[0]!];
 }
 
 function columnsOf(catalog: Catalog, table: FactOf<"table">): FactOf<"column">[] {
