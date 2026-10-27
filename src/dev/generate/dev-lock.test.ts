@@ -8,15 +8,15 @@ describe("withDevLock", () => {
   // The first test ends while its session holds the lock; the second runs after it. A timeout
   // would end the test whether or not the session had taken the lock yet, so the test waits on
   // the holder instead and ends on its own.
-  it.fails("keeps the lock while a test ends holding it", async () => {
+  it("keeps the lock while a test ends holding it", async () => {
     const held = Promise.withResolvers<void>();
-    // The test helper ends the session after the test, which rejects this call.
-    withDevLock(db.driver, "generate", () => {
+    // The session stays pending until the test helper terminates its backend in afterEach.
+    const running = withDevLock(db.driver, "generate", () => {
       held.resolve();
       return new Promise<string>(() => {});
-    }).catch(() => {});
-    await held.promise;
-    expect.unreachable("test ends while the session holds the lock");
+    });
+    // Racing surfaces a rejection from before the lock was taken, such as a stale holder.
+    await expect(Promise.race([held.promise.then(() => "held"), running])).resolves.toBe("held");
   });
 
   it("takes the lock after a test ended holding it", async () => {
