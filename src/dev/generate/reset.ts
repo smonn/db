@@ -43,25 +43,30 @@ create schema public authorization pg_database_owner;
 grant usage on schema public to public;
 comment on schema public is 'standard public schema';`;
 
+const REFUSALS = {
+  generate: "generate won't reset it",
+  reset: "reset needs --erase to wipe it",
+} as const;
+
 /** Refuses unless the Database is marked as a Dev database or holds nothing yet (ADR-0016). */
 export async function requireDevDatabase(
   driver: Queryable,
   tracking: TrackingSchema,
-  command: "generate" | "reset" = "generate",
+  command: keyof typeof REFUSALS = "generate",
 ): Promise<void> {
   if (await tracking.isResettable(driver)) return;
   const {
     rows: [row],
   } = await driver.query("select current_database() as name");
   throw new Error(
-    `${quoteIdentifier(String(row?.["name"]))} isn't a Dev database: it has no ${tracking.currentTable} table and isn't empty, so ${command === "reset" ? "reset needs --erase to wipe it" : "generate won't reset it"}`,
+    `${quoteIdentifier(String(row!["name"]))} isn't a Dev database: it has no ${tracking.currentTable} table and isn't empty, so ${REFUSALS[command]}`,
   );
 }
 
 type ResetSteps = {
   /** The Current migration to replay after the Committed ones. */
-  readonly current?: CurrentMigration;
-  readonly afterLock?: (session: Queryable) => Promise<void>;
+  readonly current?: CurrentMigration | undefined;
+  readonly afterLock?: ((session: Queryable) => Promise<void>) | undefined;
 };
 
 /**
@@ -105,8 +110,8 @@ async function replayNext(
   session: Session,
   steps: readonly ReplayStep[],
 ): Promise<readonly ReplayStep[]> {
-  const [first] = steps;
-  if (first?.noTransaction === true) {
+  const first = steps[0]!;
+  if (first.noTransaction) {
     await replay(first.name, () => first.run(session, session));
     return steps.slice(1);
   }
@@ -162,14 +167,14 @@ async function wipe(tx: Queryable, tracking: TrackingSchema): Promise<void> {
   const { rows: extensions } = await tx.query(EXTENSIONS);
   await tx.execute(
     extensions
-      .map(({ name }) => `drop extension if exists ${quoteIdentifier(String(name))} cascade;`)
-      .join("\n"),
+      .map(({ name }) => `drop extension if exists ${quoteIdentifier(String(name))} cascade;\n`)
+      .join(""),
   );
   const { rows: schemas } = await tx.query(NON_SYSTEM_SCHEMAS);
   const drops = schemas.map(
-    ({ name }) => `drop schema if exists ${quoteIdentifier(String(name))} cascade;`,
+    ({ name }) => `drop schema if exists ${quoteIdentifier(String(name))} cascade;\n`,
   );
-  await tx.execute([...drops, RECREATE_PUBLIC].join("\n"));
+  await tx.execute(drops.join("") + RECREATE_PUBLIC);
   await tracking.createCurrentTable(tx);
   await tracking.ensureMigrationsTable(tx);
 }
@@ -224,8 +229,8 @@ async function resetLocked(options: ResetOptions): Promise<ResetResult> {
     current = { body, hash: await currentHash(body) };
   }
   await resetDevDatabase(driver, source, tracking, {
-    ...(current === undefined ? {} : { current }),
-    ...(erase ? {} : { afterLock: (session) => requireDevDatabase(session, tracking, "reset") }),
+    current,
+    afterLock: erase ? undefined : (session) => requireDevDatabase(session, tracking, "reset"),
   });
   return { committed: committed.length, current: current !== undefined };
 }

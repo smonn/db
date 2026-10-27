@@ -2,47 +2,22 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { readCommitted, writeMigration } from "../../runtime/internal/index.ts";
 import { migrate, verify } from "../../runtime/migrator/index.ts";
-import type { MigrationFile, MigrationSource } from "../../runtime/ports/index.ts";
+import { filesIn, memoryFileSystem } from "./memory-file-system.test-helper.ts";
+import { rebase } from "./rebase.ts";
 import {
-  filesIn,
-  memoryFileSystem,
-  type MemoryFileSystem,
-} from "./memory-file-system.test-helper.ts";
-import { rebase, type RebaseResult } from "./rebase.ts";
+  A,
+  B,
+  C,
+  folder,
+  MIGRATIONS,
+  ONTO,
+  rebaseFolder,
+  source,
+  X,
+  Y,
+} from "./rebase.test-helper.ts";
 
 const db = useTestDatabase();
-
-const MIGRATIONS = "db/migrations";
-const ONTO = "origin/main";
-
-const A = await writeMigration("000001-a.sql", undefined, "create table a (n int);");
-const B = await writeMigration("000002-b.sql", A.hash, "create table b (n int);");
-const C = await writeMigration("000003-c.sql", B.hash, "create table c (n int);");
-// The branch's files, committed on A before B and C landed on the base.
-const X = await writeMigration("000002-x.sql", A.hash, "create table x (n int);");
-const Y = await writeMigration("000003-y.sql", X.hash, "create table y (n int);");
-
-function source(...files: MigrationFile[]): MigrationSource {
-  return { list: () => Promise.resolve(files) };
-}
-
-function folder(...files: MigrationFile[]): MemoryFileSystem {
-  return memoryFileSystem(filesIn(MIGRATIONS, files));
-}
-
-function rebaseFolder(
-  fileSystem: MemoryFileSystem,
-  base: MigrationFile[],
-  unheld: string[] = [],
-): Promise<RebaseResult> {
-  return rebase({
-    fileSystem,
-    migrations: MIGRATIONS,
-    base: source(...base),
-    onto: ONTO,
-    unheld,
-  });
-}
 
 describe("rebase", () => {
   it("moves the branch's files onto the base tip, rewriting their sequence and headers", async () => {
@@ -63,6 +38,30 @@ describe("rebase", () => {
     );
     const committed = await readCommitted(fileSystem, MIGRATIONS);
     expect((await verify(source(...committed))).verified).toHaveLength(5);
+  });
+
+  it("orders the branch's files by sequence number, not by filename", async () => {
+    const P = await writeMigration("9-p.sql", B.hash, "create table p (n int);");
+    const Q = await writeMigration("10-q.sql", P.hash, "create table q (n int);");
+    const fileSystem = folder(A, B, P, Q);
+
+    const result = await rebaseFolder(fileSystem, [A, B]);
+
+    expect(result).toStrictEqual({
+      moved: [
+        { from: "9-p.sql", to: "000003-p.sql" },
+        { from: "10-q.sql", to: "000004-q.sql" },
+      ],
+    });
+  });
+
+  it("takes the base ref's tip by sequence number, whatever order the base lists its files", async () => {
+    const fileSystem = folder(A, B, C, X, Y);
+
+    await rebaseFolder(fileSystem, [C, A, B]);
+
+    const X4 = await writeMigration("000004-x.sql", C.hash, "create table x (n int);");
+    expect(fileSystem.files.get(`${MIGRATIONS}/000004-x.sql`)).toBe(X4.content);
   });
 
   it("keeps a moving no-transaction file's header and rehashes over it (ADR-0020)", async () => {
@@ -242,11 +241,24 @@ describe("rebase", () => {
     );
   });
 
+  it("names a moving file that starts a chain of its own as following nothing", async () => {
+    const root = await writeMigration("000003-r.sql", undefined, "create table r (n int);");
+    const fileSystem = folder(A, B, X, root);
+
+    await expect(rebaseFolder(fileSystem, [A, B])).rejects.toThrow(
+      `000003-r.sql: --! Previous should be ${X.hash}, not -`,
+    );
+  });
+
   it("refuses a base ref whose chain is broken, naming the ref", async () => {
     const fileSystem = folder(A, C);
 
-    await expect(rebaseFolder(fileSystem, [A, C])).rejects.toThrow(
-      `${ONTO}: 000003-c.sql: sequence 2 is missing before it`,
+    const refused = rebaseFolder(fileSystem, [A, C]);
+
+    await expect(refused).rejects.toThrow(`${ONTO}: 000003-c.sql: sequence 2 is missing before it`);
+    await expect(refused).rejects.toHaveProperty(
+      "cause.message",
+      "000003-c.sql: sequence 2 is missing before it",
     );
   });
 

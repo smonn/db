@@ -1,6 +1,6 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
 import {
-  childrenOf,
+  childrenOfKind,
   parentOf,
   qualified,
   type Catalog,
@@ -67,9 +67,7 @@ function createDomain(domain: FactOf<"domain">, { to }: Catalogs): string {
   const parts = [`create domain ${qualified(domain, to)} as ${base}`];
   if (notNull) parts.push("not null");
   if (expression !== null) parts.push(`default (${expression})`);
-  for (const child of childrenOf(to, domain)) {
-    if (child.kind === "domain check") parts.push(checkClause(child));
-  }
+  parts.push(...childrenOfKind(to, domain, "domain check").map((check) => checkClause(check)));
   return `${parts.join(" ")};`;
 }
 
