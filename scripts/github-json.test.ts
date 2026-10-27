@@ -1,4 +1,7 @@
-import { describe, expect, test } from "vitest";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   array,
   field,
@@ -7,6 +10,7 @@ import {
   number,
   optionalField,
   parseJson,
+  readEventPayload,
   record,
   string,
 } from "./github-json.ts";
@@ -80,5 +84,27 @@ describe("optionalField", () => {
   test("reads a present key and rejects a mistyped one", () => {
     expect(optionalField({ n: 2 }, "n", number, "$")).toBe(2);
     expect(() => optionalField({ n: "x" }, "n", number, "$")).toThrow("$.n: expected number");
+  });
+});
+
+describe("readEventPayload", () => {
+  afterEach(() => {
+    process.exitCode = undefined;
+    vi.restoreAllMocks();
+  });
+
+  test("parses the file named by GITHUB_EVENT_PATH", () => {
+    const dir = mkdtempSync(join(tmpdir(), "event-"));
+    const path = join(dir, "event.json");
+    writeFileSync(path, '{"a":1}');
+    expect(readEventPayload({ GITHUB_EVENT_PATH: path })).toEqual({ a: 1 });
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  test("reports the unset variable with exit code 1", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(readEventPayload({})).toBeUndefined();
+    expect(error).toHaveBeenCalledWith("Set GITHUB_EVENT_PATH");
+    expect(process.exitCode).toBe(1);
   });
 });

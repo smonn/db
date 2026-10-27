@@ -11,8 +11,16 @@
  * the labels, since a concurrent label edit may have changed them since the event fired.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { array, field, number, parseJson, record, string, type Reader } from "./github-json.ts";
+import {
+  array,
+  field,
+  number,
+  parseJson,
+  readEventPayload,
+  record,
+  string,
+  type Reader,
+} from "./github-json.ts";
 
 export const MARKER = "<!-- smonn-db:ready-labels -->";
 
@@ -129,13 +137,9 @@ function readyGaps(issue: LabelledIssue): string[] {
 
 /** The event to check, or `undefined` when the variable is unset or the event needs no check. */
 function readEnvEvent(env: NodeJS.ProcessEnv): LabelsEvent | undefined {
-  const { GITHUB_EVENT_PATH: eventPath } = env;
-  if (eventPath === undefined) {
-    console.error("Set GITHUB_EVENT_PATH");
-    process.exitCode = 1;
-    return undefined;
-  }
-  const event = readEvent(parseJson(readFileSync(eventPath, "utf8"), eventPath), "$");
+  const payload = readEventPayload(env);
+  if (payload === undefined) return undefined;
+  const event = readEvent(payload, "$");
   return needsLabelCheck(event) ? event : undefined;
 }
 

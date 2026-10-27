@@ -13,14 +13,13 @@
  * `demilestoned`.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import {
   array,
   field,
   nullable,
   number,
   optionalField,
-  parseJson,
+  readEventPayload,
   record,
   string,
   type Reader,
@@ -100,13 +99,8 @@ const runGh: Gh = (args) => {
 };
 
 function readEnvEvent(env: NodeJS.ProcessEnv): IssueEvent | undefined {
-  const { GITHUB_EVENT_PATH: eventPath } = env;
-  if (eventPath === undefined) {
-    console.error("Set GITHUB_EVENT_PATH");
-    process.exitCode = 1;
-    return undefined;
-  }
-  return readIssueEvent(parseJson(readFileSync(eventPath, "utf8"), eventPath), "$");
+  const payload = readEventPayload(env);
+  return payload === undefined ? undefined : readIssueEvent(payload, "$");
 }
 
 function requestCapitalTitle(target: string[], gh: Gh): void {
@@ -123,17 +117,17 @@ function requestMilestone(event: IssueEvent, target: string[], gh: Gh): void {
   gh(["issue", "edit", ...target, "--add-label", "needs-triage"]);
 }
 
-export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void {
-  const event = readEnvEvent(env);
-  if (event !== undefined) handleEvent(event, gh);
-}
-
-function handleEvent(event: IssueEvent, gh: Gh): void {
+function requestFixes(event: IssueEvent, gh: Gh): void {
   const { issue, repository } = event;
   const target = [String(issue.number), "--repo", repository.full_name];
   if (needsCapitalTitle(event)) requestCapitalTitle(target, gh);
   if (event.action === "edited" || !needsMilestone(issue)) return;
   requestMilestone(event, target, gh);
+}
+
+export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void {
+  const event = readEnvEvent(env);
+  if (event !== undefined) requestFixes(event, gh);
 }
 
 if (import.meta.main) main();

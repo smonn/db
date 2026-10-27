@@ -5,6 +5,8 @@
  * object from `field` reads, so it holds only what it validated.
  */
 
+import { readFileSync } from "node:fs";
+
 export type Reader<T> = (value: unknown, path: string) => T;
 
 export function parseJson(text: string, source: string): unknown {
@@ -16,6 +18,20 @@ export function parseJson(text: string, source: string): unknown {
       cause: error,
     });
   }
+}
+
+/**
+ * The parsed Actions event payload named by `GITHUB_EVENT_PATH`, or `undefined` with exit code 1
+ * when the variable is unset.
+ */
+export function readEventPayload(env: NodeJS.ProcessEnv): unknown {
+  const { GITHUB_EVENT_PATH: eventPath } = env;
+  if (eventPath === undefined) {
+    console.error("Set GITHUB_EVENT_PATH");
+    process.exitCode = 1;
+    return undefined;
+  }
+  return parseJson(readFileSync(eventPath, "utf8"), eventPath);
 }
 
 function describeType(value: unknown): string {
