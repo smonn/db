@@ -25,28 +25,17 @@ export function renameHints(from: Catalog, to: Catalog): string[] {
 }
 
 function hintsFor(from: Catalog, to: Catalog, before: Fact, after: Fact): string[] {
-  // Stryker disable next-line ConditionalExpression,LogicalOperator: a table's key holds no other kind with columns, so a hint comes out the same when only one side is a table.
-  if (before.kind === "table" && after.kind === "table") {
-    return columnHints(from, to, before, after);
-  }
+  if (after.kind === "table") return columnHints(from, to, before, after);
   return typeHints(from, to, before, after);
 }
 
 function typeHints(from: Catalog, to: Catalog, before: Fact, after: Fact): string[] {
-  // Stryker disable next-line ConditionalExpression,LogicalOperator: only a schema has a key of one name, so both sides are schemas or neither is.
-  if (before.kind === "schema" && after.kind === "schema") {
-    return tableHints(from, to, before, after);
-  }
+  if (after.kind === "schema") return tableHints(from, to, before, after);
   if (before.kind === "enum" && after.kind === "enum") return labelHints(to, before, after);
   return [];
 }
 
-function columnHints(
-  from: Catalog,
-  to: Catalog,
-  before: FactOf<"table">,
-  after: FactOf<"table">,
-): string[] {
+function columnHints(from: Catalog, to: Catalog, before: Fact, after: FactOf<"table">): string[] {
   const dropped = missingFrom(from, to, columnsOf(from, before));
   const added = missingFrom(to, from, columnsOf(to, after));
   const pair = onlyPair(dropped, added);
@@ -58,12 +47,7 @@ function columnHints(
   ];
 }
 
-function tableHints(
-  from: Catalog,
-  to: Catalog,
-  before: FactOf<"schema">,
-  after: FactOf<"schema">,
-): string[] {
+function tableHints(from: Catalog, to: Catalog, before: Fact, after: FactOf<"schema">): string[] {
   const dropped = missingFrom(from, to, tablesOf(from, before));
   const added = missingFrom(to, from, tablesOf(to, after));
   const pair = onlyPair(dropped, added);
@@ -94,11 +78,11 @@ function onlyPair<T>(dropped: readonly T[], added: readonly T[]): [T, T] | undef
   return [dropped[0]!, added[0]!];
 }
 
-function columnsOf(catalog: Catalog, table: FactOf<"table">): FactOf<"column">[] {
+function columnsOf(catalog: Catalog, table: Fact): FactOf<"column">[] {
   return childrenOf(catalog, table).filter((child) => child.kind === "column");
 }
 
-function tablesOf(catalog: Catalog, schema: FactOf<"schema">): FactOf<"table">[] {
+function tablesOf(catalog: Catalog, schema: Fact): FactOf<"table">[] {
   return childrenOf(catalog, schema).filter((child) => child.kind === "table");
 }
 
