@@ -84,16 +84,16 @@ export function reportBody(list: Survivor[], maxLength: number = MAX_LENGTH): st
   return [...lines, ""].join("\n");
 }
 
-type Gh = (args: string[], input?: string) => string;
+export type Gh = (args: string[], input?: string) => string;
 
-const runGh: Gh = (args, input) =>
+export const runGh: Gh = (args, input) =>
   execFileSync("gh", args, { encoding: "utf8", ...(input === undefined ? {} : { input }) });
 
 const readNumbers: Reader<number[]> = array((value, path) =>
   field(record(value, path), "number", number, path),
 );
 
-function openReportIssue(repo: string, gh: Gh): number | undefined {
+export function openReportIssue(repo: string, gh: Gh): number | undefined {
   const args = ["issue", "list", "--repo", repo, "--label", LABEL, "--state", "open"];
   const open = readNumbers(parseJson(gh([...args, "--json", "number"]), "gh issue list"), "$");
   if (open.length > 1) {
