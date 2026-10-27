@@ -58,7 +58,6 @@ export const METHOD_CAPABILITIES: Readonly<
   >
 > = {
   btree: { order: true, include: true, unique: true, multiColumn: true },
-  // Stryker disable next-line ObjectLiteral: a capability missing from `{}` reads as undefined, as false does.
   hash: { order: false, include: false, unique: false, multiColumn: false },
   gin: { order: false, include: false, unique: false, multiColumn: true },
   brin: { order: false, include: false, unique: false, multiColumn: true },
