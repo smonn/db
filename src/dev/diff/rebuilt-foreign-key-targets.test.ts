@@ -72,6 +72,24 @@ describe("a foreign key to a table the catalog lacks", () => {
   });
 });
 
+/** `users` and `orders`, plus a `decoy` table of the same schema whose `id` has the given type. */
+function withDecoy(decoyId: string): Catalog {
+  return world({
+    beforeOrders: (builder) => {
+      builder.table("public", "decoy");
+      builder.column("public", "decoy", "id", { type: decoyId, notNull: true });
+    },
+  });
+}
+
+describe("a foreign key to a table beside another with the target's column name", () => {
+  it("keeps it when only the other table's column is retyped", () => {
+    const sql = statements(withDecoy("integer"), withDecoy("text"));
+
+    expect(sql).toStrictEqual([`alter table "public"."decoy" alter column "id" type text;`]);
+  });
+});
+
 /** A table `public` with a column `users` ahead of the real `users`, whose `id` has the given type. */
 function lookalike(userId: string): Catalog {
   const builder = catalogBuilder();
