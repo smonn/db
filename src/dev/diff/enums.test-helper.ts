@@ -9,6 +9,11 @@ export function withMood(...labels: string[]): Catalog {
   );
 }
 
+/** `catalog` without the stored generation of every column, as a Definition leaves a column. */
+export function ungenerated(catalog: Catalog): Catalog {
+  return new Map([...catalog].filter(([, fact]) => fact.kind !== "generated"));
+}
+
 /** `catalog` with the enum `public.<name>` holding `labels`, for what the Definition can't declare. */
 export function relabeled(catalog: Catalog, labels: readonly string[], name = "mood"): Catalog {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The brand exists only in types.

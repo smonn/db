@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import type { Catalog } from "../catalog/index.ts";
 import { introspect } from "../introspect/index.ts";
-import { relabeled } from "./enums.test-helper.ts";
+import { relabeled, ungenerated } from "./enums.test-helper.ts";
 import { refuseTypeChanges } from "./type-refusals.ts";
 
 const db = useTestDatabase();
@@ -16,11 +16,6 @@ async function swapped(sql: string): Promise<{ from: Catalog; to: Catalog }> {
   await db.driver.execute(sql);
   const from = await introspect(db.driver);
   return { from, to: relabeled(from, ["c", "b", "a"]) };
-}
-
-/** `catalog` without the stored generation of every column, as a Definition leaves a column. */
-function ungenerated(catalog: Catalog): Catalog {
-  return new Map([...catalog].filter(([, fact]) => fact.kind !== "generated"));
 }
 
 /** What `expect(...).toThrow` calls, so a void call isn't an arrow function's result. */
