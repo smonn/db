@@ -44,8 +44,8 @@ function columnRenames(schema: string, table: string, columns: Table["columns"])
  * neither side is the safe one.
  */
 export function appliedRenames(declared: readonly Rename[], shadow: Catalog): Rename[] {
-  const tables = declared.filter((rename) => rename.kind === "table");
-  const columns = declared.filter((rename) => rename.kind === "column");
+  const tables = ofKind(declared, "table");
+  const columns = ofKind(declared, "column");
   const applied: Rename[] = tables.filter((rename) =>
     applies(shadow, "table", [rename.schema, rename.name], rename.was),
   );
@@ -57,11 +57,18 @@ export function appliedRenames(declared: readonly Rename[], shadow: Catalog): Re
   });
   const types = appliedTypeRenames(
     {
-      enums: declared.filter((rename) => rename.kind === "enum"),
-      labels: declared.filter((rename) => rename.kind === "enum label"),
-      domains: declared.filter((rename) => rename.kind === "domain"),
+      enums: ofKind(declared, "enum"),
+      labels: ofKind(declared, "enum label"),
+      domains: ofKind(declared, "domain"),
     },
     shadow,
   );
   return [...applied, ...inShadow, ...types.enums, ...types.labels, ...types.domains];
+}
+
+function ofKind<K extends Rename["kind"]>(
+  renames: readonly Rename[],
+  kind: K,
+): Extract<Rename, { kind: K }>[] {
+  return renames.filter((rename): rename is Extract<Rename, { kind: K }> => rename.kind === kind);
 }
