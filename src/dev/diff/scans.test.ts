@@ -25,6 +25,11 @@ const withMood = (labels: readonly string[]): Catalog =>
     b.column("app", "t", "m", { type: "app.mood", notNull: false });
   });
 
+const kindsOf = (walk: string): string[] =>
+  Object.entries(SCANS)
+    .filter(([, found]) => found === walk)
+    .map(([kind]) => kind);
+
 describe("the scan of each action kind", () => {
   it("fails to compile until a new kind names its walk", () => {
     const complete: ScanTable<Future> = { ...SCANS, "drop view": "drop" };
@@ -96,6 +101,77 @@ describe("the scan of each action kind", () => {
         walk: "retype",
         object: { type: "table column", names: ["app", "users.x", "id"], args: [] },
       },
+    ]);
+  });
+
+  it("sorts each action kind into the walk ADR-0025 gives it", () => {
+    expect(kindsOf("drop")).toStrictEqual([
+      "drop foreign key",
+      "drop index",
+      "drop unique",
+      "drop primary key",
+      "drop column",
+      "drop table",
+      "drop domain check",
+      "drop domain",
+      "drop enum",
+      "drop enum aside",
+      "drop replaced type",
+      "drop schema",
+    ]);
+    expect(kindsOf("retype")).toStrictEqual(["alter type", "swap retype"]);
+    expect(kindsOf("remove")).toStrictEqual(["drop expression"]);
+    expect(kindsOf("rename")).toStrictEqual(["rename enum aside", "rename replaced type"]);
+    expect(kindsOf("none")).toStrictEqual([
+      "rename table",
+      "rename column",
+      "rename enum",
+      "rename enum label",
+      "rename domain",
+      "rename domain check",
+      "rename constraint",
+      "rename index",
+      "rename sequence",
+      "create schema",
+      "create enum",
+      "add enum value",
+      "create domain",
+      "alter domain default",
+      "alter domain not null",
+      "add domain check",
+      "create table",
+      "add column",
+      "drop default",
+      "drop identity",
+      "set not null",
+      "drop not null",
+      "set default",
+      "set expression",
+      "add identity",
+      "set identity mode",
+      "add primary key",
+      "add unique",
+      "add index",
+      "add foreign key",
+    ]);
+  });
+
+  it("addresses a dropped schema, enum, and domain", () => {
+    const from = catalog((b) => {
+      b.schema("gone");
+      b.enumType("app", "mood", { labels: ["a"] });
+      b.domain("app", "code", code);
+    });
+
+    expect(
+      diff(
+        from,
+        catalog(() => {}),
+      ).scans,
+    ).toStrictEqual([
+      { walk: "drop", object: { type: "type", names: [`"app"."code"`], args: [] } },
+      { walk: "drop", object: { type: "type", names: [`"app"."mood"`], args: [] } },
+      { walk: "drop", object: { type: "schema", names: ["gone"], args: [] } },
     ]);
   });
 
