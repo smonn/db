@@ -21,4 +21,5 @@ export {
   trackingSchema,
   type RecordedMigration,
   type TrackingSchema,
+  type UnfinishedMigration,
 } from "./tracking-schema.ts";
