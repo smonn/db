@@ -120,8 +120,7 @@ order by k.conname`;
 // CONCURRENTLY leaves one that the planner never uses). An index that backs a primary key,
 // unique, or exclusion constraint is the constraint's fact, so it is skipped too; a foreign
 // key's `conindid` is the referenced table's index, which stays an index. `columns` and
-// `expressions` hold one entry per key, empty where the key is the other kind (no name or
-// expression is empty, and the driver reads a NULL in a text array as the string "NULL"); `orders`
+// `expressions` hold one entry per key, NULL where the key is the other kind; `orders`
 // holds one `<asc|desc> nulls <first|last>` per key, read from `indoption`. Postgres deparses an
 // expression key as `pg_get_indexdef` does, with the predicate through `pg_get_expr`, so a
 // spacing or cast difference in the source reads the same on both sides, as a default does.
@@ -129,14 +128,14 @@ export const INDEXES: string = `
 select n.nspname as schema, c.relname as table, ic.relname as name, am.amname as method,
   i.indisunique as is_unique, i.indnullsnotdistinct as nulls_not_distinct,
   array(
-    select coalesce(a.attname::text, '')
+    select a.attname::text
     from unnest(i.indkey::int2[]) with ordinality as key(attnum, position)
       left join pg_attribute a on a.attrelid = i.indrelid and a.attnum = key.attnum
     where key.position <= i.indnkeyatts
     order by key.position
   ) as columns,
   array(
-    select case when key.attnum = 0 then pg_get_indexdef(i.indexrelid, key.position::int, true) else '' end
+    select case when key.attnum = 0 then pg_get_indexdef(i.indexrelid, key.position::int, true) end
     from unnest(i.indkey::int2[]) with ordinality as key(attnum, position)
     where key.position <= i.indnkeyatts
     order by key.position

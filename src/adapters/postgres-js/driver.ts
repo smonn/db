@@ -65,8 +65,13 @@ function queryable(connection: ReservedSql | Sql): Queryable {
       // postgres.js types a Date param as timestamptz, which Postgres converts to a timestamp in
       // the session's zone. Sent as untyped UTC text, it takes its column's type instead.
       const bound = bindDateParams(text, params);
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- postgres.js serializes any param value.
-      const values = bound.values as ParameterOrJSON<never>[];
+      // postgres.js types an array param by its first element, so a bigint array would be sent as
+      // a bigint. Untyped, the array takes its type from where it's used, and that type's
+      // serializer writes it: an array type's as array text, jsonb's as JSON.
+      const values = bound.values.map((value) =>
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- postgres.js serializes any param value.
+        Array.isArray(value) ? connection.typed(value, 0) : (value as ParameterOrJSON<never>),
+      );
       const result = await connection.unsafe(bound.text, values, prepared);
       return { rows: [...result], count: result.count ?? 0 };
     },
@@ -185,8 +190,8 @@ async function returnToPool(reserved: ReservedSql): Promise<void> {
  * `postgres(url, { types: postgresJsTypes, connection: postgresJsConnection })`, or rows hold
  * postgres.js's default values, or values in the database's DateStyle and bytea_output.
  *
- * A `Date` param, or an array of them, is bound without a type, so Postgres reads it as the
- * type of its column or other operand. Each use of a repeated `$n` is typed on its own, so one
+ * A `Date` param, or any array, is bound without a type, so Postgres reads it as the type of its
+ * column or other operand: an array is written as array text, or as JSON for a json or jsonb. Each use of a repeated `$n` is typed on its own, so one
  * `Date` can meet a `timestamp` and a `timestamptz`. Where nothing names a type, such as
  * `$1 - interval '1 hour'`, write the cast: `$1::timestamptz - interval '1 hour'`. That holds for
  * every use of a repeated `$n`: `ts >= $1 and ts < $1 + interval '1 day'` fails, and it works
