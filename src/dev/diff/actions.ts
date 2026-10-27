@@ -1,6 +1,7 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
 import { qualified, type Catalog, type ColumnRename, type TableRename } from "../catalog/index.ts";
 import { columnRetypeHazards, fillsEachRow } from "./column-hazards.ts";
+import { DERIVED_STEPS, type DerivedCarries, type DerivedTarget } from "./derived-renames.ts";
 import { SWAP_STEPS, type Swap } from "./enum-swap.ts";
 import {
   HAZARD_KINDS,
@@ -27,53 +28,55 @@ import {
 } from "./statements.ts";
 
 /** The kind of fact each action acts on. */
-type Target = TypeTarget & {
-  "rename table": "table";
-  "rename column": "column";
-  "drop foreign key": "foreign key";
-  "drop unique": "unique";
-  "drop index": "index";
-  "drop primary key": "primary key";
-  "drop column": "column";
-  "drop table": "table";
-  "drop schema": "schema";
-  "create schema": "schema";
-  "rename enum aside": "enum";
-  "drop enum aside": "enum";
-  "swap retype": "column";
-  "create table": "table";
-  "add column": "column";
-  "drop default": "default";
-  "drop identity": "identity";
-  "drop expression": "generated";
-  "alter type": "column";
-  "set not null": "column";
-  "drop not null": "column";
-  "set default": "default";
-  "add identity": "identity";
-  "set identity mode": "identity";
-  "set expression": "generated";
-  "add primary key": "primary key";
-  "add unique": "unique";
-  "add index": "index";
-  "add foreign key": "foreign key";
-};
+type Target = TypeTarget &
+  DerivedTarget & {
+    "rename table": "table";
+    "rename column": "column";
+    "drop foreign key": "foreign key";
+    "drop unique": "unique";
+    "drop index": "index";
+    "drop primary key": "primary key";
+    "drop column": "column";
+    "drop table": "table";
+    "drop schema": "schema";
+    "create schema": "schema";
+    "rename enum aside": "enum";
+    "drop enum aside": "enum";
+    "swap retype": "column";
+    "create table": "table";
+    "add column": "column";
+    "drop default": "default";
+    "drop identity": "identity";
+    "drop expression": "generated";
+    "alter type": "column";
+    "set not null": "column";
+    "drop not null": "column";
+    "set default": "default";
+    "add identity": "identity";
+    "set identity mode": "identity";
+    "set expression": "generated";
+    "add primary key": "primary key";
+    "add unique": "unique";
+    "add index": "index";
+    "add foreign key": "foreign key";
+  };
 
 export type ActionKind = keyof Target;
 
 /** What an action needs beyond its fact. */
-type Carries = TypeCarries & {
-  /** The column as the `from` catalog has it, since a type change's hazards depend on both types. */
-  "alter type": { readonly before: FactOf<"column"> };
-  /** The renamed object's fact is the `from` catalog's, which already holds the renamed object. */
-  "rename table": { readonly rename: TableRename };
-  "rename column": { readonly rename: ColumnRename };
-  /** The enum as the `from` catalog has it, and the label to add to it. */
-  "add enum value": { readonly before: FactOf<"enum">; readonly label: string };
-  "rename enum aside": { readonly swap: Swap };
-  "drop enum aside": { readonly swap: Swap };
-  "swap retype": { readonly swap: Swap };
-};
+type Carries = TypeCarries &
+  DerivedCarries & {
+    /** The column as the `from` catalog has it, since a type change's hazards depend on both types. */
+    "alter type": { readonly before: FactOf<"column"> };
+    /** The renamed object's fact is the `from` catalog's, which already holds the renamed object. */
+    "rename table": { readonly rename: TableRename };
+    "rename column": { readonly rename: ColumnRename };
+    /** The enum as the `from` catalog has it, and the label to add to it. */
+    "add enum value": { readonly before: FactOf<"enum">; readonly label: string };
+    "rename enum aside": { readonly swap: Swap };
+    "drop enum aside": { readonly swap: Swap };
+    "swap retype": { readonly swap: Swap };
+  };
 
 /**
  * One statement-sized change. A drop's fact comes from the `from` catalog, and every other
@@ -133,6 +136,7 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
     hazards: none,
   },
   ...TYPE_STEPS,
+  ...DERIVED_STEPS,
   ...SWAP_STEPS,
   "create table": { render: createTable, hazards: none },
   "add column": {
