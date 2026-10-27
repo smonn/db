@@ -54,14 +54,14 @@ export async function requireDevDatabase(
     rows: [row],
   } = await driver.query("select current_database() as name");
   throw new Error(
-    `${quoteIdentifier(String(row?.["name"]))} isn't a Dev database: it has no ${tracking.currentTable} table and isn't empty, so ${command === "reset" ? "reset needs --erase to wipe it" : "generate won't reset it"}`,
+    `${quoteIdentifier(String(row!["name"]))} isn't a Dev database: it has no ${tracking.currentTable} table and isn't empty, so ${command === "reset" ? "reset needs --erase to wipe it" : "generate won't reset it"}`,
   );
 }
 
 type ResetSteps = {
   /** The Current migration to replay after the Committed ones. */
-  readonly current?: CurrentMigration;
-  readonly afterLock?: (session: Queryable) => Promise<void>;
+  readonly current?: CurrentMigration | undefined;
+  readonly afterLock?: ((session: Queryable) => Promise<void>) | undefined;
 };
 
 /**
@@ -105,8 +105,8 @@ async function replayNext(
   session: Session,
   steps: readonly ReplayStep[],
 ): Promise<readonly ReplayStep[]> {
-  const [first] = steps;
-  if (first?.noTransaction === true) {
+  const first = steps[0]!;
+  if (first.noTransaction) {
     await replay(first.name, () => first.run(session, session));
     return steps.slice(1);
   }
@@ -224,8 +224,8 @@ async function resetLocked(options: ResetOptions): Promise<ResetResult> {
     current = { body, hash: await currentHash(body) };
   }
   await resetDevDatabase(driver, source, tracking, {
-    ...(current === undefined ? {} : { current }),
-    ...(erase ? {} : { afterLock: (session) => requireDevDatabase(session, tracking, "reset") }),
+    current,
+    afterLock: erase ? undefined : (session) => requireDevDatabase(session, tracking, "reset"),
   });
   return { committed: committed.length, current: current !== undefined };
 }
