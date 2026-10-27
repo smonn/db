@@ -73,21 +73,59 @@ export function without(
 type ForeignKey = Extract<Fact, { readonly kind: "foreign key" }>;
 
 /**
- * The drop and re-add of each foreign key that stays as it is while its target key or one of its
- * columns is dropped, rebuilt, or retyped, since Postgres refuses those changes under it (#381).
- * `planned` holds the other actions, which already drop a foreign key that changes itself or names
- * a rebuilt column.
+ * `planned` with each foreign key that stays as it is, or only changes its name, rebuilt around a
+ * target key or column that is dropped, rebuilt, or retyped, since Postgres refuses those changes
+ * under it (#381). A blocked rename gives way to a drop of the old name and an add of the new one.
+ * `planned` already drops a foreign key that changes itself or names a rebuilt column.
  */
 export function foreignKeysAround(planned: readonly Action[], catalogs: Catalogs): Action[] {
   const changed = changedColumns(planned);
-  return unchangedForeignKeys(catalogs)
-    .filter(
-      ([key]) => !dropsForeignKey(planned, key) && isBlocked(key, planned, changed, catalogs.from),
-    )
-    .flatMap(([before, after]) => [
-      { kind: "drop foreign key", fact: before },
-      { kind: "add foreign key", fact: after },
-    ]);
+  const blocked = (key: ForeignKey): boolean => isBlocked(key, planned, changed, catalogs.from);
+  const renames = blockedRenames(planned, catalogs.from, blocked);
+  const unchanged = unchangedForeignKeys(catalogs)
+    .filter(([key]) => !dropsForeignKey(planned, key) && blocked(key))
+    .flatMap(([before, after]) => rebuild(before, after));
+  return [
+    ...planned.filter((action) => !renames.has(action)),
+    ...[...renames.values()].flat(),
+    ...unchanged,
+  ];
+}
+
+function rebuild(before: ForeignKey, after: ForeignKey): Action[] {
+  return [
+    { kind: "drop foreign key", fact: before },
+    { kind: "add foreign key", fact: after },
+  ];
+}
+
+/** The rebuild that replaces each rename of a foreign key that `blocked` holds up. */
+function blockedRenames(
+  planned: readonly Action[],
+  from: Catalog,
+  blocked: (key: ForeignKey) => boolean,
+): Map<Action, Action[]> {
+  const rebuilds = new Map<Action, Action[]>();
+  for (const action of planned) {
+    if (action.kind !== "rename constraint" || action.fact.kind !== "foreign key") continue;
+    const before = blocked(action.fact)
+      ? foreignKeyNamed(from, action.fact.parent, action.was)
+      : undefined;
+    if (before !== undefined) rebuilds.set(action, rebuild(before, action.fact));
+  }
+  return rebuilds;
+}
+
+/** The foreign key `catalog` holds under `name` on the table at `parent`. */
+function foreignKeyNamed(
+  catalog: Catalog,
+  parent: Key | undefined,
+  name: string,
+): ForeignKey | undefined {
+  for (const fact of catalog.values()) {
+    if (fact.kind === "foreign key" && fact.parent === parent && fact.name === name) return fact;
+  }
+  return undefined;
 }
 
 /** Each foreign key both catalogs hold under one name, as `from` and as `to` have it. */

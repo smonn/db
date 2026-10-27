@@ -44,8 +44,7 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
     );
   }
   const hazards: Hazard[] = [];
-  const planned = renameByPayload(actions);
-  const sql = order([...planned, ...foreignKeysAround(planned, catalogs)])
+  const sql = order(foreignKeysAround(renameByPayload(actions), catalogs))
     .map((action) => {
       const statement = render(action, catalogs);
       const kinds = hazardsOf(action, catalogs);

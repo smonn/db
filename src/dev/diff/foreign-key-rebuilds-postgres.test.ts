@@ -136,6 +136,41 @@ describe("an unchanged foreign key around a change to the key or columns it name
     expect(steps(sql)).toStrictEqual([]);
   });
 
+  it("drops the old name and adds the new one when a renamed foreign key's columns retype", async () => {
+    const sql = await migrate(
+      `create table users (id integer primary key); ${orders("integer")}`,
+      `create table users (id text primary key);
+       create table orders (user_id text constraint orders_owner_fkey references users (id));`,
+    );
+
+    expect(steps(sql)).toStrictEqual(["drop"]);
+    expect(steps(sql, "orders_owner_fkey")).toStrictEqual(["add"]);
+    expect(sql).not.toContain("rename constraint");
+  });
+
+  it("drops the old name and adds the new one when a renamed foreign key's target key drops", async () => {
+    const sql = await migrate(
+      `create table users (id integer constraint users_key unique); ${orders("integer")}`,
+      `create table users (id integer primary key);
+       create table orders (user_id integer constraint orders_owner_fkey references users (id));`,
+    );
+
+    expect(steps(sql)).toStrictEqual(["drop"]);
+    expect(steps(sql, "orders_owner_fkey")).toStrictEqual(["add"]);
+    expect(sql).not.toContain("rename constraint");
+  });
+
+  it("renames a foreign key whose target and columns stay", async () => {
+    const sql = await migrate(
+      `create table users (id integer primary key); ${orders("integer")}`,
+      `create table users (id integer primary key);
+       create table orders (user_id integer constraint orders_owner_fkey references users (id));`,
+    );
+
+    expect(sql).toContain(`rename constraint "${FK}" to "orders_owner_fkey"`);
+    expect(sql).not.toContain("drop constraint");
+  });
+
   it("rebuilds a foreign key between columns of a swapped enum", async () => {
     const sql = await migrate(
       `create type mood as enum ('a', 'b', 'c');
