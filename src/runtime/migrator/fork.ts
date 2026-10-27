@@ -11,7 +11,9 @@ export type Fork = {
 };
 
 function bySequence(a: ParsedMigration, b: ParsedMigration): number {
-  return a.sequence - b.sequence || (a.filename < b.filename ? -1 : 1);
+  return (
+    a.sequence - b.sequence || Number(a.filename > b.filename) - Number(a.filename < b.filename)
+  );
 }
 
 /**

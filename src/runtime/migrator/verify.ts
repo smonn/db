@@ -76,9 +76,10 @@ function checkSequence(migration: ParsedMigration, expected: number): void {
 
 function checkChained(migration: ParsedMigration, previous: string | undefined): void {
   if (migration.previous !== previous) {
-    throw new Error(
-      `${migration.filename}: --! Previous should be ${previous ?? "-"}, not ${migration.previous ?? "-"}`,
-    );
+    const expected = previous ?? "-";
+    // Stryker disable next-line StringLiteral: a file after the first that starts the chain is refused as a fork before this check runs.
+    const found = migration.previous ?? "-";
+    throw new Error(`${migration.filename}: --! Previous should be ${expected}, not ${found}`);
   }
 }
 

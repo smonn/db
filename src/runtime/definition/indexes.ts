@@ -91,6 +91,7 @@ function requireMethodSupport(index: TableIndex): void {
 function describeIndex(index: TableIndex): string {
   if (index.name !== undefined) return `the index ${JSON.stringify(index.name)}`;
   // requireNameForExpressions already refused an unnamed index with an expression key
+  // Stryker disable next-line MethodExpression: an unnamed index has no expression key, so the filter drops nothing.
   const columns = index.keys.filter((key) => "column" in key);
   return `the index on ${columns.map((key) => JSON.stringify(key.column)).join(", ")}`;
 }
@@ -120,6 +121,7 @@ function keysOf(
   const columns = keyColumns(own, [...plain, ...given], "indexes");
   const keys = listed.map(({ ref, descending, nullsFirst }, at): IndexKey => {
     const expression = expressions[at];
+    // Stryker disable next-line StringLiteral: columns holds a name for every plain key, so shift() finds one.
     if (expression === undefined) return { column: columns.shift() ?? "", descending, nullsFirst };
     const key = { expression, descending, nullsFirst };
     rememberExpression(key, own, ref);
