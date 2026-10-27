@@ -138,6 +138,27 @@ describe("strayHazardComments", () => {
     expect(hazardsIn(sql)).toStrictEqual([{ kind: "rewrite", statement: "DROP TABLE u;" }]);
   });
 
+  it("lists strays in line order, whether found in a statement or left unpaired", () => {
+    const sql = "-- hazard: rewrite\n\n  -- hazard: data_loss\n\n--hazard: share_lock\n";
+
+    expect(strayHazardComments(sql)).toStrictEqual([
+      { line: 1, text: "-- hazard: rewrite" },
+      { line: 3, text: "  -- hazard: data_loss" },
+      { line: 5, text: "--hazard: share_lock" },
+    ]);
+  });
+
+  it("reads a Hazard comment only when nothing follows its kind but spaces", () => {
+    expect(hazardsIn("-- hazard: data_loss  \ndrop table a;\n")).toStrictEqual([
+      { kind: "data_loss", statement: "drop table a;" },
+    ]);
+    const sql = "-- hazard: data_loss extra\ndrop table a;\n";
+    expect(hazardsIn(sql)).toStrictEqual([]);
+    expect(strayHazardComments(sql)).toStrictEqual([
+      { line: 1, text: "-- hazard: data_loss extra" },
+    ]);
+  });
+
   it("ignores paired comments, plural prose, block comments, and a hazards table", () => {
     const sql = [
       "-- hazard: data_loss",
