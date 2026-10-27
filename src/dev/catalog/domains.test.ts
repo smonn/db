@@ -7,6 +7,13 @@ import {
 } from "../../runtime/definition/index.ts";
 import { definitionCatalog } from "./definition-catalog.ts";
 
+const withCheck = (check: string) => () =>
+  definitionCatalog(
+    defineDatabase({
+      app: { posint: defineDomain((c) => c.integer(), { checks: { [check]: "value > 0" } }) },
+    }),
+  );
+
 describe("definitionCatalog domains", () => {
   it("has a domain fact keyed like a table, and one child fact per check", () => {
     const posint = defineDomain((c) => c.integer(), {
@@ -81,5 +88,26 @@ describe("definitionCatalog domains", () => {
     ).toThrow(
       `One domain is rolled up as "public"."posint" and "app"."count"; give each its own defineDomain`,
     );
+  });
+
+  describe("check names", () => {
+    it("accepts a 63-byte check name", () => {
+      expect(withCheck("a".repeat(63))).not.toThrow();
+    });
+
+    it("refuses an empty check name, naming the domain", () => {
+      expect(withCheck("")).toThrow(`Domain "app"."posint" has an empty check name`);
+    });
+
+    it("refuses a 64-byte check name, naming the domain and the check", () => {
+      expect(withCheck("a".repeat(64))).toThrow(
+        `Domain "app"."posint" has the check "${"a".repeat(64)}", which is over 63 bytes; Postgres would truncate it`,
+      );
+    });
+
+    it("counts a check name's bytes, not its characters", () => {
+      expect(withCheck("é".repeat(31))).not.toThrow();
+      expect(withCheck("é".repeat(32))).toThrow("over 63 bytes");
+    });
   });
 });

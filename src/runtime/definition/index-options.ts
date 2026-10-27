@@ -44,3 +44,22 @@ export function columnIndexOf(options: IndexOptions | undefined): ColumnIndex {
     method: methodOf("method" in given ? given.method : undefined, "index()"),
   };
 }
+
+/** What each access method takes, as `pg_indexam_has_property` reports it (`can_order`, `can_include`, `can_unique`, `can_multi_col`). */
+export const METHOD_CAPABILITIES: Readonly<
+  Record<
+    IndexMethod,
+    {
+      readonly order: boolean;
+      readonly include: boolean;
+      readonly unique: boolean;
+      readonly multiColumn: boolean;
+    }
+  >
+> = {
+  btree: { order: true, include: true, unique: true, multiColumn: true },
+  hash: { order: false, include: false, unique: false, multiColumn: false },
+  gin: { order: false, include: false, unique: false, multiColumn: true },
+  brin: { order: false, include: false, unique: false, multiColumn: true },
+  gist: { order: false, include: true, unique: false, multiColumn: true },
+};

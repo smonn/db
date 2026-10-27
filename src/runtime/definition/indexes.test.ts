@@ -59,7 +59,7 @@ describe("an indexes entry in the second callback", () => {
         {
           columns: [r.a, r.b],
           include: [r.c],
-          method: "hash",
+          method: "btree",
           unique: true,
           nullsNotDistinct: true,
           name: "ix",
@@ -70,7 +70,7 @@ describe("an indexes entry in the second callback", () => {
     expect(t.indexes[0]).toMatchObject({
       name: "ix",
       include: ["c"],
-      method: "hash",
+      method: "btree",
       unique: true,
       nullsNotDistinct: true,
     });

@@ -127,4 +127,24 @@ describe("an issue attached to a parent during the grace wait", () => {
     expect(wait).toHaveBeenCalledOnce();
     expect(posted(gh)).toEqual([mismatch("area:diff", "#432 (area:definition)", "#431")]);
   });
+
+  test("is checked after the wait even when no parent covers its area", () => {
+    const attached = JSON.stringify({ ...subIssue, number: 7, parent_issue_url: underDefinition });
+    const none = { ...routes({ parent_issue_url: null }), [milestonePath]: [[]] };
+    const gh = refetchingGh(none, () => attached);
+    const wait = vi.fn<(ms: number) => void>();
+    main({ GITHUB_EVENT_PATH: writeEvent(diffEvent) }, gh, wait);
+    expect(wait).toHaveBeenCalledOnce();
+    expect(posted(gh)).toEqual([
+      [
+        "issue",
+        "comment",
+        "7",
+        "--repo",
+        "smonn/db",
+        "--body",
+        `${MISMATCH_MARKER}\nThis sub-issue shares no area with its parent #432 (area:definition). It has area:diff. No open parent in its milestone matches its area. If it belongs under a parent, move it; otherwise ignore this.`,
+      ],
+    ]);
+  });
 });
