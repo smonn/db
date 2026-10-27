@@ -39,8 +39,8 @@ function keyEntry(declared: unknown): { name: string | undefined; columns: unkno
 }
 
 function namedKeyEntry(declared: unknown): { name: string; columns: unknown } | undefined {
-  if (typeof declared !== "object" || declared === null || !("name" in declared)) return undefined;
-  const { name } = declared;
+  if (typeof declared !== "object" || declared === null) return undefined;
+  const name: unknown = Reflect.get(declared, "name");
   if (typeof name !== "string") return undefined;
   return { name, columns: "columns" in declared && declared.columns };
 }
