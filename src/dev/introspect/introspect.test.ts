@@ -112,8 +112,8 @@ describe("introspect", () => {
       .filter((fact) => ["default", "identity"].includes(fact.kind))
       .map((fact) => [namesOf(catalog, fact).join("."), fact.payload]);
     expect(facts).toStrictEqual([
-      ["public.t.id.identity", { generated: "always" }],
-      ["public.t.n.identity", { generated: "by default" }],
+      ["public.t.id.identity", { generated: "always", sequence: "t_id_seq" }],
+      ["public.t.n.identity", { generated: "by default", sequence: "t_n_seq" }],
       ["public.t.role.default", { expression: "'member'::text", volatile: false }],
       ["public.t.at.default", { expression: "now()", volatile: false }],
     ]);

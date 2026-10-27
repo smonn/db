@@ -44,32 +44,58 @@ function tableRenameAction(rename: TableRename | ColumnRename, fact: Fact): Acti
   return undefined;
 }
 
-type Check = Action<"drop domain check" | "add domain check">;
+type Added = Action<
+  "add domain check" | "add primary key" | "add unique" | "add foreign key" | "add index"
+>;
+
+/** Each kind of dropped fact, with the kind of added fact it can be a rename of. */
+const PAIRS: readonly (readonly [drop: Action["kind"], add: Added["kind"]])[] = [
+  ["drop domain check", "add domain check"],
+  ["drop primary key", "add primary key"],
+  ["drop unique", "add unique"],
+  ["drop foreign key", "add foreign key"],
+  ["drop index", "add index"],
+];
+
+function renameOf(add: Added, was: string): Action {
+  if (add.kind === "add domain check") return { kind: "rename domain check", fact: add.fact, was };
+  if (add.kind === "add index") return { kind: "rename index", fact: add.fact, was };
+  return { kind: "rename constraint", fact: add.fact, was };
+}
 
 /**
- * Turns a dropped and an added check of one domain with the same expression into one
- * `RENAME CONSTRAINT`, with no Hazard (ADR-0024). Two candidates on either side are ambiguous, so
- * they stay a drop and an add.
+ * Turns a dropped and an added check, key, or index of one parent with the same payload into one
+ * rename, with no Hazard (ADR-0024). Two candidates on either side are ambiguous, so they stay a
+ * drop and an add.
  */
-export function renameChecks(actions: readonly Action[]): Action[] {
-  const drops = actions.filter((action) => action.kind === "drop domain check");
-  const adds = actions.filter((action) => action.kind === "add domain check");
+export function renameByPayload(actions: readonly Action[]): Action[] {
   const paired = new Set<Action>();
   const renames: Action[] = [];
-  for (const add of adds) {
-    const drop = soleMatch(drops, add);
-    if (drop === undefined || soleMatch(adds, drop) === undefined) continue;
-    paired.add(drop).add(add);
-    renames.push({ kind: "rename domain check", fact: add.fact, was: drop.fact.name });
+  for (const [dropKind, addKind] of PAIRS) {
+    const drops = actions.filter((action) => action.kind === dropKind);
+    const adds = actions.filter((action): action is Added => action.kind === addKind);
+    for (const add of adds) {
+      const drop = soleMatch(drops, add);
+      if (drop === undefined || soleMatch(adds, drop) === undefined) continue;
+      // The name stays taken until the drop, which runs after the renames: a fact of that name
+      // changed, or the add is a rebuild of it.
+      if (
+        drops.some(({ fact }) => fact.parent === add.fact.parent && fact.name === add.fact.name)
+      ) {
+        continue;
+      }
+      paired.add(drop).add(add);
+      renames.push(renameOf(add, drop.fact.name));
+    }
   }
   return [...actions.filter((action) => !paired.has(action)), ...renames];
 }
 
-/** The one of `candidates` that checks the same domain for the same expression as `check`. */
-function soleMatch<A extends Check>(candidates: readonly A[], check: Check): A | undefined {
+/** The one of `candidates` under the same parent as `other`, with the same payload. */
+function soleMatch(candidates: readonly Action[], other: Action): Action | undefined {
   const matches = candidates.filter(
     ({ fact }) =>
-      fact.parent === check.fact.parent && arePayloadsEqual(fact.payload, check.fact.payload),
+      fact.parent === other.fact.parent && arePayloadsEqual(fact.payload, other.fact.payload),
   );
   return matches.length === 1 ? matches[0] : undefined;
 }

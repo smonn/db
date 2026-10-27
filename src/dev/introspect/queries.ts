@@ -72,6 +72,10 @@ export const COLUMNS: string = `
 select n.nspname as schema, c.relname as table, a.attname as name,
   format_type(a.atttypid, a.atttypmod) as type, a.attnotnull as not_null,
   a.attidentity as identity, a.attgenerated as generated,
+  (select s.relname from pg_depend dep join pg_class s on s.oid = dep.objid and s.relkind = 'S'
+    where dep.classid = 'pg_class'::regclass and dep.refclassid = 'pg_class'::regclass
+      and dep.refobjid = a.attrelid and dep.refobjsubid = a.attnum and dep.deptype = 'i'
+  ) as identity_sequence,
   case when a.attgenerated <> '' then pg_get_expr(d.adbin, d.adrelid) end as generation_expression,
   case when a.attgenerated = '' then pg_get_expr(d.adbin, d.adrelid) end as default_expression,
   case when a.attgenerated = '' then ${CALLS_VOLATILE("pg_get_expr(d.adbin, d.adrelid)")}
