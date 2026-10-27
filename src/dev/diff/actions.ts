@@ -233,7 +233,7 @@ export function hazardsOf<A extends ActionKind>(
   catalogs: Catalogs,
 ): readonly HazardKind[] {
   const declared = STEPS[action.kind].hazards(action, catalogs);
-  return HAZARD_KINDS.filter((kind) => declared.includes(kind));
+  return declared.toSorted((a, b) => HAZARD_KINDS.indexOf(a) - HAZARD_KINDS.indexOf(b));
 }
 
 /**
