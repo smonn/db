@@ -57,7 +57,7 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
 /** The keys at which the two catalogs hold different kinds of fact. */
 function kindSwitches({ from, to }: Catalogs): ReadonlySet<Key> {
   return new Set(
-    [...from].flatMap(([key, fact]) => (to.get(key)?.kind === fact.kind ? [] : [key])),
+    [...from].filter(([key, fact]) => to.get(key)?.kind !== fact.kind).map(([key]) => key),
   );
 }
 
@@ -243,9 +243,12 @@ function created(fact: Fact, from: Catalog): Action[] {
   return handling.parentCreateCovers && parentAbsent(fact, from) ? [] : handling.create(fact);
 }
 
-/** Whether `fact` has a parent that `catalog` lacks: the parent was dropped, or is new. */
-function parentAbsent(fact: Fact, catalog: Catalog): boolean {
-  return fact.parent !== undefined && !catalog.has(fact.parent);
+/**
+ * Whether `catalog` lacks the parent of `fact`: the parent was dropped, or is new. Only a kind
+ * with a parent asks, since the others never have their drop or create covered.
+ */
+function parentAbsent(fact: Fact, catalog: ReadonlyMap<Key | undefined, Fact>): boolean {
+  return !catalog.has(fact.parent);
 }
 
 function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {

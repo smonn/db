@@ -26,13 +26,15 @@ export function explainBlockerError(
   return new Error(`${error.message}${blockers}\n${hint(options.source)}`, { cause: error });
 }
 
+const WHY: Readonly<Record<"generated" | "hand-edited", string>> = {
+  generated:
+    "Generate never uses CASCADE, so another object that depends on what it changes blocks it.",
+  "hand-edited": "Another object depends on what it changes.",
+};
+
 function hint(source: BlockerSource): string {
   if (source.kind === "committed") {
     return `${source.filename} rolled back. Another object depends on what it changes, and a Committed file is hashed, so fix it in a new migration.`;
   }
-  const why =
-    source.kind === "generated"
-      ? "Generate never uses CASCADE, so another object that depends on what it changes blocks it."
-      : "Another object depends on what it changes.";
-  return `${why} Hand edit the Current migration to drop or change that object.`;
+  return `${WHY[source.kind]} Hand edit the Current migration to drop or change that object.`;
 }

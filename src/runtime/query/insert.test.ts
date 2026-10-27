@@ -7,6 +7,7 @@ const db = defineDatabase({
   public: {
     users: defineTable((c) => ({ id: c.text().notNull(), email: c.text(), name: c.text() })),
     flags: defineTable((c) => ({ note: c.text() })),
+    pair: defineTable((c) => ({ left: c.text(), right: c.text() })),
   },
 });
 
@@ -39,6 +40,28 @@ describe("insert", () => {
       text: 'insert into "public"."flags" ("note") values (default), (default)',
       params: [],
     });
+  });
+
+  it("defaults only the first column when no column has a value", () => {
+    expect(insert(db.public.pair).values({}).toSql()).toStrictEqual({
+      text: 'insert into "public"."pair" ("left") values (default)',
+      params: [],
+    });
+  });
+
+  it("treats a column set to undefined as skipped", () => {
+    const row = { id: "u1", email: undefined, name: "Bo" };
+    // @ts-expect-error -- undefined is no value, though a JavaScript caller can pass it
+    const statement = insert(db.public.users).values(row);
+    expect(statement.toSql()).toStrictEqual({
+      text: 'insert into "public"."users" ("id", "name") values ($1, $2)',
+      params: ["u1", "Bo"],
+    });
+  });
+
+  it("refuses a table with no column", () => {
+    const { empty } = defineDatabase({ public: { empty: defineTable(() => ({})) } }).public;
+    expect(() => insert(empty).values({})).toThrow("insert needs a table with a column");
   });
 
   it("ignores inherited properties of a row", () => {

@@ -77,9 +77,13 @@ function checkSequence(migration: ParsedMigration, expected: number): void {
 function checkChained(migration: ParsedMigration, previous: string | undefined): void {
   if (migration.previous !== previous) {
     throw new Error(
-      `${migration.filename}: --! Previous should be ${previous ?? "-"}, not ${migration.previous ?? "-"}`,
+      `${migration.filename}: --! Previous should be ${shown(previous)}, not ${shown(migration.previous)}`,
     );
   }
+}
+
+function shown(hash: string | undefined): string {
+  return hash ?? "-";
 }
 
 function checkHash(migration: ParsedMigration, actual: string | undefined): void {

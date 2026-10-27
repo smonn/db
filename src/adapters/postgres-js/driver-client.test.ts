@@ -21,6 +21,34 @@ describe("postgresJsDriver without postgresJsTypes", () => {
     });
     expect(() => postgresJsDriver(sql)).toThrow("postgresJsTypes");
   });
+
+  it.each(["bigint", "date", "timestamp", "timestamptz", "bytea"] as const)(
+    "refuses a client whose %s parser isn't postgresJsTypes'",
+    (name) => {
+      const sql = postgres(url, {
+        types: { ...postgresJsTypes, [name]: { ...postgresJsTypes[name], parse: String } },
+        connection: postgresJsConnection,
+      });
+      expect(() => postgresJsDriver(sql)).toThrow("postgresJsTypes");
+    },
+  );
+
+  it("refuses a client where one OID of an array type has another parser", () => {
+    const sql = postgres(url, {
+      types: {
+        ...postgresJsTypes,
+        // The int2 array shares numberArray with other OIDs, which keep its parser.
+        otherInt2Array: {
+          to: 1005,
+          from: [1005],
+          serialize: String,
+          parse: (text: string) => text,
+        },
+      },
+      connection: postgresJsConnection,
+    });
+    expect(() => postgresJsDriver(sql)).toThrow("postgresJsTypes");
+  });
 });
 
 describe("postgresJsDriver without postgresJsConnection", () => {
@@ -52,6 +80,14 @@ describe("postgresJsDriver without postgresJsConnection", () => {
     const sql = postgres(url, {
       types: postgresJsTypes,
       connection: { datestyle: "iso, dmy", bytea_output: "HEX" },
+    });
+    expect(() => postgresJsDriver(sql)).not.toThrow();
+  });
+
+  it("accepts the date order before the style", () => {
+    const sql = postgres(url, {
+      types: postgresJsTypes,
+      connection: { DateStyle: "DMY, ISO", bytea_output: "hex" },
     });
     expect(() => postgresJsDriver(sql)).not.toThrow();
   });

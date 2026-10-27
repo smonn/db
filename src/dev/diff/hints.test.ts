@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { catalogBuilder, type Catalog } from "../catalog/index.ts";
+import { catalogBuilder, type Catalog, type CatalogBuilder } from "../catalog/index.ts";
 import { diff } from "./diff.ts";
 
 type Tables = Readonly<Record<string, Readonly<Record<string, string>>>>;
@@ -13,6 +13,15 @@ function schema(tables: Tables): Catalog {
       builder.column("app", table, name, { type, notNull: false });
     }
   }
+  return builder.build();
+}
+
+function withTable(table: string, extra: (builder: CatalogBuilder) => void): Catalog {
+  const builder = catalogBuilder();
+  builder.schema("app");
+  builder.table("app", table);
+  builder.column("app", table, "id", { type: "text", notNull: false });
+  extra(builder);
   return builder.build();
 }
 
@@ -53,6 +62,36 @@ describe("rename hints", () => {
     expect(hintsOf({ a: { id: "text" }, b: { id: "text" } }, { c: { id: "text" } })).toStrictEqual(
       [],
     );
+  });
+
+  it("still names a renamed table when its columns come in another order", () => {
+    const hints = hintsOf(
+      { users: { id: "text", name: "text", email: "text" } },
+      { people: { email: "text", id: "text", name: "text" } },
+    );
+
+    expect(hints).toStrictEqual([
+      'table "app"."people" may be a rename of "users": add renamedFrom: "users" to its second callback',
+    ]);
+  });
+
+  it("still names a renamed table beside a new enum or domain", () => {
+    const hints = diff(
+      withTable("users", () => {}),
+      withTable("people", (builder) => {
+        builder.enumType("app", "mood", { labels: ["a"] });
+        builder.domain("app", "code", {
+          base: "text",
+          default: null,
+          defaultVolatile: false,
+          notNull: false,
+        });
+      }),
+    ).hints;
+
+    expect(hints).toStrictEqual([
+      'table "app"."people" may be a rename of "users": add renamedFrom: "users" to its second callback',
+    ]);
   });
 
   it("stays quiet for a table with no columns", () => {

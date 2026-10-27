@@ -103,4 +103,36 @@ describe("unmodeledBlockers", () => {
   it("returns nothing without scans", async () => {
     expect(await unmodeledBlockers(db.driver, [])).toBeUndefined();
   });
+
+  it("runs every rename first, so a drop finds its object under the new name", async () => {
+    const renames: Scan[] = [
+      { walk: "rename", sql: "alter table public.log rename to log_old;" },
+      { walk: "rename", sql: "alter table public.orders rename to orders_old;" },
+    ];
+
+    expect(
+      await unmodeledBlockers(db.driver, [...renames, table("log_old"), table("orders_old")]),
+    ).toBeUndefined();
+  });
+
+  it("touches nothing when there is no rename, or no drop or retype to check", async () => {
+    const executed: string[] = [];
+    const queried: string[] = [];
+    const spy = {
+      execute: (script: string) => {
+        executed.push(script);
+        return Promise.resolve();
+      },
+      query: (text: string, params?: readonly unknown[]) => {
+        queried.push(text);
+        return db.driver.query(text, params);
+      },
+    };
+
+    await unmodeledBlockers(spy, [table("log")]);
+    await unmodeledBlockers(spy, [{ walk: "rename", sql: "alter table public.log rename to x;" }]);
+
+    expect(executed).toStrictEqual([]);
+    expect(queried).toHaveLength(1);
+  });
 });

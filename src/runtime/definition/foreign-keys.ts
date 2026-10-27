@@ -165,14 +165,13 @@ function columnForeignKey(
   { target, options }: ColumnReference,
 ): ForeignKey {
   const on = onTable(owner, [name]);
-  const parts = partsOf(places, on, [target()]);
-  const [part] = parts;
-  if (part?.place.schema === owner.schema && part.place.table === owner.table) {
+  const part = partOf(places, on, target());
+  if (part.place.schema === owner.schema && part.place.table === owner.table) {
     throw new Error(
       `the foreign key on ${on} points at its own table; declare a self reference in the table's second callback: foreignKeys: [{ columns: [t.${name}], references: [t.${part.place.column}] }]`,
     );
   }
-  return foreignKeyOf(on, [name], parts, options);
+  return foreignKeyOf(on, [name], [part], options);
 }
 
 function declaredForeignKey(
@@ -190,28 +189,32 @@ function declaredForeignKey(
 
 function ownPart(owner: Owner, column: string): Part {
   const { schema, table, primaryKey } = owner;
+  // Stryker disable next-line OptionalChaining: the column is one of the table's own, which the entry's columnOf checks proved.
   const state = owner.columns[column]?.state;
   return {
     place: { schema, table, column, primaryKey },
+    // Stryker disable next-line OptionalChaining: same column, so `state` is defined.
     state: { primaryKey: state?.primaryKey === true, unique: state?.unique === true },
   };
 }
 
+function partOf(places: Places, on: string, target: KeyPart): Part {
+  const [place, other] = places.get(target) ?? [];
+  if (place === undefined) {
+    throw new Error(
+      `the foreign key on ${on} points at a table that is not in the Database; add it to defineDatabase`,
+    );
+  }
+  if (other !== undefined) {
+    throw new Error(
+      `the foreign key on ${on} points at a table that defineDatabase rolls up under two names, ${qualified(place.schema, place.table)} and ${qualified(other.schema, other.table)}; roll it up once`,
+    );
+  }
+  return { place, state: target.state };
+}
+
 function partsOf(places: Places, on: string, targets: readonly KeyPart[]): Part[] {
-  return targets.map((target) => {
-    const [place, other] = places.get(target) ?? [];
-    if (place === undefined) {
-      throw new Error(
-        `the foreign key on ${on} points at a table that is not in the Database; add it to defineDatabase`,
-      );
-    }
-    if (other !== undefined) {
-      throw new Error(
-        `the foreign key on ${on} points at a table that defineDatabase rolls up under two names, ${qualified(place.schema, place.table)} and ${qualified(other.schema, other.table)}; roll it up once`,
-      );
-    }
-    return { place, state: target.state };
-  });
+  return targets.map((target) => partOf(places, on, target));
 }
 
 function foreignKeyOf(
@@ -232,8 +235,8 @@ function foreignKeyOf(
 }
 
 function targetOf(on: string, count: number, parts: readonly Part[]): ForeignKey["target"] {
-  const first = parts[0];
-  if (first === undefined || parts.length !== count) {
+  const first = parts.length === count ? parts[0] : undefined;
+  if (first === undefined) {
     throw new Error(
       `the foreign key on ${on} lists ${count} column(s) and its target ${parts.length}`,
     );

@@ -124,7 +124,7 @@ export async function unmodeledBlockers(
   );
   if (objects.length === 0) return undefined;
   const renames = scans.flatMap((scan) => (scan.walk === "rename" ? [scan.sql] : []));
-  if (renames.length > 0) await shadow.execute(renames.join("\n"));
+  if (renames.length > 0) await shadow.execute(renames.join(""));
   const { rows } = await shadow.query(BLOCKERS, [JSON.stringify(objects)]);
   if (rows.length === 0) return undefined;
   const targets = new Map<string, string[]>();

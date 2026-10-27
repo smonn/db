@@ -24,8 +24,8 @@ export function createClient(queryable: Queryable): Client {
     all,
     async one<R>(query: Query<R> & { readonly "~many"?: never }): Promise<R> {
       const rows = await all(query);
-      const [row] = rows;
-      if (rows.length !== 1 || row === undefined) {
+      const row = rows.length === 1 ? rows[0] : undefined;
+      if (row === undefined) {
         throw new Error(`Expected one row but the query returned ${rows.length}`);
       }
       return row;

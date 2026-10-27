@@ -47,6 +47,15 @@ describe("a key's constraint name", () => {
         (r) => ({ primaryKey: { name: 1, columns: [r.a, r.b] } }),
       ),
     ).toThrow("The table's primaryKey takes a list of columns or { name, columns }");
+    for (const declared of [null, 3, "ab"]) {
+      expect(() =>
+        defineTable(
+          (c) => ({ a: c.integer(), b: c.integer() }),
+          // @ts-expect-error -- a key is a list of columns or { name, columns }.
+          () => ({ primaryKey: declared }),
+        ),
+      ).toThrow("The table's primaryKey takes a list of columns or { name, columns }");
+    }
     expect(() =>
       defineTable(
         (c) => ({ a: c.integer(), b: c.integer() }),

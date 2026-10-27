@@ -48,14 +48,15 @@ function readHeaders(
   const headers = new Map<string, string>();
   let noTransaction = false;
   let line = 0;
-  for (; line < lines.length && lines[line]?.startsWith("--!") === true; line++) {
-    const header = lines[line] ?? "";
+  for (const header of lines) {
+    if (!header.startsWith("--!")) break;
     if (header === NO_TRANSACTION) {
       checkNoTransaction(filename, headers, noTransaction);
       noTransaction = true;
     } else {
       addHeader(filename, headers, header);
     }
+    line += 1;
   }
   return { headers, noTransaction, line };
 }
@@ -74,8 +75,10 @@ function checkNoTransaction(
 function addHeader(filename: string, headers: Map<string, string>, header: string): void {
   const match = HEADER.exec(header);
   if (match === null) throw new Error(`${filename}: unknown header ${header}`);
+  // Stryker disable next-line StringLiteral: both groups always match, so the fallback never runs.
   const name = match[1] ?? "";
   if (headers.has(name)) throw new Error(`${filename}: repeats the --! ${name} header`);
+  // Stryker disable next-line StringLiteral: both groups always match, so the fallback never runs.
   headers.set(name, match[2] ?? "");
 }
 
@@ -151,12 +154,12 @@ export type ParsedCurrent = {
 
 /** Parses `current.sql`, telling a file `generate` wrote from one edited by hand. */
 export async function parseCurrent(content: string): Promise<ParsedCurrent> {
-  const [header = "", ...rest] = content.replaceAll("\r\n", "\n").split("\n");
+  const text = content.replaceAll("\r\n", "\n");
+  const end = text.indexOf("\n");
+  const header = end === -1 ? text : text.slice(0, end);
   const generated = GENERATED.exec(header)?.[1];
-  if (generated === undefined) {
-    return { body: normalizeBody([header, ...rest].join("\n")), edited: true };
-  }
-  const body = normalizeBody(rest.join("\n"));
+  if (generated === undefined) return { body: normalizeBody(text), edited: true };
+  const body = normalizeBody(end === -1 ? "" : text.slice(end + 1));
   return { body, edited: generated !== (await currentHash(body)) };
 }
 

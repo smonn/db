@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { bindDateParams } from "./date-params.ts";
 
 const at = new Date("2026-01-01T00:00:00Z");
@@ -10,6 +10,15 @@ describe("bindDateParams", () => {
       text: "select $1, $2, $3",
       values: [atText, 7, "x"],
     });
+  });
+
+  it("returns a query with no Date param as it is, without scanning its text", () => {
+    const exec = vi.spyOn(RegExp.prototype, "exec");
+    const result = bindDateParams("select $1, $1, $2 from t", [1, "x"]);
+    const scans = exec.mock.calls.length;
+    exec.mockRestore();
+    expect(scans).toBe(0);
+    expect(result).toStrictEqual({ text: "select $1, $1, $2 from t", values: [1, "x"] });
   });
 
   it("leaves arrays, with or without Dates, for the array type's serializer", () => {
@@ -47,6 +56,20 @@ describe("bindDateParams", () => {
     });
   });
 
+  it("repeats a param that is not a Date as it is, beside a Date param", () => {
+    expect(bindDateParams("$1 $2 $2", [at, "x"])).toStrictEqual({
+      text: "$1 $2 $2",
+      values: [atText, "x"],
+    });
+  });
+
+  it("repeats an array that holds no Date as it is, beside a Date param", () => {
+    expect(bindDateParams("$1 $2 $2 $3 $3", [at, [1, 2], []])).toStrictEqual({
+      text: "$1 $2 $2 $3 $3",
+      values: [atText, [1, 2], []],
+    });
+  });
+
   it("numbers extra params past the last one, once per extra use", () => {
     const { text, values } = bindDateParams("$1 $2 $1 $2 $1", [at, at]);
     expect(text).toBe("$1 $2 $3 $4 $5");
@@ -70,6 +93,15 @@ describe("bindDateParams", () => {
   it("does not read a name that ends in `$1` as a param", () => {
     const sql = "select foo$1, $1, $1";
     expect(bindDateParams(sql, [at]).text).toBe("select foo$1, $1, $2");
+  });
+
+  it("reads a name of any length, with a `$` inside or at its end, as one word", () => {
+    expect(bindDateParams("select ab$1, $1, $1", [at]).text).toBe("select ab$1, $1, $2");
+    expect(bindDateParams("select ab$ $1 $1", [at]).text).toBe("select ab$ $1 $2");
+  });
+
+  it("reads a lone `$` as a character, not as the start of a dollar quote", () => {
+    expect(bindDateParams("a $ b $1 $1", [at]).text).toBe("a $ b $1 $2");
   });
 
   it("leaves a `$n` past the params for Postgres to refuse", () => {
