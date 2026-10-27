@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readChangedAdrs } from "./check-pr.ts";
 
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn<typeof execFileSync>() }));
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, readFileSync: vi.fn<typeof actual.readFileSync>(actual.readFileSync) };
+});
 
 const failShow = (letter: string, message: string): void => {
   vi.mocked(execFileSync)
@@ -50,6 +54,19 @@ describe("readChangedAdrs", () => {
       encoding: "utf8",
     });
     expect(execFileSync).toHaveBeenCalledTimes(2);
+  });
+
+  test("reads each ADR as UTF-8 text", () => {
+    vi.mocked(execFileSync).mockReturnValueOnce("A\tdocs/adr/0003-new.md\n");
+    readChangedAdrs("HEAD^1", repo);
+    expect(readFileSync).toHaveBeenCalledWith(join(repo, "docs/adr/0003-new.md"), "utf8");
+  });
+
+  test("skips a path that only contains an ADR path", () => {
+    vi.mocked(execFileSync).mockReturnValueOnce(
+      "A\tx/docs/adr/0003-new.md\nA\tdocs/adr/0003-new.md.bak\nA\tdocs/adr/0003-gone.md.md/x\n\n",
+    );
+    expect(readChangedAdrs("HEAD^1", repo)).toEqual([]);
   });
 
   test.each([

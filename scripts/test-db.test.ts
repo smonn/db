@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { main, parsePort, projectName } from "./test-db.ts";
 
@@ -52,6 +53,17 @@ describe("parsePort", () => {
 
   test("reads an IPv6 address", () => {
     expect(parsePort("[::]:32769\n")).toBe(32769);
+  });
+
+  test("allows trailing whitespace but not trailing text", () => {
+    expect(parsePort("0.0.0.0:32768 \t\r\n")).toBe(32768);
+    expect(parsePort("0.0.0.0:32768 and more")).toBeUndefined();
+    expect(parsePort("0.0.0.0:3276x")).toBeUndefined();
+  });
+
+  test("reads only the first line", () => {
+    expect(parsePort("0.0.0.0:1\n[::]:2\n")).toBe(1);
+    expect(parsePort("no port\n0.0.0.0:2\n")).toBeUndefined();
   });
 
   test("returns undefined for output without a port", () => {
@@ -104,6 +116,8 @@ describe("main", () => {
       `docker compose -p ${name} port postgres 5432`,
     ]);
     expect(docker.mock.calls[1]?.[2].cwd).toBe(root);
+    expect(docker.mock.calls[1]?.[2].encoding).toBe("utf8");
+    expect(console.log).toHaveBeenCalledWith(`${name} is on port 32768; wrote .env.test`);
     expect(docker.mock.calls[1]?.[2].env?.["POSTGRES_PORT"]).toBe("0");
     expect(readFileSync(envFile(), "utf8")).toBe(
       "DATABASE_URL=postgres://postgres:postgres@localhost:32768/postgres\n",
@@ -120,11 +134,11 @@ describe("main", () => {
   });
 
   test("throws with compose's output when up fails", () => {
-    docker.mockReturnValueOnce(fail("not running")).mockReturnValueOnce(fail("no daemon"));
+    docker.mockReturnValueOnce(fail("not running")).mockReturnValueOnce(fail("no daemon \n"));
 
     expect(() => {
       main([], root);
-    }).toThrow(/docker compose -p \S+ up -d --wait failed:\nno daemon/u);
+    }).toThrow(new Error(`docker compose -p ${name} up -d --wait failed:\nno daemon`));
     expect(existsSync(envFile())).toBe(false);
   });
 
@@ -147,6 +161,25 @@ describe("main", () => {
 
     expect(calls()).toEqual([`docker compose -p ${name} down --volumes`]);
     expect(existsSync(envFile())).toBe(false);
+    expect(console.log).toHaveBeenCalledWith(`Stopped ${name} and removed .env.test`);
+  });
+
+  test("stop works when .env.test is already gone", () => {
+    docker.mockReturnValueOnce(ok());
+
+    expect(() => {
+      main(["stop"], root);
+    }).not.toThrow();
+  });
+
+  test("works on the repo root when given no root", () => {
+    docker.mockReturnValueOnce(fail("not running")).mockReturnValueOnce(fail("no daemon"));
+    const repo = fileURLToPath(new URL("..", import.meta.url));
+
+    expect(() => {
+      main([]);
+    }).toThrow(`docker compose -p ${projectName(repo)} up -d --wait failed`);
+    expect(docker.mock.calls[0]?.[2].cwd).toBe(repo);
   });
 
   test("stop throws with compose's output when down fails", () => {

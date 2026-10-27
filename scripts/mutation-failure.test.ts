@@ -23,17 +23,31 @@ test("comments the run URL on the open report issue", () => {
 test("opens the report issue when none is open", () => {
   const { calls, gh } = fake([]);
   main(env, gh);
-  expect(calls[1]?.args.slice(0, 2)).toEqual(["issue", "create"]);
-  expect(calls[1]?.args).toContain("mutation-report");
+  expect(calls[1]?.args).toEqual([
+    "issue",
+    "create",
+    "--repo",
+    "o/r",
+    "--title",
+    "Mutants survive the weekly Stryker run",
+    "--label",
+    "mutation-report",
+    "--body-file",
+    "-",
+  ]);
   expect(calls[1]?.input).toContain(env.RUN_URL);
 });
 
-test("fails without the repository or run URL", () => {
+test.each([
+  ["the run URL", { GITHUB_REPOSITORY: "o/r" }],
+  ["the repository", { RUN_URL: env.RUN_URL }],
+])("fails without %s", (_name, partial) => {
   const error = vi.spyOn(console, "error").mockImplementation(() => {});
   const { calls, gh } = fake([]);
   const code = process.exitCode;
-  main({ GITHUB_REPOSITORY: "o/r" }, gh);
+  main(partial, gh);
   expect(process.exitCode).toBe(1);
+  expect(error).toHaveBeenCalledWith("Set GITHUB_REPOSITORY and RUN_URL");
   expect(calls).toEqual([]);
   process.exitCode = code;
   error.mockRestore();

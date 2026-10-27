@@ -31,7 +31,7 @@ describe("planSync", () => {
 });
 
 describe("shouldSync", () => {
-  const subagent = '{"hook_event_name":"SubagentStart"}';
+  const subagent = { hook_event_name: "SubagentStart" };
 
   test("skips a subagent that works in the project checkout", () => {
     expect(shouldSync(subagent, "/proj", "/proj/")).toBe(false);
@@ -45,7 +45,7 @@ describe("shouldSync", () => {
     expect(shouldSync(subagent, "/proj")).toBe(true);
   });
 
-  test.each(['{"hook_event_name":"SessionStart"}', "", "not json"])(
+  test.each([{ hook_event_name: "SessionStart" }, {}, undefined, null, "SubagentStart", 3])(
     "syncs a session start in the project checkout for %j",
     (input) => {
       expect(shouldSync(input, "/proj", "/proj")).toBe(true);
@@ -55,12 +55,12 @@ describe("shouldSync", () => {
 
 describe("hookCwd", () => {
   test("uses the cwd the hook input names", () => {
-    expect(hookCwd('{"cwd":"/work/tree","hook_event_name":"SubagentStart"}', "/fallback")).toBe(
+    expect(hookCwd({ cwd: "/work/tree", hook_event_name: "SubagentStart" }, "/fallback")).toBe(
       "/work/tree",
     );
   });
 
-  test.each(["", "not json", "{}", '{"cwd":""}', '{"cwd":3}', "null"])(
+  test.each([undefined, null, 3, "cwd", {}, { cwd: "" }, { cwd: 3 }, { cwd: null }])(
     "falls back for %j",
     (input) => {
       expect(hookCwd(input, "/fallback")).toBe("/fallback");

@@ -62,7 +62,7 @@ export async function install(
   const tar = spawnSync("tar", ["-xzf", archive, "-C", dir, "actionlint"], { stdio: "inherit" });
   rmSync(archive);
   if (tar.status !== 0) {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true });
     throw new Error(`tar could not extract ${name}`);
   }
   return binary;

@@ -47,12 +47,12 @@ const publishJob = (pnpm: string): string[] => [
   '        pnpm stage publish --ignore-scripts --no-git-checks "$RUNNER_TEMP/pkg/package.tgz"',
 ];
 
-const grantsIdToken = /["']?id-token["']?\s*:\s*["']?write\b/u;
+const grantsIdToken = /id-token["']?\s*:\s*["']?write\b/u;
 const grantsAll = /:\s*["']?write-all\b/u;
 const workflowSetting = /^["']?(env|defaults)["']?\s*:/u;
 
 type Line = { text: string; indent: number };
-type Job = { name: string; lines: Line[] };
+type Job = { name: string; indent: number; lines: Line[] };
 
 const indentOf = (text: string): number => text.length - text.trimStart().length;
 
@@ -64,37 +64,32 @@ function readLines(workflow: string): Line[] {
 }
 
 function groupJobs(lines: Line[], jobIndent: number): Job[] {
-  const jobs: Job[] = [];
-  for (const line of lines) {
-    if (line.indent <= jobIndent)
-      jobs.push({ name: line.text.trim().replace(/:.*$/u, ""), lines: [line] });
-    else jobs.at(-1)?.lines.push(line);
-  }
-  return jobs;
+  const starts = lines.flatMap((line, index) =>
+    line.indent <= jobIndent ? [{ line, index }] : [],
+  );
+  return starts.map(({ line, index }, position) => ({
+    name: line.text.trim().replace(/:.*/u, ""),
+    indent: line.indent,
+    lines: lines.slice(index, starts[position + 1]?.index),
+  }));
 }
 
 function splitJobs(lines: Line[]): { header: Line[]; jobs: Job[] } {
-  const start = lines.findIndex((line) => /^jobs:\s*(?:#.*)?$/u.test(line.text));
+  const start = lines.findIndex((line) => line.text.startsWith("jobs:"));
   if (start === -1) return { header: lines, jobs: [] };
   const jobIndent = lines[start + 1]?.indent ?? 0;
-  const end = lines.findIndex((line, index) => index > start && line.indent === 0);
-  const header = [...lines.slice(0, start), ...(end === -1 ? [] : lines.slice(end))];
+  const next = lines.findIndex((line, index) => index > start && line.indent === 0);
+  const end = next === -1 ? lines.length : next;
   return {
-    header,
-    jobs: groupJobs(lines.slice(start + 1, end === -1 ? undefined : end), jobIndent),
+    header: [...lines.slice(0, start), ...lines.slice(end)],
+    jobs: groupJobs(lines.slice(start + 1, end), jobIndent),
   };
 }
 
 // Each template line ends outside any quote, so a line cut at a `#` inside quotes still differs
 // from it, and a ` #` after a whole line is a comment to YAML and to the run script's bash alike.
 function normalize(job: Job): string[] {
-  const base = job.lines[0]?.indent ?? 0;
-  return job.lines.map((line) =>
-    line.text
-      .slice(base)
-      .replace(/(?:^|\s)#.*$/u, "")
-      .trimEnd(),
-  );
+  return job.lines.map((line) => line.text.slice(job.indent).replace(/\s#.*/u, "").trimEnd());
 }
 
 function checkJob(job: Job, file: string, pnpm: string): string[] {
@@ -145,7 +140,7 @@ export function lockedPnpm(lockfile: string): string | undefined {
   )?.[1];
 }
 
-export function main(cwd = "."): void {
+export function main(cwd: string = process.cwd()): void {
   const pnpm = lockedPnpm(readFileSync(join(cwd, "pnpm-lock.yaml"), "utf8"));
   const dir = join(cwd, ".github", "workflows");
   const problems =

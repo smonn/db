@@ -43,12 +43,13 @@ export function formatTicket(child: Child): string {
 }
 
 /** Closed children whose URL the map body lacks. Reads the body only when a child is closed. */
-export function unlinkedClosed(tickets: Child[], readBody: () => string): Child[] {
+export function unlinkedClosed(tickets: Child[], readBody: () => string | null): Child[] {
   const closed = tickets.filter((child) => child.state === "closed");
   if (closed.length === 0) return [];
   const body = readBody();
   // A URL followed by a digit is a longer issue number (issues/38 inside issues/380).
   const links = (url: string) =>
+    body !== null &&
     body
       .split(url)
       .slice(1)
@@ -109,15 +110,15 @@ function ghApi(path: string): ApiIssue[] {
   return parseIssuePages(result.stdout, `gh api ${path}`);
 }
 
-function mapBody(map: number): string {
+function mapBody(map: number): string | null {
   const path = `repos/{owner}/{repo}/issues/${map}`;
   const result = spawnSync("gh", ["api", path], { encoding: "utf8" });
   if (result.status !== 0) throw new Error(`gh api ${path} failed:\n${result.stderr.trim()}`);
   const issue = record(parseJson(result.stdout, `gh api ${path}`), "$");
-  return field(issue, "body", nullable(string), "$") ?? "";
+  return field(issue, "body", nullable(string), "$");
 }
 
-function toChild(issue: ApiIssue): Child {
+export function toChild(issue: ApiIssue): Child {
   return {
     number: issue.number,
     title: issue.title,

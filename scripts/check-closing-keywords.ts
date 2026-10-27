@@ -15,6 +15,7 @@ const closingPattern = new RegExp(
 export function checkClosingKeywords(body: string): string[] {
   return [...body.matchAll(closingPattern)].flatMap(
     ([match, shortRepo, shortNumber, urlRepo, urlNumber]) => {
+      // Stryker disable next-line StringLiteral: the pattern's alternation always captures one of the two repos, so the fallback only satisfies the type checker.
       const repo = shortRepo ?? urlRepo ?? "";
       if (repo.toLowerCase() === home) return [];
       return [`PR body closes ${repo}#${shortNumber ?? urlNumber} outside ${home}: "${match}"`];
