@@ -4,9 +4,10 @@ import type { Action, ActionKind, Catalogs } from "./actions.ts";
 /**
  * Which `pg_depend` walk finds the objects that block an action (ADR-0025): `drop` follows every
  * dependent transitively, `retype` reads the column's direct dependents as `ALTER COLUMN ... TYPE`
- * does, and `none` scans nothing.
+ * does, `remove` walks nothing but marks a generation expression the plan drops before it retypes,
+ * so the retype walk leaves it out, and `none` scans nothing.
  */
-type Walk = "drop" | "retype" | "none";
+type Walk = "drop" | "retype" | "remove" | "none";
 
 /** One `Walk` per kind of `K`; the test widens `K` to prove a new kind has to name its walk. */
 export type ScanTable<K extends string> = { readonly [A in K]: Walk };
@@ -18,7 +19,7 @@ export type ObjectAddress = {
   readonly args: readonly string[];
 };
 
-/** An object the plan drops or retypes, which the scan walks from. */
+/** An object the plan drops, retypes, or removes, which the scan walks from or leaves out. */
 export type Scan = { readonly walk: Exclude<Walk, "none">; readonly object: ObjectAddress };
 
 /** Defaults, identity, NOT NULL, and expression changes never blocked in #372's fixture. */
@@ -48,7 +49,7 @@ export const SCANS: ScanTable<ActionKind> = {
   "add column": "none",
   "drop default": "none",
   "drop identity": "none",
-  "drop expression": "none",
+  "drop expression": "remove",
   "alter type": "retype",
   "swap retype": "retype",
   "set not null": "none",
@@ -68,7 +69,7 @@ export const SCANS: ScanTable<ActionKind> = {
 };
 
 /**
- * The objects the actions drop or retype. A drop names its fact in `from`, which is what the
+ * The objects the actions drop, retype, or remove. A drop names its fact in `from`, which is what the
  * Shadow holds, and a retype's column has the same names in both catalogs.
  */
 export function scansOf(actions: readonly Action[], { from }: Catalogs): Scan[] {
@@ -87,7 +88,7 @@ const tableObject = (fact: Fact, catalog: Catalog): ObjectAddress => ({
   args: [],
 });
 
-// A column attribute is never a scan's target: its actions all walk `none`.
+// A default or identity is never a scan's target: its actions all walk `none`.
 const attribute = (fact: Fact): never => {
   throw new Error(`No scan walks from a column's ${fact.kind}`);
 };
@@ -108,7 +109,12 @@ const ADDRESSES: {
   }),
   default: attribute,
   identity: attribute,
-  generated: attribute,
+  // `pg_attrdef` holds a generation expression as the column's default value.
+  generated: (fact, catalog) => ({
+    type: "default value",
+    names: namesOf(catalog, parentOf(catalog, fact)),
+    args: [],
+  }),
   "primary key": tableObject,
   unique: tableObject,
   "foreign key": tableObject,

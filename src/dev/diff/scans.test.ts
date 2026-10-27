@@ -36,6 +36,11 @@ describe("the scan of each action kind", () => {
       b.column("app", "users.x", "id", text);
       b.column("app", "users.x", "email", text);
       b.columnDefault("app", "users.x", "email", { expression: "'x'::text", volatile: false });
+      b.column("app", "users.x", "upper", text);
+      b.columnGenerated("app", "users.x", "upper", {
+        expression: "upper(email)",
+        storage: "stored",
+      });
       b.unique("app", "users.x", "users_email_key", {
         columns: ["email"],
         nullsNotDistinct: false,
@@ -56,6 +61,7 @@ describe("the scan of each action kind", () => {
       b.table("app", "users.x");
       b.column("app", "users.x", "id", { type: "integer", notNull: false });
       b.column("app", "users.x", "email", { type: "text", notNull: true });
+      b.column("app", "users.x", "upper", text);
       b.domain("app", "code", code);
     });
 
@@ -73,6 +79,10 @@ describe("the scan of each action kind", () => {
       {
         walk: "drop",
         object: { type: "domain constraint", names: [`"app"."code"`], args: ["short"] },
+      },
+      {
+        walk: "remove",
+        object: { type: "default value", names: ["app", "users.x", "upper"], args: [] },
       },
       {
         walk: "retype",

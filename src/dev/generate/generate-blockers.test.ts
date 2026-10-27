@@ -104,6 +104,30 @@ ${HINT}`),
     ]);
   });
 
+  it("retypes a column whose generated dependent the plan drops the expression of", async () => {
+    const committed = `
+      create table public.users (id integer not null, name text,
+        upper_name text generated always as (upper(name)) stored);`;
+
+    const result = await generateFrom(
+      committed,
+      defineDatabase({
+        public: {
+          users: defineTable((c) => ({
+            id: c.integer().notNull(),
+            name: c.varchar(40),
+            upper_name: c.text(),
+          })),
+        },
+      }),
+    );
+
+    expect(result.sql).toContain(
+      'alter table "public"."users" alter column "upper_name" drop expression;',
+    );
+    expect(result.sql).toContain('alter table "public"."users" alter column "name" type');
+  });
+
   it("scans the Shadow with the declared renames run", async () => {
     const committed = `
       create table public.users (id integer not null, name text not null);

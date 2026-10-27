@@ -39,6 +39,18 @@ describe("unmodeledBlockers", () => {
     ]);
   });
 
+  it("leaves out a generated column whose expression the plan drops", async () => {
+    const expression: Scan = {
+      walk: "remove",
+      object: { type: "default value", names: ["public", "users", "upper_name"], args: [] },
+    };
+
+    expect(await blockerLines([column("retype", "name"), expression])).toStrictEqual([
+      "  table column public.users.name, which it retypes:",
+      "    rule copy on public.log",
+    ]);
+  });
+
   it("leaves out a retype's dependent that a planned drop removes", async () => {
     expect(
       await blockerLines([column("retype", "name"), column("drop", "upper_name"), table("log")]),

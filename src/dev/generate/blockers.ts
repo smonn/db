@@ -10,7 +10,8 @@ import type { Scan } from "../diff/index.ts";
  * blocker, as in a multi-object `DROP`. A column the plan retypes stops depending on a type it
  * drops. A retype reads the column's direct dependents of the kinds `ALTER COLUMN ... TYPE`
  * refuses, reported as their owner (a view for its rule, a column for its generation expression),
- * unless a planned drop removes them. Inheritance (`pg_inherits`) is left to verification.
+ * unless a planned drop removes them or they are a generation expression the plan drops first.
+ * Inheritance (`pg_inherits`) is left to verification.
  */
 const BLOCKERS = `
 with recursive
@@ -21,6 +22,7 @@ planned as (
 ),
 dropped as (select classid, objid, objsubid from planned where walk = 'drop'),
 retyped as (select classid, objid, objsubid from planned where walk = 'retype'),
+removed as (select classid, objid from planned where walk = 'remove'),
 closure(root_classid, root_objid, root_objsubid, classid, objid, objsubid) as (
   select classid, objid, objsubid, classid, objid, objsubid from dropped
   union
@@ -75,6 +77,8 @@ retype_blockers as (
       select from pg_attrdef a
       where d.classid = 'pg_attrdef'::regclass and a.oid = d.objid
         and a.adrelid = r.objid and a.adnum = r.objsubid)
+    -- a generation expression the plan drops before it retypes
+    and not exists (select from removed m where m.classid = d.classid and m.objid = d.objid)
 ),
 blockers as (
   select 'drop' as walk, * from drop_blockers
