@@ -4,6 +4,9 @@ services:
     # Every drop database waits on a checkpoint, whose fsyncs take seconds when other containers
     # share the disk (#169). The server is throwaway, so it skips them.
     command: ["postgres", "-c", "fsync=off"]
+    # Each worktree runs its own compose project; a per-project network each would exhaust Docker's
+    # address pools when many agents run at once.
+    network_mode: bridge
     environment:
       POSTGRES_PASSWORD: postgres
     ports:

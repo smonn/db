@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { findings, main, reportBody, type Survivor } from "./mutation-report.ts";
+import { findings, main, openReportIssue, reportBody, type Survivor } from "./mutation-report.ts";
 
 type Mutant = { mutatorName: string; status: string; line: number };
 
@@ -55,6 +55,34 @@ describe("survivors", () => {
     ]);
   });
 
+  test.each([
+    ["the report", null, "$: expected object, got null"],
+    ["the files", {}, "$.files: expected object, got undefined"],
+    [
+      "the start of a mutant's location",
+      {
+        files: {
+          a: { source: "", mutants: [{ mutatorName: "A", status: "Survived", location: {} }] },
+        },
+      },
+      '$.files["a"].mutants[0].location.start: expected object, got undefined',
+    ],
+    [
+      "the line of a mutant",
+      {
+        files: {
+          a: {
+            source: "",
+            mutants: [{ mutatorName: "A", status: "Survived", location: { start: {} } }],
+          },
+        },
+      },
+      '$.files["a"].mutants[0].location.start.line: expected number, got undefined',
+    ],
+  ])("names the path of a bad %s", (_name, parsed, message) => {
+    expect(() => survivors(parsed)).toThrow(message);
+  });
+
   test("names the bad field in a malformed report", () => {
     expect(() =>
       survivors({ files: { "src/a.ts": { mutants: [{ status: "Survived" }] } } }),
@@ -63,6 +91,17 @@ describe("survivors", () => {
 });
 
 describe("reportBody", () => {
+  test("stops at the row that would pass the length limit", () => {
+    const list = [survivor("a.ts", 1), survivor("b.ts", 2), survivor("c.ts", 3)];
+    const full = reportBody({ survivors: list, stale: [] });
+    const fits = full.length - 1;
+    expect(reportBody({ survivors: list, stale: [] }, fits)).toBe(full);
+    const short = reportBody({ survivors: list, stale: [] }, fits - 1);
+    expect(short).toContain("`b.ts`");
+    expect(short).not.toContain("`c.ts`");
+    expect(short).toContain("\n\n1 more not shown;");
+  });
+
   test("lists each survivor as a table row", () => {
     const body = reportBody({
       survivors: [survivor("src/a.ts", 3), survivor("src/b.ts", 7, "BlockStatement")],
@@ -113,6 +152,17 @@ describe("main", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     process.exitCode = undefined;
+  });
+
+  test("lists the open report issues with the exact gh arguments", () => {
+    const gh = ghWithOpen(41);
+    expect(openReportIssue("smonn/db", gh)).toBe(41);
+    expect(gh).toHaveBeenCalledWith([...list, "--state", "open", "--json", "number"]);
+  });
+
+  test("names gh's output in an error when it is not JSON", () => {
+    expect(() => openReportIssue("smonn/db", () => "nope")).toThrow("gh issue list: invalid JSON");
+    expect(() => openReportIssue("smonn/db", () => "{}")).toThrow("$: expected array, got object");
   });
 
   test("opens the report issue when none is open", () => {
@@ -202,6 +252,7 @@ describe("main", () => {
     const gh = ghWithOpen();
     main(withSurvivor(), {}, gh);
     expect(process.exitCode).toBe(1);
+    expect(console.error).toHaveBeenCalledWith("Set GITHUB_REPOSITORY");
     expect(gh).not.toHaveBeenCalled();
   });
 });

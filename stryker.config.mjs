@@ -2,7 +2,8 @@ import { mutateGlobs } from "./scripts/mutation-shards.ts";
 
 export default {
   // Stryker's default plugin scan looks beside its own install, where pnpm doesn't link the runner.
-  plugins: ["@stryker-mutator/vitest-runner"],
+  plugins: ["@stryker-mutator/vitest-runner", "./scripts/stryker-ignorer.ts"],
+  ignorers: ["unreachable-in-tests"],
   testRunner: "vitest",
   // Stryker's default `threads` pool segfaults on a native module the scripts/ tests load.
   vitest: { pool: "forks" },

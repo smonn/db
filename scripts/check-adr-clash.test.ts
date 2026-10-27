@@ -27,6 +27,11 @@ describe("checkAdrClash", () => {
     expect(checkAdrClash([added("docs/adr/0025-new.md")], others)).toEqual([]);
   });
 
+  test("reads ADR numbers only from paths that are exactly an ADR file", () => {
+    const adrs = [added("x/docs/adr/0023-a.md"), added("docs/adr/0023-b.md.bak")];
+    expect(checkAdrClash(adrs, [{ pr: 1, file: "docs/adr/0023-c.md" }])).toEqual([]);
+  });
+
   test("ignores an ADR the PR only edits", () => {
     const edited = { file: "docs/adr/0023-drift.md", status: "accepted", added: false };
     expect(checkAdrClash([edited], others)).toEqual([]);
@@ -54,6 +59,18 @@ describe("readOpenPrAdds", () => {
       "gh",
       ["pr", "list", "--state", "open", "--limit", "200", "--json", "number,files"],
       { cwd: "/repo", encoding: "utf8" },
+    );
+  });
+
+  test("names gh's output when it isn't JSON", () => {
+    vi.mocked(execFileSync).mockReturnValue("not json");
+    expect(() => readOpenPrAdds("1", "/repo")).toThrow("gh pr list: invalid JSON");
+  });
+
+  test("names the open pull requests when gh returns no list", () => {
+    vi.mocked(execFileSync).mockReturnValue("{}");
+    expect(() => readOpenPrAdds("1", "/repo")).toThrow(
+      "open pull requests: expected array, got object",
     );
   });
 });

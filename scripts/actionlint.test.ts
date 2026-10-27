@@ -55,6 +55,15 @@ describe("assetFor", () => {
     expect(assetFor("linux", "x64").name).toBe(`actionlint_${version}_linux_amd64.tar.gz`);
   });
 
+  test.each([
+    ["darwin", "x64", "5b44c3bc2255115c9b69e30efc0fecdf498fdb63c5d58e17084fd5f16324c644"],
+    ["darwin", "arm64", "aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f"],
+    ["linux", "x64", "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"],
+    ["linux", "arm64", "325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6"],
+  ])("pins the release sum for %s %s", (platform, arch, sha256) => {
+    expect(assetFor(platform, arch).sha256).toBe(sha256);
+  });
+
   test("refuses a platform with no pinned sum", () => {
     expect(() => assetFor("win32", "x64")).toThrow(`no pinned release for win32/x64`);
   });
@@ -75,6 +84,22 @@ describe("install", () => {
     expect(binary).toBe(join(root, version, "actionlint"));
     expect(existsSync(binary)).toBe(true);
     expect(existsSync(join(root, version, asset.name))).toBe(false);
+  });
+
+  test("creates missing cache folders and extracts into the version folder", async () => {
+    serve(tarball);
+    extractWrites();
+    const pinned = createHash("sha256").update(tarball).digest("hex");
+    const cacheDir = join(root, "node_modules", ".cache", "actionlint");
+    const dir = join(cacheDir, version);
+
+    await install(cacheDir, "linux", "x64", pinned);
+
+    expect(spawn).toHaveBeenCalledWith(
+      "tar",
+      ["-xzf", join(dir, `actionlint_${version}_linux_amd64.tar.gz`), "-C", dir, "actionlint"],
+      { stdio: "inherit" },
+    );
   });
 
   test("refuses a download whose sum does not match and caches nothing", async () => {
@@ -125,5 +150,36 @@ describe("main", () => {
 
     expect(spawn).toHaveBeenCalledWith(binary, ["-color"], { cwd: root, stdio: "inherit" });
     expect(process.exitCode).toBe(1);
+  });
+
+  test("passes on any exit code, and fails when the binary was killed", async () => {
+    const binary = join(root, "node_modules", ".cache", "actionlint", version, "actionlint");
+    mkdirSync(join(binary, ".."), { recursive: true });
+    writeFileSync(binary, "binary");
+    spawn.mockReturnValue({ ...ok, status: 3 });
+    await main([], root);
+    expect(process.exitCode).toBe(3);
+
+    spawn.mockReturnValue({ ...ok, status: null });
+    await main([], root);
+    expect(process.exitCode).toBe(1);
+  });
+
+  test("defaults to the arguments after the script, run from the current folder", async () => {
+    const start = process.cwd();
+    const binary = join("node_modules", ".cache", "actionlint", version, "actionlint");
+    mkdirSync(join(root, binary, ".."), { recursive: true });
+    writeFileSync(join(root, binary), "binary");
+    spawn.mockReturnValue(ok);
+    process.chdir(root);
+    try {
+      await main();
+    } finally {
+      process.chdir(start);
+    }
+    expect(spawn).toHaveBeenCalledWith(binary, process.argv.slice(2), {
+      cwd: ".",
+      stdio: "inherit",
+    });
   });
 });
