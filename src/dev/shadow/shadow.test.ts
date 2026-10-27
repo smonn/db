@@ -97,6 +97,28 @@ describe("withShadowDatabases", () => {
     }
   });
 
+  it("refuses when the role check returns no row, and creates nothing", async () => {
+    const executed: string[] = [];
+    const driver: Driver = {
+      execute: (sql) => {
+        executed.push(sql);
+        return Promise.resolve();
+      },
+      // The version check asks first, then the role check, which finds no pg_roles row.
+      query: vi
+        .fn<Driver["query"]>()
+        .mockResolvedValueOnce({ rows: [{ server_version_num: "180000" }], count: 1 })
+        .mockResolvedValue({ rows: [], count: 0 }),
+      session: () => Promise.reject(new Error("unexpected session")),
+      transaction: () => Promise.reject(new Error("unexpected transaction")),
+    };
+
+    await expect(withShadowDatabases(driver, db.connect, async () => {})).rejects.toThrow(
+      'generate creates its Shadow database, so role "undefined" needs CREATEDB',
+    );
+    expect(executed).toStrictEqual([]);
+  });
+
   it("refuses a server older than Postgres 18 before it creates a database", async () => {
     const executed: string[] = [];
     const queried: string[] = [];

@@ -76,11 +76,12 @@ const SHADOW: Throwaway = { prefix: SHADOW_PREFIX, checkFunctionBodies: true };
 const DEFINITION: Throwaway = { prefix: DEFINITION_PREFIX, checkFunctionBodies: false };
 
 async function requireCreateDb(driver: Driver): Promise<void> {
-  const { rows } = await driver.query(CAN_CREATE_DATABASES);
-  const denied = rows.find((row) => row["allowed"] !== true);
-  if (denied === undefined) return;
+  const {
+    rows: [row],
+  } = await driver.query(CAN_CREATE_DATABASES);
+  if (row?.["allowed"] === true) return;
   throw new Error(
-    `generate creates its Shadow database, so role ${quoteIdentifier(String(denied["role"]))} needs CREATEDB`,
+    `generate creates its Shadow database, so role ${quoteIdentifier(String(row?.["role"]))} needs CREATEDB`,
   );
 }
 
