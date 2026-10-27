@@ -32,6 +32,24 @@ describe("renameAction", () => {
     );
   });
 
+  it("makes the action of its own kind for an enum, a label, and a domain", () => {
+    const from = catalogWith((b) => {
+      b.enumType("app", "mood", { labels: ["a"] });
+      b.domain("app", "code", DOMAIN);
+    });
+
+    expect(renameAction({ kind: "enum", schema: "app", name: "mood", was: "old" }, from).kind).toBe(
+      "rename enum",
+    );
+    expect(
+      renameAction({ kind: "enum label", schema: "app", enum: "mood", name: "b", was: "a" }, from)
+        .kind,
+    ).toBe("rename enum label");
+    expect(
+      renameAction({ kind: "domain", schema: "app", name: "code", was: "old" }, from).kind,
+    ).toBe("rename domain");
+  });
+
   it("refuses an enum, label, or domain rename when the name holds a fact of another kind", () => {
     const domainNamedMood = catalogWith((b) => {
       b.domain("app", "mood", DOMAIN);
