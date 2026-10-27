@@ -5,6 +5,7 @@ import {
   event,
   fetched,
   issueRoute,
+  labelled,
   milestonePath,
   orphan,
   parentIssue,
@@ -49,7 +50,6 @@ describe("the grace wait", () => {
       { ...open, [issueRoute]: fetched({ sub_issues_summary: { total: 2 } }) },
     ],
     ["a marker comment", event(), { ...open, [commentsRoute]: [[{ body: MARKER }]] }],
-    ["no matching parent", event(), { ...open, [milestonePath]: [[parentIssue(46, "area:diff")]] }],
   ])("is skipped for %s", (_name, payload, routes) => {
     const wait = vi.fn<(ms: number) => void>();
     const gh = run(payload, routes, wait);
@@ -66,6 +66,34 @@ describe("the grace wait", () => {
     expect(() => {
       main({ GITHUB_EVENT_PATH: writeEvent(event()) }, gh, wait);
     }).toThrow(message);
+    expect(wait).toHaveBeenCalledOnce();
+    expect(posted(gh)).toEqual([]);
+  });
+});
+
+describe("an issue that changes during the grace wait", () => {
+  const attached = "https://api.github.com/repos/smonn/db/issues/45";
+  const routes = {
+    ...open,
+    "repos/smonn/db/issues/45": fetched({ number: 45, labels: labelled("area:diff") }),
+  };
+
+  test.each([
+    ["loses its area label", { labels: [] }],
+    ["loses its milestone", { milestone: null }],
+    ["is closed", { state: "closed" }],
+  ])("is skipped when it %s and is attached", (_name, change) => {
+    const again = JSON.stringify(fetched({ ...change, parent_issue_url: attached }));
+    const gh = refetchingGh(routes, () => again);
+    const wait = vi.fn<(ms: number) => void>();
+    main({ GITHUB_EVENT_PATH: writeEvent(event()) }, gh, wait);
+    expect(wait).toHaveBeenCalledOnce();
+    expect(posted(gh)).toEqual([]);
+  });
+
+  test("waits and stays quiet for a parentless issue when no parent covers its area", () => {
+    const wait = vi.fn<(ms: number) => void>();
+    const gh = run(event(), { ...open, [milestonePath]: [[parentIssue(46, "area:diff")]] }, wait);
     expect(wait).toHaveBeenCalledOnce();
     expect(posted(gh)).toEqual([]);
   });
