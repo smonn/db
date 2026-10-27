@@ -5,6 +5,7 @@ import {
   event,
   fetched,
   issueRoute,
+  labelled,
   milestonePath,
   orphan,
   parentIssue,
@@ -72,7 +73,10 @@ describe("the grace wait", () => {
 
 describe("an issue that changes during the grace wait", () => {
   const attached = "https://api.github.com/repos/smonn/db/issues/45";
-  const routes = { ...open, "repos/smonn/db/issues/45": fetched({ number: 45 }) };
+  const routes = {
+    ...open,
+    "repos/smonn/db/issues/45": fetched({ number: 45, labels: labelled("area:diff") }),
+  };
 
   test.each([
     ["loses its area label", { labels: [] }],
