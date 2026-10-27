@@ -12,11 +12,9 @@ const TYPE_NAMES: Readonly<Record<string, string>> = {
 /** Rewrites the Definition's `sqlType` the way `format_type` renders it, so both catalogs agree. */
 function postgresType(sqlType: string): string {
   const [name = sqlType, modifiers = ""] = sqlType.split(/(?=\()/u);
-  // Postgres reads `numeric(10)` back as `numeric(10,0)`.
+  // Postgres reads `numeric(10)` back as `numeric(10,0)`. A `sqlType` holds nothing after its modifiers.
   const spelled =
-    name === "numeric" && /^\(\d+\)$/u.test(modifiers)
-      ? `(${modifiers.slice(1, -1)},0)`
-      : modifiers;
+    name === "numeric" && /\(\d+\)/u.test(modifiers) ? `(${modifiers.slice(1, -1)},0)` : modifiers;
   return `${TYPE_NAMES[name] ?? name}${spelled}`;
 }
 
