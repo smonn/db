@@ -10,7 +10,7 @@ import { emit, type Diff } from "./emit.ts";
 import { swapOf } from "./enum-swap.ts";
 import type { Handling, HandlingTable } from "./handling.ts";
 import { renameHints } from "./hints.ts";
-import { rebuiltColumns, retyped, without } from "./rebuilt.ts";
+import { foreignKeysAround, rebuiltColumns, retyped, without } from "./rebuilt.ts";
 import { renameAction, renameByPayload } from "./renames.ts";
 import { TYPE_HANDLING } from "./type-handling.ts";
 
@@ -34,7 +34,10 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
       ...(before === undefined ? created(fact, keptFrom) : altered(before, fact, catalogs)),
     );
   }
-  return { ...emit(renameByPayload(actions), catalogs), hints: renameHints(from, to) };
+  return {
+    ...emit(foreignKeysAround(renameByPayload(actions), catalogs), catalogs),
+    hints: renameHints(from, to),
+  };
 }
 
 /** What the source pass does with one fact of `from`, given its counterpart `after` in `keptTo`. */
