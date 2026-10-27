@@ -76,19 +76,19 @@ describe("main", () => {
   });
 
   test("prints nothing when the branch is up to date, and installs from the lockfile", () => {
-    main(clone);
+    main({}, clone);
     expect(output()).toEqual([]);
     expect(mocks.pnpm).toHaveBeenCalledWith(
       "pnpm",
       ["install", "--frozen-lockfile"],
-      expect.objectContaining({ cwd: clone }),
+      expect.objectContaining({ cwd: clone, encoding: "utf8" }),
     );
   });
 
   test("fast-forwards a clean branch that is behind", () => {
     pushFromOrigin("one.txt");
     pushFromOrigin("two.txt");
-    main(clone);
+    main({}, clone);
     expect(output()).toEqual(["Fast-forwarded this branch by 2 commits to origin/main."]);
     expect(readFileSync(join(clone, "two.txt"), "utf8")).toBe("two.txt");
   });
@@ -97,7 +97,7 @@ describe("main", () => {
     pushFromOrigin("one.txt");
     commit(clone, "mine.txt");
     const head = git(clone, "rev-parse", "HEAD");
-    main(clone);
+    main({}, clone);
     expect(output()).toEqual([
       "This branch is 1 commit behind origin/main and has 1 commit of its own, so it was not fast-forwarded. Branch new work from origin/main.",
     ]);
@@ -107,7 +107,7 @@ describe("main", () => {
   test("reports a behind branch that has uncommitted changes", () => {
     pushFromOrigin("one.txt");
     writeFileSync(join(clone, "base.txt"), "edited");
-    main(clone);
+    main({}, clone);
     expect(output()).toEqual([
       "This branch is 1 commit behind origin/main and has uncommitted changes, so it was not fast-forwarded. Branch new work from origin/main.",
     ]);
@@ -116,13 +116,13 @@ describe("main", () => {
   test("reports a failed fast-forward with git's message", () => {
     pushFromOrigin("one.txt");
     mocks.failMerge.value = true;
-    main(clone);
+    main({}, clone);
     expect(output()).toEqual(["Fast-forward to origin/main failed:\nmerge blew up"]);
   });
 
   test("says so when origin/main cannot be fetched, and still installs", () => {
     git(clone, "remote", "remove", "origin");
-    main(clone);
+    main({}, clone);
     expect(output()).toEqual(["Could not fetch origin/main; the branch may be behind it."]);
     expect(mocks.pnpm).toHaveBeenCalledTimes(1);
   });
@@ -130,19 +130,19 @@ describe("main", () => {
   test("prints the last ten lines of a failed install", () => {
     const lines = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`);
     mocks.pnpm.mockReturnValue({ status: 1, stdout: lines.join("\n"), stderr: "" });
-    main(clone);
+    main({}, clone);
     expect(output()).toEqual([`pnpm install failed:\n${lines.slice(-10).join("\n")}`]);
   });
 
   test("treats a pnpm that cannot start as a failed install", () => {
     mocks.pnpm.mockReturnValue({ status: null, stdout: null, stderr: null });
-    main(clone);
+    main({}, clone);
     expect(output()).toEqual(["pnpm install failed:\n"]);
   });
 
   test("defaults to the working directory", () => {
     vi.spyOn(process, "cwd").mockReturnValue(clone);
-    main();
+    main({});
     expect(mocks.pnpm).toHaveBeenCalledWith(
       "pnpm",
       ["install", "--frozen-lockfile"],
@@ -156,7 +156,7 @@ describe("main without sync", () => {
     mocks.pnpm.mockReset();
     mocks.pnpm.mockReturnValue({ status: 0, stdout: "", stderr: "" });
     vi.spyOn(console, "log").mockImplementation(() => {});
-    main("/nonexistent-dir", false);
+    main({ hook_event_name: "SubagentStart" }, "/nonexistent-dir", "/nonexistent-dir");
     expect(output()).toEqual([]);
     expect(mocks.pnpm).toHaveBeenCalledTimes(1);
     vi.restoreAllMocks();
