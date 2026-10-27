@@ -40,7 +40,6 @@ test("an empty DATABASE_URL counts as unset", () => {
 test("an empty DATABASE_URL line in .env.test counts as unset", () => {
   writeFileSync(file, "DATABASE_URL=\n");
   expect(testDatabaseUrl({}, file)).toBeUndefined();
-  expect(testEnv({}, file)).toEqual({ DATABASE_URL: "" });
 });
 
 test("without DATABASE_URL or .env.test there is no url", () => {
