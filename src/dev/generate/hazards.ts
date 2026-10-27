@@ -1,5 +1,5 @@
 const HAZARD = /^-- hazard: (\S+)\s*$/u;
-const HAZARD_LOOKING = /--+\s*hazard\s*:/iu;
+const HAZARD_LOOKING = /--\s*hazard\s*:/iu;
 const TRAILING_COMMENT = /--.*$/u;
 
 export type HazardLine = { readonly kind: string; readonly statement: string };
@@ -11,7 +11,7 @@ type ScanState = {
   readonly hazards: HazardLine[];
   readonly strays: StrayHazardComment[];
   kinds: string[];
-  kindLines: number[];
+  kindLines: StrayHazardComment[];
   statement: string[];
   inStatement: boolean;
 };
@@ -29,7 +29,7 @@ function scanLine(state: ScanState, line: string, index: number): void {
   const kind = state.inStatement ? undefined : HAZARD.exec(line)?.[1];
   if (kind !== undefined) {
     state.kinds.push(kind);
-    state.kindLines.push(index);
+    state.kindLines.push({ line: index + 1, text: line });
     return;
   }
   if (HAZARD_LOOKING.test(line)) state.strays.push({ line: index + 1, text: line });
@@ -42,18 +42,16 @@ function trackStatement(state: ScanState, line: string): void {
   if (code !== "") state.inStatement = true;
   if (state.inStatement && code.endsWith(";")) {
     state.inStatement = false;
-    if (state.kinds.length > 0) flush(state);
+    flush(state);
   }
 }
 
-function finishScan(state: ScanState, lines: readonly string[]): void {
+function finishScan(state: ScanState): void {
   if (state.inStatement) {
     flush(state);
     return;
   }
-  for (const index of state.kindLines) {
-    state.strays.push({ line: index + 1, text: lines[index] ?? "" });
-  }
+  state.strays.push(...state.kindLines);
   state.strays.sort((x, y) => x.line - y.line);
 }
 
@@ -66,9 +64,8 @@ function scan(sql: string): Scan {
     statement: [],
     inStatement: false,
   };
-  const lines = sql.split("\n");
-  for (const [index, line] of lines.entries()) scanLine(state, line, index);
-  finishScan(state, lines);
+  for (const [index, line] of sql.split("\n").entries()) scanLine(state, line, index);
+  finishScan(state);
   return { hazards: state.hazards, strays: state.strays };
 }
 
