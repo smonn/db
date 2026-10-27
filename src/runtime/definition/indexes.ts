@@ -90,10 +90,9 @@ function requireMethodSupport(index: TableIndex): void {
 
 function describeIndex(index: TableIndex): string {
   if (index.name !== undefined) return `the index ${JSON.stringify(index.name)}`;
-  const keys = index.keys.map((key) =>
-    "column" in key ? JSON.stringify(key.column) : "an expression",
-  );
-  return `the index on ${keys.join(", ")}`;
+  // requireNameForExpressions already refused an unnamed index with an expression key
+  const columns = index.keys.filter((key) => "column" in key);
+  return `the index on ${columns.map((key) => JSON.stringify(key.column)).join(", ")}`;
 }
 
 function requireNameForExpressions(name: string | undefined, keys: readonly IndexKey[]): void {
