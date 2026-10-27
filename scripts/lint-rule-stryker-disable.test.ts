@@ -10,7 +10,8 @@ const tester = new RuleTester({
   languageOptions: { sourceType: "module", parserOptions: { lang: "ts" } },
 });
 
-const directive = "// Stryker disable next-line StringLiteral: the label is never shown";
+const directive =
+  "// Stryker disable next-line StringLiteral: 1 survivor: the label is never shown";
 
 tester.run("stryker-disable", plugin.rules["stryker-disable"], {
   valid: [
@@ -19,22 +20,27 @@ tester.run("stryker-disable", plugin.rules["stryker-disable"], {
     '// A comment that mentions Stryker disable in passing.\nf("x");',
     '/** A block comment. */\nf("x");',
     'const text = "// Stryker disable all";',
+    '// Stryker disable next-line StringLiteral, BlockStatement: 2 survivors: both\nf("x");',
   ],
   invalid: [
     {
-      code: '// Stryker disable StringLiteral: file-wide\nf("x");',
-      errors: [{ message: /`\/\/ Stryker disable next-line <Mutator>: <reason>`/u }],
+      code: '// Stryker disable StringLiteral: 1 survivor: file-wide\nf("x");',
+      errors: [{ message: /`\/\/ Stryker disable next-line <Mutator>: <N> survivors: <reason>`/u }],
     },
     {
       code: '// Stryker disable next-line StringLiteral\nf("x");',
       errors: 1,
     },
     {
-      code: '/* Stryker disable next-line StringLiteral: block */\nf("x");',
-      errors: [{ message: /`\/\/ Stryker disable next-line <Mutator>: <reason>`/u }],
+      code: '// Stryker disable next-line StringLiteral: no survivor count\nf("x");',
+      errors: [{ message: /`\/\/ Stryker disable next-line <Mutator>: <N> survivors: <reason>`/u }],
     },
     {
-      code: '// Stryker disable next-line all: everything\nf("x");',
+      code: '/* Stryker disable next-line StringLiteral: 1 survivor: block */\nf("x");',
+      errors: [{ message: /`\/\/ Stryker disable next-line <Mutator>: <N> survivors: <reason>`/u }],
+    },
+    {
+      code: '// Stryker disable next-line all: 1 survivor: everything\nf("x");',
       errors: [{ message: /rather than all/u }],
     },
     {
@@ -46,11 +52,11 @@ tester.run("stryker-disable", plugin.rules["stryker-disable"], {
       errors: [{ message: /alone on its line, directly above the code/u }],
     },
     {
-      code: `${directive}\n// Stryker disable next-line BlockStatement: stacked\nf("x");`,
+      code: `${directive}\n// Stryker disable next-line BlockStatement: 1 survivor: stacked\nf("x");`,
       errors: [{ message: /alone on its line, directly above the code/u }],
     },
     {
-      code: `function g() {\n  ${directive}\n  // Stryker disable next-line BlockStatement: stacked\n  return "x";\n}`,
+      code: `function g() {\n  ${directive}\n  // Stryker disable next-line BlockStatement: 1 survivor: stacked\n  return "x";\n}`,
       errors: [{ message: /alone on its line, directly above the code/u }],
     },
     {
