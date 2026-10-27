@@ -5,7 +5,10 @@
  * - `file=<path>` writes the block to `<path>` in a temp project, so blocks import one another.
  * - `wrap=table|type|module` is a fragment. `table` (a property among a schema's tables) and `type`
  *   (a property among its enums and domains) sit in `defineDatabase({ public: { ... } })`; `module`
- *   (a bare `export default defineDatabase(...)`) follows the imports.
+ *   (a bare `export default defineDatabase(...)`) follows the imports. `table` and `type` share one
+ *   wrapper and differ only to tell the reader what the fragment holds.
+ *
+ * An info word other than `file=` or `wrap=`, a repeated key, and an unclosed fence all fail.
  *
  * The package specifiers map to `src/` through `package.json` `exports` and the `tsdown.config.ts`
  * entries, so the check needs no build. A `ts` block with neither tag fails, and a `tsc` error
@@ -43,14 +46,11 @@ type Block = {
 type Source = { label: string; block: Block; text: string; offset: number };
 type Open = { line: number; info: string[]; body: string[] };
 
-const NEEDS_TAG = "a ts block needs exactly one of file=<path> or wrap=table|type|module";
+const USAGE = "file=<path> or wrap=table|type|module";
+const NEEDS_TAG = `a ts block needs exactly one of ${USAGE}`;
 
 function isWrap(word: string): word is Wrap {
   return Object.hasOwn(WRAPPERS, word);
-}
-
-function option(info: readonly string[], key: string): string | undefined {
-  return info.find((word) => word.startsWith(key))?.slice(key.length);
 }
 
 function fileTarget(path: string): Target | string {
@@ -64,9 +64,23 @@ function wrapTarget(wrap: string): Target | string {
   return isWrap(wrap) ? { wrap } : `wrap=${wrap} is not one of table, type, module`;
 }
 
+/** The `file=` and `wrap=` values in an info string, or the problem with one of its words. */
+function readOptions(info: readonly string[]): Map<string, string> | string {
+  const given = new Map<string, string>();
+  for (const word of info) {
+    const key = ["file", "wrap"].find((name) => word.startsWith(`${name}=`));
+    if (key === undefined) return `${word} is not ${USAGE}`;
+    if (given.has(key)) return `${key}= is given twice`;
+    given.set(key, word.slice(key.length + 1));
+  }
+  return given;
+}
+
 function readTarget(info: readonly string[]): Target | string {
-  const file = option(info, "file=");
-  const wrap = option(info, "wrap=");
+  const given = readOptions(info);
+  if (typeof given === "string") return given;
+  const file = given.get("file");
+  const wrap = given.get("wrap");
   if (file !== undefined && wrap === undefined) return fileTarget(file);
   if (wrap !== undefined && file === undefined) return wrapTarget(wrap);
   return NEEDS_TAG;
@@ -74,14 +88,27 @@ function readTarget(info: readonly string[]): Target | string {
 
 type Parsed = { blocks: Block[]; problems: string[] };
 
+/** `typescript` is a ts fence too, so it cannot dodge the tag requirement. */
+function isTs(open: Open): boolean {
+  return open.info[0] === "ts" || open.info[0] === "typescript";
+}
+
+function reportUnclosed(open: Open | undefined, label: string, out: Parsed): void {
+  if (open === undefined) return;
+  out.problems.push(`${label}:${open.line}: the ${open.info[0]} block is never closed`);
+}
+
 function close(open: Open, label: string, out: Parsed): void {
-  if (open.info[0] !== "ts") return;
+  if (!isTs(open)) return;
   const target = readTarget(open.info.slice(1));
   if (typeof target === "string") out.problems.push(`${label}:${open.line}: ${target}`);
   else out.blocks.push({ line: open.line, body: `${open.body.join("\n")}\n`, target });
 }
 
-/** Every `ts` fenced block in `text`, and a problem line for each block that names no valid tag. */
+/**
+ * Every `ts` fenced block in `text`, and a problem line for each block that names no valid tag or
+ * a fence that never closes (it would hide every block after it).
+ */
 export function parseBlocks(text: string, label: string): Parsed {
   const out: Parsed = { blocks: [], problems: [] };
   let open: Open | undefined;
@@ -89,11 +116,12 @@ export function parseBlocks(text: string, label: string): Parsed {
     if (open === undefined) {
       const info = /^```(.*)$/u.exec(row)?.[1];
       if (info !== undefined) open = { line: index + 1, info: info.trim().split(/\s+/u), body: [] };
-    } else if (row === "```") {
+    } else if (row.trim() === "```") {
       close(open, label, out);
       open = undefined;
     } else open.body.push(row);
   }
+  reportUnclosed(open, label, out);
   return out;
 }
 
@@ -189,6 +217,7 @@ function typecheck(root: string, sources: ReadonlyMap<string, Source>): string |
       ["-p", project, "--pretty", "false"],
       { encoding: "utf8" },
     );
+    if (tsc.error !== undefined) return `could not run tsc: ${tsc.error.message}`;
     const output = `${tsc.stdout}${tsc.stderr}`.trim();
     return tsc.status === 0 ? undefined : mapOutput(output, sources, project);
   } finally {

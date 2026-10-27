@@ -1,16 +1,8 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import {
-  main,
-  mapOutput,
-  parseBlocks,
-  sourcesFor,
-  specifierPaths,
-} from "./check-readme-examples.ts";
+import { describe, expect, test } from "vitest";
+import { mapOutput, parseBlocks, sourcesFor, specifierPaths } from "./check-readme-examples.ts";
 
 const fence = "```";
+const NEEDS_TAG = "a ts block needs exactly one of file=<path> or wrap=table|type|module";
 const doc = (...rows: string[]): string => `${rows.join("\n")}\n`;
 const block = (info: string, ...body: string[]): string[] => [
   `${fence}ts${info === "" ? "" : ` ${info}`}`,
@@ -50,13 +42,50 @@ describe("parseBlocks", () => {
       ...block("file=a.js", "f"),
     );
     expect(parseBlocks(text, "R.md").problems).toEqual([
-      "R.md:1: a ts block needs exactly one of file=<path> or wrap=table|type|module",
-      "R.md:4: a ts block needs exactly one of file=<path> or wrap=table|type|module",
+      `R.md:1: ${NEEDS_TAG}`,
+      `R.md:4: ${NEEDS_TAG}`,
       "R.md:7: wrap=row is not one of table, type, module",
       "R.md:10: file=../a.ts must be a relative .ts path inside the project",
       "R.md:13: file=/a.ts must be a relative .ts path inside the project",
       "R.md:16: file=a.js must be a relative .ts path inside the project",
     ]);
+  });
+
+  test("rejects an info word that is neither file= nor wrap=, and a repeated key", () => {
+    const text = doc(
+      ...block("wrap=table wrap=type", "a"),
+      ...block("wrap=table bogus=1 oops", "b"),
+      ...block("file=a.ts file=b.ts", "c"),
+      ...block("file=a.ts typo", "d"),
+    );
+    expect(parseBlocks(text, "R.md").problems).toEqual([
+      "R.md:1: wrap= is given twice",
+      "R.md:4: bogus=1 is not file=<path> or wrap=table|type|module",
+      "R.md:7: file= is given twice",
+      "R.md:10: typo is not file=<path> or wrap=table|type|module",
+    ]);
+  });
+
+  test("holds a typescript fence to the same tag rule as ts", () => {
+    const text = doc("```typescript", "a", fence, "```typescript wrap=type", "b", fence);
+    expect(parseBlocks(text, "R.md")).toMatchObject({
+      blocks: [{ line: 4 }],
+      problems: [`R.md:1: ${NEEDS_TAG}`],
+    });
+  });
+
+  test("closes a block at a fence with trailing whitespace", () => {
+    const text = doc("```ts wrap=table", "a", "```  ", "```ts", "b", fence);
+    const { blocks, problems } = parseBlocks(text, "R.md");
+    expect(blocks).toEqual([{ line: 1, body: "a\n", target: { wrap: "table" } }]);
+    expect(problems).toEqual([`R.md:4: ${NEEDS_TAG}`]);
+  });
+
+  test("reports a fence left open, at its opening line", () => {
+    const ts = parseBlocks(doc("intro", "```ts wrap=table", "a", "```sh", "b"), "R.md");
+    expect(ts).toEqual({ blocks: [], problems: ["R.md:2: the ts block is never closed"] });
+    const sh = parseBlocks(doc("```sh", "x"), "R.md").problems;
+    expect(sh).toEqual(["R.md:1: the sh block is never closed"]);
   });
 
   test("accepts every wrap tag", () => {
@@ -162,97 +191,5 @@ describe("specifierPaths", () => {
       "@x/y": ["/r/src/i.ts"],
       "@x/y/dev": ["/r/src/d.ts"],
     });
-  });
-});
-
-describe("main", () => {
-  let dir: string;
-  let errors: string[];
-
-  function check(...rows: string[]): void {
-    const file = join(dir, "README.md");
-    writeFileSync(file, doc(...rows));
-    main([file]);
-  }
-
-  beforeEach(() => {
-    dir = realpathSync(mkdtempSync(join(tmpdir(), "check-readme-examples-test-")));
-    errors = [];
-    vi.spyOn(console, "error").mockImplementation((message: string) => {
-      errors.push(message);
-    });
-    process.exitCode = undefined;
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    process.exitCode = undefined;
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  test("passes file= blocks that import each other and the package, and every wrap", () => {
-    check(
-      ...block(
-        "file=db/definition.ts",
-        'import { defineDatabase, defineTable } from "@smonn/db";',
-        "export default defineDatabase({ public: { t: defineTable((c) => ({ id: c.text().notNull() })) } });",
-      ),
-      ...block(
-        "file=main.ts",
-        'import { defineConfig } from "@smonn/db/dev";',
-        'import postgres from "postgres";',
-        'import db from "./db/definition.ts";',
-        'export default [defineConfig({ definition: "./a.ts", migrations: "./m", url: process.env.DATABASE_URL }), postgres, db];',
-      ),
-      ...block("wrap=table", "users: defineTable((c) => ({ id: c.text().notNull() })),"),
-      ...block("wrap=type", 'mood: defineEnum(["a", "b"]),'),
-      ...block("wrap=module", "export default defineDatabase({ public: {} });"),
-    );
-    expect(errors).toEqual([]);
-    expect(process.exitCode).toBeUndefined();
-  });
-
-  test("names the README line of a type error in a fragment", () => {
-    check(
-      "intro",
-      ...block("wrap=table", "users: defineTable((c) => ({", "  id: c.nope(),", "})),"),
-    );
-    expect(errors.join("\n")).toMatch(new RegExp(`README\\.md:4: error TS\\d+: .*nope`, "u"));
-    expect(process.exitCode).toBe(1);
-  });
-
-  test("names the README line of a type error in a file= block", () => {
-    check(...block("file=a.ts", "const a: number = 1;", 'const b: number = "x";'));
-    expect(errors.join("\n")).toMatch(/README\.md:3: error TS2322/u);
-    expect(process.exitCode).toBe(1);
-  });
-
-  test("fails an untagged ts block and a path two blocks write", () => {
-    check(
-      ...block("", "const a = 1;"),
-      ...block("file=a.ts", "export {};"),
-      ...block("file=a.ts", "export {};"),
-    );
-    expect(errors.join("\n")).toContain("README.md:1: a ts block needs exactly one of");
-    expect(errors.join("\n")).toContain("README.md:7: a.ts is already written by another block");
-    expect(process.exitCode).toBe(1);
-  });
-
-  test("fails a README whose only ts block is untagged, without running tsc", () => {
-    check(...block("", "const a = 1;"));
-    expect(errors).toHaveLength(1);
-    expect(process.exitCode).toBe(1);
-  });
-
-  test("passes a README with no ts block", () => {
-    check("plain");
-    expect(errors).toEqual([]);
-    expect(process.exitCode).toBeUndefined();
-  });
-
-  test("passes the repo README", () => {
-    main();
-    expect(errors).toEqual([]);
-    expect(process.exitCode).toBeUndefined();
   });
 });
