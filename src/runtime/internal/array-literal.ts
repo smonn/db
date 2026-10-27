@@ -13,15 +13,15 @@ function quoted(cursor: Cursor): string {
   const { text } = cursor;
   let value = "";
   cursor.at += 1;
-  while (cursor.at < text.length) {
-    const char = text[cursor.at];
-    if (char === '"') {
-      cursor.at += 1;
-      return value;
-    }
-    if (char === "\\") cursor.at += 1;
-    value += text[cursor.at] ?? "";
+  for (let char = text[cursor.at]; char !== undefined; char = text[cursor.at]) {
     cursor.at += 1;
+    if (char === '"') return value;
+    if (char === "\\") {
+      value += text.charAt(cursor.at);
+      cursor.at += 1;
+    } else {
+      value += char;
+    }
   }
   throw malformed(text);
 }
@@ -30,18 +30,20 @@ function unquoted(cursor: Cursor, delimiter: string): { raw: string; value: stri
   const { text } = cursor;
   let value = "";
   const start = cursor.at;
-  while (cursor.at < text.length) {
-    const char = text[cursor.at];
-    if (char === delimiter || char === "}") break;
+  for (
+    let char = text[cursor.at];
+    char !== undefined && char !== delimiter && char !== "}";
+    char = text[cursor.at]
+  ) {
     if (char === "\\") cursor.at += 1;
-    value += text[cursor.at] ?? "";
+    value += text.charAt(cursor.at);
     cursor.at += 1;
   }
   return { raw: text.slice(start, cursor.at).trim(), value: value.trim() };
 }
 
 function skipSpace(cursor: Cursor): void {
-  while (/\s/u.test(cursor.text[cursor.at] ?? "")) cursor.at += 1;
+  while (/\s/u.test(cursor.text.charAt(cursor.at))) cursor.at += 1;
 }
 
 function element<T>(

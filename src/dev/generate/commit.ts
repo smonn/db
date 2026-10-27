@@ -70,7 +70,7 @@ async function commitLocked(options: CommitOptions): Promise<CommitResult> {
   let wrote = false;
   try {
     await driver.transaction(async (tx) => {
-      await checkDevReplayed(tx, tracking, { body, currentPath, chain, tip, migrations });
+      await checkDevReplayed(tx, tracking, { body, currentPath, tip, migrations });
       await fileSystem.writeFile(path, migration.content);
       wrote = true;
       await tracking.recordMigration(tx, parseMigration(migration));
@@ -104,19 +104,19 @@ async function checkDevReplayed(
   expected: {
     readonly body: string;
     readonly currentPath: string;
-    readonly chain: readonly ParsedMigration[];
     readonly tip: ParsedMigration | undefined;
     readonly migrations: string;
   },
 ): Promise<void> {
-  const { body, currentPath, chain, tip, migrations } = expected;
+  const { body, currentPath, tip, migrations } = expected;
   if ((await tracking.readCurrent(tx)) !== (await currentHash(body))) {
     throw new Error(
       `the Dev database hasn't replayed ${currentPath} as it reads now; run generate first`,
     );
   }
   const recorded = await tracking.readRecorded(tx);
-  if (recorded.length !== chain.length || recorded.at(-1)?.hash !== tip?.hash) {
+  // A hash covers the one before it, so the same last hash is the same chain.
+  if (recorded.at(-1)?.hash !== tip?.hash) {
     throw new Error(
       `the Dev database's Committed migrations don't match the files in ${migrations}; run generate first`,
     );

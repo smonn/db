@@ -21,7 +21,7 @@ export function withDevLock<T>(
     const {
       rows: [row],
     } = await session.query(`select pg_try_advisory_lock(${DEV_LOCK_KEY}) as locked`);
-    if (row?.["locked"] !== true) {
+    if (row!["locked"] !== true) {
       throw new Error(
         `can't ${command}: another generate, commit, or reset holds advisory lock ${DEV_LOCK_KEY} on the Dev database`,
       );

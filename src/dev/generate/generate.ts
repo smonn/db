@@ -116,7 +116,7 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     definition,
     tracking,
     shadowOptions,
-    ...(edited === undefined ? {} : { edited }),
+    edited,
   });
 
   const kept = { driver, source, tracking, committed, path };

@@ -1,6 +1,7 @@
-import { childrenOf, type Catalog, type Key } from "../catalog/index.ts";
+import { childrenOf, childrenOfKind, type Catalog, type Key } from "../catalog/index.ts";
 import { domainTypes, type DeclaredDomain } from "./domains.ts";
 import { enumRetypeUsing, enumTypes } from "./enums.ts";
+import { storageOf } from "./generation.ts";
 import { retypeHazards, type HazardKind } from "./hazards.ts";
 import type { FactOf } from "./statements.ts";
 
@@ -43,11 +44,10 @@ export function fillsEachRow(column: FactOf<"column">, to: Catalog): boolean {
   const children = childrenOf(to, column);
   const domain = domainTypes(to).get(column.payload.type);
   if (domain !== undefined && domainFillsEachRow(domain, children.length === 0)) return true;
-  return children.some(
-    (child) =>
-      child.kind === "identity" ||
-      (child.kind === "default" && child.payload.volatile) ||
-      (child.kind === "generated" && child.payload.storage === "stored"),
+  return (
+    childrenOfKind(to, column, "identity").length > 0 ||
+    childrenOfKind(to, column, "default").some((fact) => fact.payload.volatile) ||
+    storageOf(to, column) === "stored"
   );
 }
 

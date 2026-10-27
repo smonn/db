@@ -38,6 +38,13 @@ describe("findForks", () => {
     ]);
   });
 
+  it("keeps files that share a sequence and a filename in the order given", async () => {
+    const twin = await parsed("000002-x.sql", A.hash, "create table twin (n int);\n");
+
+    expect(findForks([X, twin])[0]?.successors).toStrictEqual([X, twin]);
+    expect(findForks([twin, X])[0]?.successors).toStrictEqual([twin, X]);
+  });
+
   it("finds a fork whose branches differ in length", () => {
     expect(findForks([A, X, X3, B])).toStrictEqual([
       { parent: A, previous: A.hash, successors: [B, X] },

@@ -159,10 +159,9 @@ export function hasPostgresJsConnection(connection: Record<string, unknown>): bo
       String(value).toLowerCase(),
     ]),
   );
-  const dateStyle =
-    settings
-      .get("datestyle")
-      ?.split(",")
-      .map((part) => part.trim()) ?? [];
-  return dateStyle.includes("iso") && settings.get("bytea_output") === "hex";
+  const dateStyle = settings
+    .get("datestyle")
+    ?.split(",")
+    .map((part) => part.trim());
+  return dateStyle?.includes("iso") === true && settings.get("bytea_output") === "hex";
 }

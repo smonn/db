@@ -169,13 +169,36 @@ describe("an indexes entry in the second callback", () => {
     expect(load((r) => ({ columns: [{ key: r.a, nulls: "middle" }] }))).toThrow(
       'takes nulls "first" or "last"',
     );
-    expect(load((r) => ({ columns: [r.a], name: 1 }))).toThrow("takes its name as a string");
+    expect(load((r) => ({ columns: [r.a], name: 1 }))).toThrow(
+      "The table's indexes entry takes its name as a string",
+    );
     expect(load((r) => ({ columns: [r.a], unique: "yes" }))).toThrow("takes unique as a boolean");
     expect(load((r) => ({ columns: [r.a], nullsNotDistinct: 1 }))).toThrow(
       "takes nullsNotDistinct as a boolean",
     );
     expect(load((r) => ({ columns: r.a }))).toThrow("takes columns as a list");
     expect(load((r) => ({ columns: [r.a], include: r.b }))).toThrow("takes include as a list");
+  });
+
+  it("rejects an entry with no columns key, naming the list it needs", () => {
+    expect(load(() => ({}))).toThrow("The table's indexes takes columns as a list");
+  });
+
+  it("rejects a key that is no object, naming the columns it should be", () => {
+    for (const key of ["a", 3, null]) {
+      expect(load(() => ({ columns: [key] }))).toThrow(
+        "The table's indexes names something that is not one of its columns",
+      );
+    }
+  });
+
+  it("reads an object as a plain key unless it has a key, and no ref or sql expression", () => {
+    expect(load(() => ({ columns: [{ other: 1 }] }))).toThrow(
+      "The table's indexes names something that is not one of its columns",
+    );
+    expect(load(() => ({ columns: [{ "~ref": "a", key: 1 }] }))).toThrow(
+      'The table\'s indexes takes "a" from another table',
+    );
   });
 
   it("rejects an unknown key by name, and a shape that is not a list of entries", () => {
@@ -187,7 +210,10 @@ describe("an indexes entry in the second callback", () => {
         // TypeScript lets an extra key through an arrow function's inferred return, so only the load check catches it.
         indexes: [{ columns: [{ key: r.a, collate: "C" }] }],
       })),
-    ).toThrow('does not take "collate"');
+    ).toThrow(
+      "A key in the table's indexes does not take \"collate\"; A key in the table's indexes takes a column, an sql expression, or { key, order?, nulls? }",
+    );
+    expect(loadRaw(() => [3])).toThrow("The table's indexes takes a list of");
   });
 });
 

@@ -121,6 +121,16 @@ describe("strayHazardComments", () => {
     expect(strayHazardComments(sql)).toStrictEqual([]);
   });
 
+  it("ends a statement at a semicolon followed by a comment on a CRLF line", () => {
+    const sql =
+      "-- hazard: data_loss\r\nDROP TABLE t; -- ok\r\n-- hazard: rewrite\r\nDROP TABLE u;\r\n";
+
+    expect(hazardsIn(sql)).toStrictEqual([
+      { kind: "data_loss", statement: "DROP TABLE t; -- ok" },
+      { kind: "rewrite", statement: "DROP TABLE u;" },
+    ]);
+  });
+
   it("doesn't end a statement at a semicolon inside a trailing comment", () => {
     const sql = "-- hazard: data_loss\nDROP TABLE t -- gone;\n;\nSELECT 1;\n";
 
@@ -136,6 +146,27 @@ describe("strayHazardComments", () => {
       { line: 1, text: "DROP TABLE t; -- hazard: data_loss" },
     ]);
     expect(hazardsIn(sql)).toStrictEqual([{ kind: "rewrite", statement: "DROP TABLE u;" }]);
+  });
+
+  it("lists strays in line order, whether found in a statement or left unpaired", () => {
+    const sql = "-- hazard: rewrite\n\n  -- hazard: data_loss\n\n--hazard: share_lock\n";
+
+    expect(strayHazardComments(sql)).toStrictEqual([
+      { line: 1, text: "-- hazard: rewrite" },
+      { line: 3, text: "  -- hazard: data_loss" },
+      { line: 5, text: "--hazard: share_lock" },
+    ]);
+  });
+
+  it("reads a Hazard comment only when nothing follows its kind but spaces", () => {
+    expect(hazardsIn("-- hazard: data_loss  \ndrop table a;\n")).toStrictEqual([
+      { kind: "data_loss", statement: "drop table a;" },
+    ]);
+    const sql = "-- hazard: data_loss extra\ndrop table a;\n";
+    expect(hazardsIn(sql)).toStrictEqual([]);
+    expect(strayHazardComments(sql)).toStrictEqual([
+      { line: 1, text: "-- hazard: data_loss extra" },
+    ]);
   });
 
   it("ignores paired comments, plural prose, block comments, and a hazards table", () => {

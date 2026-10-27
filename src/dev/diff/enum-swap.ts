@@ -1,6 +1,5 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
 import {
-  childrenOf,
   elementOf,
   parentOf,
   qualified,
@@ -90,8 +89,7 @@ export function asideName(
 }
 
 function namesUnder(catalog: Catalog, schema: Key): readonly string[] {
-  const parent = catalog.get(schema);
-  return parent === undefined ? [] : childrenOf(catalog, parent).map((fact) => fact.name);
+  return [...catalog.values()].filter((fact) => fact.parent === schema).map((fact) => fact.name);
 }
 
 /** The longest start of `name` that fits in `bytes` of UTF-8, never splitting a character. */
