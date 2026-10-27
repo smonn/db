@@ -94,11 +94,37 @@ jobs:
           cache: true
       - run: pnpm coverage
 
+  # Catches a change that breaks the weekly Mutation run (mutation.yml), which no PR otherwise exercises.
+  mutation-dry-run:
+    name: Mutation dry run
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres"
+          --health-interval 1s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          cache: true
+      - run: pnpm mutation:dry
+
   # The main ruleset requires this job and Metadata (pr.yml), so adding or renaming a code job needs no ruleset change.
   required:
     name: Required
     if: ${{ always() }}
-    needs: [docs, mermaid, typecheck, lint, test]
+    needs: [docs, mermaid, typecheck, lint, test, mutation-dry-run]
     runs-on: ubuntu-24.04
     steps:
       - env:
