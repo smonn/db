@@ -12,7 +12,7 @@ type Column = Table["columns"][string];
 /** The SQL type a column's elements are written as: its own, or its domain's base. */
 export function elementSqlType(column: Column): string {
   const { sqlType, domainType } = column.state;
-  return (domainType === undefined ? sqlType : domainType.base.sqlType).replace(/\(.*\)$/u, "");
+  return (domainType === undefined ? sqlType : domainType.base.sqlType).replace(/\(.*/u, "");
 }
 
 const asText = (text: string): string => text;
