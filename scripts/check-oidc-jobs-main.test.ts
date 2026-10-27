@@ -4,6 +4,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { main } from "./check-oidc-jobs.ts";
 
+// Stryker rewrites the file's literals, so under mutation its text no longer holds the pins Renovate reads.
+const instrumented = readFileSync(join("scripts", "check-oidc-jobs.ts"), "utf8").includes(
+  "stryMutAct",
+);
+
 describe("main", () => {
   let dir = "";
   afterEach(() => {
@@ -39,7 +44,7 @@ describe("main", () => {
     expect(process.exitCode).toBe(1);
   });
 
-  test("lets Renovate bump every action SHA that publishJob pins", () => {
+  test.skipIf(instrumented)("lets Renovate bump every action SHA that publishJob pins", () => {
     const matchString = String.raw`// (?<currentValue>v\S+)\n\s*"\s*- uses: (?<depName>[\w.-]+/[\w.-]+)@(?<currentDigest>[0-9a-f]{40})"`;
     const renovate = readFileSync(join(".github", "renovate.json"), "utf8");
     expect(renovate).toContain(JSON.stringify([String.raw`/^scripts/check-oidc-jobs\.ts$/`]));

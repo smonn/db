@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { markdownFiles } from "./markdown-files.ts";
 
-export function main(cwd = "."): void {
+export function main(cwd: string = process.cwd()): void {
   const outDir = mkdtempSync(join(tmpdir(), "check-mermaid-"));
   // Ubuntu 24.04 runners block Chrome's user-namespace sandbox; the input is the repo's own docs.
   const puppeteerConfig = join(outDir, "puppeteer.json");
