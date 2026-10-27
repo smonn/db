@@ -191,6 +191,11 @@ export function factAt(catalog: Catalog, ...names: string[]): Fact | undefined {
   return catalog.get(key(...names));
 }
 
+/** The key of the fact at the chain of `names`, whether or not a catalog holds it. */
+export function keyAt(...names: string[]): Key {
+  return key(...names);
+}
+
 export function parentOf(catalog: Catalog, fact: Fact): Fact {
   const parent = fact.parent === undefined ? undefined : catalog.get(fact.parent);
   if (parent === undefined)

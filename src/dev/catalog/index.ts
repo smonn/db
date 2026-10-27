@@ -3,6 +3,7 @@ export {
   childrenOf,
   childrenOfKind,
   factAt,
+  keyAt,
   namesOf,
   parentOf,
   unchangedFacts,

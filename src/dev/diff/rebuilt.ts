@@ -1,5 +1,5 @@
 import {
-  parentOf,
+  keyAt,
   plainKeyColumns,
   type Catalog,
   type Fact,
@@ -78,7 +78,7 @@ type ForeignKey = Extract<Fact, { readonly kind: "foreign key" }>;
  */
 export function foreignKeysAround(planned: readonly Action[], catalogs: Catalogs): Action[] {
   const changed = changedColumns(planned);
-  const blocked = (key: ForeignKey): boolean => isBlocked(key, planned, changed, catalogs.from);
+  const blocked = (key: ForeignKey): boolean => isBlocked(key, planned, changed);
   const renames = blockedRenames(planned, blocked);
   const unchanged = unchangedFacts(catalogs.from, catalogs.to, "foreign key")
     .filter(([key]) => !dropsForeignKey(planned, key) && blocked(key))
@@ -128,16 +128,12 @@ function isBlocked(
   { parent, payload }: ForeignKey,
   planned: readonly Action[],
   changed: ReadonlySet<string>,
-  from: Catalog,
 ): boolean {
-  const targets = tableKeysAt(from, payload.target.schema, payload.target.table);
+  const target = keyAt(payload.target.schema, payload.target.table);
   return (
     payload.columns.some((column) => changed.has(columnId(parent, column))) ||
-    targets.some(
-      (target) =>
-        payload.target.columns.some((column) => changed.has(columnId(target, column))) ||
-        dropsKeyOn(planned, target, payload.target.columns),
-    )
+    payload.target.columns.some((column) => changed.has(columnId(target, column))) ||
+    dropsKeyOn(planned, target, payload.target.columns)
   );
 }
 
@@ -158,16 +154,6 @@ function changedColumns(planned: readonly Action[]): ReadonlySet<string> {
 
 function columnId(table: Key, column: string): string {
   return `${table}\0${column}`;
-}
-
-/** The key of the table `schema.table`: none when the catalog lacks it. */
-function tableKeysAt(catalog: Catalog, schema: string, table: string): Key[] {
-  return [...catalog]
-    .filter(
-      ([, fact]) =>
-        fact.kind === "table" && fact.name === table && parentOf(catalog, fact).name === schema,
-    )
-    .map(([key]) => key);
 }
 
 /** Whether `planned` drops a key of `table` that a foreign key to `columns` could stand on. */
