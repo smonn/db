@@ -68,6 +68,7 @@ function createDomain(domain: FactOf<"domain">, { to }: Catalogs): string {
   if (notNull) parts.push("not null");
   if (expression !== null) parts.push(`default (${expression})`);
   for (const child of childrenOf(to, domain)) {
+    // Stryker disable next-line ConditionalExpression: a domain's children are all checks, so the kind test only narrows the type.
     if (child.kind === "domain check") parts.push(checkClause(child));
   }
   return `${parts.join(" ")};`;
