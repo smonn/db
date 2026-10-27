@@ -25,7 +25,7 @@ const EM_DASH = "\u2014";
 
 function extendEntry(entry: GlossaryEntry, line: string, lineNumber: number): void {
   entry.endLine = lineNumber;
-  const avoid = /^_Avoid_:\s*(.+)$/u.exec(line)?.[1];
+  const avoid = /^_Avoid_:\s*(.+)/u.exec(line)?.[1];
   if (avoid !== undefined) entry.avoid = avoid.split(",").map((term) => term.trim());
 }
 
@@ -146,10 +146,15 @@ export function checkAdrBody(file: string, text: string): Problem[] {
   ];
 }
 
+/** The four-digit number in an ADR's path, or `undefined` for any other file. */
+function adrNumber(file: string): string | undefined {
+  return /^docs\/adr\/(\d{4})-/u.exec(file)?.[1];
+}
+
 export function checkAdrNumbers(files: string[]): Problem[] {
   const firstByNumber = new Map<string, string>();
   return files.flatMap((file) => {
-    const number = /^docs\/adr\/(\d{4})-/u.exec(file)?.[1];
+    const number = adrNumber(file);
     if (number === undefined) return [];
     const first = firstByNumber.get(number);
     if (first === undefined) {
@@ -179,7 +184,7 @@ function checkMarkdownFile(cwd: string, file: string, glossary: GlossaryEntry[])
       ...checkHeadwordCase(file, text, glossary),
     );
   }
-  if (/^docs\/adr\/\d{4}-[^/]+\.md$/u.test(file)) {
+  if (adrNumber(file) !== undefined) {
     problems.push(...checkAdrBody(file, text));
   }
   return problems;
