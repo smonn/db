@@ -60,6 +60,9 @@ describe("defineDomain", () => {
     expect(() => defineDomain((c) => c.integer().index())).toThrow(
       "defineDomain takes a bare type, such as c.integer(); declare notNull, default, and checks in its options",
     );
+    expect(() => defineDomain((c) => c.integer().name("whole"))).toThrow(
+      "defineDomain takes a bare type",
+    );
   });
 });
 

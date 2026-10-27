@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
+import { snakeCase } from "./casing.ts";
 import { defineDatabase } from "./database.ts";
 import { defineTable } from "./definition.ts";
 import { defineEnum } from "./enum.ts";
+import { sqlNamesOf } from "./sql-names.ts";
+
+describe("sqlNamesOf", () => {
+  it("names the columns of a table, and has none for a schema or table it doesn't hold", () => {
+    const users = defineTable((c) => ({ userId: c.text() }));
+    const names = sqlNamesOf({ app: { users } }, snakeCase);
+
+    expect(names.columns("app", "users")).toStrictEqual({ userId: "user_id" });
+    expect(names.columns("app", "orders")).toStrictEqual({});
+    expect(names.columns("other", "users")).toStrictEqual({});
+  });
+});
 
 describe("defineDatabase refuses two keys that take one SQL name", () => {
   it("in one table's columns", () => {
