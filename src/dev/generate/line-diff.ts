@@ -26,25 +26,21 @@ function diffLines(a: readonly string[], b: readonly string[], lcs: readonly num
   let out = "";
   let i = 0;
   let j = 0;
-  while (i < a.length || j < b.length) {
-    if (sameLine(a, b, i, j)) {
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
       i++;
       j++;
-    } else if (removesNext(lcs, i, j)) {
+    } else if (lcs[i + 1]![j]! >= lcs[i]![j + 1]!) {
       out += `-${a[i++]}\n`;
     } else {
       out += `+${b[j++]}\n`;
     }
   }
-  return out;
+  return out + prefixed("-", a.slice(i)) + prefixed("+", b.slice(j));
 }
 
-function sameLine(a: readonly string[], b: readonly string[], i: number, j: number): boolean {
-  return i < a.length && j < b.length && a[i] === b[j];
-}
-
-function removesNext(lcs: readonly number[][], i: number, j: number): boolean {
-  return j === lcs[0]!.length - 1 || (i < lcs.length - 1 && lcs[i + 1]![j]! >= lcs[i]![j + 1]!);
+function prefixed(mark: string, rest: readonly string[]): string {
+  return rest.map((line) => `${mark}${line}\n`).join("");
 }
 
 function lines(text: string): string[] {
