@@ -148,8 +148,29 @@ describe("appliedRenames for types", () => {
     builder.enumType("app", "mood", { labels: ["good", "great"] });
 
     expect(() => appliedRenames([renameLabel], builder.build())).toThrow(
-      'enum "app"."mood" has renamedLabels "great" from "good", but the Shadow database holds both labels',
+      'enum "app"."mood" has renamedLabels "great" from "good", but the Shadow database holds both labels; drop the label you no longer want, or remove the entry',
     );
+  });
+
+  it("doesn't count a label rename in another enum of the schema as a chain", () => {
+    const builder = catalogBuilder();
+    builder.schema("app");
+    builder.enumType("app", "mood", { labels: ["b"] });
+    builder.enumType("app", "shade", { labels: ["a"] });
+    const renames = [labelRename("a", "b"), { ...labelRename("z", "a"), enum: "shade" }];
+
+    expect(appliedRenames(renames, builder.build())).toStrictEqual(renames);
+  });
+
+  it("doesn't count a label rename in a same-named enum of another schema as a chain", () => {
+    const builder = catalogBuilder();
+    builder.schema("app");
+    builder.schema("other");
+    builder.enumType("app", "mood", { labels: ["b"] });
+    builder.enumType("other", "mood", { labels: ["a"] });
+    const renames = [labelRename("a", "b"), { ...labelRename("z", "a"), schema: "other" }];
+
+    expect(appliedRenames(renames, builder.build())).toStrictEqual(renames);
   });
 
   it("throws on a chain of labels", () => {

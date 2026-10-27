@@ -128,8 +128,7 @@ async function read(tx: Queryable, trackingName: string): Promise<Catalog> {
     const schema = String(name);
     builder.schema(schema);
     for (const type of enums.filter((row) => row["schema"] === schema)) {
-      const labels = Array.isArray(type["labels"]) ? type["labels"].map(String) : [];
-      builder.enumType(schema, String(type["name"]), { labels });
+      builder.enumType(schema, String(type["name"]), { labels: names(type["labels"]) });
     }
     addDomains(builder, schema, { domains, checks });
     for (const table of tables.filter((row) => row["schema"] === schema)) {

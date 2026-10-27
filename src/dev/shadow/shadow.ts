@@ -102,7 +102,8 @@ export async function sweepStaleDatabases(
       const prefix = prefixes.find((candidate) => database.startsWith(candidate));
       if (prefix === undefined) return false;
       const seconds = /^(\d+)_[0-9a-f]{8}$/u.exec(database.slice(prefix.length))?.[1];
-      return seconds !== undefined && Number(seconds) < cutoff;
+      // A name that doesn't match has no seconds, and NaN is never below the cutoff.
+      return Number(seconds) < cutoff;
     });
   await Promise.all(
     stale.map(async (database) => {
@@ -117,7 +118,7 @@ async function withThrowawayDatabase<T>(
   { prefix, checkFunctionBodies }: Throwaway,
   fn: (database: Driver) => Promise<T>,
 ): Promise<T> {
-  const name = `${prefix}${Math.floor(Date.now() / 1000)}_${randomHex(4)}`;
+  const name = `${prefix}${Math.floor(Date.now() / 1000)}_${crypto.randomUUID().slice(0, 8)}`;
   // Registered before the create, so an interrupt during it waits for the create, then drops.
   const created = Promise.withResolvers<void>();
   const unregister = onInterrupt(async () => {
@@ -149,10 +150,4 @@ async function withThrowawayDatabase<T>(
 
 function dropDatabase(driver: Driver, name: string): Promise<void> {
   return driver.execute(`drop database if exists ${quoteIdentifier(name)} with (force)`);
-}
-
-function randomHex(bytes: number): string {
-  return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
 }

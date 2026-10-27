@@ -42,7 +42,7 @@ type ConstraintOptions = { readonly name: string };
  * `Int` is true for the types Postgres allows an identity on. `Gen` is true once the column has a
  * default or an identity, which Postgres allows only one of. `Pk` is true once `.primaryKey()` ran,
  * and `Key` once `.primaryKey()` or `.unique()` ran, since a primary key is already unique. `Fk` is
- * true once `.references()` ran. `Fresh` is true until a modifier (anything but `.name()` and `.renamedFrom()`)
+ * true once `.references()` ran. `Fresh` is true until a modifier (anything but `.name()`, `.renamedFrom()`, and `.codec()`)
  * or `.array()` ran, since `.array()` must come first.
  */
 export type Column<
@@ -85,15 +85,19 @@ export type Column<
        * A one-dimensional array of this type, which reads as `(V | null)[]` since Postgres can't
        * make elements NOT NULL. Call it before any modifier, so `.notNull()` and `.default()` mean
        * the whole column. Postgres ignores declared dimensions, so there is no way to ask for more.
+       * A `.codec()` before it runs on each element, and none is offered after it.
        */
-      array(): Column<(V | null)[], false, false, false, false, false, false, false, false>;
+      array(): Column<(V | null)[], false, false, false, false, false, true, false, false>;
     }
   : unknown) &
   (Co extends true
     ? unknown
     : {
-        /** Overrides the TypeScript mapping; the query layer runs it and the catalog never sees it. A column takes one. */
-        codec<Value>(codec: Codec<V, Value>): Column<Value, N, Int, Gen, Pk, Key, true, Fk, false>;
+        /**
+         * Overrides the TypeScript mapping; the query layer runs it and the catalog never sees it. A
+         * column takes one. Before `.array()` it keeps `.array()` available and runs per element.
+         */
+        codec<Value>(codec: Codec<V, Value>): Column<Value, N, Int, Gen, Pk, Key, true, Fk, Fresh>;
       }) &
   (Key extends true
     ? unknown
