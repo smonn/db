@@ -105,10 +105,7 @@ function readLine(number: number, text: string): Read {
     at = skipSpaces(text, read.next);
     if (endsLine(text, at)) return { line };
   }
-  line.value = text
-    .slice(at)
-    .replace(/\s+#.*$/u, "")
-    .trim();
+  line.value = text.slice(at).replace(/\s#.*/u, "").trim();
   if (!readValue(text, at, line.flowKeys)) return { line };
   return { line, scalarAbove: blockOwnerColumn(read?.key.column, dash, line.indent) };
 }
@@ -116,7 +113,7 @@ function readLine(number: number, text: string): Read {
 function outsideAsciiProblem(text: string, number: number, file: string): string | undefined {
   const outside = /[^ -~]/u.exec(text)?.[0];
   if (outside === undefined) return undefined;
-  const code = outside.codePointAt(0)?.toString(16).toUpperCase().padStart(4, "0");
+  const code = Number(outside.codePointAt(0)).toString(16).toUpperCase().padStart(4, "0");
   return `${file} line ${number} holds U+${code}, outside printable ASCII; this check reads printable ASCII only`;
 }
 
@@ -133,7 +130,7 @@ function readOrProblem(number: number, text: string, file: string): Step {
 }
 
 const continuesScalar = (text: string, scalarAbove: number | undefined): boolean =>
-  scalarAbove !== undefined && (text.trim() === "" || indentOf(text) > scalarAbove);
+  indentOf(text) > (scalarAbove ?? Infinity);
 
 function stepLine(
   text: string,
@@ -143,12 +140,15 @@ function stepLine(
 ): Step {
   const outside = outsideAsciiProblem(text, number, file);
   if (outside !== undefined) return { problem: outside, scalarAbove };
-  if (continuesScalar(text, scalarAbove)) return { scalarAbove };
-  if (text.trim() === "" || text.trimStart().startsWith("#")) return {};
+  if (text.trim() === "" || continuesScalar(text, scalarAbove)) return { scalarAbove };
+  if (text.trimStart().startsWith("#")) return {};
   return readOrProblem(number, text, file);
 }
 
-export function workflowYamlProblems(workflow: string, file: string): string[] {
+export function readWorkflow(
+  workflow: string,
+  file: string,
+): { lines: WorkflowLine[]; problems: string[] } {
   const problems: string[] = [];
   const lines: WorkflowLine[] = [];
   let scalarAbove: number | undefined;
@@ -158,5 +158,10 @@ export function workflowYamlProblems(workflow: string, file: string): string[] {
     if (step.problem !== undefined) problems.push(step.problem);
     if (step.line !== undefined) lines.push(step.line);
   }
+  return { lines, problems };
+}
+
+export function workflowYamlProblems(workflow: string, file: string): string[] {
+  const { lines, problems } = readWorkflow(workflow, file);
   return [...problems, ...permissionsProblems(lines, file)];
 }

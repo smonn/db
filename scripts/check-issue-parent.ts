@@ -87,7 +87,6 @@ type ApiIssue = {
   number: number;
   labels: { name: string }[];
   pull_request?: object | undefined;
-  parent_issue_url?: string | undefined;
   sub_issues_summary?: { total: number } | undefined;
 };
 
@@ -104,14 +103,13 @@ const readSummary: Reader<{ total: number }> = (value, path) => ({
   total: field(record(value, path), "total", number, path),
 });
 
-// The issue list omits `parent_issue_url` and `sub_issues_summary` from issues that have neither.
+// The issue list omits `sub_issues_summary` from an issue with no sub-issues.
 const readApiIssue: Reader<ApiIssue> = (value, path) => {
   const issue = record(value, path);
   return {
     number: field(issue, "number", number, path),
     labels: optionalField(issue, "labels", array(readName), path) ?? [],
     pull_request: optionalField(issue, "pull_request", record, path),
-    parent_issue_url: optionalField(issue, "parent_issue_url", nullable(string), path) ?? undefined,
     sub_issues_summary: optionalField(issue, "sub_issues_summary", readSummary, path),
   };
 };
@@ -164,8 +162,9 @@ function areas(labels: { name: string }[]): string[] {
 }
 
 type Checkable = { state: string; milestone: unknown; labels: { name: string }[] };
+type Milestoned = { milestone: { number: number } };
 
-function qualifies(issue: Checkable): boolean {
+function qualifies<T extends Checkable>(issue: T): issue is T & Milestoned {
   return (
     issue.state === "open" &&
     issue.milestone !== null &&
@@ -195,14 +194,13 @@ function matchingParents(self: Current, milestoneIssues: ApiIssue[]): number[] {
     .toSorted((a, b) => a - b);
 }
 
-function hasParentOrChildren(issue: Current): boolean {
-  return issue.parent_issue_url !== null || issue.sub_issues_summary.total > 0;
+function hasChildren(issue: Current): boolean {
+  return issue.sub_issues_summary.total > 0;
 }
 
 type Target = { repo: string; number: number };
 
-function milestoneParents(gh: Gh, repo: string, current: Current): number[] {
-  if (current.milestone === null) return [];
+function milestoneParents(gh: Gh, repo: string, current: Current & Milestoned): number[] {
   const milestoneIssues = getAll(
     gh,
     `repos/${repo}/issues?milestone=${current.milestone.number}&state=open&per_page=100`,
@@ -221,7 +219,7 @@ function commentUnlessAttached(gh: Gh, target: Target, parents: number[], wait: 
     checkParentArea(gh, target, again, again.parent_issue_url);
     return;
   }
-  if (hasParentOrChildren(again) || parents.length === 0) return;
+  if (hasChildren(again) || parents.length === 0) return;
   const named = parents.map((parent) => `#${parent}`).join(", ");
   const body = `${MARKER}\nThis issue has no parent, and its milestone has a parent for its area: ${named}. If it belongs there, attach it as a sub-issue (\`gh issue edit <parent> --add-sub-issue ${issueNumber}\`). Not every issue needs a parent, so ignore this if it doesn't.`;
   gh(["issue", "comment", String(issueNumber), "--repo", repo, "--body", body]);
@@ -251,7 +249,12 @@ function mismatchComment(parent: Current, own: string[], candidates: number[]): 
 }
 
 // Attaching a sub-issue fires `sub_issues`, not `issues`, so this runs on a later label or milestone event, or after the grace wait.
-function checkParentArea(gh: Gh, target: Target, current: Current, parentUrl: string): void {
+function checkParentArea(
+  gh: Gh,
+  target: Target,
+  current: Current & Milestoned,
+  parentUrl: string,
+): void {
   const own = areas(current.labels);
   const parent = getOne(gh, apiPath(parentUrl));
   if (areas(parent.labels).length === 0) return;
@@ -263,8 +266,8 @@ function checkParentArea(gh: Gh, target: Target, current: Current, parentUrl: st
   gh(["issue", "comment", String(target.number), "--repo", target.repo, "--body", body]);
 }
 
-function checkParentless(gh: Gh, target: Target, current: Current, wait: Wait): void {
-  if (current.milestone === null || hasParentOrChildren(current)) return;
+function checkParentless(gh: Gh, target: Target, current: Current & Milestoned, wait: Wait): void {
+  if (hasChildren(current)) return;
   if (hasComment(gh, target, MARKER)) return;
   const parents = milestoneParents(gh, target.repo, current);
   commentUnlessAttached(gh, target, parents, wait);

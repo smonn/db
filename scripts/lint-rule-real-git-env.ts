@@ -12,6 +12,7 @@
  * test calls, which this rule never sees.
  */
 import type { RuleTester } from "oxlint/plugins-dev";
+import { isIdentifier, isMember, named } from "./lint-ast.ts";
 
 type Rule = Parameters<RuleTester["run"]>[1];
 type Context = Parameters<Extract<Rule, { create: unknown }>["create"]>[0];
@@ -27,64 +28,65 @@ type Names = {
 };
 
 const SPAWNS = new Set(["exec", "execSync", "execFile", "execFileSync", "spawn", "spawnSync"]);
-const HELPER = /(^|\/)git-env\.test-helper\.ts$/u;
-const CHILD_PROCESS = /^(node:)?child_process$/u;
+const HELPER = "/git-env.test-helper.ts";
+const CHILD_PROCESS = new Set(["child_process", "node:child_process"]);
 const GIT_COMMAND = /^([^\s]*\/)?git(\s|$)/u;
 
 const MESSAGE =
   "Import isolateGitEnv() from git-env.test-helper.ts and call it in beforeEach: a git hook exports GIT_DIR, which points this git call at the pushing repository";
 
-function commandText(argument: Node): string | undefined {
-  if (argument.type === "Literal" && typeof argument.value === "string") return argument.value;
-  if (argument.type === "TemplateLiteral") return argument.quasis[0]?.value.raw;
-  return undefined;
-}
-
-function isSpawnMember(callee: Extract<Node, { type: "MemberExpression" }>, names: Names): boolean {
-  const { object, property } = callee;
-  if (object.type !== "Identifier" || property.type !== "Identifier") return false;
+/** Whether a command argument names git; a template's text before its first `${...}` must. */
+function isGitCommand(argument: Node): boolean {
+  if (argument.type === "Literal") return GIT_COMMAND.test(String(argument.value));
   return (
-    SPAWNS.has(property.name) &&
-    (object.name === "child_process" || names.namespaces.has(object.name))
+    argument.type === "TemplateLiteral" &&
+    argument.quasis.some((quasi, index) => index === 0 && GIT_COMMAND.test(quasi.value.raw))
   );
 }
 
 function isSpawnCallee(callee: Node, names: Names): boolean {
-  if (callee.type === "Identifier") return SPAWNS.has(callee.name) || names.spawns.has(callee.name);
-  return callee.type === "MemberExpression" && isSpawnMember(callee, names);
+  return (
+    isIdentifier(callee, (name) => SPAWNS.has(name) || names.spawns.has(name)) ||
+    isMember(
+      callee,
+      (name) => name === "child_process" || names.namespaces.has(name),
+      (name) => SPAWNS.has(name),
+    )
+  );
 }
 
 function spawnsGit(node: Call, names: Names): boolean {
   const [command] = node.arguments;
-  if (command === undefined || !isSpawnCallee(node.callee, names)) return false;
-  return GIT_COMMAND.test(commandText(command) ?? "");
+  return command !== undefined && isSpawnCallee(node.callee, names) && isGitCommand(command);
 }
 
 function isIsolateCall(node: Call, names: Names): boolean {
-  const { callee } = node;
-  if (callee.type === "Identifier") return names.helpers.has(callee.name);
-  if (callee.type !== "MemberExpression") return false;
   return (
-    callee.object.type === "Identifier" &&
-    names.helperNamespaces.has(callee.object.name) &&
-    callee.property.type === "Identifier" &&
-    callee.property.name === "isolateGitEnv"
+    isIdentifier(node.callee, (name) => names.helpers.has(name)) ||
+    isMember(node.callee, (name) => names.helperNamespaces.has(name), named("isolateGitEnv"))
   );
 }
 
-function beforeEachCallbacks(node: Call): Node[] {
-  if (node.callee.type !== "Identifier" || node.callee.name !== "beforeEach") return [];
-  return node.arguments.filter(
-    (argument) =>
-      argument.type === "ArrowFunctionExpression" || argument.type === "FunctionExpression",
+function isBeforeEachCallback(node: Node): boolean {
+  return (
+    (node.type === "ArrowFunctionExpression" || node.type === "FunctionExpression") &&
+    node.parent.type === "CallExpression" &&
+    isIdentifier(node.parent.callee, named("beforeEach"))
   );
+}
+
+function inBeforeEach(node: Node): boolean {
+  for (let current: Node | null = node; current !== null; current = current.parent) {
+    if (isBeforeEachCallback(current)) return true;
+  }
+  return false;
 }
 
 function recordImport(node: Import, names: Names): void {
   const source = node.source.value;
   for (const specifier of node.specifiers) {
-    if (CHILD_PROCESS.test(source)) recordChildProcess(specifier, names);
-    if (HELPER.test(source)) recordHelper(specifier, names);
+    if (CHILD_PROCESS.has(source)) recordChildProcess(specifier, names);
+    if (source.endsWith(HELPER)) recordHelper(specifier, names);
   }
 }
 
@@ -93,7 +95,7 @@ function recordChildProcess(specifier: Import["specifiers"][number], names: Name
     names.namespaces.add(specifier.local.name);
     return;
   }
-  if (specifier.imported.type === "Identifier" && SPAWNS.has(specifier.imported.name)) {
+  if (isIdentifier(specifier.imported, (name) => SPAWNS.has(name))) {
     names.spawns.add(specifier.local.name);
   }
 }
@@ -103,15 +105,10 @@ function recordHelper(specifier: Import["specifiers"][number], names: Names): vo
     names.helperNamespaces.add(specifier.local.name);
   } else if (
     specifier.type === "ImportSpecifier" &&
-    specifier.imported.type === "Identifier" &&
-    specifier.imported.name === "isolateGitEnv"
+    isIdentifier(specifier.imported, named("isolateGitEnv"))
   ) {
     names.helpers.add(specifier.local.name);
   }
-}
-
-function inside(inner: Node, outer: Node): boolean {
-  return inner.range[0] >= outer.range[0] && inner.range[1] <= outer.range[1];
 }
 
 export const realGitEnvRule: Rule = {
@@ -127,19 +124,16 @@ export const realGitEnvRule: Rule = {
       helperNamespaces: new Set(),
     };
     const gitCalls: Node[] = [];
-    const isolateCalls: Node[] = [];
-    const callbacks: Node[] = [];
+    let cleared = false;
     return {
       ImportDeclaration(node) {
         recordImport(node, names);
       },
       CallExpression(node) {
         if (spawnsGit(node, names)) gitCalls.push(node);
-        if (isIsolateCall(node, names)) isolateCalls.push(node);
-        callbacks.push(...beforeEachCallbacks(node));
+        if (isIsolateCall(node, names) && inBeforeEach(node)) cleared = true;
       },
       "Program:exit"() {
-        const cleared = isolateCalls.some((call) => callbacks.some((cb) => inside(call, cb)));
         if (cleared) return;
         for (const node of gitCalls) context.report({ node, message: MESSAGE });
       },
