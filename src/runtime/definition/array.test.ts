@@ -37,6 +37,14 @@ describe(".array()", () => {
     expectTypeOf<Row<typeof t>["moods"]>().toEqualTypeOf<("sad" | "ok" | null)[]>();
   });
 
+  it("allows .array() after .codec(), which types the elements", () => {
+    const t = defineTable((c) => ({
+      n: c.integer().codec<string>({ decode: String, encode: Number }).array(),
+    }));
+
+    expectTypeOf<Row<typeof t>["n"]>().toEqualTypeOf<(string | null)[] | null>();
+  });
+
   it("allows .renamedFrom() first, which is no modifier", () => {
     const t = defineTable((c) => ({ tags: c.text().renamedFrom("labels").array() }));
 
@@ -49,7 +57,6 @@ describe(".array()", () => {
       defaulted: c.text().default("'x'"),
       identity: c.integer().identity(),
       unique: c.text().unique(),
-      codec: c.text().codec({ decode: (value) => value, encode: (value) => value }),
       twice: c.text().array(),
     }));
 
@@ -57,7 +64,6 @@ describe(".array()", () => {
     expectTypeOf(columns.defaulted).not.toHaveProperty("array");
     expectTypeOf(columns.identity).not.toHaveProperty("array");
     expectTypeOf(columns.unique).not.toHaveProperty("array");
-    expectTypeOf(columns.codec).not.toHaveProperty("array");
     expectTypeOf(columns.twice).not.toHaveProperty("array");
 
     /* oxlint-disable typescript/no-unsafe-call -- the missing method is the point. */

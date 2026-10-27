@@ -7,9 +7,10 @@ import {
 
 /** The lines `generate` prints: the file, each Hazard with its statement, each rename hint, and whether it reset. */
 export function generateReport(result: GenerateResult, path: string): string[] {
-  const hazards = hazardsIn(result.sql ?? "").map(
-    ({ kind, statement }) => `hazard ${kind}: ${statement}`,
-  );
+  const hazards =
+    result.sql === undefined
+      ? []
+      : hazardsIn(result.sql).map(({ kind, statement }) => `hazard ${kind}: ${statement}`);
   const reset = result.reset ? "reset the Dev database" : "left the Dev database as it was";
   const hints = result.hints.map((hint) => `hint: ${hint}`);
   return [...fileLines(result, path), ...hazards, ...hints, reset];

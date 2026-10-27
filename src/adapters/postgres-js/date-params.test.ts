@@ -12,27 +12,18 @@ describe("bindDateParams", () => {
     });
   });
 
-  it("sends an array of Dates as a Postgres array literal", () => {
-    const later = new Date("-000043-03-15T12:00:00.500Z");
-    expect(bindDateParams("select $1", [[at, null, later]]).values).toStrictEqual([
-      `{"${atText}",NULL,"0044-03-15 12:00:00.500+00 BC"}`,
-    ]);
+  it("leaves arrays, with or without Dates, for the array type's serializer", () => {
+    const params = [[1, 2], [], [null], ["a"], [[at], [at, "x"]]];
+    expect(bindDateParams("select $1, $2, $3, $4, $5", params).values).toStrictEqual(params);
   });
 
-  it("writes nested arrays of Dates with nested braces", () => {
-    expect(bindDateParams("select $1", [[[at], [at]]]).values).toStrictEqual([
-      `{{"${atText}"},{"${atText}"}}`,
-    ]);
-  });
-
-  it("leaves an array with no Date for postgres.js", () => {
-    const params = [[1, 2], [], [null], ["a"]];
-    expect(bindDateParams("select $1, $2, $3, $4", params).values).toStrictEqual(params);
-  });
-
-  it("refuses an array that mixes Dates with other values, naming the param", () => {
-    expect(() => bindDateParams("select $1, $2", [1, [at, "x"]])).toThrow(
-      "Param $2 mixes Dates with other values in an array",
+  it("refuses an Invalid Date, alone or nested in an array, naming the param", () => {
+    const invalid = new Date(Number.NaN);
+    expect(() => bindDateParams("select $1, $2", [1, invalid])).toThrow(
+      "Param $2 holds an Invalid Date",
+    );
+    expect(() => bindDateParams("select $1", [[[at], [invalid]]])).toThrow(
+      "Param $1 holds an Invalid Date",
     );
   });
 
@@ -46,7 +37,7 @@ describe("bindDateParams", () => {
   it("gives each use of a Date array param its own param", () => {
     const { text, values } = bindDateParams("= any($1) or $1 = x", [[at]]);
     expect(text).toBe("= any($1) or $2 = x");
-    expect(values).toStrictEqual([`{"${atText}"}`, `{"${atText}"}`]);
+    expect(values).toStrictEqual([[at], [at]]);
   });
 
   it("repeats a param that is not a Date as it is", () => {

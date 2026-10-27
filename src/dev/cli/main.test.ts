@@ -110,6 +110,24 @@ describe("main verify", () => {
     expect(stdout).toBe("verified 2 migrations\n");
   });
 
+  it("says migration in the singular for a chain of one", async () => {
+    const file = await writeVerifyConfig();
+    const a = await writeMigration("000001-a.sql", undefined, "create table a (n int);\n");
+    await writeFile(join(cli.dir, "migrations", a.filename), a.content);
+
+    expect(await main(["verify", "--config", file])).toBe(0);
+    expect(stdout).toBe("verified 1 migration\n");
+  });
+
+  it("reads smonndb.config.ts from the working directory when --config is absent", async () => {
+    await writeVerifyConfig();
+    await commitChain();
+    vi.spyOn(process, "cwd").mockReturnValue(cli.dir);
+
+    expect(await main(["verify"])).toBe(0);
+    expect(stdout).toBe("verified 2 migrations\n");
+  });
+
   it("exits 1 naming the first bad file", async () => {
     const file = await writeVerifyConfig();
     await commitChain();
