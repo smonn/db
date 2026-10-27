@@ -35,13 +35,10 @@ function actionFor(rename: Rename, fact: Fact): Action | undefined {
 }
 
 function tableRenameAction(rename: TableRename | ColumnRename, fact: Fact): Action | undefined {
-  if (rename.kind === "table" && fact.kind === "table") {
-    return { kind: "rename table", fact, rename };
+  if (rename.kind === "table") {
+    return fact.kind === "table" ? { kind: "rename table", fact, rename } : undefined;
   }
-  if (rename.kind === "column" && fact.kind === "column") {
-    return { kind: "rename column", fact, rename };
-  }
-  return undefined;
+  return fact.kind === "column" ? { kind: "rename column", fact, rename } : undefined;
 }
 
 type Added = Action<
