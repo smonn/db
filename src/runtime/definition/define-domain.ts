@@ -26,7 +26,6 @@ function modified(state: ColumnState, codec: unknown): boolean {
   return [
     state.notNull,
     state.default !== undefined,
-    state.identity !== undefined,
     state.primaryKey,
     state.unique,
     state.indexes.length > 0,

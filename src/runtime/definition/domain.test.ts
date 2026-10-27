@@ -1,5 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineDatabase, defineDomain, defineEnum, defineTable, type Row } from "./index.ts";
+import { isDomain } from "./domain.ts";
+import { isEnum } from "./enum.ts";
 
 describe("defineDomain", () => {
   it("keeps its base, NOT NULL, default, and checks keyed by name", () => {
@@ -60,6 +62,42 @@ describe("defineDomain", () => {
     expect(() => defineDomain((c) => c.integer().index())).toThrow(
       "defineDomain takes a bare type, such as c.integer(); declare notNull, default, and checks in its options",
     );
+    expect(() => defineDomain((c) => c.integer().name("whole"))).toThrow(
+      "defineDomain takes a bare type",
+    );
+    expect(() => defineDomain((c) => c.integer().renamedFrom("whole"))).toThrow(
+      "defineDomain takes a bare type",
+    );
+    expect(() =>
+      // @ts-expect-error -- a default belongs in the domain's options.
+      defineDomain((c) => c.integer().default("0")),
+    ).toThrow("defineDomain takes a bare type");
+    expect(() =>
+      // @ts-expect-error -- an identity is no bare type.
+      defineDomain((c) => c.integer().identity()),
+    ).toThrow("defineDomain takes a bare type");
+    const target = defineTable((c) => ({ id: c.integer().primaryKey() }));
+    expect(() =>
+      // @ts-expect-error -- a reference belongs on a table's column.
+      defineDomain((c) => c.integer().references(() => target.columns.id)),
+    ).toThrow("defineDomain takes a bare type");
+    expect(() =>
+      // @ts-expect-error -- a codec belongs on the domain's columns.
+      defineDomain((c) => c.integer().codec({ decode: String, encode: Number })),
+    ).toThrow("defineDomain takes a bare type");
+  });
+});
+
+describe("isDomain and isEnum", () => {
+  const domain = defineDomain((c) => c.integer());
+  const mood = defineEnum(["ok"]);
+
+  it("tell a domain from an enum and from anything else", () => {
+    expect([isDomain(domain), isDomain(mood)]).toStrictEqual([true, false]);
+    expect([isEnum(mood), isEnum(domain)]).toStrictEqual([true, false]);
+    for (const other of [null, undefined, 3, "domain", "enum", {}, { kind: "table" }]) {
+      expect([isDomain(other), isEnum(other)]).toStrictEqual([false, false]);
+    }
   });
 });
 

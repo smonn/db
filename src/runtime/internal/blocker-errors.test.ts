@@ -58,6 +58,30 @@ describe("explainBlockerError", () => {
     expect(messageOf(mapped)).toMatch(/\nGenerate never uses CASCADE/u);
   });
 
+  it("leaves out the blockers when Postgres gave no text detail", () => {
+    const base = "cannot drop table t";
+
+    for (const detail of [undefined, 3]) {
+      const error = Object.assign(new Error(base), { code: "2BP01", detail });
+      expect(messageOf(explainBlockerError(error, { source: generated }))).toMatch(
+        /^cannot drop table t\nGenerate never uses CASCADE/u,
+      );
+    }
+  });
+
+  it("maps a retype blocker only under the 0A000 code", () => {
+    const error = postgresError("42804", "cannot alter type of a column used by a view or rule");
+
+    expect(explainBlockerError(error, { source: generated })).toBe(error);
+  });
+
+  it.each([null, undefined, { code: "2BP01", message: "cannot drop table t" }])(
+    "passes the non-Error %j through unchanged",
+    (value) => {
+      expect(explainBlockerError(value, { source: generated })).toBe(value);
+    },
+  );
+
   it.each([
     postgresError("0A000", "cannot alter type of a column used in a policy definition"),
     postgresError("0A000", "cannot alter type of a column used in a trigger definition"),

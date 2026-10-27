@@ -19,9 +19,10 @@ function primaryKeyOf(columns: Columns, own: RuntimeRefs, declared: unknown): Pr
     }
     return { columns: single.map(([n]) => n), name: single[0]?.[1].state.constraintName };
   }
-  if (single.length > 0) {
+  const [first] = single;
+  if (first !== undefined) {
     throw new Error(
-      `Column "${single[0]?.[0]}" calls primaryKey() and the table's second callback also declares a primary key; use one`,
+      `Column "${first[0]}" calls primaryKey() and the table's second callback also declares a primary key; use one`,
     );
   }
   const entry = keyEntry(declared);
@@ -38,8 +39,8 @@ function keyEntry(declared: unknown): { name: string | undefined; columns: unkno
 }
 
 function namedKeyEntry(declared: unknown): { name: string; columns: unknown } | undefined {
-  if (typeof declared !== "object" || declared === null || !("name" in declared)) return undefined;
-  const { name } = declared;
+  if (typeof declared !== "object" || declared === null) return undefined;
+  const name: unknown = Reflect.get(declared, "name");
   if (typeof name !== "string") return undefined;
   return { name, columns: "columns" in declared && declared.columns };
 }
