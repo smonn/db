@@ -1,14 +1,15 @@
 import {
-  childrenOf,
+  keyAt,
   plainKeyColumns,
   type Catalog,
   type Fact,
-  type GeneratedPayload,
   type IndexPayload,
   type Key,
+  unchangedFacts,
 } from "../catalog/index.ts";
 import type { Action, Catalogs } from "./actions.ts";
 import { swapOf } from "./enum-swap.ts";
+import { storageOf } from "./generation.ts";
 
 /**
  * The columns `ALTER COLUMN` can't convert: Postgres can't make a plain column generated, switch
@@ -18,22 +19,18 @@ export function rebuiltColumns({ from, to }: Catalogs): ReadonlyMap<Key, Fact> {
   const rebuilt = new Map<Key, Fact>();
   for (const [key, before] of from) {
     const after = to.get(key);
-    if (before.kind !== "column" || after?.kind !== "column") continue;
+    // A column's key is no other kind's, so `before` is a column too.
+    if (after?.kind !== "column") continue;
     if (needsRebuild({ from, to }, before, after)) rebuilt.set(key, after);
   }
   return rebuilt;
 }
 
 function needsRebuild({ from, to }: Catalogs, before: Fact, after: Fact): boolean {
-  const was = generation(from, before);
-  const now = generation(to, after);
-  if (was?.storage === now?.storage) return false;
-  return !(now === undefined && was?.storage === "stored");
-}
-
-function generation(catalog: Catalog, column: Fact): GeneratedPayload | undefined {
-  const child = childrenOf(catalog, column).find((fact) => fact.kind === "generated");
-  return child?.kind === "generated" ? child.payload : undefined;
+  const was = storageOf(from, before);
+  const now = storageOf(to, after);
+  if (was === now) return false;
+  return !(now === undefined && was === "stored");
 }
 
 /** Whether the column changes type, or keeps the name of an enum that swaps (ADR-0023). */
@@ -58,11 +55,12 @@ export function without(
   columnsNamed: (fact: Fact) => readonly string[],
 ): Catalog {
   const columns = [...rebuilt.values()];
+  const rebuiltKeys: ReadonlySet<Key | undefined> = new Set(rebuilt.keys());
   return new Map(
     [...catalog].filter(
       ([key, fact]) =>
-        !rebuilt.has(key) &&
-        !(fact.parent !== undefined && rebuilt.has(fact.parent)) &&
+        !rebuiltKeys.has(key) &&
+        !rebuiltKeys.has(fact.parent) &&
         !columns.some(
           (column) => column.parent === fact.parent && columnsNamed(fact).includes(column.name),
         ),
@@ -80,9 +78,9 @@ type ForeignKey = Extract<Fact, { readonly kind: "foreign key" }>;
  */
 export function foreignKeysAround(planned: readonly Action[], catalogs: Catalogs): Action[] {
   const changed = changedColumns(planned);
-  const blocked = (key: ForeignKey): boolean => isBlocked(key, planned, changed, catalogs.from);
-  const renames = blockedRenames(planned, catalogs.from, blocked);
-  const unchanged = unchangedForeignKeys(catalogs)
+  const blocked = (key: ForeignKey): boolean => isBlocked(key, planned, changed);
+  const renames = blockedRenames(planned, blocked);
+  const unchanged = unchangedFacts(catalogs.from, catalogs.to, "foreign key")
     .filter(([key]) => !dropsForeignKey(planned, key) && blocked(key))
     .flatMap(([before, after]) => rebuild(before, after));
   return [
@@ -99,43 +97,22 @@ function rebuild(before: ForeignKey, after: ForeignKey): Action[] {
   ];
 }
 
-/** The rebuild that replaces each rename of a foreign key that `blocked` holds up. */
+/**
+ * The rebuild that replaces each rename of a foreign key that `blocked` holds up. A rename pairs
+ * keys of one payload, so the old key is the new one under its old name.
+ */
 function blockedRenames(
   planned: readonly Action[],
-  from: Catalog,
   blocked: (key: ForeignKey) => boolean,
 ): Map<Action, Action[]> {
   const rebuilds = new Map<Action, Action[]>();
   for (const action of planned) {
     if (action.kind !== "rename constraint" || action.fact.kind !== "foreign key") continue;
-    const before = blocked(action.fact)
-      ? foreignKeyNamed(from, action.fact.parent, action.was)
-      : undefined;
-    if (before !== undefined) rebuilds.set(action, rebuild(before, action.fact));
+    if (blocked(action.fact)) {
+      rebuilds.set(action, rebuild({ ...action.fact, name: action.was }, action.fact));
+    }
   }
   return rebuilds;
-}
-
-/** The foreign key `catalog` holds under `name` on the table at `parent`. */
-function foreignKeyNamed(
-  catalog: Catalog,
-  parent: Key | undefined,
-  name: string,
-): ForeignKey | undefined {
-  for (const fact of catalog.values()) {
-    if (fact.kind === "foreign key" && fact.parent === parent && fact.name === name) return fact;
-  }
-  return undefined;
-}
-
-/** Each foreign key both catalogs hold under one name, as `from` and as `to` have it. */
-function unchangedForeignKeys({ from, to }: Catalogs): [before: ForeignKey, after: ForeignKey][] {
-  const pairs: [ForeignKey, ForeignKey][] = [];
-  for (const [key, before] of from) {
-    const after = to.get(key);
-    if (before.kind === "foreign key" && after?.kind === "foreign key") pairs.push([before, after]);
-  }
-  return pairs;
 }
 
 function dropsForeignKey(planned: readonly Action[], foreignKey: ForeignKey): boolean {
@@ -151,14 +128,12 @@ function isBlocked(
   { parent, payload }: ForeignKey,
   planned: readonly Action[],
   changed: ReadonlySet<string>,
-  from: Catalog,
 ): boolean {
-  const target = tableKeyAt(from, payload.target.schema, payload.target.table);
+  const target = keyAt(payload.target.schema, payload.target.table);
   return (
     payload.columns.some((column) => changed.has(columnId(parent, column))) ||
-    (target !== undefined &&
-      (payload.target.columns.some((column) => changed.has(columnId(target, column))) ||
-        dropsKeyOn(planned, target, payload.target.columns)))
+    payload.target.columns.some((column) => changed.has(columnId(target, column))) ||
+    dropsKeyOn(planned, target, payload.target.columns)
   );
 }
 
@@ -179,13 +154,6 @@ function changedColumns(planned: readonly Action[]): ReadonlySet<string> {
 
 function columnId(table: Key, column: string): string {
   return `${table}\0${column}`;
-}
-
-function tableKeyAt(catalog: Catalog, schema: string, table: string): Key | undefined {
-  return [...catalog].find(
-    ([, fact]) =>
-      fact.kind === "table" && fact.name === table && catalog.get(fact.parent)?.name === schema,
-  )?.[0];
 }
 
 /** Whether `planned` drops a key of `table` that a foreign key to `columns` could stand on. */

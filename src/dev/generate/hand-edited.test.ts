@@ -101,7 +101,7 @@ describe("generate with a hand-edited current.sql", () => {
       migrations: "db/migrations",
     });
 
-    expect(result.leftover).toBeUndefined();
+    expect(result).not.toHaveProperty("leftover");
     expect(result.sql).toBe(body);
   });
 

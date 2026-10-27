@@ -46,7 +46,8 @@ export async function rebase(options: RebaseOptions): Promise<RebaseResult> {
   const local = await readCommitted(fileSystem, migrations);
   const parsed = local
     .map((file) => parseMigration(file))
-    .toSorted((a, b) => a.sequence - b.sequence || (a.filename < b.filename ? -1 : 1));
+    // readCommitted lists by filename, and this sort is stable, so equal sequences keep that order.
+    .toSorted((a, b) => a.sequence - b.sequence);
   checkHoldsBase(parsed, base, { migrations, onto });
 
   const baseHashes = new Set(base.map(({ hash }) => hash));
@@ -213,7 +214,7 @@ async function rewrite(
     const sequence = String(tipSequence + index + 1).padStart(6, "0");
     // oxlint-disable-next-line eslint/no-await-in-loop -- each file chains onto the one before it.
     const to = await writeMigration(
-      from.filename.replace(/^\d+/u, sequence),
+      `${sequence}${from.filename.slice(from.filename.indexOf("-"))}`,
       previous,
       from.body,
       from,

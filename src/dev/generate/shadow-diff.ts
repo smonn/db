@@ -24,12 +24,12 @@ export type ShadowDiffOptions = {
   readonly tracking: TrackingSchema;
   readonly shadowOptions: ShadowOptions;
   /** A hand-edited Current migration body: the Shadow runs it instead of the generated SQL. */
-  readonly edited?: string;
+  readonly edited?: string | undefined;
 };
 
 export type ShadowDiff = Diff & {
   /** With `edited`, the differences from the Definition that the edit leaves, as a message. */
-  readonly leftover?: string;
+  readonly leftover?: string | undefined;
 };
 
 /**
@@ -60,10 +60,9 @@ export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
           tracking,
           handEdited: true,
         });
-        return leftover === undefined ? result : { ...result, leftover };
+        return { ...result, leftover };
       }
       refuseTypeChanges({ from: catalog, to: target });
-      if (result.sql === "") return result;
       // The scan names objects as the diff does, so it reads the Shadow with the renames run.
       const blockers = await withRenames(databases.shadow, renames, (tx) =>
         unmodeledBlockers(tx, result.scans),
