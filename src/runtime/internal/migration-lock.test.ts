@@ -24,6 +24,28 @@ describe("acquireMigrationLock", () => {
     expect(query).toHaveBeenCalledTimes(3);
   });
 
+  it("waits the interval between polls", async () => {
+    vi.useFakeTimers();
+    try {
+      const query = vi
+        .fn<Queryable["query"]>()
+        .mockResolvedValueOnce({ rows: [{ locked: false }], count: 1 })
+        .mockResolvedValueOnce({ rows: [{ locked: true }], count: 1 });
+      const taken = acquireMigrationLock(
+        { query, execute: vi.fn<Queryable["execute"]>() },
+        { intervalMs: 500 },
+      );
+
+      await vi.advanceTimersByTimeAsync(499);
+      expect(query).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await taken;
+      expect(query).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("polls while another session holds the lock, without queuing for it, then takes it", async () => {
     const held = await whileMigrationLockHeld(db.driver, () =>
       db.driver.session((session) => acquireMigrationLock(session, { intervalMs: 10 })),
