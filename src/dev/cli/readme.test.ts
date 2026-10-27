@@ -114,6 +114,7 @@ describe("README getting started", () => {
       "file=db/definition.ts",
       "file=smonndb.config.ts",
       "file=query.ts",
+      "file=db/enums.ts",
     ]);
     expect(steps.map((s) => s.command.split(" ").at(-1))).toStrictEqual([
       "generate",

@@ -39,6 +39,7 @@
     "check:node-version": "node scripts/check-node-version.ts",
     "check:oidc": "node scripts/check-oidc-jobs.ts",
     "check:parent": "node scripts/check-issue-parent.ts",
+    "check:readme": "node scripts/check-readme-examples.ts",
     "check:static": "node scripts/check.ts --static",
     "check:pr": "node scripts/check-pr.ts",
     "clear:review": "node scripts/clear-stale-review.ts",

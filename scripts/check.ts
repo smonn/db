@@ -19,6 +19,7 @@ export const checks = [
   "check:mermaid",
   "check:node-version",
   "check:oidc",
+  "check:readme",
   "typecheck",
   "lint",
   "lint:actions",
