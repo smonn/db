@@ -64,6 +64,7 @@ export function explainShadowError(
     if (explained !== undefined) return explained;
   }
   return explainBlockerError(error, {
+    // Stryker disable next-line StringLiteral: explainBlockerError words any source that isn't "generated" or "committed" as a hand edit.
     source: { kind: handEdited ? "hand-edited" : "generated" },
   });
 }

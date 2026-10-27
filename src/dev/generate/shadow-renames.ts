@@ -47,6 +47,7 @@ export async function withRenames<T>(
       throw new RolledBack();
     })
     .catch((error: unknown) => error);
+  // Stryker disable next-line ConditionalExpression: `read` returned before the sentinel was thrown, so `result` is set whenever the outcome is RolledBack.
   if (!(outcome instanceof RolledBack) || result === undefined) throw outcome;
   return result.value;
 }
