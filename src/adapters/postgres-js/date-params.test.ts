@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { bindDateParams } from "./date-params.ts";
 
 const at = new Date("2026-01-01T00:00:00Z");
@@ -10,6 +10,15 @@ describe("bindDateParams", () => {
       text: "select $1, $2, $3",
       values: [atText, 7, "x"],
     });
+  });
+
+  it("returns a query with no Date param as it is, without scanning its text", () => {
+    const exec = vi.spyOn(RegExp.prototype, "exec");
+    const result = bindDateParams("select $1, $1, $2 from t", [1, "x"]);
+    const scans = exec.mock.calls.length;
+    exec.mockRestore();
+    expect(scans).toBe(0);
+    expect(result).toStrictEqual({ text: "select $1, $1, $2 from t", values: [1, "x"] });
   });
 
   it("leaves arrays, with or without Dates, for the array type's serializer", () => {

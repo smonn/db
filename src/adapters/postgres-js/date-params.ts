@@ -105,5 +105,6 @@ export function bindDateParams(
     isDate.push(bound !== undefined);
     return bound ?? value;
   });
+  if (!isDate.includes(true)) return { text, values };
   return { text: splitDateUses(text, values, isDate) ?? text, values };
 }
