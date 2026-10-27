@@ -63,6 +63,13 @@ describe("defineDomain", () => {
     expect(() => defineDomain((c) => c.integer().name("whole"))).toThrow(
       "defineDomain takes a bare type",
     );
+    expect(() => defineDomain((c) => c.integer().renamedFrom("whole"))).toThrow(
+      "defineDomain takes a bare type",
+    );
+    expect(() =>
+      // @ts-expect-error -- a codec belongs on the domain's columns.
+      defineDomain((c) => c.integer().codec({ decode: String, encode: Number })),
+    ).toThrow("defineDomain takes a bare type");
   });
 });
 

@@ -133,5 +133,12 @@ describe("a unique entry in the second callback", () => {
         () => ({ unique: [null] }),
       ),
     ).toThrow("The table's unique takes a list of");
+    expect(() =>
+      defineTable(
+        columns,
+        // @ts-expect-error -- an entry is an object.
+        () => ({ unique: [3] }),
+      ),
+    ).toThrow("The table's unique takes a list of");
   });
 });

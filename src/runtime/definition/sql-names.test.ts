@@ -13,6 +13,9 @@ describe("sqlNamesOf", () => {
     expect(names.columns("app", "users")).toStrictEqual({ userId: "user_id" });
     expect(names.columns("app", "orders")).toStrictEqual({});
     expect(names.columns("other", "users")).toStrictEqual({});
+    expect(names.entry("app", "users")).toBe("users");
+    expect(names.entry("other", "users")).toBe("users");
+    expect(names.schema("other")).toBe("other");
   });
 });
 
@@ -37,13 +40,13 @@ describe("defineDatabase refuses two keys that take one SQL name", () => {
     expect(() =>
       defineDatabase({ public: { userKind, user_kind } }, { casing: "snake_case" }),
     ).toThrow(
-      'The keys of schema "public" "userKind" and "user_kind" both map to the SQL name "user_kind"',
+      `The keys of schema "public" "userKind" and "user_kind" both map to the SQL name "user_kind"; give one of them another name with name in a table's second callback or a type's options`,
     );
   });
 
   it("for two schemas", () => {
     expect(() => defineDatabase({ appData: {}, app_data: {} }, { casing: "snake_case" })).toThrow(
-      'The schema keys "appData" and "app_data" both map to the SQL name "app_data"',
+      'The schema keys "appData" and "app_data" both map to the SQL name "app_data"; rename one of the schemas',
     );
   });
 });
@@ -99,6 +102,13 @@ describe("defineDatabase refuses a SQL name Postgres can't hold", () => {
     expect(() => defineDatabase({ s: { t: column } })).toThrow(
       `The column key "a" of "s"."t" ${fix}`,
     );
+  });
+
+  it("for a name of 64 bytes, though 63 fit", () => {
+    const fits = defineTable((c) => ({ ["a".repeat(63)]: c.text() }));
+    expect(() => defineDatabase({ s: { t: fits } })).not.toThrow();
+    const over = defineTable((c) => ({ ["a".repeat(64)]: c.text() }));
+    expect(() => defineDatabase({ s: { t: over } })).toThrow(`${fix}, not "${"a".repeat(64)}"`);
   });
 
   it("for a mapped name over 63 bytes, counted in UTF-8", () => {
