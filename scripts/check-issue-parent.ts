@@ -211,21 +211,17 @@ function milestoneParents(gh: Gh, repo: string, current: Current): number[] {
   return matchingParents(current, milestoneIssues);
 }
 
-function parentsToName(gh: Gh, target: Target, current: Current): number[] {
-  if (hasComment(gh, target, MARKER)) return [];
-  return milestoneParents(gh, target.repo, current);
-}
-
 // A sliced issue is attached right after it opens, so wait and look again before commenting (#489).
 function commentUnlessAttached(gh: Gh, target: Target, parents: number[], wait: Wait): void {
   const { repo, number: issueNumber } = target;
   wait(GRACE_MS);
   const again = getOne(gh, `repos/${repo}/issues/${issueNumber}`);
+  if (!qualifies(again)) return;
   if (again.parent_issue_url !== null) {
     checkParentArea(gh, target, again, again.parent_issue_url);
     return;
   }
-  if (hasParentOrChildren(again)) return;
+  if (hasParentOrChildren(again) || parents.length === 0) return;
   const named = parents.map((parent) => `#${parent}`).join(", ");
   const body = `${MARKER}\nThis issue has no parent, and its milestone has a parent for its area: ${named}. If it belongs there, attach it as a sub-issue (\`gh issue edit <parent> --add-sub-issue ${issueNumber}\`). Not every issue needs a parent, so ignore this if it doesn't.`;
   gh(["issue", "comment", String(issueNumber), "--repo", repo, "--body", body]);
@@ -254,7 +250,7 @@ function mismatchComment(parent: Current, own: string[], candidates: number[]): 
   return `${MISMATCH_MARKER}\nThis sub-issue shares no area with its parent #${parent.number} (${areas(parent.labels).join(", ")}). It has ${own.join(", ")}. ${advice}`;
 }
 
-// Attaching a sub-issue fires `sub_issues`, not `issues`, so this runs only on a later label or milestone event.
+// Attaching a sub-issue fires `sub_issues`, not `issues`, so this runs on a later label or milestone event, or after the grace wait.
 function checkParentArea(gh: Gh, target: Target, current: Current, parentUrl: string): void {
   const own = areas(current.labels);
   const parent = getOne(gh, apiPath(parentUrl));
@@ -269,8 +265,8 @@ function checkParentArea(gh: Gh, target: Target, current: Current, parentUrl: st
 
 function checkParentless(gh: Gh, target: Target, current: Current, wait: Wait): void {
   if (current.milestone === null || hasParentOrChildren(current)) return;
-  const parents = parentsToName(gh, target, current);
-  if (parents.length === 0) return;
+  if (hasComment(gh, target, MARKER)) return;
+  const parents = milestoneParents(gh, target.repo, current);
   commentUnlessAttached(gh, target, parents, wait);
 }
 
