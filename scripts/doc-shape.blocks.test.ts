@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { checkBudget } from "./doc-shape.ts";
 
+const dash = String.fromCodePoint(0x2014);
 const words = (count: number): string => Array.from({ length: count }, () => "w").join(" ");
 const tooLong = (line: number, count: number) => [
   {
@@ -36,8 +37,9 @@ describe("checkBudget blocks", () => {
   });
 
   test("counts words with letters or digits, not punctuation", () => {
-    expect(checkBudget("docs/a.md", "Café — ... 42 | - * naïve\n", 3)).toEqual([]);
-    expect(checkBudget("docs/a.md", "Café — ... 42 | - * naïve\n", 2)).toEqual([
+    const text = `Café ${dash} ... 42 | - * naïve\n`;
+    expect(checkBudget("docs/a.md", text, 3)).toEqual([]);
+    expect(checkBudget("docs/a.md", text, 2)).toEqual([
       {
         file: "docs/a.md",
         line: 1,

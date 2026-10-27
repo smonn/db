@@ -3,29 +3,10 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { type IssueEvent, main, needsCapitalTitle } from "./check-issue-milestone.ts";
+import { main, needsCapitalTitle } from "./check-issue-milestone.ts";
+import { event } from "./check-issue-milestone.test-helper.ts";
 
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn<typeof execFileSync>() }));
-
-function event(
-  issue: Partial<IssueEvent["issue"]> = {},
-  rest: Partial<Omit<IssueEvent, "issue">> = {},
-): IssueEvent {
-  return {
-    action: "opened",
-    issue: {
-      number: 7,
-      title: "Nothing flags a lowercase title",
-      state: "open",
-      milestone: null,
-      labels: [],
-      user: { type: "User" },
-      ...issue,
-    },
-    repository: { full_name: "smonn/db", html_url: "https://github.com/smonn/db" },
-    ...rest,
-  };
-}
 
 let dir: string;
 const write = (payload: unknown): string => {
