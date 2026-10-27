@@ -72,23 +72,9 @@ function checkLink(
   if (isExternal(target)) return [];
   const [path = "", anchor] = target.split("#");
   const { resolved, targetText } = resolveLink(source, path, read);
-  const message = linkFault(
-    path,
-    target,
-    targetText,
-    hasAnchor(resolved, targetText ?? "", anchor),
-  );
-  return message === undefined ? [] : [{ file, line, message }];
-}
-
-function linkFault(
-  path: string,
-  target: string,
-  targetText: string | undefined,
-  anchored: boolean,
-): string | undefined {
-  if (targetText === undefined) return `link to missing file ${path}`;
-  return anchored ? undefined : `link to missing heading ${target}`;
+  if (targetText === undefined) return [{ file, line, message: `link to missing file ${path}` }];
+  if (hasAnchor(resolved, targetText, anchor)) return [];
+  return [{ file, line, message: `link to missing heading ${target}` }];
 }
 
 /**
