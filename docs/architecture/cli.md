@@ -23,7 +23,7 @@ Plain text: results to stdout, errors to stderr, with no colors when stdout isn'
 
 ## generate
 
-ADR-0003, ADR-0011, ADR-0013, and ADR-0016.
+ADR-0003, ADR-0011, ADR-0013, ADR-0016, and ADR-0025.
 
 ```mermaid
 sequenceDiagram
@@ -41,7 +41,8 @@ sequenceDiagram
   Gen->>Shadow: build Definition database from the Definition's DDL
   Gen->>DB: introspect both databases
   Gen->>Diff: Shadow catalog vs Definition catalog
-  Diff-->>Gen: Current migration SQL
+  Diff-->>Gen: Current migration SQL, what it drops or retypes
+  Gen->>DB: scan the Shadow's pg_depend from those, stop on any Unmodeled blocker
   Gen->>DB: apply it to the Shadow, introspect, require no diff
   Gen->>FS: write Current migration
   Gen->>DB: if its hash or the Committed tip changed, reset the Dev database and replay all migrations
