@@ -65,6 +65,8 @@ A `renamedLabels` entry renames a label in place with `ALTER TYPE ... RENAME VAL
 
 A removed or reordered label swaps the type (ADR-0023): phase 1 renames the old one aside, phase 5 creates the new one, phase 6 retypes each column of it or its array with `USING col::text::<type>`, dropping and setting its default around it, and phase 8 drops the old one. The diff refuses a swap while a domain fact in the catalog depends on the enum, naming the domain. It also refuses when a column of the enum or its array is stored generated in both catalogs, since Postgres rejects `USING` on a generated column, naming the column; one the Definition makes plain loses its expression first.
 
+A created enum lists all its labels, so a swap that also adds one has no `ADD VALUE`.
+
 ### Domains
 
 A domain is a fact under its schema, keyed like an enum. Its payload holds its base as `format_type` spells it, its default as `pg_get_expr` renders it and whether that calls a volatile function, and NOT NULL, folded like a column's. Each check is a child `domain check` fact named by its constraint; a `NOT VALID` one is the same fact. `introspect` skips as Unmodeled a domain over a domain or array, or with its own collation. Generate refuses a changed base, and a name switching between enum and domain.

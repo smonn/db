@@ -30,7 +30,7 @@ export function refuseTypeChanges(catalogs: Catalogs): void {
 
 const ARTICLES: Readonly<Record<string, string>> = { enum: "an enum", domain: "a domain" };
 
-/** The new type is created in phase 5 and the old one drops in phase 8, so their names would clash. */
+/** The new type is created in "create or alter schema or type" and the old one drops in "drop type", so their names would clash. */
 function refuseKindSwitch(before: Fact, after: Fact, from: Catalog): void {
   const now = ARTICLES[after.kind];
   if (!Object.hasOwn(ARTICLES, before.kind) || now === undefined || before.kind === after.kind) {
