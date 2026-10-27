@@ -125,13 +125,27 @@ export function useTestDatabase(): TestDatabase {
 const activeBackends =
   "from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and state = 'active' and strpos(query, $1) > 0";
 
+async function pollUntil(done: () => boolean | Promise<boolean>, failure: string): Promise<void> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    // oxlint-disable-next-line eslint/no-await-in-loop -- each poll waits on the one before it.
+    if (await done()) return;
+    // oxlint-disable-next-line eslint/no-await-in-loop -- see above.
+    await setTimeout(10);
+  }
+  throw new Error(failure);
+}
+
+// Gives up rather than polling until the test times out: a statement that never starts would
+// leave the test, and any lock it holds, waiting 30 seconds (#605).
 async function untilActiveBackend(driver: Driver, select: string, fragment: string): Promise<void> {
   const statement = `select ${select} as hit ${activeBackends}`;
-  const { rows } = await driver.query(statement, [fragment]);
-  if (!rows.some((row) => row["hit"] === true)) {
-    await setTimeout(10);
-    await untilActiveBackend(driver, select, fragment);
-  }
+  await pollUntil(
+    async () => {
+      const { rows } = await driver.query(statement, [fragment]);
+      return rows.some((row) => row["hit"] === true);
+    },
+    `no backend ran ${JSON.stringify(fragment)}`,
+  );
 }
 
 /**
@@ -182,17 +196,10 @@ export async function untilMigrationLockAttempted(
   driver: Driver,
   { holderPid = 0, gaveUp = never }: AttemptOptions = {},
 ): Promise<void> {
-  await pollUntil(() => gaveUp() || lockAttempted(driver, holderPid));
-}
-
-async function pollUntil(done: () => boolean | Promise<boolean>): Promise<void> {
-  for (let attempt = 0; attempt < 500; attempt += 1) {
-    // oxlint-disable-next-line eslint/no-await-in-loop -- each poll waits on the one before it.
-    if (await done()) return;
-    // oxlint-disable-next-line eslint/no-await-in-loop -- see above.
-    await setTimeout(10);
-  }
-  throw new Error("nothing tried to take the migration lock");
+  await pollUntil(
+    () => gaveUp() || lockAttempted(driver, holderPid),
+    "nothing tried to take the migration lock",
+  );
 }
 
 async function lockAttempted(driver: Driver, holderPid: number): Promise<boolean> {
