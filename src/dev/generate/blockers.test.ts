@@ -19,7 +19,7 @@ const table = (name: string): Scan => ({
   walk: "drop",
   object: { type: "table", names: ["public", name], args: [] },
 });
-const column = (walk: Scan["walk"], name: string): Scan => ({
+const column = (walk: "drop" | "retype", name: string): Scan => ({
   walk,
   object: { type: "table column", names: ["public", "users", name], args: [] },
 });

@@ -113,15 +113,19 @@ const VERBS: Readonly<Record<string, string>> = { drop: "drops", retype: "retype
 /**
  * Every object that blocks a drop or retype in `scans`, as a message, or `undefined` when none
  * does. Reads the Shadow, so it sees the Unmodeled objects verification would meet (ADR-0025).
+ * It runs the `rename` scans first, so `shadow` is a transaction that rolls back.
  */
 export async function unmodeledBlockers(
   shadow: Queryable,
   scans: readonly Scan[],
 ): Promise<string | undefined> {
-  if (scans.length === 0) return undefined;
-  const { rows } = await shadow.query(BLOCKERS, [
-    JSON.stringify(scans.map(({ walk, object }) => ({ walk, ...object }))),
-  ]);
+  const objects = scans.flatMap((scan) =>
+    scan.walk === "rename" ? [] : [{ walk: scan.walk, ...scan.object }],
+  );
+  if (objects.length === 0) return undefined;
+  const renames = scans.flatMap((scan) => (scan.walk === "rename" ? [scan.sql] : []));
+  if (renames.length > 0) await shadow.execute(renames.join("\n"));
+  const { rows } = await shadow.query(BLOCKERS, [JSON.stringify(objects)]);
   if (rows.length === 0) return undefined;
   const targets = new Map<string, string[]>();
   for (const row of rows) {

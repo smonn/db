@@ -7,7 +7,7 @@ import {
   defineTable,
 } from "../../runtime/definition/index.ts";
 import { writeMigration } from "../../runtime/internal/index.ts";
-import { generate } from "./generate.ts";
+import { generate, type GenerateOptions } from "./generate.ts";
 import { filesIn, memoryFileSystem } from "./memory-file-system.test-helper.ts";
 
 const db = useTestDatabase();
@@ -40,7 +40,7 @@ async function committed(sql: string): Promise<ReturnType<typeof memoryFileSyste
   );
 }
 
-const generateFrom = async (definition: ReturnType<typeof withMood>, sql: string) =>
+const generateFrom = async (definition: GenerateOptions["definition"], sql: string) =>
   generate({
     driver: db.driver,
     connect: db.connect,
@@ -112,7 +112,19 @@ create domain public.still as public.mood;
     const sql = `${START}create domain public.moods as public.mood[];\n`;
 
     await expect(generateFrom(withMood(["c", "b", "a"]), sql)).rejects.toThrow(
-      /^Unmodeled objects block what the Current migration drops or retypes:\n {2}type public\.mood, which it drops:\n {4}type public\.moods\n/u,
+      /^Unmodeled objects block what the Current migration drops or retypes:\n {2}type public\.mood_old, which it drops:\n {4}type public\.moods\n/u,
+    );
+  });
+
+  it("names the old type by its aside after a declared rename", async () => {
+    const sql = `${START}create domain public.moods as public.mood[];\n`;
+    const feeling = defineEnum(["c", "b", "a"], { renamedFrom: "mood" });
+    const definition = defineDatabase({
+      public: { feeling, users: defineTable((c) => ({ mood: c.enum(feeling).default("'a'") })) },
+    });
+
+    await expect(generateFrom(definition, sql)).rejects.toThrow(
+      /^Unmodeled objects block what the Current migration drops or retypes:\n {2}type public\.feeling_old, which it drops:\n {4}type public\.moods\n/u,
     );
   });
 

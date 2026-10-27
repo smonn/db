@@ -1,13 +1,16 @@
+import { quoteIdentifier } from "../../runtime/internal/index.ts";
 import { namesOf, parentOf, qualified, type Catalog, type Fact } from "../catalog/index.ts";
-import type { Action, ActionKind, Catalogs } from "./actions.ts";
+import { render, type Action, type ActionKind, type Catalogs } from "./actions.ts";
 
 /**
  * Which `pg_depend` walk finds the objects that block an action (ADR-0025): `drop` follows every
  * dependent transitively, `retype` reads the column's direct dependents as `ALTER COLUMN ... TYPE`
  * does, `remove` walks nothing but marks a generation expression the plan drops before it retypes,
- * so the retype walk leaves it out, and `none` scans nothing.
+ * so the retype walk leaves it out, `rename` runs its statement before the walks, so they name
+ * what it renames as the plan does, and `none` scans nothing. A declared rename is `none`, since
+ * the Shadow runs those before the diff.
  */
-type Walk = "drop" | "retype" | "remove" | "none";
+type Walk = "drop" | "retype" | "remove" | "rename" | "none";
 
 /** One `Walk` per kind of `K`; the test widens `K` to prove a new kind has to name its walk. */
 export type ScanTable<K extends string> = { readonly [A in K]: Walk };
@@ -19,8 +22,13 @@ export type ObjectAddress = {
   readonly args: readonly string[];
 };
 
-/** An object the plan drops, retypes, or removes, which the scan walks from or leaves out. */
-export type Scan = { readonly walk: Exclude<Walk, "none">; readonly object: ObjectAddress };
+/**
+ * An object the plan drops, retypes, or removes, which the scan walks from or leaves out, or a
+ * rename the scan runs first.
+ */
+export type Scan =
+  | { readonly walk: Exclude<Walk, "rename" | "none">; readonly object: ObjectAddress }
+  | { readonly walk: "rename"; readonly sql: string };
 
 /** Defaults, identity, NOT NULL, and expression changes never blocked in #372's fixture. */
 export const SCANS: ScanTable<ActionKind> = {
@@ -29,7 +37,7 @@ export const SCANS: ScanTable<ActionKind> = {
   "rename enum": "none",
   "rename enum label": "none",
   "rename domain": "none",
-  "rename enum aside": "none",
+  "rename enum aside": "rename",
   "rename domain check": "none",
   "drop foreign key": "drop",
   "drop index": "drop",
@@ -69,14 +77,30 @@ export const SCANS: ScanTable<ActionKind> = {
 };
 
 /**
- * The objects the actions drop, retype, or remove. A drop names its fact in `from`, which is what the
- * Shadow holds, and a retype's column has the same names in both catalogs.
+ * The objects the actions drop, retype, or remove, and the renames to run first. A drop names its
+ * fact in `from`, which is what the Shadow holds, and a retype's column has the same names in both
+ * catalogs. A swap's old type drops under its aside, which its rename gave it.
  */
-export function scansOf(actions: readonly Action[], { from }: Catalogs): Scan[] {
-  return actions.flatMap((action) => {
+export function scansOf(actions: readonly Action[], catalogs: Catalogs): Scan[] {
+  return actions.flatMap((action): Scan[] => {
     const walk = SCANS[action.kind];
-    return walk === "none" ? [] : [{ walk, object: addressOf(action.fact, from) }];
+    if (walk === "none") return [];
+    if (walk === "rename") return [{ walk, sql: render(action, catalogs) }];
+    const object =
+      action.kind === "drop enum aside"
+        ? asideAddress(action, catalogs.from)
+        : addressOf(action.fact, catalogs.from);
+    return [{ walk, object }];
   });
+}
+
+function asideAddress({ fact, swap }: Action<"drop enum aside">, from: Catalog): ObjectAddress {
+  const schema = parentOf(from, fact).name;
+  return {
+    type: "type",
+    names: [`${quoteIdentifier(schema)}.${quoteIdentifier(swap.aside)}`],
+    args: [],
+  };
 }
 
 type Kind = Fact["kind"];

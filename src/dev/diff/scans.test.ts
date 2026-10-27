@@ -17,6 +17,14 @@ function catalog(build: (builder: CatalogBuilder) => void): Catalog {
   return builder.build();
 }
 
+/** `app.mood` holding `labels`, and a table with a column of it. */
+const withMood = (labels: readonly string[]): Catalog =>
+  catalog((b) => {
+    b.enumType("app", "mood", { labels });
+    b.table("app", "t");
+    b.column("app", "t", "m", { type: "app.mood", notNull: false });
+  });
+
 describe("the scan of each action kind", () => {
   it("fails to compile until a new kind names its walk", () => {
     const complete: ScanTable<Future> = { ...SCANS, "drop view": "drop" };
@@ -88,6 +96,14 @@ describe("the scan of each action kind", () => {
         walk: "retype",
         object: { type: "table column", names: ["app", "users.x", "id"], args: [] },
       },
+    ]);
+  });
+
+  it("runs a swap's rename aside first and drops the old type under the aside", () => {
+    expect(diff(withMood(["a", "b"]), withMood(["b", "a"])).scans).toStrictEqual([
+      { walk: "rename", sql: 'alter type "app"."mood" rename to "mood_old";' },
+      { walk: "retype", object: { type: "table column", names: ["app", "t", "m"], args: [] } },
+      { walk: "drop", object: { type: "type", names: [`"app"."mood_old"`], args: [] } },
     ]);
   });
 });
