@@ -76,12 +76,11 @@ const SHADOW: Throwaway = { prefix: SHADOW_PREFIX, checkFunctionBodies: true };
 const DEFINITION: Throwaway = { prefix: DEFINITION_PREFIX, checkFunctionBodies: false };
 
 async function requireCreateDb(driver: Driver): Promise<void> {
-  const {
-    rows: [row],
-  } = await driver.query(CAN_CREATE_DATABASES);
-  if (row?.["allowed"] === true) return;
+  const { rows } = await driver.query(CAN_CREATE_DATABASES);
+  const denied = rows.find((row) => row["allowed"] !== true);
+  if (denied === undefined) return;
   throw new Error(
-    `generate creates its Shadow database, so role ${quoteIdentifier(String(row?.["role"]))} needs CREATEDB`,
+    `generate creates its Shadow database, so role ${quoteIdentifier(String(denied["role"]))} needs CREATEDB`,
   );
 }
 
@@ -102,7 +101,8 @@ export async function sweepStaleDatabases(
       const prefix = prefixes.find((candidate) => database.startsWith(candidate));
       if (prefix === undefined) return false;
       const seconds = /^(\d+)_[0-9a-f]{8}$/u.exec(database.slice(prefix.length))?.[1];
-      return seconds !== undefined && Number(seconds) < cutoff;
+      // A name that doesn't match has no seconds, and NaN is never below the cutoff.
+      return Number(seconds) < cutoff;
     });
   await Promise.all(
     stale.map(async (database) => {
@@ -117,7 +117,7 @@ async function withThrowawayDatabase<T>(
   { prefix, checkFunctionBodies }: Throwaway,
   fn: (database: Driver) => Promise<T>,
 ): Promise<T> {
-  const name = `${prefix}${Math.floor(Date.now() / 1000)}_${randomHex(4)}`;
+  const name = `${prefix}${Math.floor(Date.now() / 1000)}_${crypto.randomUUID().slice(0, 8)}`;
   // Registered before the create, so an interrupt during it waits for the create, then drops.
   const created = Promise.withResolvers<void>();
   const unregister = onInterrupt(async () => {
@@ -149,10 +149,4 @@ async function withThrowawayDatabase<T>(
 
 function dropDatabase(driver: Driver, name: string): Promise<void> {
   return driver.execute(`drop database if exists ${quoteIdentifier(name)} with (force)`);
-}
-
-function randomHex(bytes: number): string {
-  return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
 }
