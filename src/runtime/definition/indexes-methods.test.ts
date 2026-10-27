@@ -32,6 +32,15 @@ describe("an indexes entry by access method", () => {
     );
   });
 
+  it.each(["gin", "brin", "gist"])("%s refuses desc or nulls on one of several keys", (method) => {
+    expect(hit(method, (r) => ({ columns: [{ key: r.a, order: "desc" }, r.b] }))).toThrow(
+      message(method, 'order "desc"'),
+    );
+    expect(hit(method, (r) => ({ columns: [{ key: r.a, nulls: "first" }, r.b] }))).toThrow(
+      message(method, "nulls"),
+    );
+  });
+
   it.each(["hash", "gin", "brin", "gist"])("%s refuses unique", (method) => {
     expect(hit(method, (r) => ({ columns: [r.a], unique: true }))).toThrow(
       message(method, "unique"),

@@ -178,6 +178,27 @@ describe("an indexes entry in the second callback", () => {
     expect(load((r) => ({ columns: [r.a], include: r.b }))).toThrow("takes include as a list");
   });
 
+  it("rejects an entry with no columns key, naming the list it needs", () => {
+    expect(load(() => ({}))).toThrow("The table's indexes takes columns as a list");
+  });
+
+  it("rejects a key that is no object, naming the columns it should be", () => {
+    for (const key of ["a", 3, null]) {
+      expect(load(() => ({ columns: [key] }))).toThrow(
+        "The table's indexes names something that is not one of its columns",
+      );
+    }
+  });
+
+  it("reads an object as a plain key unless it has a key, and no ref or sql expression", () => {
+    expect(load(() => ({ columns: [{ other: 1 }] }))).toThrow(
+      "The table's indexes names something that is not one of its columns",
+    );
+    expect(load(() => ({ columns: [{ "~ref": "a", key: 1 }] }))).toThrow(
+      'The table\'s indexes takes "a" from another table',
+    );
+  });
+
   it("rejects an unknown key by name, and a shape that is not a list of entries", () => {
     expect(load(() => ({ columns: [], having: "true" }))).toThrow('does not take "having"');
     expect(loadRaw(() => ({}))).toThrow("The table's indexes takes a list of");

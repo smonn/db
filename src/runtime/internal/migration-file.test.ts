@@ -94,6 +94,51 @@ describe("parseMigration", () => {
       parseMigration({ filename: "000001-a.sql", content: "--! Previous: -\n--! Hash: abc\n" }),
     ).toThrow("000001-a.sql: --! Hash must be sha256: and 64 lowercase hex digits, not abc");
   });
+
+  it("refuses a malformed Previous hash, naming the header", () => {
+    expect(() =>
+      parseMigration({
+        filename: "000002-a.sql",
+        content: `--! Previous: abc\n--! Hash: ${HASH_A}\n`,
+      }),
+    ).toThrow("000002-a.sql: --! Previous must be sha256: and 64 lowercase hex digits, not abc");
+  });
+
+  it.each([`${HASH_A}0`, `x${HASH_A}`, HASH_A.toUpperCase()])("refuses %s as a hash", (hash) => {
+    expect(() =>
+      parseMigration({
+        filename: "000001-a.sql",
+        content: `--! Previous: -\n--! Hash: ${hash}\n`,
+      }),
+    ).toThrow(`not ${hash}`);
+  });
+
+  it.each(["x000001-a.sql", "dir/000001-a.sql", "000001-a.sql.bak", "000001-a.sqlx"])(
+    "refuses the filename %s",
+    (filename) => {
+      expect(() =>
+        parseMigration({ filename, content: `--! Previous: -\n--! Hash: ${HASH_A}\n` }),
+      ).toThrow(`${filename}: name it like 000001-create-users.sql`);
+    },
+  );
+
+  it.each([`--!x --! Hash: ${HASH_A}`, `--! Hash: ${HASH_A}\rmore`, `--! Hash: ${HASH_A} `])(
+    "refuses the header line %j as an unknown header",
+    (line) => {
+      const content = `--! Previous: -\n${line}\nselect 1;`;
+      expect(() => parseMigration({ filename: "000001-a.sql", content })).toThrow(
+        `000001-a.sql: unknown header ${line}`,
+      );
+    },
+  );
+
+  it("reads a file with headers and no body", () => {
+    const parsed = parseMigration({
+      filename: "000001-a.sql",
+      content: `--! Previous: -\n--! Hash: ${HASH_A}`,
+    });
+    expect(parsed).toMatchObject({ hash: HASH_A, body: "\n" });
+  });
 });
 
 describe("migrationHash", () => {
@@ -227,6 +272,28 @@ describe("parseCurrent", () => {
   it("marks a file without a Generated header as edited, keeping its first line", async () => {
     expect(await parseCurrent("select 1;\nselect 2;\n")).toStrictEqual({
       body: "select 1;\nselect 2;\n",
+      edited: true,
+    });
+  });
+
+  it("reads a Generated header alone as an empty body", async () => {
+    const { hash } = await writeCurrent("\n");
+
+    expect(await parseCurrent(`--! Generated: ${hash}`)).toStrictEqual({
+      body: "\n",
+      edited: false,
+    });
+  });
+
+  it.each([
+    (hash: string) => `x--! Generated: ${hash}`,
+    (hash: string) => `--! Generated: ${hash}0`,
+  ])("marks a header that only resembles Generated as edited", async (make) => {
+    const { hash } = await writeCurrent("select 1;\n");
+    const content = `${make(hash)}\n\nselect 1;\n`;
+
+    expect(await parseCurrent(content)).toStrictEqual({
+      body: `${make(hash)}\n\nselect 1;\n`,
       edited: true,
     });
   });
