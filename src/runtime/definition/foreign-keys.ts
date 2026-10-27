@@ -189,11 +189,11 @@ function declaredForeignKey(
 
 function ownPart(owner: Owner, column: string): Part {
   const { schema, table, primaryKey } = owner;
-  // Stryker disable next-line OptionalChaining: the column is one of the table's own, which the entry's columnOf checks proved.
+  // Stryker disable next-line OptionalChaining: 1 survivor: the column is one of the table's own, which the entry's columnOf checks proved.
   const state = owner.columns[column]?.state;
   return {
     place: { schema, table, column, primaryKey },
-    // Stryker disable next-line OptionalChaining: same column, so `state` is defined.
+    // Stryker disable next-line OptionalChaining: 2 survivors: same column, so `state` is defined.
     state: { primaryKey: state?.primaryKey === true, unique: state?.unique === true },
   };
 }

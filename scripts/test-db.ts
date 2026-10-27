@@ -19,7 +19,7 @@ export function projectName(root: string): string {
 
 export function parsePort(address: string): number | undefined {
   const lines = address.split("\n");
-  // Stryker disable next-line StringLiteral: split always returns a first line, so the fallback only satisfies noUncheckedIndexedAccess.
+  // Stryker disable next-line StringLiteral: 1 survivor: split always returns a first line, so the fallback only satisfies noUncheckedIndexedAccess.
   const match = /:(\d+)\s*$/u.exec(lines[0] ?? "");
   return match === null ? undefined : Number(match[1]);
 }

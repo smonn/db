@@ -4,9 +4,10 @@
  * survives. A mutant with no covering test counts, since nothing kills it either.
  *
  * The run marks each `Stryker disable` comment first (`mark-stryker-disables.ts`), so Stryker
- * tests the mutants they hide. A survivor a marker expects stays off the list; a marker that finds
- * no surviving mutant of its mutator on the next line goes in a Stale disables section, which alone
- * keeps the issue open.
+ * tests the mutants they hide. Each marker states how many mutants of its mutators survive on the
+ * next line. The survivors stay off the list while that many survive; with more, all of them go on
+ * it, since the new one can't be told from the reviewed ones. A marker that finds fewer survivors
+ * than it states goes in a Stale disables section, which alone keeps the issue open.
  *
  * Run with `GITHUB_REPOSITORY` set and `gh` authenticated, as `pnpm mutation:report [report...]`.
  * It reads `reports/mutation/mutation.json`, which `pnpm mutation` writes, unless given the
@@ -22,6 +23,8 @@ export type Survivor = {
   line: number;
   mutator: string;
   status: "Survived" | "NoCoverage";
+  /** The survivors the marker above the line states, when one covers it. */
+  expected?: number;
 };
 
 const REPORT = "reports/mutation/mutation.json";
@@ -45,7 +48,7 @@ const readMutant: Reader<Mutant> = (value, path) => {
   };
 };
 
-/** A marked `Stryker disable` comment that hides no surviving mutant on the line below it. */
+/** A marked `Stryker disable` comment that states more survivors than the line below it has. */
 export type StaleDisable = { file: string; line: number; mutator: string; found: string };
 
 export type Findings = { survivors: Survivor[]; stale: StaleDisable[] };
@@ -58,29 +61,51 @@ const byLocation = (a: { file: string; line: number }, b: { file: string; line: 
 
 const hides = (disable: Disable, mutant: Mutant): boolean =>
   mutant.line === disable.line + 1 &&
-  mutant.mutatorName.toLowerCase() === disable.mutator.toLowerCase();
+  disable.mutators.some((mutator) => mutator.toLowerCase() === mutant.mutatorName.toLowerCase());
+
+const survivorCount = (mutants: Mutant[]): number =>
+  mutants.filter(({ status }) => isSurvivor(status)).length;
 
 // A timeout alone is inconclusive: an equivalent mutant can still time out on a loaded runner.
-const onlyTimedOut = (hidden: Mutant[]): boolean =>
-  hidden.length > 0 && hidden.every(({ status }) => status === "Timeout");
+const timedOut = (mutants: Mutant[]): number =>
+  mutants.filter(({ status }) => status === "Timeout").length;
 
-function staleDisable(file: string, disable: Disable, mutants: Mutant[]): StaleDisable[] {
-  const hidden = mutants.filter((mutant) => hides(disable, mutant));
-  if (hidden.some(({ status }) => isSurvivor(status)) || onlyTimedOut(hidden)) return [];
+const plural = (count: number): string => `${count} survivor${count === 1 ? "" : "s"}`;
+
+function staleMutator(file: string, disable: Disable, mutator: string, hidden: Mutant[]) {
+  const mine = hidden.filter((mutant) => hides({ ...disable, mutators: [mutator] }, mutant));
+  if (survivorCount(mine) > 0 || (mine.length > 0 && timedOut(mine) === mine.length)) return [];
   const found =
-    hidden.length === 0 ? "No mutant" : [...new Set(hidden.map(({ status }) => status))].join(", ");
-  return [{ file, line: disable.line, mutator: disable.mutator, found }];
+    mine.length === 0 ? "No mutant" : [...new Set(mine.map(({ status }) => status))].join(", ");
+  return [{ file, line: disable.line, mutator, found }];
+}
+
+function staleDisable(file: string, disable: Disable, hidden: Mutant[]): StaleDisable[] {
+  const byMutator = disable.mutators.flatMap((mutator) =>
+    staleMutator(file, disable, mutator, hidden),
+  );
+  const found = survivorCount(hidden);
+  const short = found + timedOut(hidden) < disable.expected;
+  if (byMutator.length > 0 || !short) return byMutator;
+  return [{ file, line: disable.line, mutator: disable.mutators.join(", "), found: plural(found) }];
 }
 
 function fileFindings(file: string, mutants: Mutant[], source: string): Findings {
-  const disables = markedDisables(source);
+  const disables = markedDisables(source).map((disable) => ({
+    disable,
+    hidden: mutants.filter((mutant) => hides(disable, mutant)),
+  }));
   return {
     survivors: mutants.flatMap((mutant) => {
       const { mutatorName, status, line } = mutant;
-      const expected = disables.some((disable) => hides(disable, mutant));
-      return isSurvivor(status) && !expected ? [{ file, line, mutator: mutatorName, status }] : [];
+      if (!isSurvivor(status)) return [];
+      const owner = disables.find(({ disable }) => hides(disable, mutant));
+      if (owner === undefined) return [{ file, line, mutator: mutatorName, status }];
+      const { expected } = owner.disable;
+      if (survivorCount(owner.hidden) <= expected) return [];
+      return [{ file, line, mutator: mutatorName, status, expected }];
     }),
-    stale: disables.flatMap((disable) => staleDisable(file, disable, mutants)),
+    stale: disables.flatMap(({ disable, hidden }) => staleDisable(file, disable, hidden)),
   };
 }
 
@@ -111,7 +136,7 @@ function staleSection(stale: StaleDisable[]): string[] {
     "",
     "## Stale disables",
     "",
-    "Each `Stryker disable` comment below hides no surviving mutant of its mutator on the next line. Delete it, or fix its mutator.",
+    "Each `Stryker disable` comment below states more survivors than its mutators have on the next line. Delete it, or fix its mutators or its count.",
     "",
     "| File | Line | Mutator | Found |",
     "| --- | --- | --- | --- |",
@@ -119,6 +144,11 @@ function staleSection(stale: StaleDisable[]): string[] {
       ({ file, line, mutator, found }) => `| \`${file}\` | ${line} | ${mutator} | ${found} |`,
     ),
   ];
+}
+
+function survivorRow({ file, line, mutator, status, expected }: Survivor): string {
+  const note = expected === undefined ? "" : `; the disable above expects ${expected}`;
+  return `| \`${file}\` | ${line} | ${mutator} | ${status}${note} |`;
 }
 
 export function reportBody(
@@ -140,8 +170,8 @@ export function reportBody(
   ];
   let length = lines.join("\n").length;
   let shown = 0;
-  for (const { file, line, mutator, status } of list) {
-    const row = `| \`${file}\` | ${line} | ${mutator} | ${status} |`;
+  for (const survivor of list) {
+    const row = survivorRow(survivor);
     if (length + row.length + 1 > maxLength) break;
     lines.push(row);
     length += row.length + 1;

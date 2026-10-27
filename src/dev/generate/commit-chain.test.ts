@@ -102,3 +102,23 @@ describe("a commit that is refused before it writes", () => {
     expect(removed).toStrictEqual([]);
   });
 });
+
+describe("a commit whose Dev database lost earlier rows", () => {
+  it("is refused when the tracking table keeps the tip's row but not the earlier ones", async () => {
+    const fileSystem = memoryFileSystem();
+    await generateInto(fileSystem, one);
+    await commitAs(fileSystem, "one");
+    await generateInto(fileSystem, two);
+    await commitAs(fileSystem, "two");
+    await generateInto(fileSystem, three);
+    await db.driver.execute(
+      "update smonn_db.migrations set previous_hash = null where sequence = 2; delete from smonn_db.migrations where sequence = 1",
+    );
+    const before = new Map(fileSystem.files);
+
+    await expect(commitAs(fileSystem, "three")).rejects.toThrow(
+      `the Dev database's Committed migrations don't match the files in ${MIGRATIONS}; run generate first`,
+    );
+    expect(fileSystem.files).toStrictEqual(before);
+  });
+});

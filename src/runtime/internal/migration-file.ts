@@ -75,10 +75,10 @@ function checkNoTransaction(
 function addHeader(filename: string, headers: Map<string, string>, header: string): void {
   const match = HEADER.exec(header);
   if (match === null) throw new Error(`${filename}: unknown header ${header}`);
-  // Stryker disable next-line StringLiteral: both groups always match, so the fallback never runs.
+  // Stryker disable next-line StringLiteral: 1 survivor: both groups always match, so the fallback never runs.
   const name = match[1] ?? "";
   if (headers.has(name)) throw new Error(`${filename}: repeats the --! ${name} header`);
-  // Stryker disable next-line StringLiteral: both groups always match, so the fallback never runs.
+  // Stryker disable next-line StringLiteral: 1 survivor: both groups always match, so the fallback never runs.
   headers.set(name, match[2] ?? "");
 }
 

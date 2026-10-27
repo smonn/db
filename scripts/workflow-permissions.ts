@@ -13,7 +13,7 @@ export type WorkflowLine = {
   flowKeys: string[];
 };
 
-// Stryker disable next-line StringLiteral: nothing in these ASCII patterns tells the flag apart; it only satisfies require-unicode-regexp.
+// Stryker disable next-line StringLiteral: 1 survivor: nothing in these ASCII patterns tells the flag apart; it only satisfies require-unicode-regexp.
 const compile = (pattern: string): RegExp => new RegExp(pattern, "u");
 const quotedOrNot = (word: string): string => `(?:"${word}"|'${word}'|${word})`;
 const scope = String.raw`${quotedOrNot("[a-z]+(?:-[a-z]+)*")}\s*:\s+${quotedOrNot("(?:read|write|none)")}`;
