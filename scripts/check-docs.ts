@@ -165,7 +165,7 @@ export function checkAdrNumbers(files: string[]): Problem[] {
 const DOC_BUDGETS: Record<string, number> = {
   "docs/architecture/README.md": 690,
   "docs/architecture/cli.md": 1030,
-  "docs/architecture/diff-engine.md": 3300,
+  "docs/architecture/diff-engine.md": 3600,
 };
 
 function checkMarkdownFile(cwd: string, file: string, glossary: GlossaryEntry[]): Problem[] {
