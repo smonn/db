@@ -201,15 +201,19 @@ function hasParentOrChildren(issue: Current): boolean {
 
 type Target = { repo: string; number: number };
 
-function parentsToName(gh: Gh, target: Target, current: Current, milestone: number): number[] {
-  const { repo } = target;
-  if (hasComment(gh, target, MARKER)) return [];
+function milestoneParents(gh: Gh, repo: string, current: Current): number[] {
+  if (current.milestone === null) return [];
   const milestoneIssues = getAll(
     gh,
-    `repos/${repo}/issues?milestone=${milestone}&state=open&per_page=100`,
+    `repos/${repo}/issues?milestone=${current.milestone.number}&state=open&per_page=100`,
     readApiIssue,
   );
   return matchingParents(current, milestoneIssues);
+}
+
+function parentsToName(gh: Gh, target: Target, current: Current): number[] {
+  if (hasComment(gh, target, MARKER)) return [];
+  return milestoneParents(gh, target.repo, current);
 }
 
 // A sliced issue is attached right after it opens, so wait and look again before commenting (#489).
@@ -258,20 +262,14 @@ function checkParentArea(gh: Gh, target: Target, current: Current, parentUrl: st
   if (areas(parent.labels).some((area) => own.includes(area))) return;
   if (hasComment(gh, target, MISMATCH_MARKER)) return;
 
-  const milestone = current.milestone?.number;
-  const milestoneIssues = getAll(
-    gh,
-    `repos/${target.repo}/issues?milestone=${milestone}&state=open&per_page=100`,
-    readApiIssue,
-  );
-  const candidates = matchingParents(current, milestoneIssues);
+  const candidates = milestoneParents(gh, target.repo, current);
   const body = mismatchComment(parent, own, candidates);
   gh(["issue", "comment", String(target.number), "--repo", target.repo, "--body", body]);
 }
 
 function checkParentless(gh: Gh, target: Target, current: Current, wait: Wait): void {
   if (current.milestone === null || hasParentOrChildren(current)) return;
-  const parents = parentsToName(gh, target, current, current.milestone.number);
+  const parents = parentsToName(gh, target, current);
   if (parents.length === 0) return;
   commentUnlessAttached(gh, target, parents, wait);
 }
