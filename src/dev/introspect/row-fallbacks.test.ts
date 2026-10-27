@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { DriverRow, Queryable, Session } from "../../runtime/ports/index.ts";
 import { introspect } from "./introspect.ts";
-import { DOMAINS, ENUMS, FOREIGN_KEYS, SCHEMAS, TABLES } from "./queries.ts";
+import { expression, indexes } from "./indexes.test-helper.ts";
+import { DOMAINS, ENUMS, FOREIGN_KEYS, INDEXES, SCHEMAS, TABLES } from "./queries.ts";
 
 /** A session whose queries answer from `answers`, and with no rows otherwise. */
 function sessionAnswering(answers: ReadonlyMap<string, readonly DriverRow[]>): Session {
@@ -89,5 +90,59 @@ describe("introspect, given rows the catalog queries never return", () => {
         onUpdate: "no action",
       },
     });
+  });
+});
+
+function withIndex(row: DriverRow): Session {
+  return sessionAnswering(
+    new Map([
+      [SCHEMAS, [{ name: "app" }]],
+      [TABLES, [{ schema: "app", name: "t" }]],
+      [INDEXES, [row]],
+    ]),
+  );
+}
+
+describe("introspect, given index rows the catalog query never returns", () => {
+  const base = { schema: "app", table: "t", name: "t_ix", method: "btree" };
+
+  it("rejects an index with a method the catalog does not model", async () => {
+    const session = withIndex({ ...base, method: "spgist", columns: [null], expressions: ["a"] });
+
+    await expect(introspect(session)).rejects.toThrow('index "t_ix" has an unmodeled method');
+  });
+
+  it("rejects an index key with neither a column nor an expression", async () => {
+    const session = withIndex({ ...base, columns: [null], expressions: [null] });
+
+    await expect(introspect(session)).rejects.toThrow(
+      "an index key has neither a column nor an expression",
+    );
+  });
+
+  it("reads an index row without orders or an include list as ascending, with no include", async () => {
+    const session = withIndex({ ...base, columns: [null], expressions: ["(a + 1)"] });
+
+    expect(indexes(await introspect(session))).toStrictEqual([
+      [
+        "app.t.t_ix",
+        {
+          unique: false,
+          method: "btree",
+          keys: [expression("a + 1")],
+          include: [],
+          where: undefined,
+          nullsNotDistinct: false,
+        },
+      ],
+    ]);
+  });
+
+  it("reads an index row without a column list as an index with no keys", async () => {
+    const session = withIndex(base);
+
+    expect(indexes(await introspect(session)).map(([, payload]) => payload.keys)).toStrictEqual([
+      [],
+    ]);
   });
 });
