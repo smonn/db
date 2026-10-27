@@ -55,6 +55,7 @@
     "mutation": "stryker run",
     "mutation:dry": "stryker run --dryRunOnly",
     "mutation:failure": "node scripts/mutation-failure.ts",
+    "mutation:mark": "node scripts/mark-stryker-disables.ts",
     "mutation:report": "node scripts/mutation-report.ts",
     "prepack": "pnpm run build",
     "prepare": "lefthook install --reset-hooks-path",

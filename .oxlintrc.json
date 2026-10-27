@@ -31,7 +31,8 @@
     "unicorn/no-useless-undefined": ["error", { "checkArguments": false }],
     "smonn/sql-interpolation": "error",
     "smonn/required-brand": "error",
-    "smonn/error-message-qualifier": "error"
+    "smonn/error-message-qualifier": "error",
+    "smonn/stryker-disable": "error"
   },
   "overrides": [
     {

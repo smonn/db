@@ -2,9 +2,11 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { main, reportBody, type Survivor, survivors } from "./mutation-report.ts";
+import { findings, main, reportBody, type Survivor } from "./mutation-report.ts";
 
 type Mutant = { mutatorName: string; status: string; line: number };
+
+const survivors = (parsed: unknown): Survivor[] => findings(parsed).survivors;
 
 function report(files: Record<string, Mutant[]>): unknown {
   return {
@@ -14,6 +16,7 @@ function report(files: Record<string, Mutant[]>): unknown {
         file,
         {
           language: "typescript",
+          source: "",
           mutants: mutants.map(({ mutatorName, status, line }) => ({
             mutatorName,
             status,
@@ -61,7 +64,10 @@ describe("survivors", () => {
 
 describe("reportBody", () => {
   test("lists each survivor as a table row", () => {
-    const body = reportBody([survivor("src/a.ts", 3), survivor("src/b.ts", 7, "BlockStatement")]);
+    const body = reportBody({
+      survivors: [survivor("src/a.ts", 3), survivor("src/b.ts", 7, "BlockStatement")],
+      stale: [],
+    });
     expect(body).toContain("2 mutants");
     expect(body).toContain("| `src/a.ts` | 3 | StringLiteral | Survived |");
     expect(body).toContain("| `src/b.ts` | 7 | BlockStatement | Survived |");
@@ -69,8 +75,8 @@ describe("reportBody", () => {
 
   test("counts the rows it leaves out past the length limit", () => {
     const list = [survivor("a.ts", 1), survivor("b.ts", 2), survivor("c.ts", 3)];
-    const full = reportBody(list);
-    const body = reportBody(list, full.length - 10);
+    const full = reportBody({ survivors: list, stale: [] });
+    const body = reportBody({ survivors: list, stale: [] }, full.length - 10);
     expect(body).toContain("3 mutants");
     expect(body).toContain("`b.ts`");
     expect(body).not.toContain("`c.ts`");
