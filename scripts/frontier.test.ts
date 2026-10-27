@@ -6,6 +6,7 @@ import {
   isTakeable,
   parseIssuePages,
   pickFrontier,
+  toChild,
   unlinkedClosed,
 } from "./frontier.ts";
 
@@ -51,6 +52,29 @@ describe("pickFrontier", () => {
       return false;
     });
     expect(checked).toEqual([11]);
+  });
+});
+
+describe("toChild", () => {
+  test("keeps the issue's URL, label names, and assignee logins", () => {
+    expect(
+      toChild({
+        number: 4,
+        title: "T",
+        html_url: "https://github.com/smonn/db/issues/4",
+        state: "closed",
+        labels: [{ name: "a" }, { name: "b" }],
+        assignees: [{ login: "x" }, { login: "y" }],
+        user: { login: "smonn" },
+      }),
+    ).toEqual({
+      number: 4,
+      title: "T",
+      url: "https://github.com/smonn/db/issues/4",
+      state: "closed",
+      labels: ["a", "b"],
+      assignees: ["x", "y"],
+    });
   });
 });
 
@@ -113,6 +137,15 @@ describe("unlinkedClosed", () => {
     expect(unlinkedClosed([closed(38)], () => body)).toHaveLength(0);
   });
 
+  test("accepts a link followed by text that holds digits", () => {
+    const body = "https://github.com/smonn/db/issues/38 fixes 9 things";
+    expect(unlinkedClosed([closed(38)], () => body)).toHaveLength(0);
+  });
+
+  test("counts a map with no body as linking nothing", () => {
+    expect(unlinkedClosed([closed(38)], () => null)).toHaveLength(1);
+  });
+
   test("reads the body only when a child is closed", () => {
     const readBody = vi.fn<() => string>(() => "");
     expect(unlinkedClosed([ticket], readBody)).toEqual([]);
@@ -131,6 +164,15 @@ describe("formatUnlinked", () => {
 describe("formatTicket", () => {
   test("prints the number, title, and wayfinder type", () => {
     expect(formatTicket(ticket)).toBe("#11 Config file and CLI for v0.1 [wayfinder:grilling]");
+  });
+
+  test("picks the wayfinder label among others", () => {
+    expect(formatTicket({ ...ticket, labels: ["area:tooling", "wayfinder:map"] })).toBe(
+      "#11 Config file and CLI for v0.1 [wayfinder:map]",
+    );
+    expect(formatTicket({ ...ticket, labels: ["area:tooling"] })).toBe(
+      "#11 Config file and CLI for v0.1",
+    );
   });
 
   test("omits the type when the ticket has no wayfinder label", () => {
