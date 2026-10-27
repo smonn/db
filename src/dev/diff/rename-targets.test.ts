@@ -32,6 +32,28 @@ describe("renameAction", () => {
     );
   });
 
+  it("refuses an enum, label, or domain rename when the name holds a fact of another kind", () => {
+    const domainNamedMood = catalogWith((b) => {
+      b.domain("app", "mood", DOMAIN);
+    });
+    const enumNamedMood = catalogWith((b) => {
+      b.enumType("app", "mood", { labels: ["a"] });
+    });
+    const enumRename: Rename = { kind: "enum", schema: "app", name: "mood", was: "old" };
+    const labelRename: Rename = {
+      kind: "enum label",
+      schema: "app",
+      enum: "mood",
+      name: "b",
+      was: "a",
+    };
+    const domainRename: Rename = { kind: "domain", schema: "app", name: "mood", was: "old" };
+
+    expect(() => renameAction(enumRename, domainNamedMood)).toThrow("isn't in the catalog");
+    expect(() => renameAction(labelRename, domainNamedMood)).toThrow("isn't in the catalog");
+    expect(() => renameAction(domainRename, enumNamedMood)).toThrow("isn't in the catalog");
+  });
+
   it("refuses a column rename when the path holds a domain check, not a column", () => {
     const from = catalogWith((b) => {
       b.domain("app", "code", DOMAIN);
