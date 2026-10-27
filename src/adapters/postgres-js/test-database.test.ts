@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MIGRATION_LOCK_KEY } from "../../runtime/internal/index.ts";
 import {
   explainConnectionError,
+  terminateBackendRunning,
   testServerUrl,
   useTestDatabase,
   whileMigrationLockHeld,
@@ -85,6 +86,14 @@ describe("whileMigrationLockHeld", () => {
     );
 
     expect(reasons).toStrictEqual([]);
+  });
+});
+
+describe("terminateBackendRunning", () => {
+  it("gives up when no backend runs the statement", async () => {
+    await expect(terminateBackendRunning(db.driver, "pg_sleep(31)")).rejects.toThrow(
+      'no backend ran "pg_sleep(31)"',
+    );
   });
 });
 
