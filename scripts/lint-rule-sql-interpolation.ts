@@ -38,7 +38,7 @@ function resolve(node: Node, context: Context) {
 }
 
 function constDeclarator(variable: Variable): Declarator | undefined {
-  if (variable.defs.length !== 1) return undefined;
+  // A type of the same name adds a definition of its own.
   const declarator = variable.defs
     .map((definition) => definition.node)
     .find((node) => isDeclarator(node));

@@ -28,7 +28,7 @@ type Names = {
 };
 
 const SPAWNS = new Set(["exec", "execSync", "execFile", "execFileSync", "spawn", "spawnSync"]);
-const HELPER = /(^|\/)git-env\.test-helper\.ts$/u;
+const HELPER = "/git-env.test-helper.ts";
 const CHILD_PROCESS = new Set(["child_process", "node:child_process"]);
 const GIT_COMMAND = /^([^\s]*\/)?git(\s|$)/u;
 
@@ -47,12 +47,11 @@ function isGitCommand(argument: Node): boolean {
 function isSpawnCallee(callee: Node, names: Names): boolean {
   return (
     isIdentifier(callee, (name) => SPAWNS.has(name) || names.spawns.has(name)) ||
-    (callee.type === "MemberExpression" &&
-      isIdentifier(
-        callee.object,
-        (name) => name === "child_process" || names.namespaces.has(name),
-      ) &&
-      isIdentifier(callee.property, (name) => SPAWNS.has(name)))
+    isMember(
+      callee,
+      (name) => name === "child_process" || names.namespaces.has(name),
+      (name) => SPAWNS.has(name),
+    )
   );
 }
 
@@ -87,7 +86,7 @@ function recordImport(node: Import, names: Names): void {
   const source = node.source.value;
   for (const specifier of node.specifiers) {
     if (CHILD_PROCESS.has(source)) recordChildProcess(specifier, names);
-    if (HELPER.test(source)) recordHelper(specifier, names);
+    if (source.endsWith(HELPER)) recordHelper(specifier, names);
   }
 }
 

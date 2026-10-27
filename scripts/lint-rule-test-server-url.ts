@@ -14,10 +14,13 @@ const DATABASE_URL = "DATABASE_URL";
 
 const isProcessEnv = (node: Node): boolean => isMember(node, named("process"), named("env"));
 
-/** `.DATABASE_URL`, or `["DATABASE_URL"]`; `[name]` could be anything, so it passes. */
+/**
+ * `.DATABASE_URL`, `["DATABASE_URL"]`, or a `"DATABASE_URL"` key; `[name]` could be anything, so
+ * it passes. Only a literal has a value.
+ */
 function isDatabaseUrlKey(key: Node, computed: boolean): boolean {
-  if (computed) return field(key, "value") === DATABASE_URL;
-  return isIdentifier(key, named(DATABASE_URL));
+  if (field(key, "value") === DATABASE_URL) return true;
+  return !computed && isIdentifier(key, named(DATABASE_URL));
 }
 
 const MESSAGE =

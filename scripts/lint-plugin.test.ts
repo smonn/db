@@ -16,6 +16,8 @@ tester.run("sql-interpolation", plugin.rules["sql-interpolation"], {
     "const LOCK_KEY = 1;\nasync function f() { await session.query(`select pg_advisory_lock(${LOCK_KEY})`); }",
     "async function f(name) { const schema = quoteTrackingSchema(name); await tx.query(`select 1 from ${schema}.current`); }",
     "async function f(name) { const q = quoteIdentifier(name); const t = q; await tx.query(`select 1 from ${t}`); }",
+    "async function f(n) { const t = quoteIdentifier(n); type t = string; await tx.query(`select 1 from ${t}`); }",
+    "async function f(n) { type t = string; const t = quoteIdentifier(n); await tx.query(`select 1 from ${t}`); }",
     "await tx.query(`select ${1}`.trim());",
     "await tx.query(sql`select ${value}`);",
     "await tx.query(text);",
@@ -158,6 +160,7 @@ tester.run("real-git-env", plugin.rules["real-git-env"], {
     'mocks.execFileSync("git", ["init"]);',
     'import { execFileSync as run } from "node:child_process";\nrun("gh", []);',
     'import { spawn as run } from "node:child_process";\nother.run("git", []);',
+    'import * as cp from "node:child_process";\ncp[execFileSync]("git", []);',
   ],
   invalid: [
     {
@@ -237,6 +240,10 @@ tester.run("test-server-url", plugin.rules["test-server-url"], {
     },
     {
       code: 'const { ["DATABASE_URL"]: url } = process.env;',
+      errors: 1,
+    },
+    {
+      code: 'const { "DATABASE_URL": url } = process.env;',
       errors: 1,
     },
   ],
