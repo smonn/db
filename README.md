@@ -120,9 +120,37 @@ Run each as `smonndb <command>`, with `--config <path>` to pick a config file ot
 
 Results go to stdout and errors to stderr, as plain text with no colors. `generate` prints the file it wrote, each Hazard with its statement, each rename hint, and whether it reset the Dev database. Exit codes: 0 on success, 1 on a refusal or failure (a missing folder, a held Dev lock, a bad hash chain), 2 on a usage error.
 
+### Enums and domains
+
+`defineEnum` and `defineDomain` declare a Postgres type. Each sits in a schema's object beside the tables and takes its SQL name from its key. A column uses it through `c.enum(...)` or `c.domain(...)`, and the row type follows:
+
+```ts
+import { defineDatabase, defineDomain, defineEnum, defineTable } from "@smonn/db";
+
+const mood = defineEnum(["sad", "ok", "good"]);
+const posint = defineDomain((c) => c.integer(), {
+  notNull: true,
+  checks: { posint_positive: "value > 0" },
+});
+
+export default defineDatabase({
+  public: {
+    mood,
+    posint,
+    entries: defineTable((c) => ({
+      id: c.text().notNull(),
+      mood: c.enum(mood),
+      score: c.domain(posint),
+    })),
+  },
+});
+```
+
+Labels stay in the order you list them, which is the order the enum compares in. A domain's base is a bare type such as `c.integer()`; `notNull`, `default`, and `checks` (keyed by constraint name, with `value` naming the value checked) go in its options. Both also take `name` for an SQL name its key can't give.
+
 ### Renaming a table, column, enum, or domain
 
-Rename a key in the Definition and `generate` sees a drop and a create, which it flags as `data_loss`. It prints a hint when it spots a likely rename: a table that drops one column and adds one of the same type, or a schema that drops one table and adds one with identical columns.
+Rename a key in the Definition and `generate` sees a drop and a create, which it flags as `data_loss`. It prints a hint when it spots a likely rename: a table that drops exactly one column and adds exactly one of the same type, or a schema that drops exactly one table and adds one with identical columns. With more than one drop or add, no hint appears, so check for renames yourself.
 
 ```text
 hint: column "public"."users"."full_name" may be a rename of "name": add .renamedFrom("name") to it
@@ -164,7 +192,7 @@ hazard rename: alter table "public"."users" rename column "name" to "full_name";
 
 The marker takes the old SQL name, as the database holds it, not the old key. A hint is only a guess, and `generate` never writes one into the SQL, so a rename with no marker stays a drop and create.
 
-Remove the marker once you have run `commit`. From then on the Committed migrations hold the new name, so `generate` skips a marker whose old name is gone. Until then, keep it: each `generate` rebuilds `current.sql` from the Definition, and without the marker the rename turns back into a drop. If both the old and the new name exist, `generate` throws.
+Remove the marker once you have run `commit`, or leave it: from then on the Committed migrations hold the new name, so `generate` skips a marker whose old name is gone, and a kept marker is harmless. Until you commit, keep it: each `generate` rebuilds `current.sql` from the Definition, and without the marker the rename turns back into a drop. If both the old and the new name exist, `generate` throws.
 
 ### Mapping keys to snake_case
 
