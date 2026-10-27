@@ -1,5 +1,5 @@
 import type { Table } from "../definition/index.ts";
-import { quoteIdentifier } from "../internal/index.ts";
+import { elementText, formatArrayLiteral, quoteIdentifier } from "../internal/index.ts";
 import type { DriverRow } from "../ports/index.ts";
 
 /** Turns a driver row into the row the query declared. */
@@ -26,15 +26,45 @@ function failure(table: Table, column: string, action: string, cause: unknown): 
   );
 }
 
-/** Runs the column's codec on a value headed for the driver; NULL and codec-free columns pass through. */
-export function encodeValue(table: Table, column: string, value: unknown): unknown {
+function encode(table: Table, column: string, value: unknown): unknown {
   const codec = table.columns[column]?.["~codec"];
-  if (codec === undefined || value === null || value === undefined) return value;
+  if (codec === undefined) return value;
   try {
     return codec.encode(value);
   } catch (error) {
     throw failure(table, column, "encoding a value", error);
   }
+}
+
+const jsonTypes = new Set(["json", "jsonb"]);
+
+// Array text leaves no array for a driver to type by its first element, and Postgres types the
+// param from the column it meets, as ADR-0023 asks.
+function arrayText(table: Table, column: string, value: readonly unknown[]): string {
+  const sqlType = table.columns[column]?.state.sqlType ?? "";
+  const formatElement = jsonTypes.has(sqlType)
+    ? (element: unknown) => JSON.stringify(element)
+    : elementText;
+  try {
+    return formatArrayLiteral(value, formatElement);
+  } catch (error) {
+    const where = `${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)}`;
+    throw new Error(`Can't write the array in column ${quoteIdentifier(column)} of ${where}`, {
+      cause: error,
+    });
+  }
+}
+
+/**
+ * Runs the column's codec on a value headed for the driver, then writes an array column's value
+ * as array text; NULL passes through.
+ */
+export function encodeValue(table: Table, column: string, value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  const encoded = encode(table, column, value);
+  return table.columns[column]?.state.array === true && Array.isArray(encoded)
+    ? arrayText(table, column, encoded)
+    : encoded;
 }
 
 /** Decodes the outputs that come from a codec'd column, matched by alias; undefined when none does. */
