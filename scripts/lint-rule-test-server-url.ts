@@ -4,6 +4,7 @@
  * from `test-database.test-helper.ts`, which names the `test-db.ts` fix when no server is set.
  */
 import type { RuleTester } from "oxlint/plugins-dev";
+import { field, isIdentifier, isMember, named } from "./lint-ast.ts";
 
 type Rule = Parameters<RuleTester["run"]>[1];
 type Context = Parameters<Extract<Rule, { create: unknown }>["create"]>[0];
@@ -11,21 +12,12 @@ type Node = Parameters<Context["sourceCode"]["getScope"]>[0];
 
 const DATABASE_URL = "DATABASE_URL";
 
-function isProcessEnv(node: Node): boolean {
-  return (
-    node.type === "MemberExpression" &&
-    !node.computed &&
-    node.object.type === "Identifier" &&
-    node.object.name === "process" &&
-    node.property.type === "Identifier" &&
-    node.property.name === "env"
-  );
-}
+const isProcessEnv = (node: Node): boolean => isMember(node, named("process"), named("env"));
 
 /** `.DATABASE_URL`, or `["DATABASE_URL"]`; `[name]` could be anything, so it passes. */
 function isDatabaseUrlKey(key: Node, computed: boolean): boolean {
-  if (computed) return key.type === "Literal" && key.value === DATABASE_URL;
-  return key.type === "Identifier" && key.name === DATABASE_URL;
+  if (computed) return field(key, "value") === DATABASE_URL;
+  return isIdentifier(key, named(DATABASE_URL));
 }
 
 const MESSAGE =

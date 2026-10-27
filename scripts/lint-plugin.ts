@@ -18,6 +18,7 @@
  *   `lint-rule-stryker-disable.ts`.
  */
 import type { RuleTester } from "oxlint/plugins-dev";
+import { field, isIdentifier, isMember, named } from "./lint-ast.ts";
 import { realGitEnvRule } from "./lint-rule-real-git-env.ts";
 import { sqlInterpolation } from "./lint-rule-sql-interpolation.ts";
 import { strykerDisableRule } from "./lint-rule-stryker-disable.ts";
@@ -42,26 +43,15 @@ type Plugin = {
   >;
 };
 
-function isExported(declaration: Node, name: string, program: Node): boolean {
-  if (declaration.parent?.type === "ExportNamedDeclaration") return true;
-  if (program.type !== "Program") return false;
-  return program.body.some(
-    (statement) =>
-      statement.type === "ExportNamedDeclaration" &&
-      statement.source === null &&
-      statement.specifiers.some(
-        (specifier) => specifier.local.type === "Identifier" && specifier.local.name === name,
-      ),
-  );
+type Property = Extract<Node, { type: "TSPropertySignature" }>;
+type TypeDeclaration = Extract<Node, { type: "TSTypeAliasDeclaration" | "TSInterfaceDeclaration" }>;
+
+/** An identifier key's name, or a literal key's value; any other key has no `value`. */
+function keyName(key: Node): unknown {
+  return key.type === "Identifier" ? key.name : field(key, "value");
 }
 
-function keyName(key: Node): string | undefined {
-  if (key.type === "Identifier") return key.name;
-  if (key.type === "Literal" && typeof key.value === "string") return key.value;
-  return undefined;
-}
-
-function enclosingTypeDeclaration(start: Node) {
+function enclosingTypeDeclaration(start: Node): TypeDeclaration | null {
   let declaration: Node = start;
   while (
     declaration.type !== "TSTypeAliasDeclaration" &&
@@ -73,14 +63,14 @@ function enclosingTypeDeclaration(start: Node) {
   return declaration;
 }
 
-function isOptionalBrand(
-  node: Extract<Node, { type: "TSPropertySignature" }>,
-  name: string | undefined,
-): boolean {
-  if (!node.optional || name?.startsWith("~") !== true) return false;
+function optionalBrand(node: Property): string | undefined {
+  const name = keyName(node.key);
+  if (!node.optional || typeof name !== "string" || !name.startsWith("~")) return undefined;
   // `?: never` forbids the key rather than branding the type.
-  return node.typeAnnotation?.typeAnnotation.type !== "TSNeverKeyword";
+  return node.typeAnnotation?.typeAnnotation.type === "TSNeverKeyword" ? undefined : name;
 }
+
+type Brand = { readonly node: Property; readonly name: string; readonly type: TypeDeclaration };
 
 const requiredBrand: Rule = {
   meta: {
@@ -88,17 +78,28 @@ const requiredBrand: Rule = {
     docs: { description: "Require brand properties, whose keys start with ~, on exported types" },
   },
   create(context) {
+    const exported = new Set<unknown>();
+    const brands: Brand[] = [];
     return {
+      ExportNamedDeclaration(node) {
+        if (node.source !== null) return;
+        for (const specifier of node.specifiers) exported.add(keyName(specifier.local));
+      },
       TSPropertySignature(node) {
-        const name = keyName(node.key);
-        if (!isOptionalBrand(node, name)) return;
-        const declaration = enclosingTypeDeclaration(node);
-        if (declaration === null) return;
-        if (!isExported(declaration, declaration.id.name, context.sourceCode.ast)) return;
-        context.report({
-          node,
-          message: `Make "${name}" required: an optional brand lets a wider type stand in for ${declaration.id.name}`,
-        });
+        const name = optionalBrand(node);
+        if (name === undefined) return;
+        const type = enclosingTypeDeclaration(node);
+        if (type !== null) brands.push({ node, name, type });
+      },
+      "Program:exit"() {
+        for (const { node, name, type } of brands) {
+          const typeName = type.id.name;
+          if (type.parent.type !== "ExportNamedDeclaration" && !exported.has(typeName)) continue;
+          context.report({
+            node,
+            message: `Make "${name}" required: an optional brand lets a wider type stand in for ${typeName}`,
+          });
+        }
       },
     };
   },
@@ -106,16 +107,16 @@ const requiredBrand: Rule = {
 
 const DOTTED_NAME = /^\.[A-Za-z_$]/u;
 
-function isErrorConstructor(callee: Node): boolean {
-  return callee.type === "Identifier" && callee.name.endsWith("Error");
-}
-
 function dottedInterpolations(node: Extract<Node, { type: "NewExpression" }>): Node[] {
   const [text] = node.arguments;
-  if (!isErrorConstructor(node.callee) || text?.type !== "TemplateLiteral") return [];
-  return text.expressions.filter((_, index) =>
-    DOTTED_NAME.test(text.quasis[index + 1]?.value.raw ?? ""),
-  );
+  const isError = isIdentifier(node.callee, (name) => name.endsWith("Error"));
+  if (!isError || text?.type !== "TemplateLiteral") return [];
+  // The quasi after each `${...}` holds the text that follows it.
+  return text.quasis
+    .slice(1)
+    .flatMap((quasi, index) =>
+      DOTTED_NAME.test(quasi.value.raw) ? text.expressions.slice(index, index + 1) : [],
+    );
 }
 
 const errorMessageQualifier: Rule = {
@@ -140,21 +141,13 @@ const errorMessageQualifier: Rule = {
 
 const CHILD_PROCESS = "node:child_process";
 
-function isViMockCallee(callee: Node): boolean {
-  return (
-    callee.type === "MemberExpression" &&
-    !callee.computed &&
-    callee.object.type === "Identifier" &&
-    callee.object.name === "vi" &&
-    callee.property.type === "Identifier" &&
-    callee.property.name === "mock"
-  );
-}
-
-function isViMockOfChildProcess(node: Node): boolean {
-  if (node.type !== "CallExpression") return false;
+function isViMockOfChildProcess(node: Extract<Node, { type: "CallExpression" }>): boolean {
   const [first] = node.arguments;
-  return isViMockCallee(node.callee) && first?.type === "Literal" && first.value === CHILD_PROCESS;
+  return (
+    isMember(node.callee, named("vi"), named("mock")) &&
+    first?.type === "Literal" &&
+    first.value === CHILD_PROCESS
+  );
 }
 
 const mockChildProcess: Rule = {
@@ -168,8 +161,9 @@ const mockChildProcess: Rule = {
     return {
       ImportDeclaration(node) {
         if (node.source.value !== CHILD_PROCESS || node.importKind === "type") return;
+        // Only an ImportSpecifier has an `importKind`.
         const typeOnly = node.specifiers.every(
-          (specifier) => specifier.type === "ImportSpecifier" && specifier.importKind === "type",
+          (specifier) => field(specifier, "importKind") === "type",
         );
         if (!typeOnly) imported ??= node;
       },
