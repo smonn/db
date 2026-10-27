@@ -1,4 +1,4 @@
-import { formatTimestamp } from "./value-types.ts";
+import { formatTimestamp } from "../../runtime/internal/index.ts";
 
 // Postgres gives an untyped param the type of the first place it is compared or assigned. A Date
 // goes out as untyped UTC text, so a `timestamp` column keeps its UTC wall clock in any session
