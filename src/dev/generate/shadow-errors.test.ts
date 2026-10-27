@@ -21,7 +21,8 @@ describe("explainShadowError for 25001", () => {
     expect(explained(blocked)).toBe(
       "CREATE INDEX CONCURRENTLY cannot run inside a transaction block\nIf the statement can't run in a transaction, add `--! no-transaction` as the first line of the Current migration (ADR-0020).",
     );
-    expect(explainShadowError(blocked)).toMatchObject({ code: "25001", cause: blocked });
+    expect(explainShadowError(blocked)).toMatchObject({ code: "25001" });
+    expect(explainShadowError(blocked)).toHaveProperty("cause", blocked);
   });
 
   it("leaves the error alone once the file carries the header", () => {
@@ -49,5 +50,60 @@ describe("explainShadowError for 42804", () => {
 
   it("keeps the Postgres error as the cause", () => {
     expect(explainShadowError(uncastable)).toHaveProperty("cause", uncastable);
+  });
+});
+
+describe("explainShadowError for a domain array", () => {
+  const message = 'cannot alter type "tags" because column "t"."a" uses it';
+  const blocked = postgresError("0A000", message);
+
+  it("words the fix for generated SQL and for a hand edit", () => {
+    expect(explained(blocked)).toMatch(/\nGenerate adds a domain check or sets a domain NOT NULL/u);
+    expect(explained(blocked, { handEdited: true })).toMatch(
+      /\nPostgres refuses ALTER DOMAIN \.\.\. ADD CONSTRAINT and SET NOT NULL while a column holds an array of the domain\. Retype that column/u,
+    );
+  });
+
+  it("gives that message under another code the fix for the code", () => {
+    expect(explained(postgresError("42804", message))).toMatch(
+      /\nGenerate writes a plain ALTER COLUMN/u,
+    );
+  });
+
+  it("leaves other 0A000 messages unexplained", () => {
+    const unrelated = postgresError("0A000", "feature not supported");
+
+    expect(explainShadowError(unrelated)).toBe(unrelated);
+  });
+});
+
+describe("explainShadowError for a code that isn't a known string", () => {
+  it.each([["toString"], ["constructor"], ["99999"]])("leaves code %s alone", (code) => {
+    const unknown = postgresError(code, "boom");
+
+    expect(explainShadowError(unknown)).toBe(unknown);
+  });
+
+  it("leaves a numeric code alone, though its digits name a known one", () => {
+    const numeric = Object.assign(new Error("boom"), { code: 42_804 });
+
+    expect(explainShadowError(numeric)).toBe(numeric);
+  });
+});
+
+describe("explainShadowError for something that isn't an Error", () => {
+  it.each([[null], [undefined], ["text"], [{ code: "42804" }]])("returns %j as it is", (value) => {
+    expect(explainShadowError(value)).toBe(value);
+  });
+});
+
+describe("explainShadowError for a blocker", () => {
+  const blocker = postgresError("2BP01", "cannot drop column c because other objects depend on it");
+
+  it("words the hint for a hand edit apart from generated SQL", () => {
+    expect(explained(blocker, { handEdited: true })).toMatch(
+      /\nAnother object depends on what it changes\. Hand edit/u,
+    );
+    expect(explained(blocker)).toMatch(/\nGenerate never uses CASCADE/u);
   });
 });
