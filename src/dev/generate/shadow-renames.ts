@@ -30,8 +30,15 @@ export async function renameInShadow(
   };
 }
 
-/** Rolls back a transaction whose result `withRenames` already holds. */
-class RolledBack extends Error {}
+/** Rolls back a transaction, carrying the value `withRenames` read before it. */
+class RolledBack<T> extends Error {
+  readonly value: T;
+
+  constructor(value: T) {
+    super();
+    this.value = value;
+  }
+}
 
 /** Runs `read` on the Shadow after `renames` inside a transaction, then rolls back. */
 export async function withRenames<T>(
@@ -39,15 +46,16 @@ export async function withRenames<T>(
   renames: readonly Rename[],
   read: (tx: Queryable) => Promise<T>,
 ): Promise<T> {
-  let result: { readonly value: T } | undefined;
   const outcome = await shadow
     .transaction(async (tx) => {
       if (renames.length > 0) await tx.execute(renames.map((rename) => renameSql(rename)).join(""));
-      result = { value: await read(tx) };
-      throw new RolledBack();
+      throw new RolledBack(await read(tx));
     })
     .catch((error: unknown) => error);
-  // Stryker disable next-line ConditionalExpression: `read` returned before the sentinel was thrown, so `result` is set whenever the outcome is RolledBack.
-  if (!(outcome instanceof RolledBack) || result === undefined) throw outcome;
-  return result.value;
+  if (isRolledBack<T>(outcome)) return outcome.value;
+  throw outcome;
+}
+
+function isRolledBack<T>(outcome: unknown): outcome is RolledBack<T> {
+  return outcome instanceof RolledBack;
 }
