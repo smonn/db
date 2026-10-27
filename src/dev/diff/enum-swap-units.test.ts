@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { catalogBuilder, type Catalog, type CatalogBuilder } from "../catalog/index.ts";
+import { catalogBuilder, type Catalog, type CatalogBuilder, type Fact } from "../catalog/index.ts";
 import { asideName, enumSwaps, SWAP_STEPS, type Swap } from "./enum-swap.ts";
+
+type EnumFact = Extract<Fact, { readonly kind: "enum" }>;
+
+const isEnum = (fact: Fact): fact is EnumFact => fact.kind === "enum";
+
+function enumNamed(catalog: Catalog, name: string): EnumFact {
+  return [...catalog.values()].filter((fact) => isEnum(fact)).find((fact) => fact.name === name)!;
+}
 
 const FROM = ["a", "b", "c"];
 const TO = ["c", "b", "a"];
@@ -50,6 +58,20 @@ function moodSwap(): Swap {
 }
 
 describe("asideName", () => {
+  it("avoids a name its own schema holds, but not one another schema holds", () => {
+    const builder = catalogBuilder();
+    builder.schema("one");
+    builder.schema("two");
+    builder.enumType("one", "mood", { labels: FROM });
+    builder.table("one", "mood_old");
+    builder.enumType("two", "feeling", { labels: FROM });
+    builder.table("one", "feeling_old");
+    const catalog = builder.build();
+
+    expect(asideName(enumNamed(catalog, "mood"), [catalog], [])).toBe("mood_old1");
+    expect(asideName(enumNamed(catalog, "feeling"), [catalog], [])).toBe("feeling_old");
+  });
+
   it("starts from _old when the catalogs lack the type's schema", () => {
     expect(asideName(moodSwap().before, [catalogBuilder().build()], [])).toBe("mood_old");
   });

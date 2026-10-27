@@ -75,6 +75,15 @@ describe("explainShadowError for a domain array", () => {
 
     expect(explainShadowError(unrelated)).toBe(unrelated);
   });
+
+  it.each([`while ${message}`, `${message} by a view`])(
+    "leaves a 0A000 message that only contains that shape unexplained: %s",
+    (text) => {
+      const surrounded = postgresError("0A000", text);
+
+      expect(explainShadowError(surrounded)).toBe(surrounded);
+    },
+  );
 });
 
 describe("explainShadowError for a code that isn't a known string", () => {
