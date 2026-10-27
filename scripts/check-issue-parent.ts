@@ -6,8 +6,9 @@
  * milestone, it gets one comment naming the matching parents. Not every issue needs a parent, so
  * no match means no comment. The comment carries a marker, and an issue that already has one
  * gets no second comment. A sub-issue that shares no area label with its parent gets one comment
- * (its own marker) naming both areas and the open parents for its area; no area on either side,
- * or no such parent, means no comment. It waits `GRACE_MS` and fetches the issue again before commenting, since
+ * (its own marker) naming both areas and the open parents for its area, or saying none matches; no
+ * area on either side means no comment. It waits `GRACE_MS` and fetches the issue again before
+ * commenting, since
  * a sliced issue is attached right after it opens.
  *
  * Run with `GITHUB_EVENT_PATH` set to an `issues` event payload and `gh` authenticated, as
@@ -215,7 +216,12 @@ function parentsToName(gh: Gh, target: Target, current: Current, milestone: numb
 function commentUnlessAttached(gh: Gh, target: Target, parents: number[], wait: Wait): void {
   const { repo, number: issueNumber } = target;
   wait(GRACE_MS);
-  if (hasParentOrChildren(getOne(gh, `repos/${repo}/issues/${issueNumber}`))) return;
+  const again = getOne(gh, `repos/${repo}/issues/${issueNumber}`);
+  if (again.parent_issue_url !== null) {
+    checkParentArea(gh, target, again, again.parent_issue_url);
+    return;
+  }
+  if (hasParentOrChildren(again)) return;
   const named = parents.map((parent) => `#${parent}`).join(", ");
   const body = `${MARKER}\nThis issue has no parent, and its milestone has a parent for its area: ${named}. If it belongs there, attach it as a sub-issue (\`gh issue edit <parent> --add-sub-issue ${issueNumber}\`). Not every issue needs a parent, so ignore this if it doesn't.`;
   gh(["issue", "comment", String(issueNumber), "--repo", repo, "--body", body]);
@@ -237,7 +243,11 @@ function apiPath(url: string): string {
 
 function mismatchComment(parent: Current, own: string[], candidates: number[]): string {
   const named = candidates.map((candidate) => `#${candidate}`).join(", ");
-  return `${MISMATCH_MARKER}\nThis sub-issue shares no area with its parent #${parent.number} (${areas(parent.labels).join(", ")}). It has ${own.join(", ")}. Open parents in its milestone for its area: ${named}. If it belongs under one of them, move it; otherwise ignore this.`;
+  const advice =
+    candidates.length === 0
+      ? "No open parent in its milestone matches its area. If it belongs under a parent, move it; otherwise ignore this."
+      : `Open parents in its milestone for its area: ${named}. If it belongs under one of them, move it; otherwise ignore this.`;
+  return `${MISMATCH_MARKER}\nThis sub-issue shares no area with its parent #${parent.number} (${areas(parent.labels).join(", ")}). It has ${own.join(", ")}. ${advice}`;
 }
 
 // Attaching a sub-issue fires `sub_issues`, not `issues`, so this runs only on a later label or milestone event.
@@ -255,7 +265,6 @@ function checkParentArea(gh: Gh, target: Target, current: Current, parentUrl: st
     readApiIssue,
   );
   const candidates = matchingParents(current, milestoneIssues);
-  if (candidates.length === 0) return;
   const body = mismatchComment(parent, own, candidates);
   gh(["issue", "comment", String(target.number), "--repo", target.repo, "--body", body]);
 }

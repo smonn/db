@@ -188,12 +188,13 @@ describe("main", () => {
     const attached = fetched({
       parent_issue_url: "https://api.github.com/repos/smonn/db/issues/45",
     });
-    // Calls in order: the issue, its comments, the milestone, then the issue again after the wait.
+    // Calls in order: the issue, its comments, the milestone, then the issue again after the wait, then its new parent.
     const gh = vi.fn<(args: string[]) => string>();
     gh.mockReturnValueOnce(JSON.stringify(orphan))
       .mockReturnValueOnce(JSON.stringify([[]]))
       .mockReturnValueOnce(JSON.stringify([[parentIssue(44, "area:tooling")]]))
-      .mockReturnValueOnce(JSON.stringify(attached));
+      .mockReturnValueOnce(JSON.stringify(attached))
+      .mockReturnValueOnce(JSON.stringify(fetched({ number: 45 })));
     const wait = vi.fn<(ms: number) => void>();
     main({ GITHUB_EVENT_PATH: writeEvent(event()) }, gh, wait);
     expect(wait).toHaveBeenCalledOnce();

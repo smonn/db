@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test, vi } from "vitest";
-import { MISMATCH_MARKER } from "./check-issue-parent.ts";
+import { MISMATCH_MARKER, main } from "./check-issue-parent.ts";
 import {
   type ApiIssue,
   commentsRoute,
@@ -8,7 +8,9 @@ import {
   issueRoute,
   labelled,
   posted,
+  refetchingGh,
   run,
+  writeEvent,
 } from "./check-issue-parent.test-helper.ts";
 import { parseJson, record } from "./github-json.ts";
 
@@ -98,9 +100,31 @@ describe("a sub-issue under a parent of another area", () => {
     expect(posted(gh)).toEqual([]);
   });
 
-  test("is skipped when no open parent covers its area", () => {
+  test("is told that no open parent covers its area", () => {
     const labels = labelled("area:cli");
     const gh = run(event({ milestone: { number: 2 }, labels }), routes({ labels }));
-    expect(posted(gh)).toEqual([]);
+    expect(posted(gh)).toEqual([
+      [
+        "issue",
+        "comment",
+        "7",
+        "--repo",
+        "smonn/db",
+        "--body",
+        `${MISMATCH_MARKER}\nThis sub-issue shares no area with its parent #432 (area:definition). It has area:cli. No open parent in its milestone matches its area. If it belongs under a parent, move it; otherwise ignore this.`,
+      ],
+    ]);
+  });
+});
+
+describe("an issue attached to a parent during the grace wait", () => {
+  test("is checked for an area mismatch after the wait", () => {
+    const attached = JSON.stringify({ ...subIssue, number: 7, parent_issue_url: underDefinition });
+    const base = routes({ parent_issue_url: null });
+    const gh = refetchingGh(base, () => attached);
+    const wait = vi.fn<(ms: number) => void>();
+    main({ GITHUB_EVENT_PATH: writeEvent(diffEvent) }, gh, wait);
+    expect(wait).toHaveBeenCalledOnce();
+    expect(posted(gh)).toEqual([mismatch("area:diff", "#432 (area:definition)", "#431")]);
   });
 });
