@@ -14,10 +14,13 @@
  *   `lint-rule-test-server-url.ts`.
  * - `smonn/real-git-env`: a test that spawns `git` imports `isolateGitEnv`; see
  *   `lint-rule-real-git-env.ts`.
+ * - `smonn/stryker-disable`: a Stryker directive is a reasoned, one-line disable; see
+ *   `lint-rule-stryker-disable.ts`.
  */
 import type { RuleTester } from "oxlint/plugins-dev";
 import { realGitEnvRule } from "./lint-rule-real-git-env.ts";
 import { sqlInterpolation } from "./lint-rule-sql-interpolation.ts";
+import { strykerDisableRule } from "./lint-rule-stryker-disable.ts";
 import { testServerUrlRule } from "./lint-rule-test-server-url.ts";
 
 type Rule = Parameters<RuleTester["run"]>[1];
@@ -32,7 +35,8 @@ type Plugin = {
       | "error-message-qualifier"
       | "mock-child-process"
       | "test-server-url"
-      | "real-git-env",
+      | "real-git-env"
+      | "stryker-disable",
       Rule
     >
   >;
@@ -193,6 +197,7 @@ const plugin: Plugin = {
     "mock-child-process": mockChildProcess,
     "test-server-url": testServerUrlRule,
     "real-git-env": realGitEnvRule,
+    "stryker-disable": strykerDisableRule,
   },
 };
 export default plugin;

@@ -27,7 +27,15 @@ const config: ViteUserConfig = defineConfig({
     projects: [
       {
         extends: true,
-        test: { name: "unit", include: testFiles, exclude: databaseTests },
+        // Under Stryker's bail a static mutant reruns its related tests until one fails, and Vitest
+        // would run the database project first, by name. Unit tests kill most of those mutants in
+        // seconds, so they go first (#605).
+        test: {
+          name: "unit",
+          include: testFiles,
+          exclude: databaseTests,
+          sequence: { groupOrder: underStryker ? 1 : 0 },
+        },
       },
       {
         extends: true,
@@ -36,6 +44,7 @@ const config: ViteUserConfig = defineConfig({
           include: databaseTests,
           testTimeout: 30_000,
           hookTimeout: 30_000,
+          sequence: { groupOrder: underStryker ? 2 : 0 },
         },
       },
     ],
