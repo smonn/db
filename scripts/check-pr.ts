@@ -22,20 +22,8 @@ import { join } from "node:path";
 import { checkClosingKeywords } from "./check-closing-keywords.ts";
 import { checkAdrClash, readOpenPrAdds, type OpenPrAdd } from "./check-adr-clash.ts";
 
-const types = [
-  "build",
-  "chore",
-  "ci",
-  "docs",
-  "feat",
-  "fix",
-  "perf",
-  "refactor",
-  "revert",
-  "style",
-  "test",
-];
-const titlePattern = new RegExp(`^(${types.join("|")})(\\([a-z0-9-]+\\))?!?: \\S`, "u");
+const titlePattern =
+  /^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9-]+\))?!?: \S/u;
 
 const adrTitlePattern = /^docs\(adr\)!?: (propose|accept)\b/u;
 const adrPathPattern = /^docs\/adr\/\d{4}-.+\.md$/u;
@@ -57,8 +45,7 @@ export function checkBranch(branch: string): string[] {
 }
 
 export function parseAdrStatus(text: string): string {
-  const frontmatter = frontmatterPattern.exec(text)?.[1] ?? "";
-  return statusPattern.exec(frontmatter)?.[1] ?? "missing";
+  return frontmatterPattern.exec(text)?.[1]?.match(statusPattern)?.[1] ?? "missing";
 }
 
 export function checkAdrTitle(title: string, adrs: readonly ChangedAdr[]): string[] {
@@ -92,10 +79,11 @@ export function readChangedAdrs(base: string, cwd: string = process.cwd()): Chan
     { cwd, encoding: "utf8" },
   );
   return diff.split("\n").flatMap((line): ChangedAdr[] => {
-    const [letter, file] = line.split("\t");
-    if (letter === undefined || file === undefined || !adrPathPattern.test(file)) return [];
+    const tab = line.indexOf("\t");
+    const file = line.slice(tab + 1);
+    if (!adrPathPattern.test(file)) return [];
     const status = parseAdrStatus(readFileSync(join(cwd, file), "utf8"));
-    const baseStatus = letter === "A" ? undefined : readBaseStatus(base, file, cwd);
+    const baseStatus = line.slice(0, tab) === "A" ? undefined : readBaseStatus(base, file, cwd);
     if (baseStatus === undefined) return [{ file, status, added: true }];
     return [{ file, status, added: false, baseStatus }];
   });

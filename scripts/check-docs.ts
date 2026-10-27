@@ -197,7 +197,10 @@ function checkTypeScriptEmDashes(cwd: string): Problem[] {
     .flatMap((file) => checkEmDashes(file, readFileSync(join(cwd, file), "utf8")));
 }
 
-export function main(cwd = process.cwd(), budgets: Record<string, number> = DOC_BUDGETS): void {
+export function main(
+  cwd: string = process.cwd(),
+  budgets: Record<string, number> = DOC_BUDGETS,
+): void {
   const files = markdownFiles(cwd);
   const glossary = parseGlossary(readFileSync(join(cwd, "GLOSSARY.md"), "utf8"));
   const problems = [
