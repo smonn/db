@@ -53,7 +53,7 @@ export type GenerateResult = {
    * Set beside `diff` when the hand edit, run in the Shadow, leaves the Shadow unlike the
    * Definition (ADR-0013). A warning, not a failure: the edit is the user's to finish.
    */
-  readonly leftover?: string | undefined;
+  readonly leftover?: string;
   /** Whether generate reset the Dev database, which it does only when the files left it behind. */
   readonly reset: boolean;
   /**
@@ -166,7 +166,7 @@ async function replayEdited(
     path,
     sql: edited,
     diff,
-    leftover,
+    ...(leftover === undefined ? {} : { leftover }),
     reset,
     hazards,
     hints,
