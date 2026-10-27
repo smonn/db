@@ -63,8 +63,6 @@ export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
         return { ...result, leftover };
       }
       refuseTypeChanges({ from: catalog, to: target });
-      // Stryker disable next-line ConditionalExpression,StringLiteral: only skips verifying empty SQL, which passes.
-      if (result.sql === "") return result;
       // The scan names objects as the diff does, so it reads the Shadow with the renames run.
       const blockers = await withRenames(databases.shadow, renames, (tx) =>
         unmodeledBlockers(tx, result.scans),
