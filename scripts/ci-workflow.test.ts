@@ -30,6 +30,11 @@ test("the code workflow keeps its job names, and the metadata workflow names its
   expect(jobNames(metadata)).toEqual(["Metadata"]);
 });
 
+test("the Required job waits on the mutation dry run", () => {
+  expect(/needs: \[[^\]]*mutation-dry-run[^\]]*\]/u.test(ci)).toBe(true);
+  expect(ci).toContain("run: pnpm mutation:dry");
+});
+
 test("the PR title check lives only in the metadata workflow", () => {
   expect(ci).not.toContain("check:pr");
   expect(metadata).toContain("run: pnpm check:pr");

@@ -1,4 +1,4 @@
-import { isDomain, isEnum, sqlDefinition } from "../../runtime/definition/index.ts";
+import { isDomain, isEnum, sqlDefinition, type Table } from "../../runtime/definition/index.ts";
 import type { Catalog } from "./fact.ts";
 import type { DefinitionTables } from "./definition-catalog.ts";
 import { applies } from "./rename-applies.ts";
@@ -28,11 +28,7 @@ export function declaredRenames(database: DefinitionTables): Rename[] {
   return [...tables, ...columns, ...enums, ...labels, ...domains];
 }
 
-function columnRenames(
-  schema: string,
-  table: string,
-  columns: Extract<DefinitionTables[string][string], { columns: unknown }>["columns"],
-): Rename[] {
+function columnRenames(schema: string, table: string, columns: Table["columns"]): Rename[] {
   const renames: Rename[] = [];
   for (const [name, { state }] of Object.entries(columns)) {
     if (state.renamedFrom === undefined) continue;

@@ -123,11 +123,7 @@ function typeHazards(before: string, after: string, named: NamedTypes): readonly
   return pairHazards(from, to);
 }
 
-/**
- * A domain's values read as its base, so from a domain to its base, or to an unconstrained domain
- * over the same base, changes nothing, and to a constrained one checks every row. Any other pair
- * with a domain gets every hazard; `undefined` when neither type is a domain.
- */
+/** The hazards of a retype that involves a domain; `undefined` when neither type is a domain. */
 function domainRetypeHazards(
   before: string,
   after: string,
@@ -139,6 +135,11 @@ function domainRetypeHazards(
   return domainPairHazards(before, after, source, target);
 }
 
+/**
+ * A domain's values read as its base, so from a domain to its base, or to an unconstrained domain
+ * over the same base, changes nothing, and to a constrained one checks every row. Any other pair
+ * with a domain gets every hazard.
+ */
 function domainPairHazards(
   before: string,
   after: string,

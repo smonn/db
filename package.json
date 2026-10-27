@@ -53,6 +53,8 @@
     "lint": "oxlint",
     "lint:actions": "node scripts/actionlint.ts",
     "mutation": "stryker run",
+    "mutation:dry": "stryker run --dryRunOnly",
+    "mutation:failure": "node scripts/mutation-failure.ts",
     "mutation:report": "node scripts/mutation-report.ts",
     "prepack": "pnpm run build",
     "prepare": "lefthook install --reset-hooks-path",

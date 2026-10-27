@@ -8,7 +8,7 @@
  * run `node scripts/test-db.ts` first, or it fails `coverage` with that hint instead of running it.
  * It never starts Postgres itself.
  * When a CI job gains a step, add its script here.
- * `pnpm check:static` (`--static`) skips `coverage`, so it needs no database; pre-push runs it.
+ * `pnpm check:static` (`--static`) skips `coverage` and `mutation:dry`, so it needs no database; pre-push runs it.
  */
 import { spawnSync } from "node:child_process";
 import { isReachable, testDatabaseUrl } from "./test-database-url.ts";
@@ -28,7 +28,10 @@ export const checks = [
   "deps",
   "fta",
   "coverage",
+  "mutation:dry",
 ] as const;
+
+const needsDatabase: ReadonlySet<string> = new Set(["coverage", "mutation:dry"]);
 
 type Run = (script: string) => boolean;
 
@@ -55,7 +58,7 @@ function selectScripts(args: readonly string[]): readonly string[] {
   const unknown = args.filter((arg) => arg !== "--static");
   if (unknown.length > 0)
     throw new Error(`Unknown argument "${unknown.join(" ")}"; expected --static.`);
-  return args.includes("--static") ? checks.filter((script) => script !== "coverage") : checks;
+  return args.includes("--static") ? checks.filter((script) => !needsDatabase.has(script)) : checks;
 }
 
 function reportResult(failed: readonly string[], total: number, databaseMissing: boolean): void {
@@ -77,7 +80,7 @@ export async function main(
   const scripts = selectScripts(args);
   const databaseMissing = scripts.includes("coverage") && !(await hasDatabase());
   const failed = runChecks(scripts, (script) => {
-    if (script !== "coverage" || !databaseMissing) return run(script);
+    if (!needsDatabase.has(script) || !databaseMissing) return run(script);
     console.error("Skipped: no reachable test database.");
     return false;
   });
