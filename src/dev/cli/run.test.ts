@@ -42,6 +42,7 @@ function projectWith(overrides: Partial<Project> = {}): Project {
     migrations: "./migrations",
     url: db.url,
     migrationsFolder: join(folder, "migrations"),
+    trackingSchema: "smonn_db",
     loadDefinition: () => Promise.resolve(defineDatabase({ public: {} })),
     ...overrides,
   };

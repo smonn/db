@@ -14,16 +14,25 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-async function writeConfig(): Promise<string> {
+async function writeConfig(extra = ""): Promise<string> {
   const file = join(dir, "smonndb.config.ts");
   await writeFile(
     file,
-    `export default { definition: "./definition.ts", migrations: "./migrations", url: "postgres://localhost/none" };\n`,
+    `export default { definition: "./definition.ts", migrations: "./migrations", url: "postgres://localhost/none"${extra} };\n`,
   );
   return file;
 }
 
 describe("loadProject", () => {
+  it.each([
+    ["", "smonn_db"],
+    [`, trackingSchema: "app_tracking"`, "app_tracking"],
+  ])("names the tracking schema for config extras %j", async (extra, expected) => {
+    const project = await loadProject(await writeConfig(extra));
+
+    expect(project.trackingSchema).toBe(expected);
+  });
+
   it("resolves the migrations folder and loads the Definition against the config's folder", async () => {
     await writeFile(join(dir, "definition.ts"), `export default { public: {} };\n`);
 

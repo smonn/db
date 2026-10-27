@@ -143,24 +143,23 @@ function parseCommand(argv: readonly string[]): Command {
   return commandNamed(name, args, config, parsed.values);
 }
 
-const ARGUMENTLESS = ["reset", "rebase", "generate", "migrate", "verify"] as const;
+type CommandFlags = { readonly erase?: boolean; readonly onto?: string };
 
-type ArgumentlessName = (typeof ARGUMENTLESS)[number];
+/** The commands that take no arguments, each building itself from the flag it alone accepts. */
+const ARGUMENTLESS = {
+  reset: (config: string, { erase }: CommandFlags): Command => ({
+    name: "reset",
+    erase: erase === true,
+    config,
+  }),
+  rebase: (config: string, { onto }: CommandFlags): Command => ({ name: "rebase", config, onto }),
+  generate: (config: string): Command => ({ name: "generate", config }),
+  migrate: (config: string): Command => ({ name: "migrate", config }),
+  verify: (config: string): Command => ({ name: "verify", config }),
+};
 
-function isArgumentless(name: string): name is ArgumentlessName {
-  return ARGUMENTLESS.some((candidate) => candidate === name);
-}
-
-/** A command that takes no arguments, with the flag it alone accepts. */
-function flagged(
-  name: ArgumentlessName,
-  config: string,
-  values: { readonly erase?: boolean; readonly onto?: string },
-): Command {
-  if (name === "reset") return { name, erase: values.erase === true, config };
-  // Stryker disable next-line ConditionalExpression: another command given an `onto` key behaves the same, since only rebase reads it.
-  if (name === "rebase") return { name, config, onto: values.onto };
-  return { name, config };
+function isArgumentless(name: string): name is keyof typeof ARGUMENTLESS {
+  return Object.hasOwn(ARGUMENTLESS, name);
 }
 
 function commandNamed(
@@ -173,5 +172,5 @@ function commandNamed(
   if (name === "commit") return parseCommit(args, config, values.accept);
   if (!isArgumentless(name)) throw new UsageError(`unknown command ${name}`);
   checkNoArguments(name, args);
-  return flagged(name, config, values);
+  return ARGUMENTLESS[name](config, values);
 }

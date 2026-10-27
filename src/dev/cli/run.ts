@@ -40,13 +40,12 @@ type Context = {
   readonly driver: Driver;
   readonly project: Project;
   readonly migrations: string;
-  readonly tracking: { readonly trackingSchema?: string };
+  readonly tracking: { readonly trackingSchema: string };
 };
 
 function runOn(driver: Driver, command: DatabaseCommand, project: Project): Promise<void> {
   const { migrationsFolder: migrations, trackingSchema } = project;
-  // Stryker disable next-line ConditionalExpression: every consumer defaults an undefined trackingSchema, and exactOptionalPropertyTypes only forbids writing the key as undefined.
-  const tracking = trackingSchema === undefined ? {} : { trackingSchema };
+  const tracking = { trackingSchema };
   const context = { driver, project, migrations, tracking };
   switch (command.name) {
     case "generate":
