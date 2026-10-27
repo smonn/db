@@ -1,12 +1,6 @@
-import {
-  childrenOf,
-  elementOf,
-  qualified,
-  type Catalog,
-  type Fact,
-  type Key,
-} from "../catalog/index.ts";
+import { elementOf, qualified, type Catalog, type Fact, type Key } from "../catalog/index.ts";
 import { enumSwaps } from "./enum-swap.ts";
+import { storageOf } from "./rebuilt.ts";
 
 type Catalogs = { readonly from: Catalog; readonly to: Catalog };
 
@@ -60,6 +54,7 @@ function refuseSwapUnderDomains(catalogs: Catalogs): void {
   for (const [type, { before }] of enumSwaps(catalogs)) {
     const domains = [...catalogs.from].filter(
       ([key, fact]) =>
+        // Stryker disable next-line ConditionalExpression: only a domain has a base, so another kind never matches `type`.
         fact.kind === "domain" &&
         fact.payload.base === type &&
         catalogs.to.get(key)?.kind === "domain",
@@ -91,6 +86,7 @@ function refuseSwapUnderGeneratedColumns(catalogs: Catalogs): void {
 /** Whether the swap of `type` retypes `column`, which stored generated in both catalogs. */
 function retypedGenerated(key: Key, column: Fact, type: string, { from, to }: Catalogs): boolean {
   const after = to.get(key);
+  // Stryker disable next-line ConditionalExpression: a column's key is no other kind's, so `column` is a column whenever `after` is.
   if (column.kind !== "column" || after?.kind !== "column") return false;
   return (
     holds(column.payload.type, after.payload.type, type) &&
@@ -105,7 +101,5 @@ function holds(before: string, after: string, type: string): boolean {
 }
 
 function isStored(catalog: Catalog, column: Fact): boolean {
-  return childrenOf(catalog, column).some(
-    (fact) => fact.kind === "generated" && fact.payload.storage === "stored",
-  );
+  return storageOf(catalog, column) === "stored";
 }

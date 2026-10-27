@@ -34,7 +34,7 @@ function needsRebuild({ from, to }: Catalogs, before: Fact, after: Fact): boolea
 }
 
 /** How the column stores its generation expression, or `undefined` when it isn't generated. */
-function storageOf(catalog: Catalog, column: Fact): GeneratedPayload["storage"] | undefined {
+export function storageOf(catalog: Catalog, column: Fact): GeneratedPayload["storage"] | undefined {
   for (const fact of childrenOf(catalog, column)) {
     if (fact.kind === "generated") return fact.payload.storage;
   }
