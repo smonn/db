@@ -122,9 +122,9 @@ const tableObject = (fact: Fact, catalog: Catalog): ObjectAddress => ({
 });
 
 // A default or identity is never a scan's target: its actions all walk `none`.
-// Stryker disable next-line BlockStatement: unreachable, since every action on a default or identity walks `none`.
+// Stryker disable next-line BlockStatement: 1 survivor: unreachable, since every action on a default or identity walks `none`.
 const attribute = (fact: Fact): never => {
-  // Stryker disable next-line StringLiteral, CallExpression: unreachable, as above.
+  // Stryker disable next-line StringLiteral: 1 survivor: unreachable, as above.
   throw new Error(`No scan walks from a column's ${fact.kind}`);
 };
 

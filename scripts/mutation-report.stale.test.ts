@@ -3,26 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { findings, main, reportBody } from "./mutation-report.ts";
-
-type Mutant = { mutatorName: string; status: string; line: number };
-
-const marker = "  // Stryker expect next-line StringLiteral: the label is never shown";
-
-function report(mutants: Mutant[], source: string[]): unknown {
-  return {
-    files: {
-      "src/a.ts": {
-        language: "typescript",
-        source: source.join("\n"),
-        mutants: mutants.map(({ mutatorName, status, line }) => ({
-          mutatorName,
-          status,
-          location: { start: { line, column: 1 }, end: { line, column: 9 } },
-        })),
-      },
-    },
-  };
-}
+import { expecting, marker, report } from "./mutation-report.test-helper.ts";
 
 describe("findings", () => {
   test("leaves out a survivor that a marker on the line above expects, in any case", () => {
@@ -33,7 +14,7 @@ describe("findings", () => {
         { mutatorName: "BlockStatement", status: "Survived", line: 3 },
         { mutatorName: "StringLiteral", status: "Survived", line: 4 },
       ],
-      ["f();", marker, "g('x');", "h('y');"],
+      ["f();", expecting(2), "g('x');", "h('y');"],
     );
     expect(findings(parsed)).toEqual({
       survivors: [
@@ -51,12 +32,7 @@ describe("findings", () => {
         { mutatorName: "StringLiteral", status: "Timeout", line: 2 },
         { mutatorName: "StringLiteral", status: "Survived", line: 5 },
       ],
-      [
-        marker,
-        "g('x');",
-        "  // Stryker expect next-line ArrayDeclaration, StringLiteral: two",
-        "h();",
-      ],
+      [marker, "g('x');", expecting(1, "ArrayDeclaration, StringLiteral"), "h();"],
     );
     expect(findings(parsed).stale).toEqual([
       { file: "src/a.ts", line: 1, mutator: "StringLiteral", found: "Killed, Timeout" },
@@ -102,7 +78,7 @@ describe("reportBody", () => {
         "",
         "## Stale disables",
         "",
-        "Each `Stryker disable` comment below hides no surviving mutant of its mutator on the next line. Delete it, or fix its mutator.",
+        "Each `Stryker disable` comment below states more survivors than its mutators have on the next line. Delete it, or fix its mutators or its count.",
         "",
         "| File | Line | Mutator | Found |",
         "| --- | --- | --- | --- |",

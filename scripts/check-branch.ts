@@ -24,7 +24,7 @@ export function parsePushedBranches(stdin: string): string[] {
 }
 
 function readStdin(): string {
-  // Stryker disable next-line StringLiteral: no other text parses as a pushed branch either, so a mutated empty string is indistinguishable.
+  // Stryker disable next-line StringLiteral: 1 survivor: no other text parses as a pushed branch either, so a mutated empty string is indistinguishable.
   if (process.stdin.isTTY) return "";
   return readFileSync(0, "utf8");
 }

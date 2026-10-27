@@ -4,8 +4,8 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { main, mutatedFiles } from "./mark-stryker-disables.ts";
 
-const disabled = "// Stryker disable next-line StringLiteral: never shown\nf('x');\n";
-const marked = "// Stryker expect next-line StringLiteral: never shown\nf('x');\n";
+const disabled = "// Stryker disable next-line StringLiteral: 1 survivor: never shown\nf('x');\n";
+const marked = "// Stryker expect next-line StringLiteral: 1 survivor: never shown\nf('x');\n";
 
 let dir: string;
 const write = (file: string, text: string): void => {

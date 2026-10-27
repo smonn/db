@@ -157,7 +157,7 @@ export function checkBudget(file: string, text: string, cap: number): Problem[] 
 export function readRepoPath(cwd: string, path: string): string | undefined {
   const full = join(cwd, path);
   if (!existsSync(full)) return undefined;
-  // Stryker disable next-line StringLiteral: a folder's text is only read for anchors in a `.md` file or counted against a budget, where any short stand-in string stays under the cap.
+  // Stryker disable next-line StringLiteral: 1 survivor: a folder's text is only read for anchors in a `.md` file or counted against a budget, where any short stand-in string stays under the cap.
   if (!statSync(full).isFile()) return "";
   return readFileSync(full, "utf8");
 }
