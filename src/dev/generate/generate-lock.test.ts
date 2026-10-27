@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  advisoryLocksHeld,
   backendPid,
   untilMigrationLockAttempted,
   useTestDatabase,
@@ -8,6 +9,7 @@ import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { acquireMigrationLock, writeMigration } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type { Connect } from "../../runtime/ports/index.ts";
+import { DEV_LOCK_KEY } from "./dev-lock.ts";
 import { generate } from "./generate.ts";
 import { generateOptions } from "./generate-options.test-helper.ts";
 import { filesIn, memoryFileSystem } from "./memory-file-system.test-helper.ts";
@@ -27,6 +29,8 @@ const WIDGETS = defineDatabase({
 });
 
 const NOTHING = defineDatabase({});
+
+const DIVIDES = await writeMigration("000001-divide.sql", undefined, "select 1 / 0;\n");
 
 beforeEach(async () => {
   await db.driver.execute(
@@ -97,12 +101,34 @@ describe("generate and the migrator's lock", () => {
     expect(finishedEarly).toBe(false);
     expect(events).toStrictEqual(["generate", "migrate"]);
   });
+
+  it.each([
+    [
+      "the Dev database check refuses",
+      async () => {
+        await db.driver.execute("create table public.leftover (id int)");
+        return memoryFileSystem();
+      },
+      "isn't a Dev database",
+    ],
+    [
+      "a Committed migration fails",
+      () => Promise.resolve(memoryFileSystem(filesIn(MIGRATIONS, [DIVIDES]))),
+      "division by zero",
+    ],
+  ])("releases both locks when %s", async (_name, setUp, message) => {
+    const fileSystem = await setUp();
+
+    await expect(generate(generateOptions(db, fileSystem, NOTHING))).rejects.toThrow(message);
+
+    expect(await advisoryLocksHeld(db.driver)).toBe(0);
+  });
 });
 
 /** The backend that holds the Dev lock, which is the one generate's run goes on. */
 async function devLockPid(): Promise<number> {
   const { rows } = await db.driver.query(
-    "select pid from pg_locks where locktype = 'advisory' and granted and ((classid::bigint << 32) | objid::bigint) = 7666632338",
+    `select pid from pg_locks where locktype = 'advisory' and granted and ((classid::bigint << 32) | objid::bigint) = ${DEV_LOCK_KEY}`,
   );
   return Number(rows[0]?.["pid"]);
 }
