@@ -67,6 +67,19 @@ describe("defineDomain", () => {
       "defineDomain takes a bare type",
     );
     expect(() =>
+      // @ts-expect-error -- a default belongs in the domain's options.
+      defineDomain((c) => c.integer().default("0")),
+    ).toThrow("defineDomain takes a bare type");
+    expect(() =>
+      // @ts-expect-error -- an identity is no bare type.
+      defineDomain((c) => c.integer().identity()),
+    ).toThrow("defineDomain takes a bare type");
+    const target = defineTable((c) => ({ id: c.integer().primaryKey() }));
+    expect(() =>
+      // @ts-expect-error -- a reference belongs on a table's column.
+      defineDomain((c) => c.integer().references(() => target.columns.id)),
+    ).toThrow("defineDomain takes a bare type");
+    expect(() =>
       // @ts-expect-error -- a codec belongs on the domain's columns.
       defineDomain((c) => c.integer().codec({ decode: String, encode: Number })),
     ).toThrow("defineDomain takes a bare type");

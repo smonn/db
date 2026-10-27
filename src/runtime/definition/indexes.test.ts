@@ -169,7 +169,9 @@ describe("an indexes entry in the second callback", () => {
     expect(load((r) => ({ columns: [{ key: r.a, nulls: "middle" }] }))).toThrow(
       'takes nulls "first" or "last"',
     );
-    expect(load((r) => ({ columns: [r.a], name: 1 }))).toThrow("takes its name as a string");
+    expect(load((r) => ({ columns: [r.a], name: 1 }))).toThrow(
+      "The table's indexes entry takes its name as a string",
+    );
     expect(load((r) => ({ columns: [r.a], unique: "yes" }))).toThrow("takes unique as a boolean");
     expect(load((r) => ({ columns: [r.a], nullsNotDistinct: 1 }))).toThrow(
       "takes nullsNotDistinct as a boolean",
@@ -208,7 +210,10 @@ describe("an indexes entry in the second callback", () => {
         // TypeScript lets an extra key through an arrow function's inferred return, so only the load check catches it.
         indexes: [{ columns: [{ key: r.a, collate: "C" }] }],
       })),
-    ).toThrow('does not take "collate"');
+    ).toThrow(
+      "A key in the table's indexes does not take \"collate\"; A key in the table's indexes takes a column, an sql expression, or { key, order?, nulls? }",
+    );
+    expect(loadRaw(() => [3])).toThrow("The table's indexes takes a list of");
   });
 });
 
