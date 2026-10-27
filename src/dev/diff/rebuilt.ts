@@ -5,6 +5,7 @@ import {
   type Fact,
   type IndexPayload,
   type Key,
+  unchangedFacts,
 } from "../catalog/index.ts";
 import type { Action, Catalogs } from "./actions.ts";
 import { swapOf } from "./enum-swap.ts";
@@ -79,7 +80,7 @@ export function foreignKeysAround(planned: readonly Action[], catalogs: Catalogs
   const changed = changedColumns(planned);
   const blocked = (key: ForeignKey): boolean => isBlocked(key, planned, changed, catalogs.from);
   const renames = blockedRenames(planned, blocked);
-  const unchanged = unchangedForeignKeys(catalogs)
+  const unchanged = unchangedFacts(catalogs.from, catalogs.to, "foreign key")
     .filter(([key]) => !dropsForeignKey(planned, key) && blocked(key))
     .flatMap(([before, after]) => rebuild(before, after));
   return [
@@ -114,16 +115,6 @@ function blockedRenames(
   return rebuilds;
 }
 
-/** Each foreign key both catalogs hold under one name, as `from` and as `to` have it. */
-function unchangedForeignKeys({ from, to }: Catalogs): [before: ForeignKey, after: ForeignKey][] {
-  const pairs: [ForeignKey, ForeignKey][] = [];
-  for (const [key, before] of from) {
-    const after = to.get(key);
-    if (before.kind === "foreign key" && after?.kind === "foreign key") pairs.push([before, after]);
-  }
-  return pairs;
-}
-
 function dropsForeignKey(planned: readonly Action[], foreignKey: ForeignKey): boolean {
   return planned.some(
     ({ kind, fact }) =>
@@ -139,13 +130,14 @@ function isBlocked(
   changed: ReadonlySet<string>,
   from: Catalog,
 ): boolean {
-  const target = tableKeyAt(from, payload.target.schema, payload.target.table);
+  const targets = tableKeysAt(from, payload.target.schema, payload.target.table);
   return (
     payload.columns.some((column) => changed.has(columnId(parent, column))) ||
-    // Stryker disable next-line ConditionalExpression: a foreign key's target table is in the catalog, and an undefined target matches no changed column or dropped key.
-    (target !== undefined &&
-      (payload.target.columns.some((column) => changed.has(columnId(target, column))) ||
-        dropsKeyOn(planned, target, payload.target.columns)))
+    targets.some(
+      (target) =>
+        payload.target.columns.some((column) => changed.has(columnId(target, column))) ||
+        dropsKeyOn(planned, target, payload.target.columns),
+    )
   );
 }
 
@@ -168,11 +160,14 @@ function columnId(table: Key, column: string): string {
   return `${table}\0${column}`;
 }
 
-function tableKeyAt(catalog: Catalog, schema: string, table: string): Key | undefined {
-  return [...catalog].find(
-    ([, fact]) =>
-      fact.kind === "table" && fact.name === table && parentOf(catalog, fact).name === schema,
-  )?.[0];
+/** The key of the table `schema.table`: none when the catalog lacks it. */
+function tableKeysAt(catalog: Catalog, schema: string, table: string): Key[] {
+  return [...catalog]
+    .filter(
+      ([, fact]) =>
+        fact.kind === "table" && fact.name === table && parentOf(catalog, fact).name === schema,
+    )
+    .map(([key]) => key);
 }
 
 /** Whether `planned` drops a key of `table` that a foreign key to `columns` could stand on. */
