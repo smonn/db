@@ -103,8 +103,8 @@ export function checkHeadwordCase(file: string, text: string, entries: GlossaryE
   return text.split("\n").flatMap((line, index) => {
     const prose = line.replaceAll(/`[^`]*`/gu, "code");
     return headwords.flatMap((headword) =>
-      [...prose.matchAll(new RegExp(`\\b(${escapeRegExp(headword)})(?:s|es)?\\b`, "giu"))]
-        .map((match) => match[1] ?? "")
+      [...prose.matchAll(new RegExp(`\\b${escapeRegExp(headword)}(?=(?:s|es)?\\b)`, "giu"))]
+        .map(([variant]) => variant)
         .filter((variant) => variant !== headword)
         .map((variant) => ({
           file,
@@ -127,16 +127,15 @@ export function checkAdrBody(file: string, text: string): Problem[] {
   const lines = text.split("\n");
   const titleIndex = lines.findIndex((line) => line.startsWith("# "));
   if (titleIndex === -1) return [{ file, line: 1, message: "ADR has no title" }];
-  const sectionIndex = lines.findIndex(
-    (line, index) => index > titleIndex && line.startsWith("## "),
-  );
-  const body = lines
-    .slice(titleIndex + 1, sectionIndex === -1 ? undefined : sectionIndex)
+  const afterTitle = lines.slice(titleIndex + 1);
+  const sectionIndex = afterTitle.findIndex((line) => line.startsWith("## "));
+  const body = afterTitle
+    .slice(0, sectionIndex === -1 ? undefined : sectionIndex)
     .join("\n")
     .replaceAll(/<!--[\s\S]*?-->/gu, "")
     .replaceAll(/`[^`]*`/gu, "code");
   // A sentence ends at terminal punctuation followed by whitespace, which skips dots in "v0.1".
-  const sentences = body.split(/(?<=[.!?])\s+/u).filter((sentence) => sentence.trim() !== "");
+  const sentences = body.split(/(?<=[.!?])\s+/u).filter((sentence) => sentence !== "");
   if (sentences.length <= MAX_ADR_SENTENCES) return [];
   return [
     {
@@ -193,7 +192,7 @@ function checkTypeScriptEmDashes(cwd: string): Problem[] {
     .flatMap((file) => checkEmDashes(file, readFileSync(join(cwd, file), "utf8")));
 }
 
-export function main(cwd = ".", budgets: Record<string, number> = DOC_BUDGETS): void {
+export function main(cwd = process.cwd(), budgets: Record<string, number> = DOC_BUDGETS): void {
   const files = markdownFiles(cwd);
   const glossary = parseGlossary(readFileSync(join(cwd, "GLOSSARY.md"), "utf8"));
   const problems = [
