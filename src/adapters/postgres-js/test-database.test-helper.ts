@@ -47,15 +47,21 @@ export function explainConnectionError(error: unknown, serverUrl: string): unkno
   );
 }
 
+const otherAdvisoryLocks =
+  "from pg_locks where locktype = 'advisory' and granted and database = (select oid from pg_database where datname = current_database()) and pid <> pg_backend_pid()";
+
 /**
- * A test that times out leaves its session open, and a session advisory lock (the Dev lock) would
- * fail every later test in the file (#286). The terminated connection never releases to the pool,
- * so the pool must end with `timeout: 0` instead of waiting on it.
+ * A test that leaves a session open holds a session advisory lock (the Dev lock) that would fail
+ * every later test in the file (#286). Terminating a backend is asynchronous, so it waits until the
+ * locks are gone. The terminated connection never releases to the pool, so the pool must end with
+ * `timeout: 0` instead of waiting on it.
  */
 async function endAdvisoryLockSessions(sql: Sql): Promise<void> {
-  await sql.unsafe(
-    "select pg_terminate_backend(pid) from pg_locks where locktype = 'advisory' and granted and database = (select oid from pg_database where datname = current_database()) and pid <> pg_backend_pid()",
-  );
+  await sql.unsafe(`select pg_terminate_backend(pid) ${otherAdvisoryLocks}`);
+  await pollUntil(async () => {
+    const rows = await sql.unsafe(`select exists (select ${otherAdvisoryLocks}) as held`);
+    return rows[0]?.["held"] === false;
+  }, "terminated sessions still hold advisory locks");
 }
 
 /**
