@@ -1,6 +1,6 @@
 const HAZARD = /^-- hazard: (\S+)\s*$/u;
 const HAZARD_LOOKING = /--\s*hazard\s*:/iu;
-const TRAILING_COMMENT = /--.*$/u;
+const TRAILING_COMMENT = /--.*/u;
 
 export type HazardLine = { readonly kind: string; readonly statement: string };
 export type StrayHazardComment = { readonly line: number; readonly text: string };

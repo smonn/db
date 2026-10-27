@@ -121,6 +121,16 @@ describe("strayHazardComments", () => {
     expect(strayHazardComments(sql)).toStrictEqual([]);
   });
 
+  it("ends a statement at a semicolon followed by a comment on a CRLF line", () => {
+    const sql =
+      "-- hazard: data_loss\r\nDROP TABLE t; -- ok\r\n-- hazard: rewrite\r\nDROP TABLE u;\r\n";
+
+    expect(hazardsIn(sql)).toStrictEqual([
+      { kind: "data_loss", statement: "DROP TABLE t; -- ok" },
+      { kind: "rewrite", statement: "DROP TABLE u;" },
+    ]);
+  });
+
   it("doesn't end a statement at a semicolon inside a trailing comment", () => {
     const sql = "-- hazard: data_loss\nDROP TABLE t -- gone;\n;\nSELECT 1;\n";
 
