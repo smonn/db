@@ -8,7 +8,7 @@ import type { Scan } from "../diff/index.ts";
  * Drops share one transitive walk (#372): only `n` edges block, an object reached through any
  * other edge drops with its owner, and a dependent of one drop that another drop removes is no
  * blocker, as in a multi-object `DROP`. A column the plan retypes stops depending on a type it
- * drops. A retype reads the column's direct dependents of the kinds `ALTER COLUMN ... TYPE`
+ * drops, so the walk stops there and leaves its dependents to the retype. A retype reads the column's direct dependents of the kinds `ALTER COLUMN ... TYPE`
  * refuses, reported as their owner (a view for its rule, a column for its generation expression),
  * unless a planned drop removes them or they are a generation expression the plan drops first.
  * Inheritance (`pg_inherits`) is left to verification.
@@ -38,6 +38,10 @@ closure(root_classid, root_objid, root_objsubid, classid, objid, objsubid) as (
     where d.classid = c.classid and d.objid = c.objid
       and (c.objsubid = 0 or d.objsubid = c.objsubid) and d.deptype = 'i'
   ) x
+  -- a retyped column stays, so its dependents block only the retype
+  where not exists (
+    select from retyped t
+    where t.classid = c.classid and t.objid = c.objid and t.objsubid = c.objsubid)
 ),
 nodes as (select distinct classid, objid, objsubid from closure),
 drop_blockers as (
@@ -81,7 +85,12 @@ retype_blockers as (
     and not exists (select from removed m where m.classid = d.classid and m.objid = d.objid)
 ),
 blockers as (
-  select 'drop' as walk, * from drop_blockers
+  -- a view's column changes only with its view, so it blocks as the view
+  select distinct 'drop' as walk, b.root_classid, b.root_objid, b.root_objsubid, b.classid,
+    b.objid, case when v.oid is null then b.objsubid else 0 end as objsubid
+  from drop_blockers b
+    left join pg_class v on b.classid = 'pg_class'::regclass and v.oid = b.objid
+      and v.relkind in ('v', 'm')
   union all
   select 'retype', b.* from retype_blockers b
   -- a node of a drop's closure that blocks nothing drops before the retype

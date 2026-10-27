@@ -51,6 +51,28 @@ describe("unmodeledBlockers", () => {
     ]);
   });
 
+  it("stops a drop's walk at a column the plan retypes, but not at a view's own column", async () => {
+    await db.driver.execute(`
+      create type public.mood as enum ('a', 'b');
+      create table public.t (m public.mood);
+      create function public.noop() returns trigger language plpgsql as 'begin return new; end';
+      create trigger tr before update of m on public.t for each row execute function public.noop();
+      create view public.moods as select m, m as again from public.t;`);
+
+    expect(
+      await blockerLines([
+        { walk: "drop", object: { type: "type", names: [`"public"."mood"`], args: [] } },
+        { walk: "retype", object: { type: "table column", names: ["public", "t", "m"], args: [] } },
+      ]),
+    ).toStrictEqual([
+      "  type public.mood, which it drops:",
+      "    view public.moods",
+      "  table column public.t.m, which it retypes:",
+      "    trigger tr on public.t",
+      "    view public.moods",
+    ]);
+  });
+
   it("leaves out a retype's dependent that a planned drop removes", async () => {
     expect(
       await blockerLines([column("retype", "name"), column("drop", "upper_name"), table("log")]),
