@@ -111,7 +111,7 @@ function parseFlags(argv: readonly string[]) {
       },
     });
   } catch (error) {
-    throw new UsageError(error instanceof Error ? error.message : String(error), { cause: error });
+    throw new UsageError(error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -158,6 +158,7 @@ function flagged(
   values: { readonly erase?: boolean; readonly onto?: string },
 ): Command {
   if (name === "reset") return { name, erase: values.erase === true, config };
+  // Stryker disable next-line ConditionalExpression: another command given an `onto` key behaves the same, since only rebase reads it.
   if (name === "rebase") return { name, config, onto: values.onto };
   return { name, config };
 }
