@@ -132,25 +132,60 @@ const posint = defineDomain((c) => c.integer(), {
   notNull: true,
   checks: { posint_positive: "value > 0" },
 });
+const upbeat = defineDomain((c) => c.enum(mood), {
+  checks: { upbeat_not_sad: "value <> 'sad'" },
+});
 
 export default defineDatabase({
   public: {
     mood,
     posint,
+    upbeat,
     entries: defineTable((c) => ({
       id: c.text().notNull(),
       mood: c.enum(mood),
       score: c.domain(posint),
+      lately: c.enum(mood).array().notNull(),
     })),
   },
 });
 ```
 
-Labels stay in the order you list them, which is the order the enum compares in. A domain's base is a bare type such as `c.integer()`; `notNull`, `default`, and `checks` (keyed by constraint name, with `value` naming the value checked) go in its options. Both also take `name` for an SQL name its key can't give.
+Labels stay in the order you list them, which is the order the enum compares in. A domain's base is a bare type, such as `c.integer()`, or an enum, such as `c.enum(mood)`; it can't be an array or another domain. `notNull`, `default`, and `checks` (keyed by constraint name, with `value` naming the value checked) go in its options. Both also take `name` for an SQL name its key can't give.
+
+Call `.array()` first on a column, before any modifier, to make it a one-dimensional array of its type, as `lately` does. Postgres can't make elements NOT NULL, so its row type is `("sad" | "ok" | "good" | null)[]`, and `.notNull()` and `.default()` apply to the whole column, as `.notNull()` does here. A builder query returns these arrays parsed, with `null` for a NULL element. Raw `sql` gets what postgres.js parses: an enum or domain array whose type existed when the connection opened arrives as an array of strings, with a NULL element as the string `"NULL"`, and one whose type was created later arrives as array text such as `{a,NULL}`. Open a new connection to get the first form.
+
+### Codecs
+
+A column's row type follows its Postgres type, so a `date` column reads as a `string`. `.codec()` swaps in another value. A Codec is `decode` from the column's base value and `encode` back to it, and only the query layer runs it: the driver, the catalog, and the migrations never see one, so adding or changing a codec generates nothing. `plainDate` ships with the package and maps `date` to `Temporal.PlainDate`. It reads `globalThis.Temporal` when it runs and throws if there is none. Node 24 has none, so install a Temporal polyfill first.
+
+```ts wrap=module
+import { plainDate, type Codec } from "@smonn/db";
+
+const href: Codec<string, URL> = {
+  decode: (base) => new URL(base),
+  encode: (value) => value.href,
+};
+
+export default defineDatabase({
+  public: {
+    visits: defineTable((c) => ({
+      id: c.text().notNull(),
+      day: c.date().codec(plainDate).notNull(),
+      page: c.text().codec(href),
+      days: c.date().codec(plainDate).array().notNull(),
+    })),
+  },
+});
+```
+
+`day` reads as a `Temporal.PlainDate`, `page` as `URL | null` since it is nullable, and `days` as `(Temporal.PlainDate | null)[]`. Codecs decode every value that comes from a column, as `from` selects and `insert ... returning` do, and encode insert values and any value you compare against the column. NULL never reaches a codec. One that throws rejects the query, naming the table and column. A raw `sql` query runs no codecs and returns base values. A column takes one codec.
+
+On an array column, the codec belongs to the element, so call `.codec()` before `.array()`, as `days` does. It then runs on each element and skips NULL ones. `.array().codec(plainDate)` is a type error, since `.array()` leaves no `codec` method and a codec on a whole array isn't offered.
 
 ### Renaming a table, column, enum, or domain
 
-Rename a key in the Definition and `generate` sees a drop and a create, which it flags as `data_loss`. It prints a hint when it spots a likely rename: a table that drops exactly one column and adds exactly one of the same type, or a schema that drops exactly one table and adds one with identical columns. With more than one drop or add, no hint appears, so check for renames yourself.
+Rename a key in the Definition and `generate` sees a drop and a create, which it flags as `data_loss`. It prints a hint when it spots a likely rename: a table that drops exactly one column and adds exactly one of the same type, a schema that drops exactly one table and adds one with identical columns, or an enum that drops exactly one label and adds one at the same position. With more than one drop or add, no hint appears, so check for renames yourself.
 
 ```text
 hint: column "public"."users"."full_name" may be a rename of "name": add .renamedFrom("name") to it
@@ -174,7 +209,7 @@ people: defineTable(
 ),
 ```
 
-An enum and a domain take the same marker in their options, and an enum also takes `renamedLabels`, keyed new label to old. Without it, a renamed label is a type swap that rewrites every table using the enum, and `generate` prints a hint naming the entry to add when an enum removes one label and adds one at the same position. A domain check renames on its own when its expression stays the same.
+An enum and a domain take the same marker in their options, and an enum also takes `renamedLabels`, keyed new label to old. Without it, a renamed label is a type swap that rewrites every table using the enum, and `generate` prints a hint naming the entry to add. A domain check renames on its own when its expression stays the same.
 
 ```ts wrap=type
 mood: defineEnum(["great", "bad"], {
@@ -192,7 +227,7 @@ hazard rename: alter table "public"."users" rename column "name" to "full_name";
 
 The marker takes the old SQL name, as the database holds it, not the old key. A hint is only a guess, and `generate` never writes one into the SQL, so a rename with no marker stays a drop and create.
 
-Remove the marker once you have run `commit`, or leave it: from then on the Committed migrations hold the new name, so `generate` skips a marker whose old name is gone, and a kept marker is harmless. Until you commit, keep it: each `generate` rebuilds `current.sql` from the Definition, and without the marker the rename turns back into a drop. If both the old and the new name exist, `generate` throws.
+Once you have run `commit`, the Committed migrations hold the new name and `generate` skips a marker whose old name is gone, so you can remove the marker or leave it. Until you commit, keep it: each `generate` rebuilds `current.sql` from the Definition, and without the marker the rename turns back into a drop. If both the old and the new name exist, `generate` throws.
 
 ### Mapping keys to snake_case
 
@@ -207,7 +242,7 @@ export default defineDatabase(
 
 That table is `public.user_accounts`, its column `user_id`, and its primary key `user_accounts_pkey`, since derived names come from the SQL names. Enum labels, and the names you give constraints, indexes, and domain checks, stay as written. For a name casing can't produce, such as `user_ids` for `userIDs` (which maps to `user_i_ds`), a column takes `.name("sql_name")`, a table takes `name` in its second callback, and an enum or domain takes `name` in its options. An explicit name wins over casing. Two keys that map to one SQL name, such as `userId` and `user_id`, throw at load.
 
-Builder queries return rows keyed by your keys. Raw `sql` returns the SQL names Postgres sends, so type its rows with those names, or as `DriverRow`. Raw `sql` also returns an enum or domain array as postgres.js parses it: a NULL element arrives as the string `"NULL"`, and a type created after the connection opened arrives as array text. A builder query returns an array of values with `null` elements.
+Builder queries return rows keyed by your keys. Raw `sql` returns the SQL names Postgres sends, so type its rows with those names, or as `DriverRow`.
 
 Turning casing on for an existing database renames every name it changes, so each one needs a `renamedFrom` marker with its old SQL name. Without them, `generate` drops and recreates each table and column:
 
