@@ -1,5 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineDatabase, defineDomain, defineEnum, defineTable, type Row } from "./index.ts";
+import { isDomain } from "./domain.ts";
+import { isEnum } from "./enum.ts";
 
 describe("defineDomain", () => {
   it("keeps its base, NOT NULL, default, and checks keyed by name", () => {
@@ -83,6 +85,19 @@ describe("defineDomain", () => {
       // @ts-expect-error -- a codec belongs on the domain's columns.
       defineDomain((c) => c.integer().codec({ decode: String, encode: Number })),
     ).toThrow("defineDomain takes a bare type");
+  });
+});
+
+describe("isDomain and isEnum", () => {
+  const domain = defineDomain((c) => c.integer());
+  const mood = defineEnum(["ok"]);
+
+  it("tell a domain from an enum and from anything else", () => {
+    expect([isDomain(domain), isDomain(mood)]).toStrictEqual([true, false]);
+    expect([isEnum(mood), isEnum(domain)]).toStrictEqual([true, false]);
+    for (const other of [null, undefined, 3, "domain", "enum", {}, { kind: "table" }]) {
+      expect([isDomain(other), isEnum(other)]).toStrictEqual([false, false]);
+    }
   });
 });
 
