@@ -45,7 +45,7 @@ export function quotedEnd(text: string, at: number): number {
   }
 }
 
-const flowStop = /[,[\]{}]|:(?=[\s,[\]{}])|\s#/u;
+const flowStop = /[,[\]{}]|:(?=[\s,[\]{}]|$)|\s#/u;
 
 function flowNodeEnd(text: string, at: number, keys: string[]): number {
   refuseNodeStart(text, at);

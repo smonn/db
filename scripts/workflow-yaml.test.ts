@@ -47,6 +47,8 @@ describe("workflowYamlProblems", () => {
     ["a flow collection across lines", "a: {b: c # d\n  }\n"],
     ["a flow collection across lines", "a: {b:\n"],
     ["a malformed flow collection", "a: {b: c: d}\n"],
+    ["a malformed flow collection", "a: {x: b:\n"],
+    ["a malformed flow collection", "a: [x: b:\n"],
     ["text after a quoted scalar", "a: 'b' c\n"],
     ["text after a flow collection", "a: [b] c\n"],
     ["text after a flow collection", "a: {b: c} d\n"],
