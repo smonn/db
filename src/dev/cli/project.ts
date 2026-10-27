@@ -42,9 +42,8 @@ function isDefinition(value: unknown): value is DefinitionTables {
   return typeof value === "object" && value !== null;
 }
 
-async function importDefault(file: string): Promise<unknown> {
-  const module: unknown = await import(pathToFileURL(file).href);
-  return typeof module === "object" && module !== null && "default" in module
-    ? module.default
-    : undefined;
+function importDefault(file: string): Promise<unknown> {
+  return import(pathToFileURL(file).href).then(
+    (module: { readonly default?: unknown }) => module.default,
+  );
 }
