@@ -1,4 +1,11 @@
-import { qualified, type Catalog, type Fact } from "../catalog/index.ts";
+import {
+  childrenOf,
+  elementOf,
+  qualified,
+  type Catalog,
+  type Fact,
+  type Key,
+} from "../catalog/index.ts";
 import { enumSwaps } from "./enum-swap.ts";
 
 type Catalogs = { readonly from: Catalog; readonly to: Catalog };
@@ -18,6 +25,7 @@ export function refuseTypeChanges(catalogs: Catalogs): void {
     if (before.kind === "domain" && after.kind === "domain") refuseNewBase(before, after, catalogs);
   }
   refuseSwapUnderDomains(catalogs);
+  refuseSwapUnderGeneratedColumns(catalogs);
 }
 
 const ARTICLES: Readonly<Record<string, string>> = { enum: "an enum", domain: "a domain" };
@@ -61,4 +69,43 @@ function refuseSwapUnderDomains(catalogs: Catalogs): void {
       `Generate can't remove or reorder a label of the enum ${qualified(before, catalogs.from)} while a domain depends on it: ${domains.map(([, fact]) => qualified(fact, catalogs.from)).join(", ")}. Postgres can't move a domain to a new type, so the swap couldn't drop the old one. ${WROTE_NONE}: write this one by hand, dropping each domain before the swap and creating it again after, or drop the domains in an earlier migration.`,
     );
   }
+}
+
+/**
+ * Postgres rejects `USING` on a generated column, and the swap retypes with one. A stored column
+ * that stays generated can't move; one the Definition makes plain loses its expression first.
+ */
+function refuseSwapUnderGeneratedColumns(catalogs: Catalogs): void {
+  const { from } = catalogs;
+  for (const [type, { before }] of enumSwaps(catalogs)) {
+    const columns = [...from]
+      .filter(([key, column]) => retypedGenerated(key, column, type, catalogs))
+      .map(([, column]) => column);
+    if (columns.length === 0) continue;
+    throw new Error(
+      `Generate can't remove or reorder a label of the enum ${qualified(before, from)} while a stored generated column has its type: ${columns.map((column) => qualified(column, from)).join(", ")}. Postgres can't retype a generated column with USING, which the swap needs. ${WROTE_NONE}: write this one by hand, dropping each column before the swap and adding it again after, or drop the columns in an earlier migration.`,
+    );
+  }
+}
+
+/** Whether the swap of `type` retypes `column`, which stored generated in both catalogs. */
+function retypedGenerated(key: Key, column: Fact, type: string, { from, to }: Catalogs): boolean {
+  const after = to.get(key);
+  if (column.kind !== "column" || after?.kind !== "column") return false;
+  return (
+    holds(column.payload.type, after.payload.type, type) &&
+    isStored(from, column) &&
+    isStored(to, after)
+  );
+}
+
+/** Whether a column keeps its type, which is `type` or an array of it. */
+function holds(before: string, after: string, type: string): boolean {
+  return before === after && (elementOf(before) ?? before) === type;
+}
+
+function isStored(catalog: Catalog, column: Fact): boolean {
+  return childrenOf(catalog, column).some(
+    (fact) => fact.kind === "generated" && fact.payload.storage === "stored",
+  );
 }

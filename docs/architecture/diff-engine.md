@@ -63,7 +63,7 @@ A label added to an existing enum is one `ALTER TYPE ... ADD VALUE ... BEFORE|AF
 
 A `renamedLabels` entry renames a label in place with `ALTER TYPE ... RENAME VALUE`, which keeps its position and locks no table, so it avoids the swap below.
 
-A removed or reordered label swaps the type (ADR-0023): phase 1 renames the old one aside, phase 5 creates the new one, phase 6 retypes each column of it or its array with `USING col::text::<type>`, dropping and setting its default around it, and phase 8 drops the old one. The diff refuses a swap while a domain fact in the catalog depends on the enum, naming the domain.
+A removed or reordered label swaps the type (ADR-0023): phase 1 renames the old one aside, phase 5 creates the new one, phase 6 retypes each column of it or its array with `USING col::text::<type>`, dropping and setting its default around it, and phase 8 drops the old one. The diff refuses a swap while a domain fact in the catalog depends on the enum, naming the domain. It also refuses when a column of the enum or its array is stored generated in both catalogs, since Postgres rejects `USING` on a generated column, naming the column; one the Definition makes plain loses its expression first.
 
 ### Domains
 
