@@ -31,11 +31,7 @@ export async function renameInShadow(
 }
 
 /** Rolls back a transaction whose result `withRenames` already holds. */
-class RolledBack extends Error {
-  constructor() {
-    super("rolled back the renames");
-  }
-}
+class RolledBack extends Error {}
 
 /** Runs `read` on the Shadow after `renames` inside a transaction, then rolls back. */
 export async function withRenames<T>(
@@ -46,8 +42,7 @@ export async function withRenames<T>(
   let result: { readonly value: T } | undefined;
   const outcome = await shadow
     .transaction(async (tx) => {
-      if (renames.length > 0)
-        await tx.execute(renames.map((rename) => renameSql(rename)).join("\n"));
+      if (renames.length > 0) await tx.execute(renames.map((rename) => renameSql(rename)).join(""));
       result = { value: await read(tx) };
       throw new RolledBack();
     })
