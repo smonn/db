@@ -45,6 +45,7 @@ type Context = {
 
 function runOn(driver: Driver, command: DatabaseCommand, project: Project): Promise<void> {
   const { migrationsFolder: migrations, trackingSchema } = project;
+  // Stryker disable next-line ConditionalExpression: every consumer defaults an undefined trackingSchema, and exactOptionalPropertyTypes only forbids writing the key as undefined.
   const tracking = trackingSchema === undefined ? {} : { trackingSchema };
   const context = { driver, project, migrations, tracking };
   switch (command.name) {
@@ -56,6 +57,7 @@ function runOn(driver: Driver, command: DatabaseCommand, project: Project): Prom
       return runCommit(context, command.slug, command.accept);
     case "reset":
       return runReset(context, command.erase);
+    // Stryker disable next-line ConditionalExpression: unreachable, since the type forbids any other command name.
     default:
       return command satisfies never;
   }
