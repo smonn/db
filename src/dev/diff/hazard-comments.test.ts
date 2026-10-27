@@ -235,6 +235,7 @@ describe("hazard comments", () => {
       sql: `alter table "public"."t" add column "a" text;\n`,
       hazards: [],
       hints: [],
+      scans: [],
     });
   });
 });

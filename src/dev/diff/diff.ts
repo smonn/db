@@ -5,23 +5,14 @@ import {
   type Fact,
   type Rename,
 } from "../catalog/index.ts";
-import { hazardsOf, render, type Action, type Catalogs } from "./actions.ts";
+import type { Action, Catalogs } from "./actions.ts";
+import { emit, type Diff } from "./emit.ts";
 import { swapOf } from "./enum-swap.ts";
 import type { Handling, HandlingTable } from "./handling.ts";
-import type { Hazard } from "./hazards.ts";
 import { renameHints } from "./hints.ts";
-import { order } from "./phases.ts";
 import { foreignKeysAround, rebuiltColumns, retyped, without } from "./rebuilt.ts";
 import { renameAction, renameByPayload } from "./renames.ts";
 import { TYPE_HANDLING } from "./type-handling.ts";
-
-export type Diff = {
-  /** Each statement follows one `-- hazard: <kind>` comment per Hazard it carries. */
-  readonly sql: string;
-  readonly hazards: readonly Hazard[];
-  /** Renames the Definition could declare, for a drop and an add that look like one (ADR-0024). */
-  readonly hints: readonly string[];
-};
 
 /**
  * The SQL that turns a database with catalog `from` into one with catalog `to`. With `renames`,
@@ -43,16 +34,10 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
       ...(before === undefined ? created(fact, keptFrom) : altered(before, fact, catalogs)),
     );
   }
-  const hazards: Hazard[] = [];
-  const sql = order(foreignKeysAround(renameByPayload(actions), catalogs))
-    .map((action) => {
-      const statement = render(action, catalogs);
-      const kinds = hazardsOf(action, catalogs);
-      hazards.push(...kinds.map((kind) => ({ kind, statement })));
-      return `${kinds.map((kind) => `-- hazard: ${kind}\n`).join("")}${statement}\n`;
-    })
-    .join("\n");
-  return { sql, hazards, hints: renameHints(from, to) };
+  return {
+    ...emit(foreignKeysAround(renameByPayload(actions), catalogs), catalogs),
+    hints: renameHints(from, to),
+  };
 }
 
 /** What the source pass does with one fact of `from`, given its counterpart `after` in `keptTo`. */

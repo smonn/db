@@ -82,6 +82,11 @@ describe("diff with renames", () => {
   it("stays a plain diff with no renames", () => {
     const catalog = people({ id: "text" });
 
-    expect(diff(catalog, catalog, [])).toStrictEqual({ sql: "", hazards: [], hints: [] });
+    expect(diff(catalog, catalog, [])).toStrictEqual({
+      sql: "",
+      hazards: [],
+      hints: [],
+      scans: [],
+    });
   });
 });
