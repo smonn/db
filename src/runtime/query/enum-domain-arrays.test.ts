@@ -191,22 +191,22 @@ describe("enum and domain arrays through the query builder", () => {
     expect(rows).toStrictEqual([filled]);
   });
 
-  it("runs a codec on the array once it is read", async () => {
+  it("runs an enum column's codec on each element once the array is read", async () => {
     const counted = defineTable((c) => ({
       mood: c
         .enum(mood)
-        .array()
         .codec<number>({
-          decode: (labelsRead) => labelsRead.length,
-          encode: (count) => Array.from({ length: count }, () => "plain"),
-        }),
+          decode: (label) => label.length,
+          encode: () => "plain",
+        })
+        .array(),
     }));
     const countedDb = defineDatabase({ public: { mood, t: counted } });
     await client.run(insert(db.public.t).values(filled));
 
     const rows = await client.all(from(countedDb.public.t));
 
-    expect(rows).toStrictEqual([{ mood: filled.mood.length }]);
+    expect(rows).toStrictEqual([{ mood: [...labels.map((label) => label.length), null] }]);
   });
 
   it("names the column when stored text isn't an array", async () => {

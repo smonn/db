@@ -30,14 +30,24 @@ function failure(table: Table, column: string, action: string, cause: unknown): 
   );
 }
 
+/** Runs `step` on each element of an array, at any depth; a NULL element skips it. */
+function mapElements(value: unknown, step: (element: unknown) => unknown): unknown {
+  if (Array.isArray(value)) return value.map((item: unknown) => mapElements(item, step));
+  return value === null || value === undefined ? value : step(value);
+}
+
 function encode(table: Table, column: string, value: unknown): unknown {
-  const codec = table.columns[column]?.["~codec"];
+  const definition = table.columns[column];
+  const codec = definition?.["~codec"];
   if (codec === undefined) return value;
-  try {
-    return codec.encode(value);
-  } catch (error) {
-    throw failure(table, column, "encoding a value", error);
-  }
+  const run = (base: unknown): unknown => {
+    try {
+      return codec.encode(base);
+    } catch (error) {
+      throw failure(table, column, "encoding a value", error);
+    }
+  };
+  return definition?.state.array === true ? mapElements(value, run) : run(value);
 }
 
 const jsonTypes = new Set(["json", "jsonb"]);
@@ -61,7 +71,8 @@ function arrayText(table: Table, column: string, value: readonly unknown[]): str
 }
 
 /**
- * Runs the column's codec on a value headed for the driver, then writes an array column's value
+ * Runs the column's codec on a value headed for the driver, on each element of an array column,
+ * then writes an array column's value
  * as array text; NULL passes through.
  */
 export function encodeValue(table: Table, column: string, value: unknown): unknown {
@@ -84,12 +95,18 @@ function readArray(table: Table, column: string, definition: Column, value: unkn
   }
 }
 
-function decodeValue(table: Table, column: string, codec: RuntimeCodec, value: unknown): unknown {
-  try {
-    return codec.decode(value);
-  } catch (error) {
-    throw failure(table, column, "decoding a value", error);
-  }
+function decodeValue(
+  table: Table,
+  column: string,
+  codec: RuntimeCodec,
+): (value: unknown) => unknown {
+  return (base) => {
+    try {
+      return codec.decode(base);
+    } catch (error) {
+      throw failure(table, column, "decoding a value", error);
+    }
+  };
 }
 
 /** What turns the driver's value for one output into the declared one; undefined when none does. */
@@ -101,7 +118,10 @@ function decoderOfColumn(table: Table, column: string): ((value: unknown) => unk
     ? (value: unknown) => readArray(table, column, definition, value)
     : (value: unknown) => value;
   if (codec === undefined) return isTextArray(definition) ? read : undefined;
-  return (value) => decodeValue(table, column, codec, read(value));
+  const run = decodeValue(table, column, codec);
+  return definition.state.array
+    ? (value) => mapElements(read(value), run)
+    : (value) => run(read(value));
 }
 
 /**
