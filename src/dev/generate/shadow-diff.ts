@@ -24,7 +24,7 @@ export type ShadowDiffOptions = {
   readonly tracking: TrackingSchema;
   readonly shadowOptions: ShadowOptions;
   /** A hand-edited Current migration body: the Shadow runs it instead of the generated SQL. */
-  readonly edited?: string;
+  readonly edited?: string | undefined;
 };
 
 export type ShadowDiff = Diff & {
