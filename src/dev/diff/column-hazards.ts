@@ -1,6 +1,6 @@
-import { childrenOf, type Catalog } from "../catalog/index.ts";
+import { childrenOf, type Catalog, type Key } from "../catalog/index.ts";
 import { domainTypes, type DeclaredDomain } from "./domains.ts";
-import { enumTypes } from "./enums.ts";
+import { enumRetypeUsing, enumTypes } from "./enums.ts";
 import { retypeHazards, type HazardKind } from "./hazards.ts";
 import type { FactOf } from "./statements.ts";
 
@@ -16,6 +16,22 @@ export function columnRetypeHazards(
     enumTypes(from, to),
     domainTypes(from, to),
   );
+}
+
+/** Whether `from` has the table at `key`, not a type that a table of its name replaces. */
+export function holdsRows(from: Catalog, key: Key): boolean {
+  return from.get(key)?.kind === "table";
+}
+
+/** The `type` clause of retyping `before` to `after`, with the `using` an enum needs. */
+export function retypeClause(
+  before: FactOf<"column">,
+  after: FactOf<"column">,
+  { from, to }: { readonly from: Catalog; readonly to: Catalog },
+): string {
+  const { type } = after.payload;
+  const using = enumRetypeUsing(after.name, before.payload.type, type, enumTypes(from, to));
+  return `type ${type}${using}`;
 }
 
 /**

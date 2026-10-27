@@ -1,6 +1,6 @@
 import { quoteIdentifier } from "../../runtime/internal/index.ts";
 import { qualified, type Catalog, type ColumnRename, type TableRename } from "../catalog/index.ts";
-import { columnRetypeHazards, fillsEachRow } from "./column-hazards.ts";
+import { columnRetypeHazards, fillsEachRow, holdsRows, retypeClause } from "./column-hazards.ts";
 import { DERIVED_STEPS, type DerivedCarries, type DerivedTarget } from "./derived-renames.ts";
 import { SWAP_STEPS, type Swap } from "./enum-swap.ts";
 import {
@@ -158,7 +158,8 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
     hazards: none,
   },
   "alter type": {
-    render: (column, { to }) => `${alterColumn(column, to)} type ${column.payload.type};`,
+    render: (column, catalogs, { before }) =>
+      `${alterColumn(column, catalogs.to)} ${retypeClause(before, column, catalogs)};`,
     hazards: ({ before, fact }, catalogs) => columnRetypeHazards(before, fact, catalogs),
   },
   // Reads every row under the lock to prove none is null.
@@ -205,12 +206,12 @@ const STEPS: { readonly [A in ActionKind]: Step<A> } = {
   "add index": {
     render: (index, { to }) => createIndex(index, to),
     // A table created in the same migration is empty, so only an existing table has rows to read.
-    hazards: ({ fact }, { from }) => (from.has(fact.parent) ? INDEX_LOCK : []),
+    hazards: ({ fact }, { from }) => (holdsRows(from, fact.parent) ? INDEX_LOCK : []),
   },
   "add foreign key": {
     render: addForeignKey,
     // A table created in the same migration is empty, so only an existing table has rows to scan.
-    hazards: ({ fact }, { from }) => (from.has(fact.parent) ? WRITE_LOCK : []),
+    hazards: ({ fact }, { from }) => (holdsRows(from, fact.parent) ? WRITE_LOCK : []),
   },
 };
 
@@ -243,5 +244,5 @@ function indexBuild(
   { fact }: { readonly fact: FactOf<"primary key" | "unique"> },
   { from }: Catalogs,
 ): readonly HazardKind[] {
-  return from.has(fact.parent) ? LONG_LOCK : [];
+  return holdsRows(from, fact.parent) ? LONG_LOCK : [];
 }

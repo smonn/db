@@ -1,4 +1,5 @@
-import { parentOf, typeName, type Catalog, type Fact } from "../catalog/index.ts";
+import { quoteIdentifier } from "../../runtime/internal/index.ts";
+import { elementOf, parentOf, typeName, type Catalog, type Fact } from "../catalog/index.ts";
 
 type EnumFact = Extract<Fact, { readonly kind: "enum" }>;
 
@@ -12,6 +13,26 @@ export function enumTypes(...catalogs: readonly Catalog[]): ReadonlySet<string> 
     ),
   );
 }
+
+/**
+ * The ` using` clause of a retype from `before` to `after`, or `""`. Postgres has no implicit cast
+ * from text or an enum to an enum, nor between their arrays, but every enum reads and writes as
+ * text, so the cast goes through it (ADR-0023). Any other pair needs no cast or a hand edit.
+ */
+export function enumRetypeUsing(
+  column: string,
+  before: string,
+  after: string,
+  enums: ReadonlySet<string>,
+): string {
+  if ((elementOf(before) === undefined) !== (elementOf(after) === undefined)) return "";
+  const fromText = [...enums, "text"].includes(withoutArray(before));
+  return fromText && enums.has(withoutArray(after))
+    ? ` using ${quoteIdentifier(column)}::text::${after}`
+    : "";
+}
+
+const withoutArray = (type: string): string => elementOf(type) ?? type;
 
 /**
  * The position of `label` among the labels `to` declares. A label before the first one `from`

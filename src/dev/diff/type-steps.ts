@@ -36,6 +36,8 @@ export type TypeTarget = {
   "rename enum label": "enum";
   "rename domain": "domain";
   "rename domain check": "domain check";
+  "rename replaced type": "enum" | "domain";
+  "drop replaced type": "enum" | "domain";
 };
 
 /** What a type action needs beyond its fact. */
@@ -46,6 +48,9 @@ export type TypeCarries = {
   "rename domain": { readonly rename: DomainRename };
   /** The check's name before the rename; its fact is the `to` catalog's. */
   "rename domain check": { readonly was: string };
+  /** The name the old type takes while the table of its name is created, and drops under. */
+  "rename replaced type": { readonly aside: string };
+  "drop replaced type": { readonly aside: string };
 };
 
 const none = (): readonly HazardKind[] => [];
@@ -97,6 +102,14 @@ export const TYPE_STEPS: {
   readonly "rename domain check": TypeStep<
     FactOf<"domain check">,
     TypeCarries["rename domain check"]
+  >;
+  readonly "rename replaced type": TypeStep<
+    FactOf<"enum" | "domain">,
+    TypeCarries["rename replaced type"]
+  >;
+  readonly "drop replaced type": TypeStep<
+    FactOf<"enum" | "domain">,
+    TypeCarries["drop replaced type"]
   >;
 } = {
   "create enum": {
@@ -154,6 +167,17 @@ export const TYPE_STEPS: {
   "rename domain check": {
     render: (check, { to }, { was }) =>
       `${alterDomain(check, to)} rename constraint ${quoteIdentifier(was)} to ${quoteIdentifier(check.name)};`,
+    hazards: none,
+  },
+  // The old type only changes name while its columns move off it, so no app code sees it.
+  "rename replaced type": {
+    render: (type, { from }, { aside }) =>
+      `alter type ${qualified(type, from)} rename to ${quoteIdentifier(aside)};`,
+    hazards: none,
+  },
+  "drop replaced type": {
+    render: (type, { from }, { aside }) =>
+      `drop type ${quoteIdentifier(parentOf(from, type).name)}.${quoteIdentifier(aside)};`,
     hazards: none,
   },
 };
