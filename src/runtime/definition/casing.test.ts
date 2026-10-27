@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { snakeCase } from "./casing.ts";
+import { casingOf, snakeCase } from "./casing.ts";
 import { defineDatabase } from "./database.ts";
 import { defineDomain } from "./define-domain.ts";
 import { defineTable } from "./definition.ts";
@@ -21,6 +21,14 @@ describe("snakeCase", () => {
     ["PascalCase", "pascal_case"],
   ])("maps %s to %s", (key, name) => {
     expect(snakeCase(key)).toBe(name);
+  });
+});
+
+describe("casingOf", () => {
+  it.each([null, "snake_case", 3, true])("refuses the options %j", (options) => {
+    expect(() => casingOf(options)).toThrow(
+      new TypeError("defineDatabase takes its options as { casing? }"),
+    );
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineDatabase, defineTable } from "../definition/index.ts";
-import { and, from, not, or, type Predicate, type Query, type Refs } from "./from.ts";
+import { and, from, not, or, renderOutput, type Predicate, type Query, type Refs } from "./from.ts";
 
 const db = defineDatabase({
   public: {
@@ -167,5 +167,14 @@ describe("where", () => {
     type UserRefs = Refs<typeof db.public.users>;
     expectTypeOf<Parameters<UserRefs["id"]["eq"]>>().toEqualTypeOf<[value: string]>();
     expectTypeOf<Parameters<UserRefs["email"]["eq"]>>().toEqualTypeOf<[value: string]>();
+  });
+});
+
+describe("renderOutput", () => {
+  it("names an output that is no column of the table as its own identifier", () => {
+    expect(renderOutput(db.public.users, ["alias", "missing"]).toSql()).toStrictEqual({
+      text: '"missing" as "alias"',
+      params: [],
+    });
   });
 });

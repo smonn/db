@@ -136,6 +136,14 @@ describe("verify", () => {
     );
   });
 
+  it("says a first file should chain from nothing, written as `-`", async () => {
+    const chained = await writeMigration("000001-a.sql", B.hash, "create table a (n int);\n");
+
+    await expect(verify(source([chained]))).rejects.toThrow(
+      `000001-a.sql: --! Previous should be -, not ${B.hash}`,
+    );
+  });
+
   it("refuses reordered files, naming the first one out of place", async () => {
     await expect(
       verify(source([A, renamed(C, "000002-c.sql"), renamed(B, "000003-b.sql")])),

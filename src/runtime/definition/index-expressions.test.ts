@@ -101,6 +101,32 @@ describe("an expression key in the second callback's indexes", () => {
     expect(load((r) => ({ columns: [r.a], where: sql`${r.n} > ${0}` }))).toThrow(
       "takes column references in an sql expression, not values",
     );
+    expect(load((r) => ({ columns: [r.a], where: sql`${r.n} is not ${null}` }))).toThrow(
+      "takes column references in an sql expression, not values",
+    );
+  });
+
+  it("trims the whitespace around an expression", () => {
+    const t = defineTable(columns, (r) => ({
+      indexes: [{ columns: [r.a], where: sql`  ${r.b} is null  `, name: "ix" }],
+    }));
+
+    expect(t.indexes[0]?.where).toBe('"b" is null');
+  });
+
+  it("demands a name when only some keys are expressions", () => {
+    expect(load((r) => ({ columns: [r.a, sql`lower(${r.b})`] }))).toThrow(
+      "lists an expression key without a name",
+    );
+  });
+
+  it("reads an object with a toSql or a ~ref as a key, not as a wrapper, even with a key", () => {
+    const expression = Object.assign(sql`lower(a)`, { key: 1 });
+
+    expect(
+      defineTable(columns, () => ({ indexes: [{ columns: [expression], name: "ix" }] })).indexes[0]
+        ?.keys,
+    ).toStrictEqual([{ expression: "lower(a)", descending: false, nullsFirst: false }]);
   });
 
   it("rejects another table's reference, and an empty expression", () => {
@@ -112,7 +138,7 @@ describe("an expression key in the second callback's indexes", () => {
     const foreign = held.refs;
     assert(foreign !== undefined);
     expect(load(() => ({ columns: [sql`lower(${foreign.b})`], name: "ix" }))).toThrow(
-      'takes "b" from another table',
+      'The table\'s indexes takes "b" from another table',
     );
     expect(load(() => ({ columns: [fragment`  `], name: "ix" }))).toThrow(
       "takes an sql expression that is empty",

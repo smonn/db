@@ -45,7 +45,42 @@ describe("parseArrayLiteral", () => {
     ]);
   });
 
-  it.each(["", "a", "{a", "{a}b", '{"a}', "{a,}", "{{a}"])("refuses %j, naming it", (literal) => {
+  it("reads a backslash in an unquoted element as an escape", () => {
+    expect(parseArrayLiteral(String.raw`{a\,b,c\}d,e\\f}`, text)).toStrictEqual([
+      "a,b",
+      "c}d",
+      String.raw`e\f`,
+    ]);
+  });
+
+  it("ignores spaces around elements, delimiters, and braces", () => {
+    expect(parseArrayLiteral('{ "a" , "b" , c , NULL }', text)).toStrictEqual([
+      "a",
+      "b",
+      "c",
+      null,
+    ]);
+    expect(parseArrayLiteral("{ } ", text)).toStrictEqual([]);
+    expect(parseArrayLiteral("{a} ", text)).toStrictEqual(["a"]);
+  });
+
+  it("reads an `=` inside an element as text when the array has no bounds", () => {
+    expect(parseArrayLiteral('{"a=b",c=d}', text)).toStrictEqual(["a=b", "c=d"]);
+  });
+
+  it.each([
+    "",
+    "a",
+    "x}",
+    "{a",
+    "{a}b",
+    '{"a}',
+    "{a,}",
+    "{{a}",
+    '{"a""b"}',
+    String.raw`{a\\`,
+    '{"a',
+  ])("refuses %j, naming it", (literal) => {
     expect(() => parseArrayLiteral(literal, text)).toThrow(
       `Can't read array ${JSON.stringify(literal)}`,
     );
@@ -115,6 +150,7 @@ describe("elementText", () => {
 
   it("refuses a value that has no text, naming its type", () => {
     expect(() => elementText(Symbol("s"))).toThrow("An array element is a symbol");
+    expect(() => elementText(null)).toThrow("An array element is a object");
   });
 
   it("refuses an Invalid Date", () => {

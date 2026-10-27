@@ -10,11 +10,11 @@ type RuntimeCodec = NonNullable<Column["~codec"]>;
 export type Decode = (row: DriverRow) => DriverRow;
 
 /** Kept apart from the Query, so the type carries no optional brand. */
-const decoders = new WeakMap<object, Decode>();
+const decoders = new WeakMap<object, Decode | undefined>();
 
 /** Attaches the decoder the client runs on this query's rows; a query with none is returned as is. */
 export function withDecoder<Q extends object>(query: Q, decode: Decode | undefined): Q {
-  if (decode !== undefined) decoders.set(query, decode);
+  decoders.set(query, decode);
   return query;
 }
 
@@ -32,13 +32,14 @@ function failure(table: Table, column: string, action: string, cause: unknown): 
 
 /** Runs `step` on each element of a 1-D array; a NULL element skips it. */
 function mapElements(value: unknown, step: (element: unknown) => unknown): unknown {
-  if (!Array.isArray(value)) return value === null || value === undefined ? value : step(value);
+  if (!Array.isArray(value)) return step(value);
   return value.map((item: unknown) => (item === null || item === undefined ? item : step(item)));
 }
 
 function encode(table: Table, column: string, value: unknown): unknown {
   const definition = table.columns[column];
-  const codec = definition?.["~codec"];
+  if (definition === undefined) return value;
+  const codec = definition["~codec"];
   if (codec === undefined) return value;
   const run = (base: unknown): unknown => {
     try {
@@ -47,19 +48,22 @@ function encode(table: Table, column: string, value: unknown): unknown {
       throw failure(table, column, "encoding a value", error);
     }
   };
-  return definition?.state.array === true ? mapElements(value, run) : run(value);
+  return definition.state.array ? mapElements(value, run) : run(value);
 }
 
 const jsonTypes = new Set(["json", "jsonb"]);
 
 // Array text leaves no array for a driver to type by its first element, and Postgres types the
 // param from the column it meets, as ADR-0023 asks.
-function arrayText(table: Table, column: string, value: readonly unknown[]): string {
-  const definition = table.columns[column];
-  const formatElement =
-    definition !== undefined && jsonTypes.has(elementSqlType(definition))
-      ? (element: unknown) => JSON.stringify(element)
-      : elementText;
+function arrayText(
+  table: Table,
+  column: string,
+  definition: Column,
+  value: readonly unknown[],
+): string {
+  const formatElement = jsonTypes.has(elementSqlType(definition))
+    ? (element: unknown) => JSON.stringify(element)
+    : elementText;
   try {
     return formatArrayLiteral(value, formatElement);
   } catch (error) {
@@ -78,8 +82,9 @@ function arrayText(table: Table, column: string, value: readonly unknown[]): str
 export function encodeValue(table: Table, column: string, value: unknown): unknown {
   if (value === null || value === undefined) return value;
   const encoded = encode(table, column, value);
-  return table.columns[column]?.state.array === true && Array.isArray(encoded)
-    ? arrayText(table, column, encoded)
+  const definition = table.columns[column];
+  return definition?.state.array === true && Array.isArray(encoded)
+    ? arrayText(table, column, definition, encoded)
     : encoded;
 }
 

@@ -30,21 +30,17 @@ function dateText(value: unknown, number: number): unknown {
 const tokens = () =>
   /--[^\n]*|\/\*|[eE]'(?:[^'\\]|\\[^]|'')*'|'(?:[^']|'')*'|"(?:[^"]|"")*"|[\p{L}_][\p{L}\p{N}_$]*|\$(\d+)|\$(?:[\p{L}_][\p{L}\p{N}_]*)?\$|[^]/uy;
 
+// Block comments nest, so the end is the `*/` that closes the first `/*`'s level.
 function endOfBlockComment(text: string, from: number): number {
-  let depth = 1;
-  let index = from;
-  while (depth > 0 && index < text.length) {
-    if (text.startsWith("/*", index)) {
-      depth += 1;
-      index += 2;
-    } else if (text.startsWith("*/", index)) {
-      depth -= 1;
-      index += 2;
-    } else {
-      index += 1;
-    }
+  const edges = /\/\*|\*\//gu;
+  edges.lastIndex = from;
+  let open = 1;
+  while (open > 0) {
+    const edge = edges.exec(text);
+    if (edge === null) return text.length;
+    open += edge[0] === "/*" ? 1 : -1;
   }
-  return index;
+  return edges.lastIndex;
 }
 
 // Returns the text a token covers, moving the scan past a block comment or a dollar-quoted string.
@@ -54,8 +50,6 @@ function copyToken(text: string, token: string, start: number, scan: RegExp): st
   } else if (token.length > 1 && token.startsWith("$")) {
     const close = text.indexOf(token, scan.lastIndex);
     scan.lastIndex = close === -1 ? text.length : close + token.length;
-  } else {
-    return token;
   }
   return text.slice(start, scan.lastIndex);
 }

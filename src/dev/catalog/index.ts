@@ -1,4 +1,13 @@
-export { catalogBuilder, childrenOf, factAt, namesOf, parentOf } from "./catalog.ts";
+export {
+  catalogBuilder,
+  childrenOf,
+  childrenOfKind,
+  factAt,
+  keyAt,
+  namesOf,
+  parentOf,
+  unchangedFacts,
+} from "./catalog.ts";
 export type { CatalogBuilder } from "./catalog.ts";
 export type { Catalog, Fact, Key } from "./fact.ts";
 export { arrayType, elementOf, typeName } from "./column-type.ts";

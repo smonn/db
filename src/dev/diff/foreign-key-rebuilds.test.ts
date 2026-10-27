@@ -109,6 +109,7 @@ describe("rebuilding an unchanged foreign key", () => {
     ["integer", "numeric(10,0)"],
     ["integer", "text"],
     ["integer[]", "bigint[]"],
+    ["character varying(20)[]", "character varying(40)[]"],
     ["character(5)", "text"],
     ["timestamp without time zone", "timestamp with time zone"],
   ])("rebuilds it around a retype from %s to %s", (before, after) => {

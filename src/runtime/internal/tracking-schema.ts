@@ -201,7 +201,8 @@ async function readHash(
   table: string,
   query: string,
 ): Promise<string | undefined> {
-  const { rows } = (await tableExists(session, table)) ? await session.query(query) : { rows: [] };
+  if (!(await tableExists(session, table))) return undefined;
+  const { rows } = await session.query(query);
   const hash: unknown = rows[0]?.["hash"];
   return typeof hash === "string" ? hash : undefined;
 }

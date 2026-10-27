@@ -3,14 +3,7 @@ import { qualified, type Catalog, type ColumnRename, type TableRename } from "..
 import { columnRetypeHazards, fillsEachRow, holdsRows, retypeClause } from "./column-hazards.ts";
 import { DERIVED_STEPS, type DerivedCarries, type DerivedTarget } from "./derived-renames.ts";
 import { SWAP_STEPS, type Swap } from "./enum-swap.ts";
-import {
-  HAZARD_KINDS,
-  INDEX_LOCK,
-  LONG_LOCK,
-  REWRITE,
-  WRITE_LOCK,
-  type HazardKind,
-} from "./hazards.ts";
+import { INDEX_LOCK, LONG_LOCK, REWRITE, WRITE_LOCK, type HazardKind } from "./hazards.ts";
 import { renameSql } from "./rename-sql.ts";
 import { TYPE_STEPS, type TypeCarries, type TypeTarget } from "./type-steps.ts";
 import { createIndex, dropIndex } from "./index-statements.ts";
@@ -227,13 +220,12 @@ function renameStatement(
   return renameSql(rename);
 }
 
-/** In `HAZARD_KINDS` order, so the `-- hazard:` comments above a statement always read alike. */
+/** Each step declares its hazards in `HAZARD_KINDS` order, so the `-- hazard:` comments above a statement always read alike. */
 export function hazardsOf<A extends ActionKind>(
   action: Action<A>,
   catalogs: Catalogs,
 ): readonly HazardKind[] {
-  const declared = STEPS[action.kind].hazards(action, catalogs);
-  return HAZARD_KINDS.filter((kind) => declared.includes(kind));
+  return STEPS[action.kind].hazards(action, catalogs);
 }
 
 /**

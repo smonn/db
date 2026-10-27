@@ -123,7 +123,7 @@ describe("retypeHazards branches", () => {
     ["numeric", "numeric(10,2)", true],
     ["numeric(10,4)", "numeric(10,2)", true],
     ["numeric(10,2)", "numeric(12,4)", false],
-    ["numeric(10,2)", "text", false],
+    ["numeric", "text", false],
     ["real", "integer", true],
     ["real", "numeric", true],
     ["real", "double precision", false],

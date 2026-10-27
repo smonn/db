@@ -1,5 +1,5 @@
 import {
-  childrenOf,
+  childrenOfKind,
   factAt,
   namesOf,
   qualified,
@@ -25,28 +25,19 @@ export function renameHints(from: Catalog, to: Catalog): string[] {
 }
 
 function hintsFor(from: Catalog, to: Catalog, before: Fact, after: Fact): string[] {
-  if (before.kind === "table" && after.kind === "table") {
-    return columnHints(from, to, before, after);
-  }
+  if (after.kind === "table") return columnHints(from, to, before, after);
   return typeHints(from, to, before, after);
 }
 
 function typeHints(from: Catalog, to: Catalog, before: Fact, after: Fact): string[] {
-  if (before.kind === "schema" && after.kind === "schema") {
-    return tableHints(from, to, before, after);
-  }
+  if (after.kind === "schema") return tableHints(from, to, before, after);
   if (before.kind === "enum" && after.kind === "enum") return labelHints(to, before, after);
   return [];
 }
 
-function columnHints(
-  from: Catalog,
-  to: Catalog,
-  before: FactOf<"table">,
-  after: FactOf<"table">,
-): string[] {
-  const dropped = missingFrom(from, to, columnsOf(from, before));
-  const added = missingFrom(to, from, columnsOf(to, after));
+function columnHints(from: Catalog, to: Catalog, before: Fact, after: FactOf<"table">): string[] {
+  const dropped = missingFrom(from, to, childrenOfKind(from, before, "column"));
+  const added = missingFrom(to, from, childrenOfKind(to, after, "column"));
   const pair = onlyPair(dropped, added);
   if (pair === undefined) return [];
   const [drop, add] = pair;
@@ -56,19 +47,14 @@ function columnHints(
   ];
 }
 
-function tableHints(
-  from: Catalog,
-  to: Catalog,
-  before: FactOf<"schema">,
-  after: FactOf<"schema">,
-): string[] {
-  const dropped = missingFrom(from, to, tablesOf(from, before));
-  const added = missingFrom(to, from, tablesOf(to, after));
+function tableHints(from: Catalog, to: Catalog, before: Fact, after: FactOf<"schema">): string[] {
+  const dropped = missingFrom(from, to, childrenOfKind(from, before, "table"));
+  const added = missingFrom(to, from, childrenOfKind(to, after, "table"));
   const pair = onlyPair(dropped, added);
   if (pair === undefined) return [];
   const [drop, add] = pair;
-  const columns = signature(columnsOf(from, drop));
-  if (columns === "[]" || columns !== signature(columnsOf(to, add))) return [];
+  const columns = signature(childrenOfKind(from, drop, "column"));
+  if (columns === "[]" || columns !== signature(childrenOfKind(to, add, "column"))) return [];
   return [
     `table ${qualified(add, to)} may be a rename of ${JSON.stringify(drop.name)}: add renamedFrom: ${JSON.stringify(drop.name)} to its second callback`,
   ];
@@ -88,19 +74,8 @@ function labelHints(to: Catalog, before: FactOf<"enum">, after: FactOf<"enum">):
 
 /** The one dropped and the one added item, or undefined unless each side has exactly one. */
 function onlyPair<T>(dropped: readonly T[], added: readonly T[]): [T, T] | undefined {
-  const [drop, add] = [dropped[0], added[0]];
-  if (dropped.length !== 1 || added.length !== 1 || drop === undefined || add === undefined) {
-    return undefined;
-  }
-  return [drop, add];
-}
-
-function columnsOf(catalog: Catalog, table: FactOf<"table">): FactOf<"column">[] {
-  return childrenOf(catalog, table).filter((child) => child.kind === "column");
-}
-
-function tablesOf(catalog: Catalog, schema: FactOf<"schema">): FactOf<"table">[] {
-  return childrenOf(catalog, schema).filter((child) => child.kind === "table");
+  if (dropped.length !== 1 || added.length !== 1) return undefined;
+  return [dropped[0]!, added[0]!];
 }
 
 /** The facts of `own` that `other` has no fact of the same name for. */

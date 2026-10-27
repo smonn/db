@@ -29,5 +29,5 @@ export type Domain<V = unknown, N extends boolean = boolean> = {
 };
 
 export function isDomain(value: unknown): value is Domain {
-  return typeof value === "object" && value !== null && "kind" in value && value.kind === "domain";
+  return typeof value === "object" && value !== null && Reflect.get(value, "kind") === "domain";
 }

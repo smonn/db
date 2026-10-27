@@ -41,8 +41,10 @@ const MAX_NAME_BYTES = 63;
 
 /** Refuses a name Postgres would reject or truncate; `owner` starts the error. */
 function checkedName(name: unknown, owner: string): string {
-  const bytes = typeof name === "string" ? new TextEncoder().encode(name).length : 0;
-  if (typeof name === "string" && bytes > 0 && bytes <= MAX_NAME_BYTES) return name;
+  if (typeof name === "string") {
+    const bytes = new TextEncoder().encode(name).length;
+    if (bytes > 0 && bytes <= MAX_NAME_BYTES) return name;
+  }
   throw new Error(
     `${owner} takes a SQL name of 1 to ${MAX_NAME_BYTES} bytes, not ${JSON.stringify(name)}`,
   );
@@ -60,17 +62,17 @@ function schemaNamesOf(
   sqlSchema: string,
 ): SchemaNames {
   const owner = `of schema ${quoteIdentifier(sqlSchema)}`;
-  const named = new Map(
-    Object.entries(entries).map(([key, entry]) => [
-      key,
-      checkedName(entry.explicitName ?? cased(key), `The key "${key}" ${owner}`),
-    ]),
-  );
+  const listed = Object.entries(entries).map(([key, entry]) => ({
+    key,
+    entry,
+    name: checkedName(entry.explicitName ?? cased(key), `The key "${key}" ${owner}`),
+  }));
+  const named = new Map(listed.map(({ key, name }) => [key, name]));
   refuseClashes(named, `The keys ${owner}`, ENTRY_FIX);
   const columns = new Map<string, ColumnNames>();
-  for (const [key, entry] of Object.entries(entries)) {
+  for (const { key, entry, name } of listed) {
     if (isEnum(entry) || isDomain(entry)) continue;
-    const where = `${quoteIdentifier(sqlSchema)}.${quoteIdentifier(named.get(key) ?? key)}`;
+    const where = `${quoteIdentifier(sqlSchema)}.${quoteIdentifier(name)}`;
     columns.set(key, columnNamesOf(entry.columns, cased, where));
   }
   return { entries: named, columns };
@@ -82,13 +84,16 @@ function schemaNamesOf(
  * table that take one name, since a table and a type share a schema's names.
  */
 export function sqlNamesOf(schemas: Schemas, cased: (key: string) => string): SqlNames {
-  const schemaNames = new Map(
-    Object.keys(schemas).map((key) => [key, checkedName(cased(key), `The schema key "${key}"`)]),
-  );
+  const listed = Object.entries(schemas).map(([key, entries]) => ({
+    key,
+    entries,
+    name: checkedName(cased(key), `The schema key "${key}"`),
+  }));
+  const schemaNames = new Map(listed.map(({ key, name }) => [key, name]));
   refuseClashes(schemaNames, "The schema keys", "rename one of the schemas");
   const named = new Map<string, SchemaNames>();
-  for (const [schema, entries] of Object.entries(schemas)) {
-    named.set(schema, schemaNamesOf(entries, cased, schemaNames.get(schema) ?? schema));
+  for (const { key, entries, name } of listed) {
+    named.set(key, schemaNamesOf(entries, cased, name));
   }
   return {
     schema: (key) => schemaNames.get(key) ?? key,

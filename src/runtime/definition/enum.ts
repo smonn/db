@@ -38,5 +38,5 @@ export function defineEnum<const L extends readonly string[]>(
 }
 
 export function isEnum(value: unknown): value is Enum {
-  return typeof value === "object" && value !== null && "kind" in value && value.kind === "enum";
+  return typeof value === "object" && value !== null && Reflect.get(value, "kind") === "enum";
 }
