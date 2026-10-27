@@ -169,7 +169,7 @@ describe("generate with a hand-edited current.sql", () => {
 
     await expect(failure).rejects.toThrow(/cannot alter type of a column used by a view/u);
     await expect(failure).rejects.toThrow(
-      /\nAn Unmodeled object blocks it\. Hand edit the Current/u,
+      /\nAnother object depends on what it changes\. Hand edit the Current/u,
     );
     await expect(failure).rejects.not.toThrow(/Generate never/u);
   });
@@ -189,12 +189,12 @@ describe("generate with a hand-edited current.sql", () => {
     });
 
     await expect(failure).rejects.toThrow(
-      /\nAn Unmodeled object blocks it\. Hand edit the Current/u,
+      /\nAnother object depends on what it changes\. Hand edit the Current/u,
     );
     await expect(failure).rejects.not.toThrow(/never uses CASCADE/u);
   });
 
-  it("succeeds with an edit that fixes a body that fails verification on an Unmodeled view", async () => {
+  it("succeeds with an edit that fixes a body an Unmodeled view blocks, which it doesn't scan", async () => {
     const committed = await writeMigration(
       "000001-users.sql",
       undefined,
@@ -215,7 +215,7 @@ describe("generate with a hand-edited current.sql", () => {
     };
     await fileSystem.remove(CURRENT);
     await expect(generate(options)).rejects.toThrow(
-      /^cannot drop column extra of table users because other objects depend on it:\n {2}view v depends on column extra of table users\nGenerate never uses CASCADE or alters an Unmodeled object, so one blocks it\./u,
+      /^Unmodeled objects block what the Current migration drops or retypes:\n {2}table column public\.users\.extra, which it drops:\n {4}view public\.v\n/u,
     );
     await fileSystem.writeFile(CURRENT, body);
 

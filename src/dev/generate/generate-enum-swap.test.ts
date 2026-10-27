@@ -108,11 +108,11 @@ create domain public.still as public.mood;
     );
   });
 
-  it("leaves a domain over the enum's array, which is Unmodeled, to verification", async () => {
+  it("names a domain over the enum's array, which is Unmodeled, as blocking the old type's drop", async () => {
     const sql = `${START}create domain public.moods as public.mood[];\n`;
 
     await expect(generateFrom(withMood(["c", "b", "a"]), sql)).rejects.toThrow(
-      /^cannot drop type mood_old because other objects depend on it:\n {2}type moods depends on type mood_old\[\]\n/u,
+      /^Unmodeled objects block what the Current migration drops or retypes:\n {2}type public\.mood, which it drops:\n {4}type public\.moods\n/u,
     );
   });
 

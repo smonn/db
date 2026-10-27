@@ -10,7 +10,8 @@ import {
 import { diff, refuseTypeChanges, type Diff } from "../diff/index.ts";
 import { introspect } from "../introspect/index.ts";
 import { withShadowDatabases, type ShadowOptions } from "../shadow/index.ts";
-import { renameInShadow } from "./shadow-renames.ts";
+import { unmodeledBlockers } from "./blockers.ts";
+import { renameInShadow, withRenames } from "./shadow-renames.ts";
 import { leftoverAfter, verifyInShadow } from "./verify.ts";
 
 export type ShadowDiffOptions = {
@@ -33,7 +34,8 @@ export type ShadowDiff = Diff & {
 
 /**
  * Replays the Committed migrations into the Shadow database, builds the Definition into the
- * Definition database, and diffs the two. A non-empty diff is verified in the Shadow (ADR-0013).
+ * Definition database, and diffs the two. A non-empty diff is scanned for Unmodeled blockers, which
+ * throw before verification (ADR-0025), then verified in the Shadow (ADR-0013).
  * With a hand edit, the edit runs instead: a SQL error throws, and a leftover difference returns.
  */
 export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
@@ -61,7 +63,13 @@ export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
         return leftover === undefined ? result : { ...result, leftover };
       }
       refuseTypeChanges({ from: catalog, to: target });
-      if (result.sql !== "") await verifyInShadow(databases.shadow, result.sql, target, tracking);
+      if (result.sql === "") return result;
+      // The scan names objects as the diff does, so it reads the Shadow with the renames run.
+      const blockers = await withRenames(databases.shadow, renames, (tx) =>
+        unmodeledBlockers(tx, result.scans),
+      );
+      if (blockers !== undefined) throw new Error(blockers);
+      await verifyInShadow(databases.shadow, result.sql, target, tracking);
       return result;
     },
     options.shadowOptions,

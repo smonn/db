@@ -1,6 +1,7 @@
 import { hazardsOf, render, type Action, type Catalogs } from "./actions.ts";
 import type { Hazard } from "./hazards.ts";
 import { order } from "./phases.ts";
+import { scansOf, type Scan } from "./scans.ts";
 
 export type Diff = {
   /** Each statement follows one `-- hazard: <kind>` comment per Hazard it carries. */
@@ -8,12 +9,15 @@ export type Diff = {
   readonly hazards: readonly Hazard[];
   /** Renames the Definition could declare, for a drop and an add that look like one (ADR-0024). */
   readonly hints: readonly string[];
+  /** What the SQL drops or retypes, for generate's scan for Unmodeled blockers (ADR-0025). */
+  readonly scans: readonly Scan[];
 };
 
-/** Orders the actions and renders each, with the Hazards it carries. */
+/** Orders the actions and renders each, with the Hazards it carries and the scans it needs. */
 export function emit(actions: readonly Action[], catalogs: Catalogs): Omit<Diff, "hints"> {
   const hazards: Hazard[] = [];
-  const sql = order(actions)
+  const ordered = order(actions);
+  const sql = ordered
     .map((action) => {
       const statement = render(action, catalogs);
       const kinds = hazardsOf(action, catalogs);
@@ -21,5 +25,5 @@ export function emit(actions: readonly Action[], catalogs: Catalogs): Omit<Diff,
       return `${kinds.map((kind) => `-- hazard: ${kind}\n`).join("")}${statement}\n`;
     })
     .join("\n");
-  return { sql, hazards };
+  return { sql, hazards, scans: scansOf(ordered, catalogs) };
 }

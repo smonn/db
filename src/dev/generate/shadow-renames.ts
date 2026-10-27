@@ -1,5 +1,5 @@
 import type { TrackingSchema } from "../../runtime/internal/index.ts";
-import type { Driver } from "../../runtime/ports/index.ts";
+import type { Driver, Queryable } from "../../runtime/ports/index.ts";
 import { appliedRenames, type Catalog, type Rename } from "../catalog/index.ts";
 import { renameSql } from "../diff/index.ts";
 import { introspect, introspectIn } from "../introspect/index.ts";
@@ -10,16 +10,6 @@ export type RenamedShadow = {
   /** The renames that ran: the declared ones whose old name the Shadow held. */
   readonly renames: readonly Rename[];
 };
-
-/** Carries the catalog out of a transaction that has to roll back. */
-class RolledBack extends Error {
-  readonly catalog: Catalog;
-
-  constructor(catalog: Catalog) {
-    super("rolled back the declared renames");
-    this.catalog = catalog;
-  }
-}
 
 /**
  * Runs the declared renames on the Shadow inside a transaction, reads the catalog, and rolls back
@@ -34,12 +24,34 @@ export async function renameInShadow(
   const before = await introspect(shadow, tracking);
   const renames = appliedRenames(declared, before);
   if (renames.length === 0) return { catalog: before, renames };
+  return {
+    catalog: await withRenames(shadow, renames, (tx) => introspectIn(tx, tracking)),
+    renames,
+  };
+}
+
+/** Rolls back a transaction whose result `withRenames` already holds. */
+class RolledBack extends Error {
+  constructor() {
+    super("rolled back the renames");
+  }
+}
+
+/** Runs `read` on the Shadow after `renames` inside a transaction, then rolls back. */
+export async function withRenames<T>(
+  shadow: Driver,
+  renames: readonly Rename[],
+  read: (tx: Queryable) => Promise<T>,
+): Promise<T> {
+  let result: { readonly value: T } | undefined;
   const outcome = await shadow
     .transaction(async (tx) => {
-      await tx.execute(renames.map((rename) => renameSql(rename)).join("\n"));
-      throw new RolledBack(await introspectIn(tx, tracking));
+      if (renames.length > 0)
+        await tx.execute(renames.map((rename) => renameSql(rename)).join("\n"));
+      result = { value: await read(tx) };
+      throw new RolledBack();
     })
     .catch((error: unknown) => error);
-  if (!(outcome instanceof RolledBack)) throw outcome;
-  return { catalog: outcome.catalog, renames };
+  if (!(outcome instanceof RolledBack) || result === undefined) throw outcome;
+  return result.value;
 }
