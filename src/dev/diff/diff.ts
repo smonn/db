@@ -12,7 +12,7 @@ import type { Hazard } from "./hazards.ts";
 import { renameHints } from "./hints.ts";
 import { order } from "./phases.ts";
 import { rebuiltColumns, retyped, without } from "./rebuilt.ts";
-import { renameAction, renameChecks } from "./renames.ts";
+import { renameAction, renameByPayload } from "./renames.ts";
 import { TYPE_HANDLING } from "./type-handling.ts";
 
 export type Diff = {
@@ -44,7 +44,7 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
     );
   }
   const hazards: Hazard[] = [];
-  const sql = order(renameChecks(actions))
+  const sql = order(renameByPayload(actions))
     .map((action) => {
       const statement = render(action, catalogs);
       const kinds = hazardsOf(action, catalogs);
@@ -139,10 +139,17 @@ export const HANDLING: HandlingTable<Fact> = {
     parentCreateCovers: true,
     create: (fact) => [{ kind: "add identity", fact }],
     replacedOnChange: false,
-    alter: (before, after) =>
-      arePayloadsEqual(before.payload, after.payload)
-        ? []
-        : [{ kind: "set identity mode", fact: after }],
+    alter: (before, after) => {
+      const actions: Action[] = [];
+      if (before.payload.generated !== after.payload.generated) {
+        actions.push({ kind: "set identity mode", fact: after });
+      }
+      // A table or column rename leaves the sequence under its old name.
+      if (before.payload.sequence !== after.payload.sequence) {
+        actions.push({ kind: "rename sequence", fact: after, was: before.payload.sequence });
+      }
+      return actions;
+    },
     columnsNamed: () => [],
   },
   generated: {

@@ -37,7 +37,13 @@ export type CatalogBuilder = {
   domainCheck(schema: string, domain: string, name: string, payload: DomainCheckPayload): void;
   column(schema: string, table: string, name: string, payload: ColumnPayload): void;
   columnDefault(schema: string, table: string, column: string, payload: DefaultPayload): void;
-  columnIdentity(schema: string, table: string, column: string, payload: IdentityPayload): void;
+  /** Without a `sequence`, the one Postgres names for a new identity, `<table>_<column>_seq`. */
+  columnIdentity(
+    schema: string,
+    table: string,
+    column: string,
+    payload: Omit<IdentityPayload, "sequence"> & { readonly sequence?: string },
+  ): void;
   columnGenerated(schema: string, table: string, column: string, payload: GeneratedPayload): void;
   primaryKey(schema: string, table: string, name: string, payload: PrimaryKeyPayload): void;
   unique(schema: string, table: string, name: string, payload: UniquePayload): void;
@@ -78,7 +84,11 @@ export function catalogBuilder(): CatalogBuilder {
       attribute(schema, table, column, { kind: "default", name: DEFAULT_NAME, payload });
     },
     columnIdentity(schema, table, column, payload) {
-      attribute(schema, table, column, { kind: "identity", name: IDENTITY_NAME, payload });
+      attribute(schema, table, column, {
+        kind: "identity",
+        name: IDENTITY_NAME,
+        payload: { sequence: `${table}_${column}_seq`, ...payload },
+      });
     },
     columnGenerated(schema, table, column, payload) {
       attribute(schema, table, column, { kind: "generated", name: GENERATED_NAME, payload });
