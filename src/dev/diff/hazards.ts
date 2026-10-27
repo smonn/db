@@ -229,13 +229,12 @@ function integerLosesData(from: Type["name"], to: Type): boolean {
 }
 
 function numericLosesData(from: Numeric, to: Type): boolean {
+  if (to.name === "numeric") return numericNarrows(from, to);
   const wholeNumbers = from.precision !== undefined && from.scale === 0;
   if (INTEGERS.has(to.name)) return !wholeNumbers;
   // Precision of a float: 6 decimal digits for real, 15 for double precision.
   if (to.name === "real") return holdsMoreDigitsThan(from, 6);
   if (to.name === "double precision") return holdsMoreDigitsThan(from, 15);
-  // Stryker disable next-line ConditionalExpression: a target other than numeric has no precision, so numericNarrows returns false as the fall-through does.
-  if (to.name === "numeric") return numericNarrows(from, to);
   return false;
 }
 
