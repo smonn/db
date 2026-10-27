@@ -60,9 +60,13 @@ const hides = (disable: Disable, mutant: Mutant): boolean =>
   mutant.line === disable.line + 1 &&
   mutant.mutatorName.toLowerCase() === disable.mutator.toLowerCase();
 
+// A timeout alone is inconclusive: an equivalent mutant can still time out on a loaded runner.
+const onlyTimedOut = (hidden: Mutant[]): boolean =>
+  hidden.length > 0 && hidden.every(({ status }) => status === "Timeout");
+
 function staleDisable(file: string, disable: Disable, mutants: Mutant[]): StaleDisable[] {
   const hidden = mutants.filter((mutant) => hides(disable, mutant));
-  if (hidden.some(({ status }) => isSurvivor(status))) return [];
+  if (hidden.some(({ status }) => isSurvivor(status)) || onlyTimedOut(hidden)) return [];
   const found =
     hidden.length === 0 ? "No mutant" : [...new Set(hidden.map(({ status }) => status))].join(", ");
   return [{ file, line: disable.line, mutator: disable.mutator, found }];

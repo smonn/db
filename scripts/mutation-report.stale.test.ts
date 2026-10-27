@@ -44,7 +44,7 @@ describe("findings", () => {
     });
   });
 
-  test("lists a marker whose mutant a test kills or times out, or that has none", () => {
+  test("lists a marker whose mutant a test kills, or that has none", () => {
     const parsed = report(
       [
         { mutatorName: "StringLiteral", status: "Killed", line: 2 },
@@ -74,6 +74,17 @@ describe("findings", () => {
       [marker, "g('x', 'y');"],
     );
     expect(findings(parsed)).toEqual({ survivors: [], stale: [] });
+  });
+
+  test("keeps a marker whose mutants only time out", () => {
+    const parsed = report(
+      [
+        { mutatorName: "StringLiteral", status: "Timeout", line: 2 },
+        { mutatorName: "StringLiteral", status: "Timeout", line: 2 },
+      ],
+      [marker, "g('x', 'y');"],
+    );
+    expect(findings(parsed).stale).toEqual([]);
   });
 });
 
