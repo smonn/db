@@ -27,7 +27,7 @@ import {
 
 export type IssueEvent = {
   action: string;
-  changes?: Record<string, unknown>;
+  changes?: Record<string, unknown> | undefined;
   issue: {
     number: number;
     title: string;
@@ -45,9 +45,8 @@ const readIssueEvent: Reader<IssueEvent> = (value, path) => {
   const issue = field(event, "issue", record, path);
   const repoPath = `${path}.repository`;
   const repository = field(event, "repository", record, path);
-  const changes = optionalField(event, "changes", record, path);
   return {
-    ...(changes === undefined ? {} : { changes }),
+    changes: optionalField(event, "changes", record, path),
     issue: {
       number: field(issue, "number", number, issuePath),
       title: field(issue, "title", string, issuePath),

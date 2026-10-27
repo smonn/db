@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { main } from "./check-mermaid.ts";
 
@@ -93,7 +93,7 @@ describe("main", () => {
     main();
     const inputs = spawn.mock.calls.map(([, args]) => argAfter(args, "-i"));
     expect(inputs.length).toBeGreaterThan(0);
-    expect(inputs.map((input) => isAbsolute(input))).not.toContain(true);
+    expect(inputs.map((input) => input.startsWith(process.cwd()))).not.toContain(false);
     expect(inputs.map((input) => input.endsWith(".md"))).not.toContain(false);
   });
 

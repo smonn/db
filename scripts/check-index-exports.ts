@@ -23,11 +23,7 @@ export function checkIndexExports(text: string): string[] {
   return parseSync(text, { syntax: "typescript" }).body.flatMap((item) => {
     if (item.type === "ExportAllDeclaration")
       return ["`export *` hides the module's API; name each re-export"];
-    if (
-      item.type !== "ExportNamedDeclaration" ||
-      item.source === undefined ||
-      item.source === null
-    ) {
+    if (item.type !== "ExportNamedDeclaration" || !item.source) {
       return [`${item.type} is not a named re-export`];
     }
     return item.specifiers.flatMap((specifier) => {
@@ -63,8 +59,9 @@ function groupProblems(cwd: string): string[] {
   return Object.entries(GROUPS).flatMap(([group, excluded]) => {
     const file = `src/${group}/index.ts`;
     if (!existsSync(join(cwd, file))) return [`${file}: is missing`];
+    const skipped = new Set(excluded.map((name) => `src/${group}/${name}/index.ts`));
     const modules = globSync(`src/${group}/*/index.ts`, { cwd }).filter(
-      (path) => !excluded.includes(path.split("/")[2] ?? ""),
+      (path) => !skipped.has(path),
     );
     const names = (path: string): string[] => exportedNames(readFileSync(join(cwd, path), "utf8"));
     return checkGroupIndex(
