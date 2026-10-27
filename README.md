@@ -207,7 +207,7 @@ export default defineDatabase(
 
 That table is `public.user_accounts`, its column `user_id`, and its primary key `user_accounts_pkey`, since derived names come from the SQL names. Enum labels, and the names you give constraints, indexes, and domain checks, stay as written. For a name casing can't produce, such as `user_ids` for `userIDs` (which maps to `user_i_ds`), a column takes `.name("sql_name")`, a table takes `name` in its second callback, and an enum or domain takes `name` in its options. An explicit name wins over casing. Two keys that map to one SQL name, such as `userId` and `user_id`, throw at load.
 
-Builder queries return rows keyed by your keys. Raw `sql` returns the SQL names Postgres sends, so type its rows with those names, or as `DriverRow`.
+Builder queries return rows keyed by your keys. Raw `sql` returns the SQL names Postgres sends, so type its rows with those names, or as `DriverRow`. Raw `sql` also returns an enum or domain array as postgres.js parses it: a NULL element arrives as the string `"NULL"`, and a type created after the connection opened arrives as array text. A builder query returns an array of values with `null` elements.
 
 Turning casing on for an existing database renames every name it changes, so each one needs a `renamedFrom` marker with its old SQL name. Without them, `generate` drops and recreates each table and column:
 

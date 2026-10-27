@@ -1,5 +1,6 @@
 import type { Row, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment, type RenderedSql } from "../sql/index.ts";
+import { isTextArray } from "./array-text.ts";
 import { decoderFor, encodeValue, withDecoder } from "./codecs.ts";
 
 export type Statement = {
@@ -123,10 +124,21 @@ export function columnIdentifier(table: Table, key: string): Fragment {
   return identifier(table.columnNames[key] ?? key);
 }
 
-/** An output aliases its column back to the key the row type names, unless the two are one. */
+/**
+ * An output aliases its column back to the key the row type names, unless the two are one. An
+ * enum or domain array is cast to text, which `decoderFor` reads: its OID differs per database, so
+ * the driver can't be relied on to parse it (ADR-0023).
+ */
 export function renderOutput(table: Table, [alias, key]: Output): Fragment {
   const name = table.columnNames[key] ?? key;
-  return alias === name ? identifier(name) : fragment`${identifier(name)} as ${identifier(alias)}`;
+  const column = table.columns[key];
+  const cast = column !== undefined && isTextArray(column);
+  if (!cast) {
+    return alias === name
+      ? identifier(name)
+      : fragment`${identifier(name)} as ${identifier(alias)}`;
+  }
+  return fragment`${identifier(name)}::text as ${identifier(alias)}`;
 }
 
 function selectQuery<T extends Table, R>(table: T, state: State): SelectQuery<T, R> {

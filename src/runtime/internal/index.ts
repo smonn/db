@@ -23,6 +23,7 @@ export { acquireMigrationLock, MIGRATION_LOCK_KEY } from "./migration-lock.ts";
 export { quoteIdentifier } from "./quote-identifier.ts";
 export { sha256 } from "./sha256.ts";
 export { formatTimestamp } from "./timestamp-text.ts";
+export { parseBytea, parseDate, parseTimestamp } from "./value-text.ts";
 export {
   DEFAULT_TRACKING_SCHEMA,
   trackingSchema,
