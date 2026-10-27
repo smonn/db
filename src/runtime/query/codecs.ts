@@ -30,10 +30,10 @@ function failure(table: Table, column: string, action: string, cause: unknown): 
   );
 }
 
-/** Runs `step` on each element of an array, at any depth; a NULL element skips it. */
+/** Runs `step` on each element of a 1-D array; a NULL element skips it. */
 function mapElements(value: unknown, step: (element: unknown) => unknown): unknown {
-  if (Array.isArray(value)) return value.map((item: unknown) => mapElements(item, step));
-  return value === null || value === undefined ? value : step(value);
+  if (!Array.isArray(value)) return value === null || value === undefined ? value : step(value);
+  return value.map((item: unknown) => (item === null || item === undefined ? item : step(item)));
 }
 
 function encode(table: Table, column: string, value: unknown): unknown {

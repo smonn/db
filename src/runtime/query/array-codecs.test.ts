@@ -178,3 +178,55 @@ describe("element codecs on array columns", () => {
     );
   });
 });
+
+describe("array elements are mapped one level deep", () => {
+  const pipes: Codec<string, string[]> = {
+    decode: (s) => s.split("|"),
+    encode: (parts) => parts.join("|"),
+  };
+  const nested = defineTable((c) => ({
+    id: c.integer().notNull(),
+    parts: c.text().codec(pipes).array(),
+    docs: c
+      .jsonb<number[]>()
+      .codec<{ n: number[] }>({ decode: (n) => ({ n }), encode: (doc) => doc.n })
+      .array(),
+  }));
+  const nestedDb = defineDatabase({ public: { nested } });
+
+  beforeAll(async () => {
+    await testDatabase.driver.execute(
+      "drop table if exists public.nested; create table public.nested (id integer not null, parts text[], docs jsonb[])",
+    );
+  });
+
+  it("hands an array-valued codec its whole Value, on insert, select, and eq", async () => {
+    await client.run(insert(nestedDb.public.nested).values({ id: 1, parts: [["a", "b"], ["c"]] }));
+
+    const raw = await client.all(sql<{ parts: string }>`select parts::text from public.nested`);
+    const rows = await client.all(from(nestedDb.public.nested).select((r) => ({ parts: r.parts })));
+    const hit = await client.all(
+      from(nestedDb.public.nested)
+        .where((r) => r.parts.eq([["a", "b"], ["c"]]))
+        .select((r) => ({ id: r.id })),
+    );
+
+    expect(raw).toStrictEqual([{ parts: "{a|b,c}" }]);
+    expect(rows).toStrictEqual([{ parts: [["a", "b"], ["c"]] }]);
+    expect(hit).toStrictEqual([{ id: 1 }]);
+  });
+
+  it("decodes a jsonb[] whose elements are JSON arrays once per element", async () => {
+    await testDatabase.driver.execute(
+      `insert into public.nested (id, docs) values (2, array['[1,2]'::jsonb])`,
+    );
+
+    const rows = await client.all(
+      from(nestedDb.public.nested)
+        .where((r) => r.id.eq(2))
+        .select((r) => ({ docs: r.docs })),
+    );
+
+    expect(rows).toStrictEqual([{ docs: [{ n: [1, 2] }] }]);
+  });
+});
