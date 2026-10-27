@@ -12,7 +12,7 @@ type Column = {
   readonly type?: string;
   readonly notNull?: boolean;
   readonly default?: Omit<DefaultPayload, "volatile">;
-  readonly identity?: IdentityPayload;
+  readonly identity?: Omit<IdentityPayload, "sequence">;
   readonly generated?: GeneratedPayload;
 };
 

@@ -25,16 +25,13 @@ describe("changing a foreign key", () => {
     ]);
   });
 
-  it("rebuilds one under a new name", () => {
+  it("renames one under a new name", () => {
     const sql = bareDiff(
       database({ foreignKeys: { old: {} } }),
       database({ foreignKeys: { fresh: {} } }),
     );
 
-    expect(sql.split("\n\n")).toStrictEqual([
-      `alter table "public"."orders" drop constraint "old";`,
-      expect.stringContaining(`add constraint "fresh" foreign key`),
-    ]);
+    expect(sql).toBe(`alter table "public"."orders" rename constraint "old" to "fresh";\n`);
   });
 
   it("emits nothing for an unchanged foreign key, whatever the payload's key order", () => {

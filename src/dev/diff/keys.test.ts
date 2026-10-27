@@ -116,13 +116,10 @@ describe("dropping and changing keys", () => {
     ]);
   });
 
-  it("treats a renamed constraint as a drop and an add", () => {
+  it("renames a constraint whose columns match", () => {
     const sql = diff(table({ unique: { old: "a" } }), table({ unique: { fresh: "a" } }));
 
-    expect(sql.split("\n\n")).toStrictEqual([
-      `alter table "public"."t" drop constraint "old";`,
-      `alter table "public"."t" add constraint "fresh" unique ("a");\n`,
-    ]);
+    expect(sql).toBe(`alter table "public"."t" rename constraint "old" to "fresh";\n`);
   });
 
   it("emits nothing when the keys match", () => {
