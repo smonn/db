@@ -1,4 +1,5 @@
 import {
+  acquireMigrationLock,
   CURRENT_FILENAME,
   currentHash,
   DEFAULT_TRACKING_SCHEMA,
@@ -73,7 +74,8 @@ export type GenerateResult = {
  * database, writes it to `current.sql`, then resets the Dev database and replays the Committed
  * migrations and the Current migration when it has fallen behind them. A hand-edited `current.sql`
  * is verified in the Shadow instead (a leftover difference is a warning), replayed as written and
- * left alone. Holds the Dev lock, so a second run fails at once.
+ * left alone. Holds the Dev lock, so a second run fails at once, and the migrator's lock from the
+ * Dev database check on, so a runtime `migrate` waits instead of changing the Database under it.
  */
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
@@ -95,7 +97,12 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     ...shadowOptions
   } = options;
   const tracking = trackingSchema(trackingName);
-  await requireDevDatabase(driver, tracking);
+  // The Dev lock's connection keeps the migrator's lock until the run ends, so every read and the
+  // reset below see the Database as the check did.
+  await driver.session(async (session) => {
+    await acquireMigrationLock(session);
+    await requireDevDatabase(session, tracking);
+  });
   const path = `${migrations}/${CURRENT_FILENAME}`;
   const edited = await readHandEdited(fileSystem, path);
   await fileSystem.mkdir(migrations);

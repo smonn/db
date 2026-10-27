@@ -103,7 +103,7 @@ describe("verifyInShadow", () => {
         tracking,
       ),
     ).rejects.toThrow(
-      /cannot alter type of a column used by a view or rule:\n.*view user_ids depends on column "id".*\nGenerate never uses CASCADE or alters an Unmodeled object.*Hand edit the Current migration/su,
+      /cannot alter type of a column used by a view or rule:\n.*view user_ids depends on column "id".*\nGenerate never uses CASCADE, so another object.*Hand edit the Current migration/su,
     );
   });
 

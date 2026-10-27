@@ -23,7 +23,7 @@ Plain text: results to stdout, errors to stderr, with no colors when stdout isn'
 
 ## generate
 
-ADR-0003, ADR-0011, ADR-0013, and ADR-0016.
+ADR-0003, ADR-0011, ADR-0013, ADR-0016, and ADR-0025.
 
 ```mermaid
 sequenceDiagram
@@ -41,7 +41,8 @@ sequenceDiagram
   Gen->>Shadow: build Definition database from the Definition's DDL
   Gen->>DB: introspect both databases
   Gen->>Diff: Shadow catalog vs Definition catalog
-  Diff-->>Gen: Current migration SQL
+  Diff-->>Gen: Current migration SQL, what it drops or retypes
+  Gen->>DB: scan the Shadow's pg_depend from those, stop on any Unmodeled blocker
   Gen->>DB: apply it to the Shadow, introspect, require no diff
   Gen->>FS: write Current migration
   Gen->>DB: if its hash or the Committed tip changed, reset the Dev database and replay all migrations
@@ -163,4 +164,4 @@ A hand edit can open `current.sql` with `--! no-transaction` (ADR-0020) so it ho
 
 ## Concurrency
 
-`generate`, `commit`, and `reset` share a `pg_try_advisory_lock` on the Dev database under a key distinct from the migrator's, and a second run exits at once with an error naming the lock. A waiting run would only redo the first run's reset, and failing at once gives quick feedback when several agent sessions share one Dev database. Every reset also takes the migrator's own lock, polled for, so a runtime `migrate` on the Dev database waits for the reset instead of racing its wipe.
+`generate`, `commit`, and `reset` share a `pg_try_advisory_lock` on the Dev database under a key distinct from the migrator's, and a second run exits at once with an error naming the lock. A waiting run would only redo the first run's reset, and failing at once gives quick feedback when several agent sessions share one Dev database. Every reset also takes the migrator's own lock, polled for, so a runtime `migrate` on the Dev database waits for the reset instead of racing its wipe. `generate` holds the migrator's lock from its Dev database check until the run ends, Shadow work included.

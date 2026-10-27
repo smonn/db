@@ -14,7 +14,8 @@ Both introspections skip the Tracking schema (`smonn_db` unless configured), `pg
 2. `introspect` reads each database in one `REPEATABLE READ READ ONLY` transaction with `search_path` pinned to `pg_catalog`, keyed by name, never by OID.
 3. Generate runs the Definition's `renamedFrom` markers on the Shadow inside a transaction, introspects it, and rolls back (ADR-0024). Postgres follows a rename by OID, so every default and expression in that catalog already names the new object. A marker whose old name the Shadow lacks is skipped, and one whose old and new names both exist throws.
 4. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL. The renames that ran open the SQL, so the migration repeats them. It also returns hints, which generate prints but never writes into the SQL: the `renamedFrom` to add when a column or table looks dropped and added, and the `renamedLabels` entry to add when an enum removes one label and adds one at the same position (`diff/hints.ts`).
-5. Generate verifies the SQL, or a [hand edit](cli.md#hand-edits), in the Shadow (ADR-0013), then writes the Current migration.
+5. For generated SQL, generate scans the Shadow's `pg_depend` from what the actions drop or retype, with the renames and each enum swap's rename aside run, and stops naming every Unmodeled blocker (ADR-0025). `diff/scans.ts` gives each action kind its walk, so a new kind fails to compile until it names one. A hand edit skips the scan.
+6. Generate verifies the SQL, or a [hand edit](cli.md#hand-edits), in the Shadow (ADR-0013), then writes the Current migration.
 
 ## Catalog
 
@@ -46,7 +47,7 @@ An expression key or `where` is an `sql` expression whose interpolated reference
 
 ### Foreign keys
 
-A foreign key is a child fact of its table, named by its constraint and keyed like a key. Its payload holds its columns, the target's schema, table, and columns (paired by position), `onDelete`, `onUpdate`, `match`, and `deferrable`. A changed payload drops the constraint and adds it back. A `NOT VALID` foreign key is the same fact as a valid one. An unchanged foreign key also drops and adds back when the key it needs on its target drops or rebuilds, or when either side's column is retyped, in a swap or otherwise, since Postgres refuses those under it (#381). A retype within the integers, or between `text` and `varchar`, keeps it (`diff/foreign-key-rebuilds.ts`).
+A foreign key is a child fact of its table, named by its constraint and keyed like a key. Its payload holds its columns, the target's schema, table, and columns (paired by position), `onDelete`, `onUpdate`, `match`, and `deferrable`. A changed payload drops the constraint and adds it back. A `NOT VALID` foreign key is the same fact as a valid one. An unchanged or renamed foreign key rebuilds around a target key or column change Postgres refuses (#381, `diff/rebuilt.ts`).
 
 `defineDatabase` resolves each target column to its table by identity, so the catalog reads names only; the builder checks the target at `build`, since a target may come after the foreign key. A column's `.references()` and a `foreignKeys` entry in the second callback yield the same fact. The name is the one the Definition gives, or Postgres's default, `<table>_<columns joined by _>_fkey`. `definitionCatalog` refuses a name over 63 bytes, and two constraints on one table that take one name.
 
@@ -65,6 +66,8 @@ A `renamedLabels` entry renames a label in place with `ALTER TYPE ... RENAME VAL
 A removed or reordered label swaps the type (ADR-0023): phase 1 renames the old one aside, phase 5 creates the new one, phase 6 retypes each column of it or its array with `USING col::text::<type>`, dropping and setting its default around it, and phase 8 drops the old one. The diff refuses a swap, naming the domain, while a domain depends on the enum, and, naming the column, when a column of the enum or its array is stored generated in both catalogs, since Postgres rejects `USING` on a generated column; one the Definition makes plain loses its expression first.
 
 A retype from text or an enum to an enum, or between their arrays, writes the same `USING`, since no implicit cast reaches an enum.
+
+A created enum lists all its labels, so a swap that also adds one has no `ADD VALUE`.
 
 ### Domains
 
