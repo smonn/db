@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
-import type { Driver } from "../../runtime/ports/index.ts";
+import type { Connect, Driver } from "../../runtime/ports/index.ts";
 import { currentDatabase, databaseExistsOn } from "./shadow.test-helper.ts";
 import { sweepStaleDatabases, withShadowDatabases } from "./shadow.ts";
 
@@ -40,6 +40,44 @@ describe("withShadowDatabases", () => {
       false,
       false,
     ]);
+  });
+
+  it("closes each connection it opened, Definition first, once the callback settles", async () => {
+    const closed: string[] = [];
+    const connect: Connect = async (name) => {
+      const connection = await db.connect(name);
+      return {
+        driver: connection.driver,
+        close: () => {
+          closed.push(name);
+          return connection.close();
+        },
+      };
+    };
+
+    const names = await withShadowDatabases(db.driver, connect, async (databases) => ({
+      shadow: await currentDatabase(databases.shadow),
+      definition: await currentDatabase(databases.definition),
+    }));
+
+    expect(closed).toStrictEqual([names.definition, names.shadow]);
+  });
+
+  it("sets check_function_bodies on the Shadow database's role, and nothing on the Definition database", async () => {
+    const settingsOf = async (name: string): Promise<string[]> => {
+      const { rows } = await db.driver.query(
+        "select s.setconfig::text as config from pg_db_role_setting s join pg_database d on d.oid = s.setdatabase where d.datname = $1",
+        [name],
+      );
+      return rows.map((row) => String(row["config"]));
+    };
+
+    const settings = await withShadowDatabases(db.driver, db.connect, async (databases) => ({
+      shadow: await settingsOf(await currentDatabase(databases.shadow)),
+      definition: await settingsOf(await currentDatabase(databases.definition)),
+    }));
+
+    expect(settings).toStrictEqual({ shadow: ["{check_function_bodies=on}"], definition: [] });
   });
 
   it("refuses a role without CREATEDB, naming the privilege", async () => {
@@ -140,6 +178,36 @@ describe("sweepStaleDatabases", () => {
         [fresh, busy, unnamed].map((name) =>
           db.driver.execute(`drop database if exists ${name} with (force)`),
         ),
+      );
+    }
+  });
+
+  it("keeps a database exactly an hour old, and one whose name only ends like a swept one", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(now * 1000);
+    const names = [
+      `${prefix}${now - 3600}_55555555`,
+      `${prefix}${now - 3601}_66666666_extra`,
+      `${prefix}other${now - 3601}_77777777`,
+    ];
+    await Promise.all(
+      names.map((name) => db.driver.execute(`create database ${name} template template0`)),
+    );
+    const logged: string[] = [];
+    try {
+      await sweepStaleDatabases(db.driver, [prefix], (line) => {
+        logged.push(line);
+      });
+
+      expect(logged).toStrictEqual([]);
+      expect(await Promise.all(names.map((name) => databaseExists(name)))).toStrictEqual([
+        true,
+        true,
+        true,
+      ]);
+    } finally {
+      vi.restoreAllMocks();
+      await Promise.all(
+        names.map((name) => db.driver.execute(`drop database if exists ${name} with (force)`)),
       );
     }
   });
