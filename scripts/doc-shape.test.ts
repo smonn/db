@@ -78,6 +78,12 @@ describe("checkLinks", () => {
     ]);
   });
 
+  test("keeps a second # in the anchor", () => {
+    expect(checkLinks("docs/b.md", "[a](a.md#ports#x)", read)).toEqual([
+      { file: "docs/b.md", line: 1, message: "link to missing heading a.md#ports#x" },
+    ]);
+  });
+
   test("ignores links in code", () => {
     expect(checkLinks("docs/b.md", "`[a](gone.md)`\n```md\n[a](gone.md)\n```\n", read)).toEqual([]);
   });
