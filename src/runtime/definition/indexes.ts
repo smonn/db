@@ -66,7 +66,7 @@ function indexOf(own: RuntimeRefs, entry: unknown): TableIndex {
     where: whereOf(own, where),
   };
   requireMethodSupport(index);
-  if (where !== undefined) rememberExpression(index, own, where);
+  rememberExpression(index, own, where);
   return index;
 }
 
