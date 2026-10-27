@@ -13,6 +13,11 @@ pre-commit:
     - name: format
       run: pnpm exec oxfmt --no-error-on-unmatched-pattern {staged_files}
       stage_fixed: true
+    # Read-only and whole-repo, so they run after the rewriting jobs and see the formatted files.
+    - name: fta
+      run: pnpm run fta
+    - name: import cycles
+      run: pnpm run check:imports
 
 pre-push:
   parallel: true

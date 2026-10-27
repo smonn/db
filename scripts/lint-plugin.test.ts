@@ -141,17 +141,23 @@ tester.run("mock-child-process", plugin.rules["mock-child-process"], {
 });
 
 const CLEAR_GIT_ENV = 'import { isolateGitEnv } from "../src/dev/cli/git-env.test-helper.ts";\n';
+const BEFORE_EACH = `${CLEAR_GIT_ENV}beforeEach(() => { isolateGitEnv(); });\n`;
 
 tester.run("real-git-env", plugin.rules["real-git-env"], {
   valid: [
-    `${CLEAR_GIT_ENV}execFileSync("git", ["init"], { cwd });`,
-    `${CLEAR_GIT_ENV}cp.spawnSync("git", ["status"]);`,
+    `${BEFORE_EACH}execFileSync("git", ["init"], { cwd });`,
+    `${BEFORE_EACH}child_process.spawnSync("git", ["status"]);`,
     'expect(execFileSync).toHaveBeenCalledWith("git", ["show", "HEAD"]);',
     'vi.mocked(execFileSync).mockReturnValue("");',
     'execFileSync("gh", ["pr", "view"]);',
     "execFileSync(command, args, options);",
     'execSync("github-cli --version");',
-    'import { isolateGitEnv } from "./git-env.test-helper.ts";\nexecSync(`git init`);',
+    `${BEFORE_EACH}execSync(\`git init\`);`,
+    `${BEFORE_EACH}execFileSync("/usr/bin/git", []);`,
+    'import * as h from "./git-env.test-helper.ts";\nbeforeEach(() => { h.isolateGitEnv(); });\nexecFileSync("git", []);',
+    'mocks.execFileSync("git", ["init"]);',
+    'import { execFileSync as run } from "node:child_process";\nrun("gh", []);',
+    'import { spawn as run } from "node:child_process";\nother.run("git", []);',
   ],
   invalid: [
     {
@@ -176,6 +182,30 @@ tester.run("real-git-env", plugin.rules["real-git-env"], {
     },
     {
       code: 'import { other } from "./git-env.test-helper.ts";\nexecFileSync("git", []);',
+      errors: 1,
+    },
+    {
+      code: 'import { execFileSync as run } from "node:child_process";\nrun("git", []);',
+      errors: 1,
+    },
+    {
+      code: 'import * as cp from "node:child_process";\ncp.execFileSync("git", []);',
+      errors: 1,
+    },
+    {
+      code: 'execFileSync("/usr/bin/git", []);',
+      errors: 1,
+    },
+    {
+      code: `${CLEAR_GIT_ENV}isolateGitEnv();\nexecFileSync("git", []);`,
+      errors: 1,
+    },
+    {
+      code: `${CLEAR_GIT_ENV}it("x", () => { isolateGitEnv(); execFileSync("git", []); });`,
+      errors: 1,
+    },
+    {
+      code: `${CLEAR_GIT_ENV}beforeEach(() => {});\nexecFileSync("git", []);`,
       errors: 1,
     },
   ],
