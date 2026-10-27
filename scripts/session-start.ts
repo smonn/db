@@ -67,50 +67,43 @@ function syncWithMain(cwd: string): void {
   }
 }
 
-function parseHookObject(input: string): object | undefined {
-  try {
-    const parsed: unknown = JSON.parse(input);
-    return typeof parsed === "object" && parsed !== null ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function hookField(input: string, field: string): string | undefined {
-  const value: unknown = Object.entries(parseHookObject(input) ?? {}).find(
-    ([key]) => key === field,
-  )?.[1];
+function hookField(input: unknown, field: string): string | undefined {
+  const value: unknown = Object.entries(new Object(input)).find(([key]) => key === field)?.[1];
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
-export function hookCwd(input: string, fallback: string): string {
+export function hookCwd(input: unknown, fallback: string): string {
   return hookField(input, "cwd") ?? fallback;
 }
 
 // A subagent without worktree isolation works in the parent's own checkout, which the running
 // session owns: fetching or fast-forwarding there would change files under it.
-export function shouldSync(input: string, cwd: string, projectDir?: string): boolean {
+export function shouldSync(input: unknown, cwd: string, projectDir?: string): boolean {
   if (hookField(input, "hook_event_name") !== "SubagentStart") return true;
   return projectDir === undefined || resolve(cwd) !== resolve(projectDir);
 }
 
-function readStdin(): string {
+/** The hook's JSON input from stdin, or undefined for a terminal, an unreadable stdin, or bad JSON. */
+function readHookInput(): unknown {
+  if (process.stdin.isTTY) return undefined;
   try {
-    return process.stdin.isTTY ? "" : readFileSync(0, "utf8");
+    return JSON.parse(readFileSync(0, "utf8"));
   } catch {
-    return "";
+    // An unreadable stdin or malformed JSON leaves the hook without input.
   }
+  return undefined;
 }
 
-export function main(cwd: string = process.cwd(), sync = true): void {
-  if (sync) syncWithMain(cwd);
+export function main(
+  input: unknown = readHookInput(),
+  fallbackCwd: string = process.cwd(),
+  projectDir: string | undefined = process.env["CLAUDE_PROJECT_DIR"],
+): void {
+  const cwd = hookCwd(input, fallbackCwd);
+  if (shouldSync(input, cwd, projectDir)) syncWithMain(cwd);
   const install = run(cwd, "pnpm", ["install", "--frozen-lockfile"]);
   if (!install.ok)
     console.log(`pnpm install failed:\n${install.out.split("\n").slice(-10).join("\n")}`);
 }
 
-if (import.meta.main) {
-  const input = readStdin();
-  const cwd = hookCwd(input, process.cwd());
-  main(cwd, shouldSync(input, cwd, process.env["CLAUDE_PROJECT_DIR"]));
-}
+if (import.meta.main) main();

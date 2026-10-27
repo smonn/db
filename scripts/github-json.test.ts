@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -15,6 +15,24 @@ import {
   string,
 } from "./github-json.ts";
 
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, readFileSync: vi.fn<typeof actual.readFileSync>(actual.readFileSync) };
+});
+
+const throwValue = (value: unknown): never => {
+  throw value;
+};
+
+const thrownBy = (run: () => unknown): unknown => {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+};
+
 describe("parseJson", () => {
   test("returns the parsed value", () => {
     expect(parseJson("[1]", "x")).toEqual([1]);
@@ -23,12 +41,26 @@ describe("parseJson", () => {
   test("names the source when the text is not JSON", () => {
     expect(() => parseJson("{nope", "gh api")).toThrow("gh api: invalid JSON");
   });
+
+  test("keeps the parse error as the cause", () => {
+    expect(thrownBy(() => parseJson("{nope", "gh api"))).toHaveProperty(
+      "cause",
+      expect.any(SyntaxError),
+    );
+  });
+
+  test("falls back to a question mark when the parser throws a non-error", () => {
+    vi.spyOn(JSON, "parse").mockImplementation(() => throwValue("boom"));
+    expect(() => parseJson("{}", "gh api")).toThrow("gh api: invalid JSON (?)");
+    vi.restoreAllMocks();
+  });
 });
 
 describe("readers", () => {
   test("string and number accept their type and name the path otherwise", () => {
     expect(string("a", "$")).toBe("a");
     expect(number(1, "$")).toBe(1);
+    expect(() => string(1, "$.title")).toThrow(Error);
     expect(() => string(1, "$.title")).toThrow("$.title: expected string, got number");
     expect(() => number("1", "$.n")).toThrow("$.n: expected number, got string");
   });
@@ -98,6 +130,7 @@ describe("readEventPayload", () => {
     const path = join(dir, "event.json");
     writeFileSync(path, '{"a":1}');
     expect(readEventPayload({ GITHUB_EVENT_PATH: path })).toEqual({ a: 1 });
+    expect(readFileSync).toHaveBeenCalledWith(path, "utf8");
     expect(process.exitCode).toBeUndefined();
   });
 

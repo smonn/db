@@ -11,12 +11,7 @@ export const SHARDS: Record<string, string[]> = {
   scripts: ["scripts/**/*.ts"],
 };
 
-export const EXCLUDE: string[] = [
-  "!**/*.test.ts",
-  "!**/*.test-helper.ts",
-  // Its test reads the file's text for the action pins Renovate bumps, which instrumenting breaks.
-  "!scripts/check-oidc-jobs.ts",
-];
+export const EXCLUDE: string[] = ["!**/*.test.ts", "!**/*.test-helper.ts"];
 
 export function mutateGlobs(env: NodeJS.ProcessEnv = process.env): string[] {
   const { MUTATION_SHARD: shard } = env;

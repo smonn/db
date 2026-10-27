@@ -25,7 +25,7 @@ const EM_DASH = "\u2014";
 
 function extendEntry(entry: GlossaryEntry, line: string, lineNumber: number): void {
   entry.endLine = lineNumber;
-  const avoid = /^_Avoid_:\s*(.+)$/u.exec(line)?.[1];
+  const avoid = /^_Avoid_:\s*(.+)/u.exec(line)?.[1];
   if (avoid !== undefined) entry.avoid = avoid.split(",").map((term) => term.trim());
 }
 
@@ -103,8 +103,8 @@ export function checkHeadwordCase(file: string, text: string, entries: GlossaryE
   return text.split("\n").flatMap((line, index) => {
     const prose = line.replaceAll(/`[^`]*`/gu, "code");
     return headwords.flatMap((headword) =>
-      [...prose.matchAll(new RegExp(`\\b(${escapeRegExp(headword)})(?:s|es)?\\b`, "giu"))]
-        .map((match) => match[1] ?? "")
+      [...prose.matchAll(new RegExp(`\\b${escapeRegExp(headword)}(?=(?:s|es)?\\b)`, "giu"))]
+        .map(([variant]) => variant)
         .filter((variant) => variant !== headword)
         .map((variant) => ({
           file,
@@ -127,16 +127,15 @@ export function checkAdrBody(file: string, text: string): Problem[] {
   const lines = text.split("\n");
   const titleIndex = lines.findIndex((line) => line.startsWith("# "));
   if (titleIndex === -1) return [{ file, line: 1, message: "ADR has no title" }];
-  const sectionIndex = lines.findIndex(
-    (line, index) => index > titleIndex && line.startsWith("## "),
-  );
-  const body = lines
-    .slice(titleIndex + 1, sectionIndex === -1 ? undefined : sectionIndex)
+  const afterTitle = lines.slice(titleIndex + 1);
+  const sectionIndex = afterTitle.findIndex((line) => line.startsWith("## "));
+  const body = afterTitle
+    .slice(0, sectionIndex === -1 ? undefined : sectionIndex)
     .join("\n")
     .replaceAll(/<!--[\s\S]*?-->/gu, "")
     .replaceAll(/`[^`]*`/gu, "code");
   // A sentence ends at terminal punctuation followed by whitespace, which skips dots in "v0.1".
-  const sentences = body.split(/(?<=[.!?])\s+/u).filter((sentence) => sentence.trim() !== "");
+  const sentences = body.split(/(?<=[.!?])\s+/u).filter((sentence) => sentence !== "");
   if (sentences.length <= MAX_ADR_SENTENCES) return [];
   return [
     {
@@ -147,10 +146,15 @@ export function checkAdrBody(file: string, text: string): Problem[] {
   ];
 }
 
+/** The four-digit number in an ADR's path, or `undefined` for any other file. */
+function adrNumber(file: string): string | undefined {
+  return /^docs\/adr\/(\d{4})-/u.exec(file)?.[1];
+}
+
 export function checkAdrNumbers(files: string[]): Problem[] {
   const firstByNumber = new Map<string, string>();
   return files.flatMap((file) => {
-    const number = /^docs\/adr\/(\d{4})-/u.exec(file)?.[1];
+    const number = adrNumber(file);
     if (number === undefined) return [];
     const first = firstByNumber.get(number);
     if (first === undefined) {
@@ -180,7 +184,7 @@ function checkMarkdownFile(cwd: string, file: string, glossary: GlossaryEntry[])
       ...checkHeadwordCase(file, text, glossary),
     );
   }
-  if (/^docs\/adr\/\d{4}-[^/]+\.md$/u.test(file)) {
+  if (adrNumber(file) !== undefined) {
     problems.push(...checkAdrBody(file, text));
   }
   return problems;
@@ -193,7 +197,10 @@ function checkTypeScriptEmDashes(cwd: string): Problem[] {
     .flatMap((file) => checkEmDashes(file, readFileSync(join(cwd, file), "utf8")));
 }
 
-export function main(cwd = ".", budgets: Record<string, number> = DOC_BUDGETS): void {
+export function main(
+  cwd: string = process.cwd(),
+  budgets: Record<string, number> = DOC_BUDGETS,
+): void {
   const files = markdownFiles(cwd);
   const glossary = parseGlossary(readFileSync(join(cwd, "GLOSSARY.md"), "utf8"));
   const problems = [

@@ -10,25 +10,23 @@
 import { readFileSync } from "node:fs";
 import { checkBranch } from "./check-pr.ts";
 
-const headsPrefix = "refs/heads/";
+// `<local ref> <local sha> refs/heads/<branch> <remote sha>`, where an all-zero local sha is a delete.
+const pushedBranchPattern = /^\S+\s+(?!0+\s)\S+\s+refs\/heads\/(\S+)\s+\S+$/u;
 // Pushed but never opened as a PR: research notes (docs/agents/issue-tracker.md) and prototypes
 // (the prototype skill).
 const throwawayPattern = /^(research|prototype)\/[a-z0-9]+([.-][a-z0-9]+)*$/u;
-const zeroSha = /^0+$/u;
 
 export function parsePushedBranches(stdin: string): string[] {
-  const branches: string[] = [];
-  for (const line of stdin.split("\n")) {
-    const [, localSha, remoteRef] = line.trim().split(/\s+/u);
-    if (localSha === undefined || remoteRef === undefined) continue;
-    if (zeroSha.test(localSha) || !remoteRef.startsWith(headsPrefix)) continue;
-    branches.push(remoteRef.slice(headsPrefix.length));
-  }
-  return branches;
+  return stdin.split("\n").flatMap((line) => {
+    const branch = pushedBranchPattern.exec(line.trim())?.[1];
+    return branch === undefined ? [] : [branch];
+  });
 }
 
 function readStdin(): string {
-  return process.stdin.isTTY ? "" : readFileSync(0, "utf8");
+  // Stryker disable next-line StringLiteral: no other text parses as a pushed branch either, so a mutated empty string is indistinguishable.
+  if (process.stdin.isTTY) return "";
+  return readFileSync(0, "utf8");
 }
 
 export function main(stdin: string = readStdin()): void {

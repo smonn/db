@@ -24,7 +24,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 function devEnginesRuntime(pkg: unknown): unknown {
-  return isRecord(pkg) && isRecord(pkg["devEngines"]) ? pkg["devEngines"]["runtime"] : [];
+  return isRecord(pkg) && isRecord(pkg["devEngines"]) ? pkg["devEngines"]["runtime"] : undefined;
 }
 
 const nodeVersion = (entry: unknown): string | undefined =>
@@ -79,7 +79,7 @@ export function checkNodeVersion(sources: NodeVersionSources): string[] {
   ];
 }
 
-export function main(cwd = "."): void {
+export function main(cwd: string = process.cwd()): void {
   const read = (file: string): string => readFileSync(join(cwd, file), "utf8");
   const problems = checkNodeVersion({
     toolVersions: read(".tool-versions"),

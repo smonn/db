@@ -1,9 +1,18 @@
-import { spawnSync } from "node:child_process";
+import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { main } from "./frontier.ts";
 import { ghReturns, issue } from "./frontier.test-helper.ts";
 
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn<typeof spawnSync>() }));
+
+const reply = (stdout: string): SpawnSyncReturns<string> => ({
+  pid: 0,
+  output: [],
+  stdout,
+  stderr: "",
+  status: 0,
+  signal: null,
+});
 
 describe("main", () => {
   const spawn = vi.mocked(spawnSync);
@@ -97,6 +106,50 @@ describe("main", () => {
     );
   });
 
+  test("reads the map's body with gh api", () => {
+    ghReturns(spawn, {
+      "repos/{owner}/{repo}/issues/5/sub_issues": [issue(8, { state: "closed" })],
+      "repos/{owner}/{repo}/issues/5": { body: "" },
+    });
+    main("5");
+    expect(spawn.mock.calls[1]).toEqual([
+      "gh",
+      ["api", "repos/{owner}/{repo}/issues/5"],
+      { encoding: "utf8" },
+    ]);
+  });
+
+  test.each([
+    ["not JSON", "oops", "gh api repos/{owner}/{repo}/issues/5: invalid JSON"],
+    ["not an object", "[]", "$: expected object, got array"],
+    ["a body that is not text", '{"body":5}', "$.body: expected string, got number"],
+  ])("exits 1 when the map's body read is %s", (_name, stdout, message) => {
+    spawn
+      .mockReturnValueOnce(reply(JSON.stringify([[issue(8, { state: "closed" })]])))
+      .mockReturnValueOnce(reply(stdout));
+    expect(() => {
+      main("5");
+    }).toThrow("exit 1");
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining(message));
+  });
+
+  test("names the issues path when the issue list is not JSON", () => {
+    spawn.mockReturnValue({
+      pid: 0,
+      output: [],
+      stdout: "oops",
+      stderr: "",
+      status: 0,
+      signal: null,
+    });
+    expect(() => {
+      main("5");
+    }).toThrow("exit 1");
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("gh api repos/{owner}/{repo}/issues/5/sub_issues: invalid JSON"),
+    );
+  });
+
   test("prints the gh error and exits 1 when the map body read fails", () => {
     ghReturns(spawn, {
       "repos/{owner}/{repo}/issues/5/sub_issues": [issue(8, { state: "closed" })],
@@ -116,6 +169,7 @@ describe("main", () => {
         issue(8, { labels: [] }),
         issue(9, { assignees: [{ login: "smonn" }] }),
         issue(10),
+        issue(11, { state: "closed" }),
         issue(30, { pull_request: {} }),
         issue(44, { sub_issues_summary: { total: 6 } }),
         issue(45, { sub_issues_summary: { total: 0 } }),
@@ -132,6 +186,7 @@ describe("main", () => {
     });
     process.argv = ["node", "scripts/frontier.ts"];
     main();
+    expect(console.warn).not.toHaveBeenCalled();
     expect(console.log).toHaveBeenCalledWith(
       [
         "#8 Ticket 8",

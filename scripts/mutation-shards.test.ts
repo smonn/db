@@ -13,6 +13,12 @@ describe("SHARDS", () => {
     expect(shardFiles).toEqual(expand(["src/**/*.ts", "scripts/**/*.ts"]).toSorted());
   });
 
+  test("leave out tests and test helpers", () => {
+    const files = expand(["src/**/*.ts", "scripts/**/*.ts"]);
+    expect(files.filter((file) => /\.test(?:-helper)?\.ts$/u.test(file))).toEqual([]);
+    expect(EXCLUDE).toEqual(["!**/*.test.ts", "!**/*.test-helper.ts"]);
+  });
+
   test("match the Mutation workflow's matrix", () => {
     const workflow = readFileSync(".github/workflows/mutation.yml", "utf8");
     const matrix = /^\s+shard: \[(?<shards>[^\]]*)\]$/mu.exec(workflow)?.groups?.["shards"];
@@ -32,7 +38,7 @@ describe("mutateGlobs", () => {
 
   test("names an unknown shard", () => {
     expect(() => mutateGlobs({ MUTATION_SHARD: "srcs" })).toThrow(
-      'Unknown MUTATION_SHARD "srcs"; expected one of diff',
+      'Unknown MUTATION_SHARD "srcs"; expected one of diff, dev, runtime, scripts',
     );
   });
 });

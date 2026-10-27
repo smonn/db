@@ -12,6 +12,10 @@ describe("headingAnchors", () => {
     ]);
   });
 
+  test("reads a heading only at the start of a line, and trims the spaces after its hashes", () => {
+    expect([...headingAnchors("see # not a heading\n##  Two  words ##\n")]).toEqual(["two--words"]);
+  });
+
   test("skips headings inside code fences", () => {
     expect([...headingAnchors("```sh\n# not a heading\n```\n## Real\n")]).toEqual(["real"]);
   });
@@ -36,6 +40,47 @@ describe("checkLinks", () => {
       { file: "docs/b.md", line: 1, message: "link to missing file gone.md" },
       { file: "docs/b.md", line: 2, message: "link to missing heading a.md#nope" },
       { file: "docs/b.md", line: 2, message: "link to missing heading #nope" },
+    ]);
+  });
+
+  test.each([
+    "```\n[a](gone.md)\n```",
+    "  ```\n[a](gone.md)\n  ```",
+    "~~~\n[a](gone.md)\n~~~",
+    "`x` `[a](gone.md)`",
+  ])("ignores links in %j", (text) => {
+    expect(checkLinks("docs/b.md", text, read)).toEqual([]);
+  });
+
+  test("reads a link after a code span or an inline fence mark", () => {
+    const missing = [{ file: "docs/b.md", line: 2, message: "link to missing file gone.md" }];
+    expect(checkLinks("docs/b.md", "use ``` inline\n[a](gone.md)", read)).toEqual(missing);
+    expect(checkLinks("docs/b.md", "`x`\n`y` [a](gone.md)", read)).toEqual(missing);
+  });
+
+  test("reads an anchor only against Markdown targets", () => {
+    expect(checkLinks("docs/b.md", "[x](../src/x.ts#L10)", read)).toEqual([]);
+  });
+
+  test("reads a scheme or a leading // as external, and a colon later in a path as a file", () => {
+    expect(
+      checkLinks("docs/b.md", "[s](s3://bucket/key) [m](mailto:a@b.dev) [p](//x.dev/y)", read),
+    ).toEqual([]);
+    expect(checkLinks("docs/b.md", "[c](dir/a:b.md)", read)).toEqual([
+      { file: "docs/b.md", line: 1, message: "link to missing file dir/a:b.md" },
+    ]);
+  });
+
+  test("names an empty anchor", () => {
+    expect(checkLinks("docs/b.md", "[s](#) [a](a.md#)", read)).toEqual([
+      { file: "docs/b.md", line: 1, message: "link to missing heading #" },
+      { file: "docs/b.md", line: 1, message: "link to missing heading a.md#" },
+    ]);
+  });
+
+  test("keeps a second # in the anchor", () => {
+    expect(checkLinks("docs/b.md", "[a](a.md#ports#x)", read)).toEqual([
+      { file: "docs/b.md", line: 1, message: "link to missing heading a.md#ports#x" },
     ]);
   });
 
