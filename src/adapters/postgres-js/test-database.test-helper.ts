@@ -172,6 +172,11 @@ type AttemptOptions = {
  * `acquireMigrationLock` never queues, so the attempt shows only as the last statement of the
  * backend, running or idle; a regression to a blocking `pg_advisory_lock` shows the same way. A
  * fixed sleep samples too early under load, and a regression passes.
+ *
+ * It matches any backend's last statement, and the pool's reset query overwrites that statement
+ * when it hands a connection back, so a finished attempt can vanish. The holder's own attempt
+ * matches too: pass its `holderPid` (`migrationLockHolderPid`, `backendPid`) unless it is busy
+ * with another statement, or the wait returns on the holder's attempt, not the contender's.
  */
 export async function untilMigrationLockAttempted(
   driver: Driver,
@@ -196,6 +201,17 @@ async function lockAttempted(driver: Driver, holderPid: number): Promise<boolean
     [holderPid, ...lockAttempts],
   );
   return rows[0]?.["hit"] === true;
+}
+
+/** The backend that holds the migration lock; throws while nothing holds it, so a filter on its pid can't be empty. */
+export async function migrationLockHolderPid(driver: Driver): Promise<number> {
+  const { rows } = await driver.query(
+    "select pid from pg_locks where locktype = 'advisory' and granted and database = (select oid from pg_database where datname = current_database()) and ((classid::bigint << 32) | objid::bigint) = $1::bigint",
+    [MIGRATION_LOCK_KEY],
+  );
+  const pid = rows[0]?.["pid"];
+  if (pid === undefined) throw new Error("nothing holds the migration lock");
+  return Number(pid);
 }
 
 /** How many advisory locks sessions of this database hold, the migrator's and the Dev lock among them. */

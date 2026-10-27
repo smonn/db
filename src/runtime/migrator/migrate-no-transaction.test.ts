@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  advisoryLocksHeld,
   backendRunning,
   terminateBackendRunning,
   useTestDatabase,
@@ -33,14 +34,6 @@ function source(...files: MigrationFile[]): MigrationSource {
 
 async function queryRows(sql: string): Promise<unknown> {
   return (await db.driver.query(sql)).rows;
-}
-
-/** Whether another connection can take the migrator's lock, so the failed run released it. */
-function lockIsFree(): Promise<boolean> {
-  return db.driver.session(async (session) => {
-    const { rows } = await session.query("select pg_try_advisory_lock(76666326447283) as locked");
-    return rows[0]?.["locked"] === true;
-  });
 }
 
 const STATUSES = "select filename, status, error from smonn_db.migrations order by sequence";
@@ -120,7 +113,7 @@ describe("migrate a no-transaction file (ADR-0020)", () => {
     await expect(migrate({ driver: db.driver, source: files })).rejects.toThrow(
       `${duplicate.filename} is recorded as failed: could not create unique index "users_name"`,
     );
-    expect(await lockIsFree()).toBe(true);
+    expect(await advisoryLocksHeld(db.driver)).toBe(0);
   });
 
   it("leaves the row started when the backend ends mid-statement, and refuses the next run", async () => {

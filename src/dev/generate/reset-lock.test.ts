@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   advisoryLocksHeld,
   backendPid,
+  migrationLockHolderPid,
   untilMigrationLockAttempted,
   useTestDatabase,
 } from "../../adapters/postgres-js/test-database.test-helper.ts";
@@ -58,6 +59,7 @@ describe("reset and the migrator's lock", () => {
         erase: true,
       }).then(() => events.push("reset"));
       await untilBlockedOnGate();
+      const holderPid = await migrationLockHolderPid(db.driver);
       migrating = migrate({
         driver: db.driver,
         source: { list: () => Promise.resolve([CREATE_WIDGETS]) },
@@ -65,7 +67,7 @@ describe("reset and the migrator's lock", () => {
         events.push("migrate");
         return result;
       });
-      await untilMigrationLockAttempted(db.driver, { gaveUp: () => events.length > 0 });
+      await untilMigrationLockAttempted(db.driver, { holderPid, gaveUp: () => events.length > 0 });
       expect(events).toStrictEqual([]);
     });
     await resetting;

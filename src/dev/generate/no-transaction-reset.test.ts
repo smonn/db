@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   advisoryLocksHeld,
   backendRunning,
+  migrationLockHolderPid,
+  terminateBackendRunning,
   untilMigrationLockAttempted,
   useTestDatabase,
 } from "../../adapters/postgres-js/test-database.test-helper.ts";
@@ -86,6 +88,28 @@ describe("reset around a no-transaction file (ADR-0020)", () => {
     expect(await advisoryLocksHeld(db.driver)).toBe(0);
   });
 
+  it("leaves the row started when the backend ends mid-statement, and releases the locks", async () => {
+    const sleeping = await writeMigration(
+      "000002-sleep.sql",
+      CREATE_USERS.hash,
+      "select pg_sleep(30);\n",
+      { noTransaction: true },
+    );
+    const fileSystem = memoryFileSystem(filesIn(MIGRATIONS, [CREATE_USERS, sleeping]));
+
+    const resetting = reset({ driver: db.ownPool(), fileSystem, migrations: MIGRATIONS });
+    await Promise.all([
+      expect(resetting).rejects.toThrow(/^000002-sleep\.sql: /u),
+      terminateBackendRunning(db.driver, "pg_sleep(30)"),
+    ]);
+
+    expect(await rows(STATUSES)).toStrictEqual([
+      applied(CREATE_USERS.filename),
+      { filename: sleeping.filename, status: "started", error: null },
+    ]);
+    expect(await advisoryLocksHeld(db.driver)).toBe(0);
+  });
+
   it("holds the migrator's lock across the break, so a migrate waits, then finds nothing left", async () => {
     const fileSystem = memoryFileSystem(filesIn(MIGRATIONS, [CREATE_USERS, INDEX_ID]));
     const events: string[] = [];
@@ -100,6 +124,7 @@ describe("reset around a no-transaction file (ADR-0020)", () => {
         events.push("reset"),
       );
       await backendRunning(db.driver, "create index concurrently");
+      const holderPid = await migrationLockHolderPid(db.driver);
       migrating = migrate({
         driver: db.driver,
         source: { list: () => Promise.resolve([CREATE_USERS, INDEX_ID]) },
@@ -107,7 +132,7 @@ describe("reset around a no-transaction file (ADR-0020)", () => {
         events.push("migrate");
         return result;
       });
-      await untilMigrationLockAttempted(db.driver, { gaveUp: () => events.length > 0 });
+      await untilMigrationLockAttempted(db.driver, { holderPid, gaveUp: () => events.length > 0 });
       expect(events).toStrictEqual([]);
       await holder.execute("commit");
     });
