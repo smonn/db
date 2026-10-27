@@ -2,30 +2,28 @@ import { formatTimestamp } from "../../runtime/internal/index.ts";
 
 // Postgres gives an untyped param the type of the first place it is compared or assigned. A Date
 // goes out as untyped UTC text, so a `timestamp` column keeps its UTC wall clock in any session
-// zone (#180). Two things then need help: an array of Dates, which postgres.js would type as a
-// scalar `timestamptz`, and a param used against both `timestamp` and `timestamptz`, which
-// Postgres types as the first and converts for the second in the session zone (#192).
+// zone (#180). A param used against both `timestamp` and `timestamptz` then needs help, since
+// Postgres types it as the first and converts for the second in the session zone (#192). An array
+// stays an array, which the driver binds untyped and the array type's serializer writes.
 
 function leaves(value: readonly unknown[]): unknown[] {
   return value.flatMap((item) => (Array.isArray(item) ? leaves(item) : [item]));
 }
 
-function arrayLiteral(value: readonly unknown[], number: number): string {
-  const items = value.map((item) => {
-    if (Array.isArray(item)) return arrayLiteral(item, number);
-    if (item === null) return "NULL";
-    if (item instanceof Date) return `"${formatTimestamp(item)}"`;
-    throw new TypeError(`Param $${number} mixes Dates with other values in an array`);
-  });
-  return `{${items.join(",")}}`;
+function checkDate(value: Date, number: number): Date {
+  if (Number.isNaN(value.getTime())) {
+    throw new RangeError(`Param $${number} holds an Invalid Date`);
+  }
+  return value;
 }
 
-function dateText(value: unknown, number: number): string | undefined {
-  if (value instanceof Date) return formatTimestamp(value);
-  if (!Array.isArray(value) || !leaves(value).some((item) => item instanceof Date)) {
-    return undefined;
-  }
-  return arrayLiteral(value, number);
+/** The UTC text a Date param goes out as, or the array itself when it holds a Date. */
+function dateText(value: unknown, number: number): unknown {
+  if (value instanceof Date) return formatTimestamp(checkDate(value, number));
+  if (!Array.isArray(value)) return undefined;
+  const dates = leaves(value).filter((item) => item instanceof Date);
+  for (const date of dates) checkDate(date, number);
+  return dates.length > 0 ? value : undefined;
 }
 
 // Comments, quoted strings and names, words, `$n`, a dollar-quote tag, or any other character.
@@ -98,9 +96,10 @@ function splitDateUses(
 }
 
 /**
- * Turns each Date param into untyped UTC text, an array of Dates into an untyped array literal,
- * and a Date param the text uses more than once into one param per use. Each use then takes the
- * type of its own context, such as `timestamp` for one and `timestamptz` for the other.
+ * Turns each Date param into untyped UTC text, and a Date param, or an array holding one, that the
+ * text uses more than once into one param per use. Each use then takes the type of its own
+ * context, such as `timestamp` for one and `timestamptz` for the other. An Invalid Date, alone or
+ * in an array, throws naming its param.
  */
 export function bindDateParams(
   text: string,

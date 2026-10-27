@@ -85,24 +85,15 @@ describe("postgresJsDriver Date params in hand-written SQL", () => {
         [at, at],
       ]);
       await session.query("insert into stamps (id, tss) values (3, $1)", [[[at], [at]]]);
-      // Text, since postgres.js hands the timestamp parser a NULL element as the string "NULL".
-      return (
-        await session.query(
-          "select id, tss::text as tss, tzs::text as tzs from stamps where id > 1 order by id",
-        )
-      ).rows;
+      return (await session.query("select id, tss, tzs from stamps where id > 1 order by id")).rows;
     });
     expect(rows).toStrictEqual([
-      {
-        id: 2,
-        tss: '{"2026-01-01 00:00:00",NULL}',
-        tzs: '{"2026-01-01 09:00:00+09","2026-01-01 09:00:00+09"}',
-      },
-      { id: 3, tss: '{{"2026-01-01 00:00:00"},{"2026-01-01 00:00:00"}}', tzs: null },
+      { id: 2, tss: [at, null], tzs: [at, at] },
+      { id: 3, tss: [[at], [at]], tzs: null },
     ]);
   });
 
-  it("reads an empty and a non-Date array as postgres.js does", async () => {
+  it("reads an empty and a non-Date array", async () => {
     const { rows } = await db.driver.query("select $1::int[] as a, $2::text[] as b", [
       [],
       ["x", "y"],
@@ -110,9 +101,8 @@ describe("postgresJsDriver Date params in hand-written SQL", () => {
     expect(rows).toStrictEqual([{ a: [], b: ["x", "y"] }]);
   });
 
-  it("names the param when an array mixes Dates with other values", async () => {
-    await expect(db.driver.query("select $1::text[]", [[at, "x"]])).rejects.toThrow(
-      "Param $1 mixes Dates with other values in an array",
-    );
+  it("writes a Date in a text array as UTC timestamp text", async () => {
+    const { rows } = await db.driver.query("select $1::text[] as a", [[at, "x"]]);
+    expect(rows).toStrictEqual([{ a: ["2026-01-01 00:00:00.000+00", "x"] }]);
   });
 });

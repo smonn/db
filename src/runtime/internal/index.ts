@@ -1,3 +1,9 @@
+export {
+  elementText,
+  formatArrayLiteral,
+  parseArrayLiteral,
+  type ArrayValue,
+} from "./array-literal.ts";
 export { explainBlockerError, type BlockerSource } from "./blocker-errors.ts";
 export {
   committedFilenames,

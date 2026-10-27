@@ -1,5 +1,11 @@
 import type postgres from "postgres";
-import { formatTimestamp } from "../../runtime/internal/index.ts";
+import {
+  elementText,
+  formatArrayLiteral,
+  formatTimestamp,
+  parseArrayLiteral,
+  type ArrayValue,
+} from "../../runtime/internal/index.ts";
 
 const bigint: postgres.PostgresType<bigint> = {
   to: 20,
@@ -89,11 +95,59 @@ const bytea: postgres.PostgresType<Uint8Array> = {
   },
 };
 
+type ArrayType<T> = postgres.PostgresType<ArrayValue<T>>;
+
+// Array text a query layer already wrote passes through; a JS array is written here, once
+// Postgres has typed the param it fills. postgres.js's `fetch_types` skips an array type that has
+// both a parser and a serializer, so these stay in place for every built-in array.
+function arrayType<T>(
+  oids: readonly [number, ...number[]],
+  parseElement: (text: string) => T,
+  { formatElement = elementText, delimiter = "," } = {},
+): ArrayType<T> {
+  return {
+    to: oids[0],
+    from: [...oids],
+    serialize: (value: readonly unknown[] | string) =>
+      typeof value === "string" ? value : formatArrayLiteral(value, formatElement, delimiter),
+    parse: (text: string) => parseArrayLiteral(text, parseElement, delimiter),
+  };
+}
+
+const asText = (text: string): string => text;
+
+// The built-in array types, by OID, whose elements read as text: every one but those below.
+const textArrayOids = [
+  1009, 143, 210, 270, 271, 272, 273, 629, 651, 719, 775, 791, 1002, 1003, 1006, 1008, 1010, 1011,
+  1012, 1013, 1014, 1015, 1017, 1018, 1019, 1027, 1034, 1040, 1041, 1183, 1187, 1231, 1263, 1270,
+  1561, 1563, 2201, 2207, 2208, 2209, 2210, 2211, 2287, 2949, 2951, 3221, 3643, 3644, 3645, 3735,
+  3770, 3905, 3907, 3909, 3911, 3913, 3927, 4073, 4090, 4097, 4192, 5039, 6150, 6151, 6152, 6153,
+  6155, 6157,
+] as const;
+
+const arrays = {
+  textArray: arrayType(textArrayOids, asText),
+  // int2, int4, oid, float4, and float8, which postgres.js reads as numbers.
+  numberArray: arrayType([1007, 1005, 1028, 1021, 1022], Number),
+  booleanArray: arrayType([1000], (text) => text === "t"),
+  jsonArray: arrayType([3807, 199], (text): unknown => JSON.parse(text), {
+    formatElement: (element) => JSON.stringify(element),
+  }),
+  bigintArray: arrayType([1016], bigint.parse),
+  dateArray: arrayType([1182], date.parse),
+  timestampArray: arrayType([1115], parseTimestamp),
+  timestamptzArray: arrayType([1185], parseTimestamp),
+  byteaArray: arrayType([1001], bytea.parse),
+  // A box holds commas, so a box array is the one built-in array that splits on `;`.
+  boxArray: arrayType([1020], asText, { delimiter: ";" }),
+};
+
 /**
  * The postgres.js `types` option that gives columns the Definition's value types: bigint as
  * `bigint`, date as the `YYYY-MM-DD` string (`YYYY-MM-DD BC`, `infinity`, and `-infinity` pass
  * through as Postgres writes them), timestamp and timestamptz as a `Date`, and bytea as a plain
  * `Uint8Array`. Reading a timestamp of `infinity`, `-infinity`, or past a Date's range throws.
+ * Every built-in array type reads as an array of those values, with a NULL element as `null`.
  * Pass it with `postgresJsConnection`: `postgres(url, { types: postgresJsTypes, connection: postgresJsConnection })`.
  */
 export const postgresJsTypes: {
@@ -102,7 +156,17 @@ export const postgresJsTypes: {
   readonly timestamp: postgres.PostgresType<Date>;
   readonly timestamptz: postgres.PostgresType<Date>;
   readonly bytea: postgres.PostgresType<Uint8Array>;
-} = { bigint, date, timestamp, timestamptz, bytea };
+  readonly textArray: ArrayType<string>;
+  readonly numberArray: ArrayType<number>;
+  readonly booleanArray: ArrayType<boolean>;
+  readonly jsonArray: ArrayType<unknown>;
+  readonly bigintArray: ArrayType<bigint>;
+  readonly dateArray: ArrayType<string>;
+  readonly timestampArray: ArrayType<Date>;
+  readonly timestamptzArray: ArrayType<Date>;
+  readonly byteaArray: ArrayType<Uint8Array>;
+  readonly boxArray: ArrayType<string>;
+} = { bigint, date, timestamp, timestamptz, bytea, ...arrays };
 
 /**
  * The postgres.js `connection` option that `postgresJsTypes` reads by. It sends the output
@@ -122,7 +186,8 @@ export function hasPostgresJsTypes(parsers: Record<number, unknown>): boolean {
     parsers[date.to] === date.parse &&
     parsers[timestamp.to] === timestamp.parse &&
     parsers[timestamptz.to] === timestamptz.parse &&
-    parsers[bytea.to] === bytea.parse
+    parsers[bytea.to] === bytea.parse &&
+    Object.values(arrays).every((type) => type.from.every((oid) => parsers[oid] === type.parse))
   );
 }
 

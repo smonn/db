@@ -3,15 +3,27 @@ import { describe, expect, it } from "vitest";
 import { postgresJsDriver } from "./driver.ts";
 import { postgresJsConnection, postgresJsTypes } from "./value-types.ts";
 
+const url = "postgres://localhost:1/none";
+
 describe("postgresJsDriver without postgresJsTypes", () => {
   it("refuses a client created without them, naming the export", () => {
-    const sql = postgres("postgres://localhost:1/none");
+    const sql = postgres(url);
+    expect(() => postgresJsDriver(sql)).toThrow("postgresJsTypes");
+  });
+
+  it("refuses a client whose array parser isn't postgresJsTypes'", () => {
+    const sql = postgres(url, {
+      types: {
+        ...postgresJsTypes,
+        textArray: { ...postgresJsTypes.textArray, parse: (text: string) => [text] },
+      },
+      connection: postgresJsConnection,
+    });
     expect(() => postgresJsDriver(sql)).toThrow("postgresJsTypes");
   });
 });
 
 describe("postgresJsDriver without postgresJsConnection", () => {
-  const url = "postgres://localhost:1/none";
   const message =
     "postgresJsDriver needs a client created with postgres(url, { connection: postgresJsConnection }), which sets DateStyle=ISO and bytea_output=hex";
 
