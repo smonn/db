@@ -40,6 +40,30 @@ describe("rebase", () => {
     expect((await verify(source(...committed))).verified).toHaveLength(5);
   });
 
+  it("orders the branch's files by sequence number, not by filename", async () => {
+    const P = await writeMigration("9-p.sql", B.hash, "create table p (n int);");
+    const Q = await writeMigration("10-q.sql", P.hash, "create table q (n int);");
+    const fileSystem = folder(A, B, P, Q);
+
+    const result = await rebaseFolder(fileSystem, [A, B]);
+
+    expect(result).toStrictEqual({
+      moved: [
+        { from: "9-p.sql", to: "000003-p.sql" },
+        { from: "10-q.sql", to: "000004-q.sql" },
+      ],
+    });
+  });
+
+  it("takes the base ref's tip by sequence number, whatever order the base lists its files", async () => {
+    const fileSystem = folder(A, B, C, X, Y);
+
+    await rebaseFolder(fileSystem, [C, A, B]);
+
+    const X4 = await writeMigration("000004-x.sql", C.hash, "create table x (n int);");
+    expect(fileSystem.files.get(`${MIGRATIONS}/000004-x.sql`)).toBe(X4.content);
+  });
+
   it("keeps a moving no-transaction file's header and rehashes over it (ADR-0020)", async () => {
     const index = "create index concurrently x_n on x (n);";
     const XI = await writeMigration("000003-xi.sql", X.hash, index, { noTransaction: true });
@@ -217,11 +241,24 @@ describe("rebase", () => {
     );
   });
 
+  it("names a moving file that starts a chain of its own as following nothing", async () => {
+    const root = await writeMigration("000003-r.sql", undefined, "create table r (n int);");
+    const fileSystem = folder(A, B, X, root);
+
+    await expect(rebaseFolder(fileSystem, [A, B])).rejects.toThrow(
+      `000003-r.sql: --! Previous should be ${X.hash}, not -`,
+    );
+  });
+
   it("refuses a base ref whose chain is broken, naming the ref", async () => {
     const fileSystem = folder(A, C);
 
-    await expect(rebaseFolder(fileSystem, [A, C])).rejects.toThrow(
-      `${ONTO}: 000003-c.sql: sequence 2 is missing before it`,
+    const refused = rebaseFolder(fileSystem, [A, C]);
+
+    await expect(refused).rejects.toThrow(`${ONTO}: 000003-c.sql: sequence 2 is missing before it`);
+    await expect(refused).rejects.toHaveProperty(
+      "cause.message",
+      "000003-c.sql: sequence 2 is missing before it",
     );
   });
 

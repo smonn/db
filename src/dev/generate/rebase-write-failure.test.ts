@@ -70,6 +70,7 @@ describe("rebase when a write fails partway", () => {
       await expect(result).rejects.toThrow(
         `${MIGRATIONS} may be half-rewritten (disk full); rerun rebase to finish, or to list the files to set aside`,
       );
+      await expect(result).rejects.toHaveProperty("cause.message", "disk full");
       const contents = [...fileSystem.files.values()].join("\n");
       for (const file of folder.files) expect(contents).toContain(parseMigration(file).body);
     },
