@@ -5,7 +5,7 @@ import { definitionCatalog, type Catalog } from "../catalog/index.ts";
 import { introspect } from "../introspect/index.ts";
 import { bareDiff } from "./bare-sql.test-helper.ts";
 import { diff } from "./diff.ts";
-import { relabeled, withMood } from "./enums.test-helper.ts";
+import { relabeled, ungenerated, withMood } from "./enums.test-helper.ts";
 
 const db = useTestDatabase();
 
@@ -128,6 +128,38 @@ drop type "public"."mood_old";
     ]);
     expect(await remaining(sql, to)).toBe("");
     expect(await values("select moods::text as value from users")).toStrictEqual(["{c,a}"]);
+  });
+
+  it("drops the expression of a stored generated column the Definition makes plain before the retype", async () => {
+    await db.driver.execute(`create type public.mood as enum ('a', 'b');
+create table public.users (
+  mood public.mood,
+  feeling public.mood generated always as (mood) stored,
+  feelings public.mood[] generated always as (array[mood]) stored
+);`);
+    const from = await introspect(db.driver);
+    const to = ungenerated(relabeled(from, ["b", "a"]));
+
+    const { sql } = diff(from, to);
+
+    expect(sql.replaceAll(/^-- hazard: \w+\n/gmu, ""))
+      .toBe(`alter type "public"."mood" rename to "mood_old";
+
+create type "public"."mood" as enum ('b', 'a');
+
+alter table "public"."users" alter column "feeling" drop expression;
+
+alter table "public"."users" alter column "feelings" drop expression;
+
+alter table "public"."users" alter column "mood" type public.mood using "mood"::text::public.mood;
+
+alter table "public"."users" alter column "feeling" type public.mood using "feeling"::text::public.mood;
+
+alter table "public"."users" alter column "feelings" type public.mood[] using "feelings"::text::public.mood[];
+
+drop type "public"."mood_old";
+`);
+    expect(await remaining(sql, to)).toBe("");
   });
 
   it("retypes every column that uses the enum, in every table", async () => {
