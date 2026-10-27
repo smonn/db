@@ -5,7 +5,9 @@ import { introspect } from "./introspect.ts";
 const db = useTestDatabase();
 
 beforeEach(async () => {
-  await db.driver.execute("drop schema public cascade; create schema public;");
+  await db.driver.execute(
+    "drop schema if exists other cascade; drop schema public cascade; create schema public;",
+  );
 });
 
 const facts = async () => Object.fromEntries(await introspect(db.driver));
@@ -37,6 +39,25 @@ describe("introspect domains", () => {
     });
     expect(Object.keys(read).filter((key) => key.startsWith("public\0posint\0"))).toStrictEqual([
       "public\0posint\0positive",
+    ]);
+    expect(Object.keys(read).filter((key) => key.startsWith("public\0calm\0"))).toStrictEqual([]);
+  });
+
+  it("reads each schema's domains under that schema only", async () => {
+    await db.driver.execute(`
+      create schema other;
+      create domain public.here as integer constraint positive check (value > 0);
+      create domain other.here as integer;
+      create domain other.there as integer;
+    `);
+
+    expect(Object.keys(await facts()).toSorted()).toStrictEqual([
+      "other",
+      "other\0here",
+      "other\0there",
+      "public",
+      "public\0here",
+      "public\0here\0positive",
     ]);
   });
 
