@@ -8,8 +8,15 @@
  * as `pnpm clear:review`; the Clear stale review workflow runs it on `labeled`.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { array, field, number, parseJson, record, string, type Reader } from "./github-json.ts";
+import {
+  array,
+  field,
+  number,
+  readEventPayload,
+  record,
+  string,
+  type Reader,
+} from "./github-json.ts";
 
 export type PullRequestEvent = {
   action: string;
@@ -56,13 +63,9 @@ const runGh: Gh = (args) => {
 };
 
 export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void {
-  const { GITHUB_EVENT_PATH: eventPath } = env;
-  if (eventPath === undefined) {
-    console.error("Set GITHUB_EVENT_PATH");
-    process.exitCode = 1;
-    return;
-  }
-  const event = readEvent(parseJson(readFileSync(eventPath, "utf8"), eventPath), "$");
+  const payload = readEventPayload(env);
+  if (payload === undefined) return;
+  const event = readEvent(payload, "$");
   const stale = staleReviewLabels(event);
   if (stale.length === 0) return;
   gh([

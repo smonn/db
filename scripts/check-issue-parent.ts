@@ -14,7 +14,6 @@
  * since a webhook payload's sub-issue fields are not documented.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import {
   array,
   field,
@@ -22,6 +21,7 @@ import {
   number,
   optionalField,
   parseJson,
+  readEventPayload,
   record,
   string,
   type Reader,
@@ -238,13 +238,9 @@ export function main(
   gh: Gh = runGh,
   wait: Wait = sleepSync,
 ): void {
-  const { GITHUB_EVENT_PATH: eventPath } = env;
-  if (eventPath === undefined) {
-    console.error("Set GITHUB_EVENT_PATH");
-    process.exitCode = 1;
-    return;
-  }
-  checkEvent(readEvent(parseJson(readFileSync(eventPath, "utf8"), eventPath), "$"), gh, wait);
+  const payload = readEventPayload(env);
+  if (payload === undefined) return;
+  checkEvent(readEvent(payload, "$"), gh, wait);
 }
 
 if (import.meta.main) main();
