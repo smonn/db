@@ -15,7 +15,7 @@ import type {
 /** Schemas and tables carry nothing beyond their name in v0.1. */
 type NoPayload = Readonly<Record<string, never>>;
 
-/** Type-only: only this module builds keys, so every producer keys a chain of names the same way. */
+/** Type-only: only `catalog.ts` builds keys, so every producer keys a chain of names the same way. */
 export type Key = string & { readonly "~key": true };
 
 export type Fact =
