@@ -90,6 +90,10 @@ describe("job boundaries", () => {
     expect(check("permissions:\n  id-token: write\njobs:\n")).toEqual([outside]);
   });
 
+  test("reads a jobs: key that has a trailing value", () => {
+    expect(check(workflow().replace("jobs:", "jobs: {}"))).toEqual([]);
+  });
+
   test("reads a jobs: key that has a comment after it", () => {
     expect(check(workflow().replace("jobs:", "jobs:   # the jobs"))).toEqual([]);
   });

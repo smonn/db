@@ -76,4 +76,12 @@ describe("main file selection", () => {
       "docs/adr/0001-real.md:1: ADR body has 4 sentences; the template allows 3",
     ]);
   });
+
+  test("counts a nested path under a numbered ADR folder as an ADR", () => {
+    write("docs/adr/0001-dir/x.md", "# T\n\nOne. Two. Three. Four.\n");
+    main(root, {});
+    expect(reported()).toEqual([
+      "docs/adr/0001-dir/x.md:1: ADR body has 4 sentences; the template allows 3",
+    ]);
+  });
 });
