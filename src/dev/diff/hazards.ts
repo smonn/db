@@ -114,9 +114,10 @@ function typeHazards(before: string, after: string, named: NamedTypes): readonly
   if (domain !== undefined) return domain;
   const fromElement = elementOf(before);
   const toElement = elementOf(after);
-  if (fromElement !== undefined || toElement !== undefined) {
+  if (fromElement !== undefined && toElement !== undefined) {
     return arrayRetypeHazards(fromElement, toElement, named);
   }
+  // Scalar to array and back stay unparsed below, which gets every hazard.
   const from = parse(before, named.enums);
   const to = parse(after, named.enums);
   if (from === undefined || to === undefined) return HAZARD_KINDS;
@@ -162,14 +163,9 @@ function pairHazards(from: Type, to: Type): readonly HazardKind[] {
 
 /**
  * Any change to an array's element type rewrites, even `varchar(20)[]` to `varchar(40)[]`, and
- * keeps the element pair's other hazards. Scalar to array and back gets every hazard.
+ * keeps the element pair's other hazards.
  */
-function arrayRetypeHazards(
-  from: string | undefined,
-  to: string | undefined,
-  named: NamedTypes,
-): readonly HazardKind[] {
-  if (from === undefined || to === undefined) return HAZARD_KINDS;
+function arrayRetypeHazards(from: string, to: string, named: NamedTypes): readonly HazardKind[] {
   const kept = new Set([...typeHazards(from, to, named), ...REWRITE]);
   return HAZARD_KINDS.filter((kind) => kept.has(kind));
 }
@@ -198,16 +194,12 @@ function rewrites(from: Type, to: Type): boolean {
 function varcharRewrites(from: Varchar, to: Type): boolean {
   if (to.name === "text") return false;
   if (to.name !== "character varying") return true;
-  return !(to.length === undefined || (from.length !== undefined && to.length >= from.length));
+  return (to.length ?? Infinity) < (from.length ?? Infinity);
 }
 
 function numericRewrites(from: Numeric, to: Numeric): boolean {
   if (to.precision === undefined) return false;
-  return !(
-    from.precision !== undefined &&
-    from.scale === to.scale &&
-    to.precision >= from.precision
-  );
+  return from.scale !== to.scale || to.precision < (from.precision ?? Infinity);
 }
 
 const INTEGERS: ReadonlySet<string> = new Set(["smallint", "integer", "bigint"]);
@@ -242,6 +234,7 @@ function numericLosesData(from: Numeric, to: Type): boolean {
   // Precision of a float: 6 decimal digits for real, 15 for double precision.
   if (to.name === "real") return holdsMoreDigitsThan(from, 6);
   if (to.name === "double precision") return holdsMoreDigitsThan(from, 15);
+  // Stryker disable next-line ConditionalExpression: a target other than numeric has no precision, so numericNarrows returns false as the fall-through does.
   if (to.name === "numeric") return numericNarrows(from, to);
   return false;
 }
