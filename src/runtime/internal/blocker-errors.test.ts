@@ -23,7 +23,7 @@ describe("explainBlockerError", () => {
     const mapped = explainBlockerError(error, { source: generated });
 
     expect(messageOf(mapped)).toBe(
-      "cannot drop table t:\n  view v depends on table t\n  rule r depends on table t\nGenerate never uses CASCADE or alters an Unmodeled object, so one blocks it. Hand edit the Current migration to drop or change that object.",
+      "cannot drop table t:\n  view v depends on table t\n  rule r depends on table t\nGenerate never uses CASCADE, so another object that depends on what it changes blocks it. Hand edit the Current migration to drop or change that object.",
     );
     expect(mapped).toHaveProperty("cause", error);
   });
@@ -33,7 +33,9 @@ describe("explainBlockerError", () => {
       source: { kind: "hand-edited" },
     });
 
-    expect(messageOf(mapped)).toMatch(/\nAn Unmodeled object blocks it\. Hand edit the Current/u);
+    expect(messageOf(mapped)).toMatch(
+      /\nAnother object depends on what it changes\. Hand edit the Current/u,
+    );
   });
 
   it("names the file and the new migration for a Committed file", () => {
