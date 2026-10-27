@@ -148,6 +148,8 @@ const arrays = {
  * through as Postgres writes them), timestamp and timestamptz as a `Date`, and bytea as a plain
  * `Uint8Array`. Reading a timestamp of `infinity`, `-infinity`, or past a Date's range throws.
  * Every built-in array type reads as an array of those values, with a NULL element as `null`.
+ * Pass an array parameter as a plain JS array. Don't use postgres.js's `sql.array()`: it skips
+ * these OIDs, so it types the parameter as the scalar element (`sql.array([1n, 2n])` throws).
  * Pass it with `postgresJsConnection`: `postgres(url, { types: postgresJsTypes, connection: postgresJsConnection })`.
  */
 export const postgresJsTypes: {
