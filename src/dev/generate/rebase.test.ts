@@ -2,47 +2,22 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { readCommitted, writeMigration } from "../../runtime/internal/index.ts";
 import { migrate, verify } from "../../runtime/migrator/index.ts";
-import type { MigrationFile, MigrationSource } from "../../runtime/ports/index.ts";
+import { filesIn, memoryFileSystem } from "./memory-file-system.test-helper.ts";
+import { rebase } from "./rebase.ts";
 import {
-  filesIn,
-  memoryFileSystem,
-  type MemoryFileSystem,
-} from "./memory-file-system.test-helper.ts";
-import { rebase, type RebaseResult } from "./rebase.ts";
+  A,
+  B,
+  C,
+  folder,
+  MIGRATIONS,
+  ONTO,
+  rebaseFolder,
+  source,
+  X,
+  Y,
+} from "./rebase.test-helper.ts";
 
 const db = useTestDatabase();
-
-const MIGRATIONS = "db/migrations";
-const ONTO = "origin/main";
-
-const A = await writeMigration("000001-a.sql", undefined, "create table a (n int);");
-const B = await writeMigration("000002-b.sql", A.hash, "create table b (n int);");
-const C = await writeMigration("000003-c.sql", B.hash, "create table c (n int);");
-// The branch's files, committed on A before B and C landed on the base.
-const X = await writeMigration("000002-x.sql", A.hash, "create table x (n int);");
-const Y = await writeMigration("000003-y.sql", X.hash, "create table y (n int);");
-
-function source(...files: MigrationFile[]): MigrationSource {
-  return { list: () => Promise.resolve(files) };
-}
-
-function folder(...files: MigrationFile[]): MemoryFileSystem {
-  return memoryFileSystem(filesIn(MIGRATIONS, files));
-}
-
-function rebaseFolder(
-  fileSystem: MemoryFileSystem,
-  base: MigrationFile[],
-  unheld: string[] = [],
-): Promise<RebaseResult> {
-  return rebase({
-    fileSystem,
-    migrations: MIGRATIONS,
-    base: source(...base),
-    onto: ONTO,
-    unheld,
-  });
-}
 
 describe("rebase", () => {
   it("moves the branch's files onto the base tip, rewriting their sequence and headers", async () => {
