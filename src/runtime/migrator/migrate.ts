@@ -3,6 +3,7 @@ import {
   DEFAULT_TRACKING_SCHEMA,
   explainBlockerError,
   trackingSchema,
+  type UnfinishedMigration,
 } from "../internal/index.ts";
 import type { Driver, MigrationSource } from "../ports/index.ts";
 import { applyMigration } from "./apply.ts";
@@ -19,14 +20,7 @@ export type MigrateResult = {
   readonly applied: readonly string[];
 };
 
-type Unfinished = {
-  readonly sequence: number;
-  readonly filename: string;
-  readonly status: string;
-  readonly error: string | null;
-};
-
-function describeUnfinished(unfinished: Unfinished, table: string): string {
+function describeUnfinished(unfinished: UnfinishedMigration, table: string): string {
   const where = `where sequence = ${unfinished.sequence}`;
   const stored = unfinished.error === null ? "" : `: ${unfinished.error}`;
   return (
