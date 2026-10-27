@@ -67,15 +67,17 @@ test("main without a reachable test database skips coverage, says how to start o
     [],
     () => Promise.resolve(false),
   );
-  expect(ran).toEqual(checks.filter((script) => script !== "coverage"));
-  expect(console.error).toHaveBeenCalledWith(expect.stringContaining("failed: coverage"));
+  expect(ran).toEqual(checks.filter((script) => !["coverage", "mutation:dry"].includes(script)));
+  expect(console.error).toHaveBeenCalledWith(
+    expect.stringContaining("failed: coverage, mutation:dry"),
+  );
   expect(console.error).toHaveBeenLastCalledWith(
     expect.stringContaining("node scripts/test-db.ts"),
   );
   expect(process.exitCode).toBe(1);
 });
 
-test("main with --static runs every check but coverage", async () => {
+test("main with --static runs every check but the two that need a database", async () => {
   const ran: string[] = [];
   await main(
     (script) => {
@@ -85,7 +87,7 @@ test("main with --static runs every check but coverage", async () => {
     ["--static"],
     () => Promise.reject(new Error("--static must not look for a database")),
   );
-  expect(ran).toEqual(checks.filter((script) => script !== "coverage"));
+  expect(ran).toEqual(checks.filter((script) => !["coverage", "mutation:dry"].includes(script)));
 });
 
 test("main rejects an unknown argument by name", async () => {

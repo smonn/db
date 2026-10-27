@@ -1,6 +1,6 @@
 name: Mutation
 
-# Not a required check: the Required job in ci.yml doesn't need it, and it never runs on pull requests.
+# Not a required check, and it never runs on pull requests; the Mutation dry run job in ci.yml guards its setup.
 on:
   schedule:
     - cron: "0 4 * * 1"
@@ -72,3 +72,24 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
         run: pnpm mutation:report reports/mutation/*/mutation.json
+
+  # A failed shard skips Report, so say so on the report issue instead of leaving last week's list.
+  failure:
+    name: Failure
+    needs: [mutation, report]
+    if: ${{ always() && !cancelled() && (needs.mutation.result != 'success' || needs.report.result != 'success') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          cache: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: pnpm mutation:failure

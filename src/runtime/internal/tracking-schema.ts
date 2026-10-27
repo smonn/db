@@ -12,7 +12,7 @@ export type RecordedMigration = {
 };
 
 /** The last recorded row, when it never reached `applied` (ADR-0020). */
-type UnfinishedMigration = {
+export type UnfinishedMigration = {
   readonly sequence: number;
   readonly filename: string;
   readonly status: string;
