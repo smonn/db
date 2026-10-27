@@ -46,7 +46,7 @@ An expression key or `where` is an `sql` expression whose interpolated reference
 
 ### Foreign keys
 
-A foreign key is a child fact of its table, named by its constraint and keyed like a key. Its payload holds its columns, the target's schema, table, and columns (paired by position), `onDelete`, `onUpdate`, `match`, and `deferrable`. A changed payload drops the constraint and adds it back. A `NOT VALID` foreign key is the same fact as a valid one.
+A foreign key is a child fact of its table, named by its constraint and keyed like a key. Its payload holds its columns, the target's schema, table, and columns (paired by position), `onDelete`, `onUpdate`, `match`, and `deferrable`. A changed payload drops the constraint and adds it back. A `NOT VALID` foreign key is the same fact as a valid one. An unchanged foreign key also drops and adds back when the key it needs on its target drops or rebuilds, or when either side's column is retyped, in a swap or otherwise, since Postgres refuses those under it (#381). A retype within the integers, or between `text` and `varchar`, keeps it (`diff/foreign-key-rebuilds.ts`).
 
 `defineDatabase` resolves each target column to its table by identity, so the catalog reads names only; the builder checks the target at `build`, since a target may come after the foreign key. A column's `.references()` and a `foreignKeys` entry in the second callback yield the same fact. The name is the one the Definition gives, or Postgres's default, `<table>_<columns joined by _>_fkey`. `definitionCatalog` refuses a name over 63 bytes, and two constraints on one table that take one name.
 

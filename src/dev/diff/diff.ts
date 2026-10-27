@@ -11,7 +11,7 @@ import type { Handling, HandlingTable } from "./handling.ts";
 import type { Hazard } from "./hazards.ts";
 import { renameHints } from "./hints.ts";
 import { order } from "./phases.ts";
-import { rebuiltColumns, retyped, without } from "./rebuilt.ts";
+import { foreignKeysAround, rebuiltColumns, retyped, without } from "./rebuilt.ts";
 import { renameAction, renameByPayload } from "./renames.ts";
 import { TYPE_HANDLING } from "./type-handling.ts";
 
@@ -44,7 +44,8 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
     );
   }
   const hazards: Hazard[] = [];
-  const sql = order(renameByPayload(actions))
+  const planned = renameByPayload(actions);
+  const sql = order([...planned, ...foreignKeysAround(planned, catalogs)])
     .map((action) => {
       const statement = render(action, catalogs);
       const kinds = hazardsOf(action, catalogs);
