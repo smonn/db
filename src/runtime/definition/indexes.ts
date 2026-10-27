@@ -1,5 +1,5 @@
 import { expressionOf, rememberExpression } from "./index-expressions.ts";
-import { indexNameOf, methodOf, type IndexMethod } from "./index-options.ts";
+import { METHOD_CAPABILITIES, indexNameOf, methodOf, type IndexMethod } from "./index-options.ts";
 import { keyColumns, type RuntimeRefs } from "./table-keys.ts";
 
 /** One key of an index. Postgres sorts NULLs last in an ascending key and first in a descending one. */
@@ -65,8 +65,34 @@ function indexOf(own: RuntimeRefs, entry: unknown): TableIndex {
     nullsNotDistinct: flagOf(entry, "nullsNotDistinct"),
     where: whereOf(own, where),
   };
+  requireMethodSupport(index);
   if (where !== undefined) rememberExpression(index, own, where);
   return index;
+}
+
+/** Postgres rejects these at Shadow with a raw error; refuse each option that would change the emitted SQL. */
+function requireMethodSupport(index: TableIndex): void {
+  const can = METHOD_CAPABILITIES[index.method];
+  const uses: readonly (readonly [keyof typeof can, string, boolean])[] = [
+    ["order", 'order "desc"', index.keys.some((key) => key.descending)],
+    ["order", "nulls", index.keys.some((key) => key.nullsFirst !== key.descending)],
+    ["include", "include", index.include.length > 0],
+    ["unique", "unique", index.unique],
+    ["unique", "nullsNotDistinct", index.nullsNotDistinct],
+    ["multiColumn", "more than one column", index.keys.length > 1],
+  ];
+  const refused = uses.find(([capability, , used]) => used && !can[capability]);
+  if (refused === undefined) return;
+  throw new Error(
+    `The table's indexes has ${describeIndex(index)} using the method "${index.method}", which does not take ${refused[1]}; Postgres would reject it at Shadow`,
+  );
+}
+
+function describeIndex(index: TableIndex): string {
+  if (index.name !== undefined) return `the index ${JSON.stringify(index.name)}`;
+  // requireNameForExpressions already refused an unnamed index with an expression key
+  const columns = index.keys.filter((key) => "column" in key);
+  return `the index on ${columns.map((key) => JSON.stringify(key.column)).join(", ")}`;
 }
 
 function requireNameForExpressions(name: string | undefined, keys: readonly IndexKey[]): void {

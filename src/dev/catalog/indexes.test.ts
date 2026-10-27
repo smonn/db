@@ -83,7 +83,7 @@ describe("an index in the Definition", () => {
           { key: t.b, nulls: "first" },
         ],
         include: [t.c],
-        method: "hash",
+        method: "btree",
         unique: true,
         nullsNotDistinct: true,
         name: "ix",
@@ -95,7 +95,7 @@ describe("an index in the Definition", () => {
         "ix",
         {
           unique: true,
-          method: "hash",
+          method: "btree",
           keys: [
             { column: "a", descending: true, nullsFirst: true },
             { column: "b", descending: false, nullsFirst: true },
