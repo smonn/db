@@ -77,6 +77,26 @@ describe("generateReport warnings", () => {
       ),
     ).toContain("warning: the edit leaves a difference");
   });
+
+  it("prints the diff without its trailing newline", () => {
+    expect(
+      generateReport(
+        {
+          path: "/p/current.sql",
+          sql: "select 1;",
+          diff: "-select 1;\n+select 2;\n",
+          reset: false,
+          hazards: [],
+          hints: [],
+        },
+        "c.sql",
+      ),
+    ).toStrictEqual([
+      "kept hand-edited c.sql, replayed as written; diff to what generate would write:",
+      "-select 1;\n+select 2;",
+      "left the Dev database as it was",
+    ]);
+  });
 });
 
 describe("resetReport", () => {

@@ -79,6 +79,8 @@ describe("onProcessInterrupt", () => {
 
     const unregister = [1, 2, 3].map(() => onInterrupt(() => Promise.resolve()));
     expect(target.counts()).toStrictEqual([1, 1]);
+    unregister[0]?.();
+    expect(target.counts()).toStrictEqual([1, 1]);
     for (const done of unregister) done();
     expect(target.counts()).toStrictEqual([0, 0]);
 

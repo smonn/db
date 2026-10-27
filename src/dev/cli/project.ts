@@ -1,9 +1,12 @@
 import { dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { DEFAULT_TRACKING_SCHEMA } from "../../runtime/internal/index.ts";
 import type { DefinitionTables } from "../catalog/index.ts";
 import { parseConfig, parseOfflineConfig, type LoadedConfig } from "../config/index.ts";
 
 export type Project = LoadedConfig & {
+  /** The config's `trackingSchema`, or the default one. */
+  readonly trackingSchema: string;
   /** `migrations`, resolved against the config file's folder. */
   readonly migrationsFolder: string;
   /** Imports the Definition file, resolved against the config file's folder. */
@@ -16,6 +19,7 @@ export async function loadProject(config: string): Promise<Project> {
   const loaded = parseConfig(await importDefault(file), relative(process.cwd(), file));
   return {
     ...loaded,
+    trackingSchema: loaded.trackingSchema ?? DEFAULT_TRACKING_SCHEMA,
     migrationsFolder: resolve(dirname(file), loaded.migrations),
     loadDefinition: () => loadDefinition(resolve(dirname(file), loaded.definition)),
   };
@@ -42,9 +46,8 @@ function isDefinition(value: unknown): value is DefinitionTables {
   return typeof value === "object" && value !== null;
 }
 
-async function importDefault(file: string): Promise<unknown> {
-  const module: unknown = await import(pathToFileURL(file).href);
-  return typeof module === "object" && module !== null && "default" in module
-    ? module.default
-    : undefined;
+function importDefault(file: string): Promise<unknown> {
+  return import(pathToFileURL(file).href).then(
+    (module: { readonly default?: unknown }) => module.default,
+  );
 }

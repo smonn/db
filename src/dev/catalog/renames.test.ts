@@ -61,7 +61,15 @@ describe("appliedRenames", () => {
     const both = shadow({ users: ["id"], people: ["id"] });
 
     expect(() => appliedRenames([renameTable], both)).toThrow(
-      'table "app"."people" has renamedFrom "users", but the Shadow database holds both',
+      'table "app"."people" has renamedFrom "users", but the Shadow database holds both; drop the object you no longer want, or remove the marker',
+    );
+  });
+
+  it("applies each marker only as its own kind of rename", () => {
+    const wrongKind: Rename = { ...renameColumn, was: "users" };
+
+    expect(appliedRenames([wrongKind], shadow({ users: ["id"], people: ["id"] }))).toStrictEqual(
+      [],
     );
   });
 
