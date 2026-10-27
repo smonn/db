@@ -49,7 +49,15 @@ describe("against the recorded v0.1 milestone", () => {
   });
 
   test("a recorded sub-issue passes because the API reports its parent", () => {
-    const current = fetched({ parent_issue_url: recordedIssue(55)["parent_issue_url"] });
-    expect(onRecorded({}, current)).toEqual([]);
+    const parentUrl = String(recordedIssue(55)["parent_issue_url"]);
+    const current = fetched({ parent_issue_url: parentUrl });
+    const parent = fetched({ number: 44 });
+    const routes = {
+      [issueRoute]: current,
+      [parentUrl.replace("https://api.github.com/", "")]: parent,
+      [commentsRoute]: [[]],
+      [milestonePath]: recorded,
+    };
+    expect(posted(run(event(), routes))).toEqual([]);
   });
 });

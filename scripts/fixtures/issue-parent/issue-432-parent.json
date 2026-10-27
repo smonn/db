@@ -1,0 +1,8 @@
+{
+  "labels": [{ "name": "area:definition" }],
+  "milestone": { "number": 2 },
+  "number": 432,
+  "parent_issue_url": null,
+  "state": "open",
+  "sub_issues_summary": { "completed": 12, "percent_completed": 80, "total": 15 }
+}

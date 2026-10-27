@@ -88,6 +88,7 @@ describe("main", () => {
     const parentUrl = "https://api.github.com/repos/smonn/db/issues/45";
     const gh = run(event(), {
       [issueRoute]: fetched({ parent_issue_url: parentUrl }),
+      "repos/smonn/db/issues/45": fetched({ number: 45 }),
       [commentsRoute]: [[]],
       [milestonePath]: [[parentIssue(44, "area:tooling")]],
     });
