@@ -73,8 +73,8 @@ const MAX_NAME_BYTES = 63;
  * `<name>_old`, or `_old1`, `_old2`, and on while a table or type in the schema or a `chosen`
  * aside takes it, cut to fit 63 bytes, since Postgres would truncate a longer name.
  */
-function asideName(
-  type: EnumFact,
+export function asideName(
+  type: FactOf<"enum" | "domain">,
   catalogs: readonly Catalog[],
   chosen: readonly string[],
 ): string {
@@ -130,7 +130,7 @@ export const SWAP_STEPS: {
       `drop type ${quoteIdentifier(parentOf(from, type).name)}.${quoteIdentifier(swap.aside)};`,
     hazards: () => [],
   },
-  // The only retype generate writes a USING for: no cast joins two enums, but text reaches both.
+  // No cast joins two enums, but text reaches both. `enumRetypeUsing` writes the same cast for a retype.
   "swap retype": {
     render: (column, { to }) => {
       const { type } = column.payload;

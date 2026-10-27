@@ -149,16 +149,11 @@ alter type "public"."mood" add value 'c' after 'b';
     await db.driver.execute(bareDiff(await introspect(db.driver), from));
 
     const retype = diff(await introspect(db.driver), to);
+    const statement = `alter table "public"."t" alter column "mood" type public.mood using "mood"::text::public.mood;`;
 
     expect(retype.hazards).toStrictEqual([
-      {
-        kind: "rewrite",
-        statement: `alter table "public"."t" alter column "mood" type public.mood;`,
-      },
-      {
-        kind: "access_exclusive_lock",
-        statement: `alter table "public"."t" alter column "mood" type public.mood;`,
-      },
+      { kind: "rewrite", statement },
+      { kind: "access_exclusive_lock", statement },
     ]);
   });
 });

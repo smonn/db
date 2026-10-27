@@ -106,4 +106,16 @@ describe("the scan of each action kind", () => {
       { walk: "drop", object: { type: "type", names: [`"app"."mood_old"`], args: [] } },
     ]);
   });
+
+  it("runs the rename aside of a type a table replaces first and drops it under the aside", () => {
+    const table = catalog((b) => {
+      b.table("app", "mood");
+    });
+
+    expect(diff(withMood(["a"]), table).scans).toStrictEqual([
+      { walk: "rename", sql: 'alter type "app"."mood" rename to "mood_old";' },
+      { walk: "drop", object: { type: "table", names: ["app", "t"], args: [] } },
+      { walk: "drop", object: { type: "type", names: [`"app"."mood_old"`], args: [] } },
+    ]);
+  });
 });

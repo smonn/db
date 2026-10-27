@@ -38,6 +38,7 @@ export const SCANS: ScanTable<ActionKind> = {
   "rename enum label": "none",
   "rename domain": "none",
   "rename enum aside": "rename",
+  "rename replaced type": "rename",
   "rename domain check": "none",
   "rename constraint": "none",
   "rename index": "none",
@@ -76,6 +77,7 @@ export const SCANS: ScanTable<ActionKind> = {
   "drop domain": "drop",
   "drop enum": "drop",
   "drop enum aside": "drop",
+  "drop replaced type": "drop",
   "drop schema": "drop",
 };
 
@@ -90,18 +92,22 @@ export function scansOf(actions: readonly Action[], catalogs: Catalogs): Scan[] 
     if (walk === "none") return [];
     if (walk === "rename") return [{ walk, sql: render(action, catalogs) }];
     const object =
-      action.kind === "drop enum aside"
+      action.kind === "drop enum aside" || action.kind === "drop replaced type"
         ? asideAddress(action, catalogs.from)
         : addressOf(action.fact, catalogs.from);
     return [{ walk, object }];
   });
 }
 
-function asideAddress({ fact, swap }: Action<"drop enum aside">, from: Catalog): ObjectAddress {
-  const schema = parentOf(from, fact).name;
+function asideAddress(
+  action: Action<"drop enum aside" | "drop replaced type">,
+  from: Catalog,
+): ObjectAddress {
+  const aside = action.kind === "drop enum aside" ? action.swap.aside : action.aside;
+  const schema = parentOf(from, action.fact).name;
   return {
     type: "type",
-    names: [`${quoteIdentifier(schema)}.${quoteIdentifier(swap.aside)}`],
+    names: [`${quoteIdentifier(schema)}.${quoteIdentifier(aside)}`],
     args: [],
   };
 }

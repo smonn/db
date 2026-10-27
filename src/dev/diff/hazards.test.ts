@@ -173,7 +173,7 @@ describe("retypeHazards branches", () => {
 
 /** A value of each type, and a short one that fits every `varchar(5)`, `numeric(8,2)`, and `smallint`. */
 const TYPES: readonly (readonly [type: string, rich: string, short: string])[] = [
-  ["text", "'hello world long value'", "'ab'"],
+  ["text", "'hello world long value'", "'a'"],
   ["character varying(5)", "'abc'", "'ab'"],
   ["character varying(10)", "'abcdefgh'", "'ab'"],
   ["character varying", "'abcdefgh'", "'ab'"],
@@ -194,17 +194,24 @@ const TYPES: readonly (readonly [type: string, rich: string, short: string])[] =
   ["timestamp with time zone", "'2020-01-02 03:04:05.678+05'", "'2020-01-02 03:04:05.678+05'"],
   ["jsonb", `'{"a": 1}'`, `'{"a": 1}'`],
   ["bytea", String.raw`'\xdeadbeef'`, String.raw`'\xdeadbeef'`],
+  // Both hold the label `a`, so text and each enum convert to the other and back.
+  ["public.mood", "'a'", "'a'"],
+  ["public.feeling", "'a'", "'a'"],
 ];
+const ENUMS = ["public.mood", "public.feeling"];
 // Postgres decides a rewrite by comparing the table's relfilenode before and after, and a lossy
 // conversion by converting the column back with a cast and comparing the text. It returns a row
 // per sample whose conversion ran, since most pairs have no implicit cast.
 const PROBE = `
-create function pg_temp.probe_all(types jsonb)
+create function pg_temp.probe_all(types jsonb, enums text[])
 returns table(src text, dst text, rewrote boolean, lost boolean) language plpgsql as $f$
 declare
   a jsonb; b jsonb; sample text;
   file_before oid; file_after oid; text_before text; text_after text;
+  using_clause text; back text;
 begin
+  create type public.mood as enum ('a', 'b');
+  create type public.feeling as enum ('a', 'c');
   create table public.probe(c int);
   for a in select * from jsonb_array_elements(types) loop
     for b in select * from jsonb_array_elements(types) loop
@@ -215,11 +222,14 @@ begin
           execute format('insert into public.probe values (%s)', sample);
           select relfilenode into file_before from pg_class where oid = 'public.probe'::regclass;
           execute 'select c::text from public.probe' into text_before;
-          execute format('alter table public.probe alter column c type %s', b->>0);
+          -- Postgres has no implicit cast to an enum, so the diff writes this USING (ADR-0023).
+          using_clause := case when b->>0 = any(enums) then format(' using c::text::%s', b->>0) else '' end;
+          execute format('alter table public.probe alter column c type %s%s', b->>0, using_clause);
           select relfilenode into file_after from pg_class where oid = 'public.probe'::regclass;
           src := a->>0; dst := b->>0; rewrote := file_before <> file_after; lost := false;
           begin
-            execute format('alter table public.probe alter column c type %s using c::%s', a->>0, a->>0);
+            back := case when a->>0 = any(enums) then 'c::text::' else 'c::' end || (a->>0);
+            execute format('alter table public.probe alter column c type %s using %s', a->>0, back);
             execute 'select c::text from public.probe' into text_after;
             lost := text_after is distinct from text_before;
           exception when others then null;
@@ -232,10 +242,12 @@ begin
     end loop;
   end loop;
   drop table public.probe;
+  drop type public.mood;
+  drop type public.feeling;
 end $f$`;
 
 function hazardsOf(row: DriverRow): readonly string[] {
-  return retypeHazards(String(row["src"]), String(row["dst"]));
+  return retypeHazards(String(row["src"]), String(row["dst"]), new Set(ENUMS));
 }
 
 describe("retypeHazards against Postgres 18", () => {
@@ -245,9 +257,10 @@ describe("retypeHazards against Postgres 18", () => {
       // can't count on.
       await session.execute("set timezone = 'America/New_York'");
       await session.execute(PROBE);
-      const { rows } = await session.query("select * from pg_temp.probe_all($1::text::jsonb)", [
-        JSON.stringify(TYPES),
-      ]);
+      const { rows } = await session.query(
+        "select * from pg_temp.probe_all($1::text::jsonb, $2::text[])",
+        [JSON.stringify(TYPES), ENUMS],
+      );
       return rows;
     });
 

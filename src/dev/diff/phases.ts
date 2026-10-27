@@ -46,6 +46,7 @@ export const PLACES: PlaceTable<ActionKind> = {
   "rename enum label": ["rename", 5],
   "rename domain": ["rename", 6],
   "rename enum aside": ["rename", 8],
+  "rename replaced type": ["rename", 8],
   "rename domain check": ["rename by payload", 0],
   "rename constraint": ["rename by payload", 1],
   "rename index": ["rename by payload", 2],
@@ -84,6 +85,7 @@ export const PLACES: PlaceTable<ActionKind> = {
   "drop domain": ["drop type", 0],
   "drop enum": ["drop type", 2],
   "drop enum aside": ["drop type", 2],
+  "drop replaced type": ["drop type", 2],
   "drop schema": ["drop schema", 0],
 };
 

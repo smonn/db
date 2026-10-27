@@ -1,9 +1,38 @@
-import type { Fact } from "../catalog/index.ts";
+import type { Catalog, Fact, Key } from "../catalog/index.ts";
 import type { Action } from "./actions.ts";
-import { enumSwap } from "./enum-swap.ts";
+import { asideName, enumSwap, enumSwaps } from "./enum-swap.ts";
 import type { HandlingTable } from "./handling.ts";
+import type { FactOf } from "./statements.ts";
 
+type Catalogs = { readonly from: Catalog; readonly to: Catalog };
 type TypeFact = Extract<Fact, { readonly kind: "enum" | "domain" | "domain check" }>;
+
+/**
+ * An enum or domain that a table of the same name replaces. A table and a type share one pool of
+ * names, so the table can't be created while the type holds the name, and the type can't drop
+ * while a column still uses it. The type renames to `aside` first and drops last, as in a swap.
+ */
+export type Replaced = {
+  readonly type: FactOf<"enum" | "domain">;
+  readonly aside: string;
+};
+
+/** The types `to` replaces with a table, by the key they and the table share. */
+export function replacedTypes(catalogs: Catalogs): ReadonlyMap<Key, Replaced> {
+  const replaced = new Map<Key, Replaced>();
+  const swaps = [...enumSwaps(catalogs).values()];
+  for (const [key, type] of catalogs.from) {
+    if (type.kind !== "enum" && type.kind !== "domain") continue;
+    if (catalogs.to.get(key)?.kind !== "table") continue;
+    // Two long names can shorten to one aside, so each also avoids the asides chosen before it.
+    const chosen = [
+      ...swaps.filter(({ before }) => before.parent === type.parent),
+      ...[...replaced.values()].filter((other) => other.type.parent === type.parent),
+    ].map((other) => other.aside);
+    replaced.set(key, { type, aside: asideName(type, [catalogs.from, catalogs.to], chosen) });
+  }
+  return replaced;
+}
 
 /** The handling of the types a schema holds beside its tables. */
 export const TYPE_HANDLING: HandlingTable<TypeFact> = {

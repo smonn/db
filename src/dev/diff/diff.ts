@@ -3,6 +3,7 @@ import {
   plainKeyColumns,
   type Catalog,
   type Fact,
+  type Key,
   type Rename,
 } from "../catalog/index.ts";
 import type { Action, Catalogs } from "./actions.ts";
@@ -12,7 +13,7 @@ import type { Handling, HandlingTable } from "./handling.ts";
 import { renameHints } from "./hints.ts";
 import { foreignKeysAround, rebuiltColumns, retyped, without } from "./rebuilt.ts";
 import { renameAction, renameByPayload } from "./renames.ts";
-import { TYPE_HANDLING } from "./type-handling.ts";
+import { replacedTypes, TYPE_HANDLING } from "./type-handling.ts";
 
 /**
  * The SQL that turns a database with catalog `from` into one with catalog `to`. With `renames`,
@@ -23,11 +24,24 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
   // A column Postgres can't convert in place drops and adds back, so each side sees it, what it
   // holds, and the keys on it as absent from the other.
   const rebuilt = rebuiltColumns(catalogs);
-  const keptFrom = without(from, rebuilt, columnsNamedBy);
-  const keptTo = without(to, rebuilt, columnsNamedBy);
+  // A name that changes kind (a table for an enum) drops the old fact whole and creates the new
+  // one whole, so neither side sees what the other holds under that name.
+  const switched = kindSwitches(catalogs);
+  const keptFrom = withoutSwitched(without(from, rebuilt, columnsNamedBy), switched);
+  const keptTo = withoutSwitched(without(to, rebuilt, columnsNamedBy), switched);
+  const tableTypes = replacedTypes(catalogs);
   const actions = renames.map((rename) => renameAction(rename, from));
-  for (const [key, fact] of from)
-    actions.push(...sourceActions(fact, keptTo.get(key), keptTo, catalogs));
+  for (const [key, fact] of from) {
+    const old = tableTypes.get(key);
+    actions.push(
+      ...(old === undefined
+        ? sourceActions(fact, keptTo.get(key), keptTo, catalogs)
+        : ([
+            { kind: "rename replaced type", fact: old.type, aside: old.aside },
+            { kind: "drop replaced type", fact: old.type, aside: old.aside },
+          ] satisfies Action[])),
+    );
+  }
   for (const [key, fact] of to) {
     const before = keptFrom.get(key);
     actions.push(
@@ -40,6 +54,18 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
   };
 }
 
+/** The keys at which the two catalogs hold different kinds of fact. */
+function kindSwitches({ from, to }: Catalogs): ReadonlySet<Key> {
+  return new Set(
+    [...from].flatMap(([key, fact]) => (to.get(key)?.kind === fact.kind ? [] : [key])),
+  );
+}
+
+/** `catalog` without the facts at `switched`; the facts under them see their parent as absent. */
+function withoutSwitched(catalog: Catalog, switched: ReadonlySet<Key>): Catalog {
+  return new Map([...catalog].filter(([key]) => !switched.has(key)));
+}
+
 /** What the source pass does with one fact of `from`, given its counterpart `after` in `keptTo`. */
 function sourceActions(
   fact: Fact,
@@ -47,8 +73,8 @@ function sourceActions(
   keptTo: Catalog,
   catalogs: Catalogs,
 ): Action[] {
-  // A fact can't change kind, nor can some change payload in place: the old one drops here,
-  // and `altered` adds the new one.
+  // A fact whose kind switched is absent from `keptTo`. Some can't change payload in place either:
+  // the old one drops here, and `altered` adds the new one.
   if (after === undefined || replaced(fact, after)) return dropped(fact, keptTo);
   // Postgres refuses to retype a column whose default can't be cast, so it goes first.
   if (fact.kind === "default" && retyped(fact.parent, catalogs)) {
@@ -228,12 +254,9 @@ function altered(before: Fact, after: Fact, catalogs: Catalogs): Action[] {
   return handlingOf(before).alter(before, after, catalogs);
 }
 
-/** Whether the fact at one key changed kind, or changed a payload its kind can't alter. */
+/** Whether the fact at one key changed a payload its kind can't alter. */
 function replaced(before: Fact, after: Fact): boolean {
-  return (
-    before.kind !== after.kind ||
-    (handlingOf(before).replacedOnChange && !arePayloadsEqual(before.payload, after.payload))
-  );
+  return handlingOf(before).replacedOnChange && !arePayloadsEqual(before.payload, after.payload);
 }
 
 function columnsNamedBy(fact: Fact): readonly string[] {
