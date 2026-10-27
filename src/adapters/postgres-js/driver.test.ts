@@ -52,6 +52,18 @@ describe("postgresJsDriver", () => {
     );
   });
 
+  it("prepares a query with params, so postgres.js caches it by name", async () => {
+    const text = "select $1::int as cached_by_name";
+    const { rows } = await db.driver.session(async (session) => {
+      await session.query(text, [1]);
+      return session.query(
+        "select count(*)::int as n from pg_prepared_statements where statement = $1",
+        [text],
+      );
+    });
+    expect(rows).toStrictEqual([{ n: 1 }]);
+  });
+
   it("runs a script of several statements", async () => {
     await db.driver.execute("create table script (n int); insert into script values (1), (2);");
     const { rows } = await db.driver.query("select n from script order by n");
@@ -248,7 +260,10 @@ describe("postgresJsDriver when a session's reset fails", () => {
     const failed = driver.session(() => Promise.reject(new Error("boom")));
     await expect(failed).rejects.toBeInstanceOf(AggregateError);
     await expect(failed).rejects.toMatchObject({
+      message:
+        "session rejected, and its reset failed, so its connection went back to the pool without one",
       errors: [{ message: "boom" }, { message: "division by zero" }],
+      cause: { message: "division by zero" },
     });
     expect(swaps).toStrictEqual([]);
   });
@@ -258,7 +273,9 @@ describe("postgresJsDriver when a session's reset fails", () => {
     const failed = driver.transaction(() => Promise.reject(new Error("boom")));
     await expect(failed).rejects.toBeInstanceOf(AggregateError);
     await expect(failed).rejects.toMatchObject({
+      message: "transaction rejected, and its rollback failed",
       errors: [{ message: "boom" }, { message: "division by zero" }],
+      cause: { message: "division by zero" },
     });
     expect(await backend(driver)).toMatchObject({ path: '"$user", public' });
   });
