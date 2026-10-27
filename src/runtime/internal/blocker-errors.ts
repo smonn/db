@@ -32,7 +32,7 @@ function hint(source: BlockerSource): string {
   }
   const why =
     source.kind === "generated"
-      ? "Generate never uses CASCADE or alters an Unmodeled object, so one blocks it."
-      : "An Unmodeled object blocks it.";
+      ? "Generate never uses CASCADE, so another object that depends on what it changes blocks it."
+      : "Another object depends on what it changes.";
   return `${why} Hand edit the Current migration to drop or change that object.`;
 }

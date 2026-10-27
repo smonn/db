@@ -14,7 +14,8 @@ Both introspections skip the Tracking schema (`smonn_db` unless configured), `pg
 2. `introspect` reads each database in one `REPEATABLE READ READ ONLY` transaction with `search_path` pinned to `pg_catalog`, keyed by name, never by OID.
 3. Generate runs the Definition's `renamedFrom` markers on the Shadow inside a transaction, introspects it, and rolls back (ADR-0024). Postgres follows a rename by OID, so every default and expression in that catalog already names the new object. A marker whose old name the Shadow lacks is skipped, and one whose old and new names both exist throws.
 4. `diff` compares the two catalogs, turns the differences into actions, orders them, and emits SQL. The renames that ran open the SQL, so the migration repeats them. It also returns hints, which generate prints but never writes into the SQL: the `renamedFrom` to add when a column or table looks dropped and added, and the `renamedLabels` entry to add when an enum removes one label and adds one at the same position (`diff/hints.ts`).
-5. Generate verifies the SQL, or a [hand edit](cli.md#hand-edits), in the Shadow (ADR-0013), then writes the Current migration.
+5. For generated SQL, generate scans the Shadow's `pg_depend` from what the actions drop or retype, with the renames and each enum swap's rename aside run, and stops naming every Unmodeled blocker (ADR-0025). `diff/scans.ts` gives each action kind its walk, so a new kind fails to compile until it names one. A hand edit skips the scan.
+6. Generate verifies the SQL, or a [hand edit](cli.md#hand-edits), in the Shadow (ADR-0013), then writes the Current migration.
 
 ## Catalog
 
@@ -63,6 +64,8 @@ A label added to an existing enum is one `ALTER TYPE ... ADD VALUE ... BEFORE|AF
 A `renamedLabels` entry renames a label in place with `ALTER TYPE ... RENAME VALUE`, which keeps its position and locks no table, so it avoids the swap below.
 
 A removed or reordered label swaps the type (ADR-0023): phase 1 renames the old one aside, phase 5 creates the new one, phase 6 retypes each column of it or its array with `USING col::text::<type>`, dropping and setting its default around it, and phase 8 drops the old one. The diff refuses a swap while a domain fact in the catalog depends on the enum, naming the domain. It also refuses when a column of the enum or its array is stored generated in both catalogs, since Postgres rejects `USING` on a generated column, naming the column; one the Definition makes plain loses its expression first.
+
+A created enum lists all its labels, so a swap that also adds one has no `ADD VALUE`.
 
 ### Domains
 
