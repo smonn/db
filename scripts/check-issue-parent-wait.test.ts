@@ -37,7 +37,11 @@ describe("the grace wait", () => {
     [
       "an issue that is already a sub-issue",
       event(),
-      { ...open, [issueRoute]: fetched({ parent_issue_url: "https://api.github.com/x/45" }) },
+      {
+        ...open,
+        [issueRoute]: fetched({ parent_issue_url: "https://api.github.com/x/45" }),
+        "x/45": fetched({ number: 45 }),
+      },
     ],
     [
       "an issue with sub-issues",

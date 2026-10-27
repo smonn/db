@@ -1,0 +1,13 @@
+{
+  "labels": [
+    { "name": "bug" },
+    { "name": "ready-for-agent" },
+    { "name": "area:diff" },
+    { "name": "priority:low" }
+  ],
+  "milestone": { "number": 2 },
+  "number": 560,
+  "parent_issue_url": "https://api.github.com/repos/smonn/db/issues/431",
+  "state": "open",
+  "sub_issues_summary": { "completed": 0, "percent_completed": 0, "total": 0 }
+}
