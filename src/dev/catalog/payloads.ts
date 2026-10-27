@@ -19,6 +19,11 @@ export type DefaultPayload = {
 
 export type IdentityPayload = {
   readonly generated: "always" | "by default";
+  /**
+   * The identity's sequence, in the table's schema. A table or column rename leaves it behind
+   * under the old name, so it is part of the payload for the diff to rename it (ADR-0024).
+   */
+  readonly sequence: string;
 };
 
 export type GeneratedPayload = {

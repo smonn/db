@@ -244,7 +244,10 @@ function addColumn(
   });
   const identity = IDENTITY_KINDS[String(column["identity"])];
   if (identity !== undefined) {
-    builder.columnIdentity(schema, tableName, columnName, { generated: identity });
+    builder.columnIdentity(schema, tableName, columnName, {
+      generated: identity,
+      sequence: String(column["identity_sequence"]),
+    });
   }
   const storage = GENERATED_STORAGE[String(column["generated"])];
   if (storage !== undefined) {

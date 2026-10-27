@@ -1,7 +1,7 @@
 import type { Driver, Session } from "../../runtime/ports/index.ts";
 
 // "SMONNDBDEV" on a phone keypad. The migrator's key spells "SMONNDBMIGRATE", so the two differ.
-const DEV_LOCK_KEY = "7666632338";
+export const DEV_LOCK_KEY = "7666632338";
 
 /**
  * Runs `fn` while holding a session `pg_try_advisory_lock` on the Dev database, shared by

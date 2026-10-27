@@ -11,7 +11,7 @@ import { swapOf } from "./enum-swap.ts";
 import type { Handling, HandlingTable } from "./handling.ts";
 import { renameHints } from "./hints.ts";
 import { rebuiltColumns, retyped, without } from "./rebuilt.ts";
-import { renameAction, renameChecks } from "./renames.ts";
+import { renameAction, renameByPayload } from "./renames.ts";
 import { TYPE_HANDLING } from "./type-handling.ts";
 
 /**
@@ -34,7 +34,7 @@ export function diff(from: Catalog, to: Catalog, renames: readonly Rename[] = []
       ...(before === undefined ? created(fact, keptFrom) : altered(before, fact, catalogs)),
     );
   }
-  return { ...emit(renameChecks(actions), catalogs), hints: renameHints(from, to) };
+  return { ...emit(renameByPayload(actions), catalogs), hints: renameHints(from, to) };
 }
 
 /** What the source pass does with one fact of `from`, given its counterpart `after` in `keptTo`. */
@@ -121,10 +121,17 @@ export const HANDLING: HandlingTable<Fact> = {
     parentCreateCovers: true,
     create: (fact) => [{ kind: "add identity", fact }],
     replacedOnChange: false,
-    alter: (before, after) =>
-      arePayloadsEqual(before.payload, after.payload)
-        ? []
-        : [{ kind: "set identity mode", fact: after }],
+    alter: (before, after) => {
+      const actions: Action[] = [];
+      if (before.payload.generated !== after.payload.generated) {
+        actions.push({ kind: "set identity mode", fact: after });
+      }
+      // A table or column rename leaves the sequence under its old name.
+      if (before.payload.sequence !== after.payload.sequence) {
+        actions.push({ kind: "rename sequence", fact: after, was: before.payload.sequence });
+      }
+      return actions;
+    },
     columnsNamed: () => [],
   },
   generated: {
