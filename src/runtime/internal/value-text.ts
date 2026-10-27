@@ -50,8 +50,5 @@ function setClock(
 
 export function parseBytea(text: string): Uint8Array {
   if (!text.startsWith("\\x")) throw new Error(`Can't read bytea "${text}" as hex`);
-  const length = Math.floor((text.length - 2) / 2);
-  return Uint8Array.from({ length }, (_, at) =>
-    Number.parseInt(text.slice(2 + at * 2, 4 + at * 2), 16),
-  );
+  return Uint8Array.from(text.slice(2).match(/../gu) ?? [], (pair) => Number.parseInt(pair, 16));
 }
