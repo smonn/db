@@ -36,6 +36,15 @@ describe("sqlDefinition without the view defineDatabase keeps", () => {
     expect(sqlDefinition(copy)).toBe(copy);
   });
 
+  it("reads a copy whose view slot holds no object as having no view", () => {
+    for (const slot of [null, "view", 3]) {
+      const db = defineDatabase({ public: { users: userAccounts() } });
+      const copy = { ...db };
+      Object.defineProperty(copy, Symbol.for("@smonn/db.sqlDefinition"), { value: slot });
+      expect(sqlDefinition(copy)).toBe(copy);
+    }
+  });
+
   it("reads a copy whose type has an explicit name equal to its key", () => {
     const db = defineDatabase({ public: { mood: defineEnum(["a"], { name: "mood" }) } });
     const copy = { ...db };

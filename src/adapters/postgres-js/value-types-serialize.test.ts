@@ -13,3 +13,14 @@ describe("postgresJsTypes serializers", () => {
     expect(postgresJsTypes.timestamptz.serialize(at)).toBe(atText);
   });
 });
+
+describe("postgresJsTypes.boxArray", () => {
+  it("covers the box array OID and splits elements on `;`", () => {
+    expect(postgresJsTypes.boxArray.to).toBe(1020);
+    expect(postgresJsTypes.boxArray.from).toStrictEqual([1020]);
+    expect(postgresJsTypes.boxArray.parse("{(1,1),(0,0);(2,2),(1,1)}")).toStrictEqual([
+      "(1,1),(0,0)",
+      "(2,2),(1,1)",
+    ]);
+  });
+});
