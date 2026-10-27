@@ -204,6 +204,35 @@ export function childrenOf(catalog: Catalog, fact: Fact): readonly Fact[] {
   return [...catalog.values()].filter((child) => child.parent === parent);
 }
 
+type OfKind<K extends Fact["kind"]> = Extract<Fact, { readonly kind: K }>;
+
+/** The children of `fact` that are of kind `kind`. */
+export function childrenOfKind<K extends Fact["kind"]>(
+  catalog: Catalog,
+  fact: Fact,
+  kind: K,
+): OfKind<K>[] {
+  return childrenOf(catalog, fact).filter((child) => isOfKind(child, kind));
+}
+
+function isOfKind<K extends Fact["kind"]>(fact: Fact | undefined, kind: K): fact is OfKind<K> {
+  return fact?.kind === kind;
+}
+
+/** Each fact of kind `kind` that both catalogs hold under one key, as `from` and as `to` have it. */
+export function unchangedFacts<K extends Fact["kind"]>(
+  from: Catalog,
+  to: Catalog,
+  kind: K,
+): [before: OfKind<K>, after: OfKind<K>][] {
+  const pairs: [OfKind<K>, OfKind<K>][] = [];
+  for (const [at, before] of from) {
+    const after = to.get(at);
+    if (isOfKind(before, kind) && isOfKind(after, kind)) pairs.push([before, after]);
+  }
+  return pairs;
+}
+
 export function namesOf(catalog: Catalog, fact: Fact): readonly string[] {
   return fact.parent === undefined
     ? [fact.name]
