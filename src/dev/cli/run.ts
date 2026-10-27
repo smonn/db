@@ -56,7 +56,7 @@ function runOn(driver: Driver, command: DatabaseCommand, project: Project): Prom
       return runCommit(context, command.slug, command.accept);
     case "reset":
       return runReset(context, command.erase);
-    // Stryker disable next-line ConditionalExpression: unreachable, since the type forbids any other command name.
+    // Stryker disable next-line ConditionalExpression: 1 survivor: unreachable, since the type forbids any other command name.
     default:
       return command satisfies never;
   }

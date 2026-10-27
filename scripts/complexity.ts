@@ -21,7 +21,7 @@ const diagnostic =
 function parseDiagnostic(text: string): Finding | undefined {
   const match = diagnostic.exec(text);
   if (match === null) return undefined;
-  // Stryker disable next-line StringLiteral: the pattern captures these groups whenever it matches, so the defaults only satisfy the type checker.
+  // Stryker disable next-line StringLiteral: 3 survivors: the pattern captures these groups whenever it matches, so the defaults only satisfy the type checker.
   const [, file = "", line = "", name, score = ""] = match;
   return { score: Number(score), name: name ?? "<anonymous>", file, line: Number(line) };
 }
