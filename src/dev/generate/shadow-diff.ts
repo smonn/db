@@ -29,7 +29,7 @@ export type ShadowDiffOptions = {
 
 export type ShadowDiff = Diff & {
   /** With `edited`, the differences from the Definition that the edit leaves, as a message. */
-  readonly leftover?: string;
+  readonly leftover?: string | undefined;
 };
 
 /**
@@ -60,9 +60,10 @@ export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
           tracking,
           handEdited: true,
         });
-        return leftover === undefined ? result : { ...result, leftover };
+        return { ...result, leftover };
       }
       refuseTypeChanges({ from: catalog, to: target });
+      // Stryker disable next-line ConditionalExpression,StringLiteral: only skips verifying empty SQL, which passes.
       if (result.sql === "") return result;
       // The scan names objects as the diff does, so it reads the Shadow with the renames run.
       const blockers = await withRenames(databases.shadow, renames, (tx) =>

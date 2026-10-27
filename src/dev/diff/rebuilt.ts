@@ -1,15 +1,14 @@
 import {
-  childrenOf,
   parentOf,
   plainKeyColumns,
   type Catalog,
   type Fact,
-  type GeneratedPayload,
   type IndexPayload,
   type Key,
 } from "../catalog/index.ts";
 import type { Action, Catalogs } from "./actions.ts";
 import { swapOf } from "./enum-swap.ts";
+import { storageOf } from "./generation.ts";
 
 /**
  * The columns `ALTER COLUMN` can't convert: Postgres can't make a plain column generated, switch
@@ -31,14 +30,6 @@ function needsRebuild({ from, to }: Catalogs, before: Fact, after: Fact): boolea
   const now = storageOf(to, after);
   if (was === now) return false;
   return !(now === undefined && was === "stored");
-}
-
-/** How the column stores its generation expression, or `undefined` when it isn't generated. */
-export function storageOf(catalog: Catalog, column: Fact): GeneratedPayload["storage"] | undefined {
-  for (const fact of childrenOf(catalog, column)) {
-    if (fact.kind === "generated") return fact.payload.storage;
-  }
-  return undefined;
 }
 
 /** Whether the column changes type, or keeps the name of an enum that swaps (ADR-0023). */

@@ -1,6 +1,6 @@
 import { elementOf, qualified, type Catalog, type Fact, type Key } from "../catalog/index.ts";
 import { enumSwaps } from "./enum-swap.ts";
-import { storageOf } from "./rebuilt.ts";
+import { storageOf } from "./generation.ts";
 
 type Catalogs = { readonly from: Catalog; readonly to: Catalog };
 
