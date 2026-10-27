@@ -21,7 +21,7 @@ const nodeForms: Record<string, string> = {
 };
 
 export function refuseNodeStart(text: string, at: number): void {
-  const form = nodeForms[text[at] ?? ""];
+  const form = nodeForms[text.charAt(at)];
   if (form !== undefined) throw new Unreadable(form);
 }
 
@@ -34,13 +34,15 @@ const isDoubledQuote = (text: string, index: number, quote: string | undefined):
 
 export function quotedEnd(text: string, at: number): number {
   const quote = text[at];
-  for (let index = at + 1; index < text.length; index += 1) {
-    refuseEscape(quote, text[index]);
-    if (text[index] !== quote) continue;
-    if (isDoubledQuote(text, index, quote)) index += 1;
+  let index = at + 1;
+  for (;;) {
+    const char = text[index];
+    if (char === undefined) throw new Unreadable("a quoted scalar across lines");
+    refuseEscape(quote, char);
+    if (char !== quote) index += 1;
+    else if (isDoubledQuote(text, index, quote)) index += 2;
     else return index + 1;
   }
-  throw new Unreadable("a quoted scalar across lines");
 }
 
 const flowStop = /[,[\]{}]|:(?=[\s,[\]{}]|$)|\s#/u;
@@ -56,22 +58,18 @@ function flowNodeEnd(text: string, at: number, keys: string[]): number {
 
 function flowKeyBefore(text: string, start: number, end: number, close: string): string | null {
   // A key with no colon is still a key in a flow map: `{a, b}` reads as `{a: null, b: null}`.
-  const bare = close === "}" && (text[end] === "," || text[end] === close);
-  if (text[end] !== ":" && !bare) return null;
-  return text
-    .slice(start, end)
-    .trim()
-    .replace(/^(["'])(.*)\1$/u, "$2");
+  if (text[end] !== ":" && close !== "}") return null;
+  const key = text.slice(start, end).trim();
+  return key.startsWith('"') || key.startsWith("'") ? key.slice(1, -1) : key;
 }
 
 function refuseFlowEnd(text: string, position: number): void {
   if (endsLine(text, position)) throw new Unreadable("a flow collection across lines");
 }
 
-function flowValueEnd(text: string, colon: number, close: string, keys: string[]): number {
+function flowValueEnd(text: string, colon: number, keys: string[]): number {
   const index = skipSpaces(text, colon + 1);
   refuseFlowEnd(text, index);
-  if (text[index] === "," || text[index] === close) return index;
   return skipSpaces(text, flowNodeEnd(text, index, keys));
 }
 
@@ -79,7 +77,7 @@ function flowEntryEnd(text: string, start: number, close: string, keys: string[]
   const index = skipSpaces(text, flowNodeEnd(text, start, keys));
   const key = flowKeyBefore(text, start, index, close);
   if (key !== null) keys.push(key);
-  return text[index] === ":" ? flowValueEnd(text, index, close, keys) : index;
+  return text[index] === ":" ? flowValueEnd(text, index, keys) : index;
 }
 
 export function flowEnd(text: string, at: number, keys: string[]): number {

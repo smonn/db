@@ -70,7 +70,9 @@ function checkLink(
 ): Problem[] {
   const { file, line } = source;
   if (isExternal(target)) return [];
-  const [path = "", anchor] = target.split("#");
+  const hash = target.indexOf("#");
+  const path = hash === -1 ? target : target.slice(0, hash);
+  const anchor = hash === -1 ? undefined : target.slice(hash + 1);
   const { resolved, targetText } = resolveLink(source, path, read);
   if (targetText === undefined) return [{ file, line, message: `link to missing file ${path}` }];
   if (hasAnchor(resolved, targetText, anchor)) return [];
@@ -86,16 +88,16 @@ export function checkLinks(
   text: string,
   read: (path: string) => string | undefined,
 ): Problem[] {
-  return proseLines(text).flatMap((line, index) => {
-    const prose = line.replaceAll(/`[^`]*`/gu, "code");
-    return [...prose.matchAll(/\]\(([^)\s]+)/gu)].flatMap(([, target = ""]) =>
-      checkLink({ file, text, line: index + 1 }, target, read),
-    );
-  });
+  return proseLines(text).flatMap((line, index) =>
+    // A code span matches first, so a link inside one isn't read.
+    [...line.matchAll(/`[^`]*`|\]\(([^)\s]+)/gu)].flatMap(([, target]) =>
+      target === undefined ? [] : checkLink({ file, text, line: index + 1 }, target, read),
+    ),
+  );
 }
 
 function wordCount(line: string): number {
-  return line.split(/\s+/u).filter((token) => /[\p{L}\p{N}]/u.test(token)).length;
+  return [...line.matchAll(/\S+/gu)].filter(([token]) => /[\p{L}\p{N}]/u.test(token)).length;
 }
 
 const BLOCK_START = /^\s*(?:[-*]\s|\d+\.\s|\||#)/u;
@@ -105,16 +107,20 @@ type Block = { line: number; words: number };
 
 function splitBlocks(text: string): Block[] {
   const blocks: Block[] = [];
-  let open = false;
+  // The block a following line may continue, if any.
+  let open: Block | undefined;
   for (const [index, line] of proseLines(text).entries()) {
     if (line.trim() === "") {
-      open = false;
+      open = undefined;
       continue;
     }
-    const last = blocks.at(-1);
-    if (open && last !== undefined && !BLOCK_START.test(line)) last.words += wordCount(line);
-    else blocks.push({ line: index + 1, words: wordCount(line) });
-    open = !STANDALONE.test(line);
+    if (open !== undefined && !BLOCK_START.test(line)) {
+      open.words += wordCount(line);
+    } else {
+      open = { line: index + 1, words: wordCount(line) };
+      blocks.push(open);
+    }
+    if (STANDALONE.test(line)) open = undefined;
   }
   return blocks;
 }
@@ -151,7 +157,9 @@ export function checkBudget(file: string, text: string, cap: number): Problem[] 
 export function readRepoPath(cwd: string, path: string): string | undefined {
   const full = join(cwd, path);
   if (!existsSync(full)) return undefined;
-  return statSync(full).isFile() ? readFileSync(full, "utf8") : "";
+  // Stryker disable next-line StringLiteral: a folder's text is only read for anchors in a `.md` file or counted against a budget, where any short stand-in string stays under the cap.
+  if (!statSync(full).isFile()) return "";
+  return readFileSync(full, "utf8");
 }
 
 /** Runs `checkBudget` on each budgeted file under `cwd`, flagging one that no longer exists. */

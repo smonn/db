@@ -1,9 +1,15 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, Socket } from "node:net";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { isReachable, testDatabaseUrl, testEnv } from "./test-database-url.ts";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, existsSync: vi.fn<typeof actual.existsSync>(actual.existsSync) };
+});
 
 let dir = "";
 let file = "";
@@ -35,6 +41,11 @@ test("an empty DATABASE_URL counts as unset", () => {
   const processEnv = { DATABASE_URL: "" };
   expect(testDatabaseUrl(processEnv, file)).toBe("postgres://file/db");
   expect(testEnv(processEnv, file)).toEqual({ DATABASE_URL: "postgres://file/db" });
+});
+
+test("without a file argument it looks for .env.test at the repo root", () => {
+  testEnv({});
+  expect(existsSync).toHaveBeenCalledWith(fileURLToPath(new URL("../.env.test", import.meta.url)));
 });
 
 test("an empty DATABASE_URL line in .env.test counts as unset", () => {
@@ -81,7 +92,14 @@ test("isReachable is false for a url it cannot parse", async () => {
 
 const timeouts: number[] = [];
 
+let destroyed = 0;
+
 class Silent extends Socket {
+  override destroy() {
+    destroyed += 1;
+    return this;
+  }
+
   override setTimeout(ms: number) {
     timeouts.push(ms);
     queueMicrotask(() => {
@@ -93,6 +111,7 @@ class Silent extends Socket {
 
 test("isReachable gives up after its timeout and defaults to port 5432", async () => {
   timeouts.length = 0;
+  destroyed = 0;
   const dialed: unknown[] = [];
   const reachable = await isReachable("postgres://db.invalid/db", 50, (...args) => {
     dialed.push(args);
@@ -100,6 +119,7 @@ test("isReachable gives up after its timeout and defaults to port 5432", async (
   });
   expect(reachable).toBe(false);
   expect(timeouts).toEqual([50]);
+  expect(destroyed).toBe(1);
   expect(dialed).toEqual([[5432, "db.invalid"]]);
 });
 

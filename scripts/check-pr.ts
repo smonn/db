@@ -22,24 +22,12 @@ import { join } from "node:path";
 import { checkClosingKeywords } from "./check-closing-keywords.ts";
 import { checkAdrClash, readOpenPrAdds, type OpenPrAdd } from "./check-adr-clash.ts";
 
-const types = [
-  "build",
-  "chore",
-  "ci",
-  "docs",
-  "feat",
-  "fix",
-  "perf",
-  "refactor",
-  "revert",
-  "style",
-  "test",
-];
-const titlePattern = new RegExp(`^(${types.join("|")})(\\([a-z0-9-]+\\))?!?: \\S`, "u");
+const titlePattern =
+  /^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9-]+\))?!?: \S/u;
 
 const adrTitlePattern = /^docs\(adr\)!?: (propose|accept)\b/u;
 const adrPathPattern = /^docs\/adr\/\d{4}-.+\.md$/u;
-const frontmatterPattern = /^---\n([\s\S]*?)\n---/u;
+const frontmatterPattern = /^---\n[\s\S]*?\n---/u;
 const statusPattern = /^status:\s*(\S+)\s*$/mu;
 
 const branchPattern = /^(feature|bugfix|hotfix|release|chore)\/[a-z0-9]+([.-][a-z0-9]+)*$/u;
@@ -57,8 +45,7 @@ export function checkBranch(branch: string): string[] {
 }
 
 export function parseAdrStatus(text: string): string {
-  const frontmatter = frontmatterPattern.exec(text)?.[1] ?? "";
-  return statusPattern.exec(frontmatter)?.[1] ?? "missing";
+  return frontmatterPattern.exec(text)?.[0].match(statusPattern)?.[1] ?? "missing";
 }
 
 export function checkAdrTitle(title: string, adrs: readonly ChangedAdr[]): string[] {
@@ -75,12 +62,14 @@ export function checkAdrTitle(title: string, adrs: readonly ChangedAdr[]): strin
   return problems;
 }
 
-export function checkPr(title: string, branch: string, adrs: readonly ChangedAdr[] = []): string[] {
+/** `adrs` is absent when the diff base is unknown, which skips the ADR title check. */
+export function checkPr(title: string, branch: string, adrs?: readonly ChangedAdr[]): string[] {
   const problems: string[] = [];
   if (!titlePattern.test(title)) {
     problems.push(`PR title "${title}" is not a Conventional Commit: type(scope): summary`);
   }
-  problems.push(...checkBranch(branch), ...checkAdrTitle(title, adrs));
+  problems.push(...checkBranch(branch));
+  if (adrs !== undefined) problems.push(...checkAdrTitle(title, adrs));
   return problems;
 }
 
@@ -92,10 +81,11 @@ export function readChangedAdrs(base: string, cwd: string = process.cwd()): Chan
     { cwd, encoding: "utf8" },
   );
   return diff.split("\n").flatMap((line): ChangedAdr[] => {
-    const [letter, file] = line.split("\t");
-    if (letter === undefined || file === undefined || !adrPathPattern.test(file)) return [];
+    const tab = line.indexOf("\t");
+    const file = line.slice(tab + 1);
+    if (!adrPathPattern.test(file)) return [];
     const status = parseAdrStatus(readFileSync(join(cwd, file), "utf8"));
-    const baseStatus = letter === "A" ? undefined : readBaseStatus(base, file, cwd);
+    const baseStatus = line.slice(0, tab) === "A" ? undefined : readBaseStatus(base, file, cwd);
     if (baseStatus === undefined) return [{ file, status, added: true }];
     return [{ file, status, added: false, baseStatus }];
   });
@@ -119,10 +109,10 @@ function readBaseStatus(base: string, file: string, cwd: string): string | undef
 
 function clashProblems(
   adrs: readonly ChangedAdr[],
-  number: string | undefined,
+  number: string,
   readOpenAdds: (exclude: string) => OpenPrAdd[],
 ): string[] {
-  if (number === undefined || !adrs.some((adr) => adr.added)) return [];
+  if (!adrs.some((adr) => adr.added)) return [];
   return checkAdrClash(adrs, readOpenAdds(number));
 }
 
@@ -138,12 +128,13 @@ function allProblems(
   readOpenAdds: (exclude: string) => OpenPrAdd[],
 ): string[] {
   const { PR_DIFF_BASE: base, PR_NUMBER: number, PR_BODY: body } = env;
-  const adrs = base === undefined ? [] : readAdrs(base);
-  return [
-    ...checkPr(title, branch, adrs),
-    ...checkClosingKeywords(body ?? ""),
-    ...clashProblems(adrs, number, readOpenAdds),
-  ];
+  const adrs = base === undefined ? undefined : readAdrs(base);
+  const problems = checkPr(title, branch, adrs);
+  if (body !== undefined) problems.push(...checkClosingKeywords(body));
+  if (adrs !== undefined && number !== undefined) {
+    problems.push(...clashProblems(adrs, number, readOpenAdds));
+  }
+  return problems;
 }
 
 export function main(

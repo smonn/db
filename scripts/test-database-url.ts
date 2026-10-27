@@ -11,7 +11,7 @@ const envFile = fileURLToPath(new URL("../.env.test", import.meta.url));
 
 /** An empty `DATABASE_URL` (`DATABASE_URL=` in a shell or direnv file) counts as unset. */
 function nonEmpty(value: string | undefined): string | undefined {
-  return value === undefined || value === "" ? undefined : value;
+  return value === "" ? undefined : value;
 }
 
 /** The variables vitest injects into the tests: those of `.env.test`, unless `DATABASE_URL` is set. */
@@ -49,7 +49,8 @@ export function isReachable(
   }
   return new Promise((resolve) => {
     // `URL.hostname` keeps the brackets of an IPv6 literal, which net.createConnection can't dial.
-    const host = target.hostname.replace(/^\[(.*)\]$/u, "$1");
+    const { hostname } = target;
+    const host = hostname.startsWith("[") ? hostname.slice(1, -1) : hostname;
     const socket = connect(Number(target.port === "" ? 5432 : target.port), host);
     const done = (reachable: boolean) => {
       socket.destroy();

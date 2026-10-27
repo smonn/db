@@ -112,16 +112,23 @@ function loadBaselines(mode: Mode, baselinePath: string): Map<string, number> {
   return new Map();
 }
 
-function settle(mode: Mode, { failures, stale, next }: Outcome, baselinePath: string): string[] {
-  if (mode === "check") {
-    if (stale.length === 0) return failures;
-    return [...failures, ...stale, `Run \`pnpm fta:update\` and commit ${baselinePath}.`];
-  }
+function writeBaselines({ failures, stale, next }: Outcome, baselinePath: string): string[] {
   const sorted = Object.fromEntries([...next].toSorted(([a], [b]) => a.localeCompare(b)));
   writeFileSync(baselinePath, `${JSON.stringify(sorted, null, 2)}\n`);
   for (const line of stale) console.log(`Updated: ${line}`);
   return failures;
 }
+
+function checkBaselines({ failures, stale }: Outcome, baselinePath: string): string[] {
+  if (stale.length === 0) return failures;
+  return [...failures, ...stale, `Run \`pnpm fta:update\` and commit ${baselinePath}.`];
+}
+
+const settle: Record<Mode, (outcome: Outcome, baselinePath: string) => string[]> = {
+  check: checkBaselines,
+  update: writeBaselines,
+  init: writeBaselines,
+};
 
 export function main(
   args: readonly string[] = process.argv.slice(2),
@@ -131,7 +138,7 @@ export function main(
   const mode = modeOf(args);
   const baselines = loadBaselines(mode, baselinePath);
   const scores = new Map(sourceDirs.flatMap((dir) => score(dir)));
-  const failures = settle(mode, judge(scores, baselines, mode), baselinePath);
+  const failures = settle[mode](judge(scores, baselines, mode), baselinePath);
   if (failures.length > 0) {
     console.error(failures.join("\n"));
     process.exitCode = 1;

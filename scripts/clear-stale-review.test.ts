@@ -1,8 +1,11 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { main, type PullRequestEvent, staleReviewLabels } from "./clear-stale-review.ts";
+
+vi.mock("node:child_process", () => ({ execFileSync: vi.fn<typeof execFileSync>() }));
 
 function event(labels: string[], rest: Partial<PullRequestEvent> = {}): PullRequestEvent {
   return {
@@ -65,6 +68,15 @@ describe("main", () => {
     ]);
   });
 
+  test("runs gh with inherited output when given no runner", () => {
+    main({ GITHUB_EVENT_PATH: write(event(["review:needed", "review:approved"])) });
+    expect(execFileSync).toHaveBeenCalledWith(
+      "gh",
+      ["pr", "edit", "9", "--repo", "smonn/db", "--remove-label", "review:approved"],
+      { stdio: "inherit" },
+    );
+  });
+
   test("calls nothing when no label is stale", () => {
     const gh = vi.fn<(args: string[]) => void>();
     main({ GITHUB_EVENT_PATH: write(event(["review:needed"])) }, gh);
@@ -76,6 +88,16 @@ describe("main", () => {
     main({}, gh);
     expect(process.exitCode).toBe(1);
     expect(gh).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["the repository", { repository: {} }, "$.repository.full_name"],
+    ["the label", { label: {} }, "$.label.name"],
+  ])("names the path of a bad %s", (_name, bad, path) => {
+    const file = write({ ...event(["review:needed"]), ...bad });
+    expect(() => {
+      main({ GITHUB_EVENT_PATH: file }, vi.fn<(args: string[]) => void>());
+    }).toThrow(path);
   });
 
   test("names the bad field in a malformed payload", () => {
