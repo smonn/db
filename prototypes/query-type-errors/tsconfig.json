@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "isolatedDeclarations": false,
+    "declaration": false,
+    "noUnusedLocals": false
+  },
+  "include": [
+    "*.ts",
+    "../../src/runtime/definition",
+    "../../src/runtime/query/from.ts",
+    "../../src/runtime/query/insert.ts"
+  ]
+}
