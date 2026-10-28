@@ -34,8 +34,8 @@ const publishJob = (pnpm: string): string[] => [
   "      with:",
   "        name: package",
   "        path: ${{ runner.temp }}/pkg",
-  // v3.1.1
-  "    - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4",
+  // v3.1.2
+  "    - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e",
   "      with:",
   `        version: ${pnpm}`,
   "        install: false",

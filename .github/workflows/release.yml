@@ -40,7 +40,7 @@ jobs:
         with:
           persist-credentials: false
       # No dependency cache (no pnpm store restore). pnpm/setup still restores and saves its lockfile verification cache, whatever the cache input says.
-      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
       # prepack builds dist/.
       - run: pnpm pack --out "$RUNNER_TEMP/package.tgz"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -64,7 +64,7 @@ jobs:
           name: package
           path: ${{ runner.temp }}/pkg
       # No package.json here, so pin the pnpm version pnpm-lock.yaml resolves, and install no runtime.
-      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with:
           version: 12.15.0
           install: false
