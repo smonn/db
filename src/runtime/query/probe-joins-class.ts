@@ -12,7 +12,7 @@ type ClassOf<Col> = Col extends { readonly "~types": { readonly sql: infer S ext
 type Selectable<V> = { readonly name: string; readonly "~value": V };
 
 /** A wide class (a domain) accepts any operand, as Postgres casts a domain to its base type. */
-export type ClassOperand<C extends string> = Selectable<unknown> & {
+type ClassOperand<C extends string> = Selectable<unknown> & {
   readonly "~class": string extends C ? string : C;
 };
 
@@ -28,12 +28,12 @@ type Comparisons<V, C extends string> = {
 type NullChecks = { isNull(): Predicate; isNotNull(): Predicate };
 
 /** A domain (class `string`) carries `never`, so it is an operand of any column. */
-export type ClassRef<V, C extends string> = Selectable<V> & {
+type ClassRef<V, C extends string> = Selectable<V> & {
   readonly "~class": string extends C ? never : C;
 } & (null extends V ? NullChecks : unknown) &
   Comparisons<NonNullable<V>, C>;
 
-export type ClassRefs<T extends Table, N extends boolean = false> = {
+type ClassRefs<T extends Table, N extends boolean = false> = {
   readonly [K in keyof Row<T> & string]: ClassRef<
     N extends true ? Row<T>[K] | null : Row<T>[K],
     ClassOf<T["columns"][K]>
