@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { checkOidcJobs, lockedPnpm } from "./check-oidc-jobs.ts";
+import { checkOidcJobs, lockedPnpm, pinnedSha } from "./check-oidc-jobs.ts";
+
+const download = pinnedSha("actions/download-artifact");
+const setup = pinnedSha("pnpm/setup");
 
 const publish = `  publish:
     name: Publish
@@ -8,11 +11,11 @@ const publish = `  publish:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/download-artifact@${download} # pinned
         with:
           name: package
           path: \${{ runner.temp }}/pkg
-      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+      - uses: pnpm/setup@${setup} # pinned
         with:
           version: 12.14.0
           install: false

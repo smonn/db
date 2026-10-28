@@ -47,6 +47,14 @@ const publishJob = (pnpm: string): string[] => [
   '        pnpm stage publish --ignore-scripts --no-git-checks "$RUNNER_TEMP/pkg/package.tgz"',
 ];
 
+/** The SHA `publishJob` pins for an action, so test fixtures follow Renovate's bumps. */
+export function pinnedSha(action: string): string {
+  const prefix = `    - uses: ${action}@`;
+  const line = publishJob("").find((text) => text.startsWith(prefix));
+  if (line === undefined) throw new Error(`publishJob pins no ${action}.`);
+  return line.slice(prefix.length);
+}
+
 const grantsIdToken = /id-token["']?\s*:\s*["']?write\b/u;
 const grantsAll = /:\s*["']?write-all\b/u;
 const workflowSetting = /^["']?(env|defaults)["']?\s*:/u;
