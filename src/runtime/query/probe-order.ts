@@ -10,7 +10,7 @@ type Predicate = { readonly "~predicate": () => Fragment };
 /** One `order by` term: a column and its direction, from `u.x.asc()` or `u.x.desc()`. */
 export type Ordering = { readonly "~ordering": () => Fragment };
 
-export type NullsOption = { readonly nulls: "first" | "last" };
+type NullsOption = { readonly nulls: "first" | "last" };
 
 /**
  * A NOT NULL column refuses `nulls`, as it has no `isNull`. The inline key spells the reason, so
@@ -24,21 +24,21 @@ export type OrderingMethods<V> = null extends V
     };
 
 /** Not on an array column: Postgres has no array of arrays to compare one with. */
-export type SetMethods<V> = {
+type SetMethods<V> = {
   /** `col = any($1)`; an empty list matches no row. */
   in(values: readonly NonNullable<V>[]): Predicate;
   /** `col <> all($1)`; an empty list matches every row, NULL ones too. */
   notIn(values: readonly NonNullable<V>[]): Predicate;
 };
 
-export type TextMethods = {
+type TextMethods = {
   like(pattern: string): Predicate;
   ilike(pattern: string): Predicate;
 };
 
 type ElementOf<V> = NonNullable<V> extends readonly (infer E)[] ? NonNullable<E> : never;
 
-export type ArrayMethods<V> = { includes(value: ElementOf<V>): Predicate };
+type ArrayMethods<V> = { includes(value: ElementOf<V>): Predicate };
 
 /** The methods a column's kind adds to its ref. */
 export type KindMethods<V, K extends ColumnKind> = K extends "array"
