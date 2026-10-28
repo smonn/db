@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { checkOidcJobs, lockedPnpm } from "./check-oidc-jobs.ts";
+import { checkOidcJobs, lockedPnpm, pinnedSha } from "./check-oidc-jobs.ts";
+
+const download = pinnedSha("actions/download-artifact");
+const setup = pinnedSha("pnpm/setup");
 
 const publish = `  # Comments and blank lines don't count.
   publish:
@@ -10,12 +13,12 @@ const publish = `  # Comments and blank lines don't count.
       # npm trusted publishing exchanges the OIDC token for a publish token.
       id-token: write
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/download-artifact@${download} # pinned
         with:
           name: package
           path: \${{ runner.temp }}/pkg
 
-      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+      - uses: pnpm/setup@${setup} # pinned
         with:
           version: 12.14.0
           install: false
@@ -53,7 +56,7 @@ const differs =
   "release.yml job publish holds id-token but differs from publishJob in scripts/check-oidc-jobs.ts at its line";
 
 const downloadPath = "          path: ${{ runner.temp }}/pkg\n";
-const downloadStep = `      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+const downloadStep = `      - uses: actions/download-artifact@${download} # pinned
         with:
           name: package
 ${downloadPath}`;
@@ -70,13 +73,13 @@ const packPermissions = "    permissions:\n      contents: read\n";
 const bypasses: Record<string, [string, string]> = {
   "a docker action": [downloadStep, "      - uses: docker://alpine:3.20\n"],
   "a local action": [downloadStep, "      - uses: ./.github/actions/evil\n"],
-  "an unpinned action": ["@9000827ccba6bdab643e8b6fd33ac0654aef8333", "@v8"],
+  "an unpinned action": [`@${download}`, "@v8"],
   "a download-artifact SHA other than the template's": [
-    "@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+    `@${download}`,
     "@ffffffffffffffffffffffffffffffffffffffff",
   ],
   "a pnpm/setup SHA other than the template's": [
-    "@a0881977cd8ea73b1ed212236c99ca10dcc80cf4",
+    `@${setup}`,
     "@ffffffffffffffffffffffffffffffffffffffff",
   ],
   "a checkout": [
@@ -205,5 +208,17 @@ describe("lockedPnpm", () => {
       "importers:\n\n  .:\n    packageManagerDependencies:\n      pnpm:\n        specifier: ^12.14.0\n        version: 12.14.0\n";
     expect(lockedPnpm(lockfile)).toBe("12.14.0");
     expect(lockedPnpm("importers: {}\n")).toBeUndefined();
+  });
+});
+
+describe("pinnedSha", () => {
+  test("reads the SHA publishJob pins for an action", () => {
+    expect(download).toMatch(/^[0-9a-f]{40}$/u);
+    expect(setup).toMatch(/^[0-9a-f]{40}$/u);
+    expect(setup).not.toBe(download);
+  });
+
+  test("throws for an action publishJob doesn't pin", () => {
+    expect(() => pinnedSha("actions/checkout")).toThrow("publishJob pins no actions/checkout.");
   });
 });
