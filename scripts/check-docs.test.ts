@@ -78,6 +78,13 @@ describe("checkAvoidTerms", () => {
       { file: "GLOSSARY.md", line: 11, message: 'avoid "Namespace" (use "Schema")' },
     ]);
   });
+
+  test("ignores avoid terms inside code spans", () => {
+    const text = "The `drafts` option.\nA `x` draft.";
+    expect(checkAvoidTerms("docs/a.md", text, glossary)).toEqual([
+      { file: "docs/a.md", line: 2, message: 'avoid "Draft" (use "Current migration")' },
+    ]);
+  });
 });
 
 describe("checkHeadwordCase", () => {
