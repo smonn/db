@@ -7,7 +7,7 @@ import { from, type Joined, type RefsOf, type Selection, type TableRefs } from "
 
 type Named = Readonly<Record<string, Joined>>;
 
-export type NamedRefs<S extends Named> = {
+type NamedRefs<S extends Named> = {
   readonly [K in keyof S]: S[K] extends readonly [infer T extends Table, infer N extends boolean]
     ? TableRefs<T, N>
     : never;

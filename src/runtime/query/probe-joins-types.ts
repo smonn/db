@@ -12,7 +12,7 @@ type Selectable<V> = { readonly name: string; readonly "~value": V };
  * A column operand: any column holding the same non-null type, nullable or not. Written as
  * `JoinRef<V>` alone, a nullable column (or any left-joined one) could never be an operand.
  */
-export type ColumnOperand<V> = Selectable<V | null>;
+type ColumnOperand<V> = Selectable<V | null>;
 
 type Comparisons<V> = {
   eq(operand: V | ColumnOperand<V>): Predicate;
@@ -56,14 +56,14 @@ type Joins<J extends readonly Joined[]> = {
 };
 
 /** A joined builder is no Query: it needs `select` to name its outputs. */
-export type JoinedBuilder<J extends readonly Joined[]> = Joins<J> & {
+type JoinedBuilder<J extends readonly Joined[]> = Joins<J> & {
   where(pick: (...refs: RefsOf<J>) => Predicate): JoinedBuilder<J>;
   orderBy(pick: (...refs: RefsOf<J>) => Ordering | readonly Ordering[]): JoinedBuilder<J>;
   select<S extends Selection>(pick: (...refs: RefsOf<J>) => S): SelectedQuery<J, Selected<S>>;
 };
 
 /** After `select`: no join methods and no `pick`. */
-export type SelectedQuery<J extends readonly Joined[], R> = Query<R> & {
+type SelectedQuery<J extends readonly Joined[], R> = Query<R> & {
   where(pick: (...refs: RefsOf<J>) => Predicate): SelectedQuery<J, R>;
   orderBy(pick: (...refs: RefsOf<J>) => Ordering | readonly Ordering[]): SelectedQuery<J, R>;
   select<S extends Selection>(pick: (...refs: RefsOf<J>) => S): SelectedQuery<J, Selected<S>>;

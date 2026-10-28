@@ -7,13 +7,10 @@ import { and, brand, columnIdentifier, type Predicate, type Query } from "./from
 import type { FromQuery } from "./probe-joins-types.ts";
 
 export type {
-  ColumnOperand,
   FromQuery,
   Joined,
-  JoinedBuilder,
   JoinRef,
   RefsOf,
-  SelectedQuery,
   Selection,
   TableRefs,
 } from "./probe-joins-types.ts";
