@@ -140,10 +140,16 @@ describe("on Postgres", () => {
 
   it("decided shape: includes on jsonb<string[]> and in on an array column fail at run time", async () => {
     const base = from(db.public.items).select((u) => ({ id: u.id }));
-    await expect(client.all(base.where((u) => u.meta.includes("a")))).rejects.toThrow(
+    /* oxlint-disable typescript/no-unsafe-call, typescript/no-unsafe-return -- the decided shape offered these; Kind hides them. */
+    // @ts-expect-error -- hidden by Kind
+    const jsonbIncludes = base.where((u) => u.meta.includes("a"));
+    // @ts-expect-error -- hidden by Kind
+    const arrayIn = base.where((u) => u.tags.in([["a", "b"]]));
+    /* oxlint-enable typescript/no-unsafe-call, typescript/no-unsafe-return */
+    await expect(client.all(jsonbIncludes)).rejects.toThrow(
       "op ANY/ALL (array) requires array on right side",
     );
-    await expect(client.all(base.where((u) => u.tags.in([["a", "b"]])))).rejects.toThrow(
+    await expect(client.all(arrayIn)).rejects.toThrow(
       "could not find array type for data type text[]",
     );
   });

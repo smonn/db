@@ -1,3 +1,4 @@
+import type { ColumnKind } from "./column-kind.ts";
 import type { Enum } from "./enum.ts";
 
 /** What a domain is over: a factory type or an enum, never an array or another domain. */
@@ -12,7 +13,7 @@ export type DomainBase = {
  * its name from the key. `V` is its base's TypeScript value, and `N` is true when it is NOT NULL,
  * which makes each column of it non-null in `Row`.
  */
-export type Domain<V = unknown, N extends boolean = boolean, Text extends boolean = boolean> = {
+export type Domain<V = unknown, N extends boolean = boolean, K extends ColumnKind = ColumnKind> = {
   readonly kind: "domain";
   readonly base: DomainBase;
   readonly notNull: boolean;
@@ -25,7 +26,7 @@ export type Domain<V = unknown, N extends boolean = boolean, Text extends boolea
   /** The SQL name the domain had before a rename, for generate to turn into a `RENAME`. */
   readonly renamedFrom: string | undefined;
   /** Type-only: the value a column of the domain holds, and whether the domain is NOT NULL. */
-  readonly "~types": { readonly value: V; readonly notNull: N; readonly text: Text };
+  readonly "~types": { readonly value: V; readonly notNull: N; readonly kind: K };
 };
 
 export function isDomain(value: unknown): value is Domain {

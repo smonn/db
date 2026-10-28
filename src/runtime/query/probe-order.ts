@@ -1,4 +1,4 @@
-import type { Table } from "../definition/index.ts";
+import type { ColumnKind, Table } from "../definition/index.ts";
 import { elementText, formatArrayLiteral } from "../internal/index.ts";
 import { fragment, join, type Fragment } from "../sql/index.ts";
 import { elementSqlType } from "./array-text.ts";
@@ -12,15 +12,22 @@ export type Ordering = { readonly "~ordering": () => Fragment };
 
 export type NullsOption = { readonly nulls: "first" | "last" };
 
-/** `nulls` exists only on a nullable column, as `isNull` does. */
+/**
+ * A NOT NULL column refuses `nulls`, as it has no `isNull`. The inline key spells the reason, so
+ * passing `{ nulls }` prints it beside the bad key instead of "Expected 0 arguments".
+ */
 export type OrderingMethods<V> = null extends V
   ? { asc(options?: NullsOption): Ordering; desc(options?: NullsOption): Ordering }
-  : { asc(): Ordering; desc(): Ordering };
+  : {
+      asc(options?: { readonly "nulls needs a nullable column"?: never }): Ordering;
+      desc(options?: { readonly "nulls needs a nullable column"?: never }): Ordering;
+    };
 
+/** Not on an array column: Postgres has no array of arrays to compare one with. */
 export type SetMethods<V> = {
   /** `col = any($1)`; an empty list matches no row. */
   in(values: readonly NonNullable<V>[]): Predicate;
-  /** `col <> all($1)`; an empty list matches every non-NULL row. */
+  /** `col <> all($1)`; an empty list matches every row, NULL ones too. */
   notIn(values: readonly NonNullable<V>[]): Predicate;
 };
 
@@ -29,18 +36,21 @@ export type TextMethods = {
   ilike(pattern: string): Predicate;
 };
 
-/** Decided shape: array-ness read from the value type, since `Column` carries no array flag. */
-export type ArrayMethods<V> =
-  NonNullable<V> extends readonly (infer E)[]
-    ? { includes(value: NonNullable<E>): Predicate }
-    : unknown;
+type ElementOf<V> = NonNullable<V> extends readonly (infer E)[] ? NonNullable<E> : never;
 
-/** Reads the `Text` flag a column's `"~types"` carries. */
-export type TextOf<Col> = Col extends { readonly "~types": { readonly text: infer X } }
-  ? X extends true
-    ? true
-    : false
-  : false;
+export type ArrayMethods<V> = { includes(value: ElementOf<V>): Predicate };
+
+/** The methods a column's kind adds to its ref. */
+export type KindMethods<V, K extends ColumnKind> = K extends "array"
+  ? ArrayMethods<V>
+  : (K extends "text" ? TextMethods : unknown) & SetMethods<V>;
+
+/** Reads the kind a column's `"~types"` carries. */
+export type KindOf<Col> = Col extends { readonly "~types": { readonly kind: infer K } }
+  ? K extends ColumnKind
+    ? K
+    : "other"
+  : "other";
 
 /** Anything `orderBy` takes: an ordering, or a bare column meaning ascending. */
 export type OrderTerm = Ordering | { readonly name: string; readonly asc: () => Ordering };
@@ -80,16 +90,20 @@ export function orderingMethods(column: Fragment): Directions {
 export function orderingsOf(picked: unknown): Ordering[] {
   const terms: readonly unknown[] = Array.isArray(picked) ? picked : [picked];
   if (terms.length === 0) throw new Error("orderBy needs at least one column");
-  return terms.map((term) => {
-    if (isOrdering(term)) return term;
-    const asc: unknown =
-      typeof term === "object" && term !== null ? Reflect.get(term, "asc") : undefined;
-    if (typeof asc === "function") {
-      const ordering: unknown = Reflect.apply(asc, term, []);
-      if (isOrdering(ordering)) return ordering;
-    }
-    throw new Error(`orderBy takes a column, column.asc(), or column.desc(), got ${typeof term}`);
-  });
+  return terms.map((term) => orderingOf(term));
+}
+
+function describe(term: unknown): string {
+  if (typeof term !== "object" || term === null) return typeof term;
+  return "~predicate" in term ? "a predicate" : "an object";
+}
+
+function orderingOf(term: unknown): Ordering {
+  if (isOrdering(term)) return term;
+  const asc: unknown = typeof term === "object" && term !== null ? Reflect.get(term, "asc") : 0;
+  const ordering: unknown = typeof asc === "function" ? Reflect.apply(asc, term, []) : undefined;
+  if (isOrdering(ordering)) return ordering;
+  throw new Error(`orderBy takes a column, column.asc(), or column.desc(), got ${describe(term)}`);
 }
 
 export function renderOrderBy(orderings: readonly Ordering[]): Fragment {

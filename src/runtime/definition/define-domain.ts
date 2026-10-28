@@ -1,3 +1,4 @@
+import type { ColumnKind } from "./column-kind.ts";
 import type { Column, ColumnState } from "./column.ts";
 import type { Domain } from "./domain.ts";
 import { type ColumnFactories, factories } from "./factories.ts";
@@ -40,15 +41,10 @@ function modified(state: ColumnState, codec: unknown): boolean {
  * A domain over the type `define` returns, a factory type or an enum. It sits in a schema's object
  * beside its tables, named by its key, and a column takes it with `c.domain(posint)`.
  */
-export function defineDomain<
-  V,
-  Int extends boolean,
-  Text extends boolean,
-  N extends boolean = false,
->(
-  define: (c: BaseFactories) => Column<V, false, Int, Text>,
+export function defineDomain<V, K extends ColumnKind, N extends boolean = false>(
+  define: (c: BaseFactories) => Column<V, false, K>,
   options: DomainOptions<N> = {},
-): Domain<V, N, Text> {
+): Domain<V, N, K> {
   const base = define(factories);
   const { state } = base;
   if (state.array) {
@@ -72,5 +68,5 @@ export function defineDomain<
     renamedFrom: options.renamedFrom,
   };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- "~types" exists only in types, so `domain` doesn't overlap `Domain` enough for a direct cast (TS2352); it goes through `unknown`.
-  return domain as unknown as Domain<V, N, Text>;
+  return domain as unknown as Domain<V, N, K>;
 }

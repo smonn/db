@@ -1,4 +1,4 @@
-import type { Row, Table } from "../definition/index.ts";
+import type { ColumnKind, Row, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment, type RenderedSql } from "../sql/index.ts";
 import { isTextArray } from "./array-text.ts";
 import { decoderFor, encodeValue, withDecoder } from "./codecs.ts";
@@ -11,13 +11,11 @@ import {
   renderPaging,
   setMethods,
   textMethods,
-  type ArrayMethods,
+  type KindMethods,
+  type KindOf,
   type Ordering,
   type OrderingMethods,
   type OrderTerm,
-  type SetMethods,
-  type TextMethods,
-  type TextOf,
 } from "./probe-order.ts";
 
 export type Statement = {
@@ -52,7 +50,7 @@ type SelectableColumn<V> = {
   readonly "~value"?: V;
 };
 
-export type ColumnRef<V, Text extends boolean = false> = SelectableColumn<V> &
+export type ColumnRef<V, Kind extends ColumnKind = "other"> = SelectableColumn<V> &
   (null extends V ? NullChecks : unknown) & {
     eq(value: NonNullable<V>): Predicate;
     ne(value: NonNullable<V>): Predicate;
@@ -61,12 +59,10 @@ export type ColumnRef<V, Text extends boolean = false> = SelectableColumn<V> &
     lt(value: NonNullable<V>): Predicate;
     lte(value: NonNullable<V>): Predicate;
   } & OrderingMethods<V> &
-  SetMethods<V> &
-  (Text extends true ? TextMethods : unknown) &
-  ArrayMethods<V>;
+  KindMethods<V, Kind>;
 
 export type Refs<T extends Table> = {
-  readonly [K in keyof Row<T> & string]: ColumnRef<Row<T>[K], TextOf<T["columns"][K]>>;
+  readonly [K in keyof Row<T> & string]: ColumnRef<Row<T>[K], KindOf<T["columns"][K]>>;
 };
 
 export type Selection = Record<string, SelectableColumn<unknown>>;
@@ -99,7 +95,7 @@ type State = {
 /** Built when the statement renders, so a codec that throws rejects the query instead of the builder. */
 const predicate = (piece: () => Fragment): Predicate => ({ "~predicate": piece });
 
-function refOf(table: Table, name: string): ColumnRef<string | null, true> {
+function refOf(table: Table, name: string): ColumnRef<string | null, "text"> {
   const column = columnIdentifier(table, name);
   const compare = (operator: Fragment, value: unknown) =>
     predicate(() => fragment`${column} ${operator} ${encodeValue(table, name, value)}`);

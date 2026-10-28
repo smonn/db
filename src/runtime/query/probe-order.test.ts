@@ -85,10 +85,14 @@ describe("comparison types", () => {
     from(db.public.items).where((u) => u.moods.includes("angry"));
   });
 
-  it("decided shape: a jsonb<string[]> column and in on an array column both compile", () => {
-    // Both fail on Postgres; see the runtime tests below.
-    expectTypeOf(from(db.public.items).where((u) => u.meta.includes("a"))).toBeObject();
-    expectTypeOf(from(db.public.items).where((u) => u.tags.in([["a", "b"]]))).toBeObject();
+  it("Kind: hides includes on jsonb<string[]> and in on an array column, which fail on Postgres", () => {
+    // @ts-expect-error -- a jsonb array is no Postgres array
+    from(db.public.items).where((u) => u.meta.includes("a"));
+    // @ts-expect-error -- Postgres has no array of arrays
+    from(db.public.items).where((u) => u.tags.in([["a", "b"]]));
+    // @ts-expect-error -- notIn too
+    from(db.public.items).where((u) => u.moods.notIn([["sad"]]));
+    expectTypeOf(from(db.public.items).where((u) => u.meta.eq(["a"]))).toBeObject();
   });
 });
 /* oxlint-enable typescript/no-unsafe-call, typescript/no-unsafe-return */
