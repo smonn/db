@@ -3,7 +3,7 @@ import { type ColumnFactories, factories } from "./factories.ts";
 import { declaredForeignKeysOf } from "./foreign-keys.ts";
 import { indexesOf } from "./indexes.ts";
 import type { ColumnRefs } from "./refs.ts";
-import type { ExtrasArgs, KeyOf } from "./table-extras.ts";
+import type { ExtrasArgs, KeyOf, KeySetsOf } from "./table-extras.ts";
 import { keyColumns, refsOf, type RuntimeRefs, uniquesOf } from "./table-keys.ts";
 import type { TableDefinition } from "./table.ts";
 
@@ -93,7 +93,7 @@ function keysOf(columns: Columns, own: RuntimeRefs, declared: Extras | undefined
 export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>(
   define: (c: ColumnFactories) => C,
   ...args: Args
-): TableDefinition<C, KeyOf<C, Args>> {
+): TableDefinition<C, KeyOf<C, Args>, KeySetsOf<C, Args>> {
   const columns = define(factories);
   const own = refsOf(columns);
   const declared = declaredExtras<C>(own, args[0]);
@@ -111,7 +111,7 @@ export function defineTable<C extends Columns, Args extends ExtrasArgs<C, Args>>
     indexes,
     explicitName,
     renamedFrom,
-  } as unknown as TableDefinition<C, KeyOf<C, Args>>;
+  } as unknown as TableDefinition<C, KeyOf<C, Args>, KeySetsOf<C, Args>>;
 }
 
 type TypesOf<Col> = Col extends {

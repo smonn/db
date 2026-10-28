@@ -2,13 +2,20 @@ import type { Columns } from "./column.ts";
 import type { ForeignKey } from "./foreign-keys.ts";
 import type { TableIndex } from "./indexes.ts";
 import type { DeclaredForeignKey } from "./references.ts";
+import type { KeySet } from "./table-extras.ts";
 import type { UniqueConstraint } from "./table-keys.ts";
 
 /** A table without its name or schema, which `defineDatabase` gives it. */
-export type TableDefinition<C extends Columns = Columns, K extends string = string> = {
+export type TableDefinition<
+  C extends Columns = Columns,
+  K extends string = string,
+  U extends KeySet = KeySet,
+> = {
   readonly columns: C;
   /** The primary key's columns in key order, empty without one. */
   readonly primaryKey: readonly K[];
+  /** Type-only: every column set a conflict target may name, one `KeySet` per key. */
+  readonly "~keys": U;
   /** The primary key's constraint name when the Definition gives one; the catalog derives it otherwise. */
   readonly primaryKeyName: string | undefined;
   /** The unique constraints over two or more columns that the second callback declares. */
@@ -23,10 +30,11 @@ export type TableDefinition<C extends Columns = Columns, K extends string = stri
   readonly renamedFrom: string | undefined;
 };
 
-export type Table<C extends Columns = Columns, K extends string = string> = TableDefinition<
-  C,
-  K
-> & {
+export type Table<
+  C extends Columns = Columns,
+  K extends string = string,
+  U extends KeySet = KeySet,
+> = TableDefinition<C, K, U> & {
   /** The SQL names, as `defineDatabase` mapped them. */
   readonly schema: string;
   readonly name: string;

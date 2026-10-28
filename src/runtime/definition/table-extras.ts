@@ -64,3 +64,53 @@ export type KeyOf<C extends Columns, Args extends unknown[]> = Args extends [
     ? K
     : never
   : KeyedColumns<C>;
+
+/**
+ * One column set a conflict target may name: the column keys as a union, since Postgres infers the
+ * arbiter regardless of order, and whether only a partial unique index backs it.
+ */
+export type KeySet = readonly [columns: string, partial: boolean];
+
+type ReturnOf<Args extends unknown[]> = Args extends [(t: never) => infer R] ? R : unknown;
+
+type ColumnKeySets<C extends Columns> = {
+  [Name in keyof C & string]: C[Name]["~types"]["key"] extends true
+    ? readonly [Name, false]
+    : never;
+}[keyof C & string];
+
+type PrimaryKeySet<K extends string> = [K] extends [never] ? never : readonly [K, false];
+
+type UniqueSets<C extends Columns, R> = R extends { readonly unique: readonly (infer Entry)[] }
+  ? Entry extends { readonly columns: readonly Ref<infer N, C>[] }
+    ? readonly [N, false]
+    : never
+  : never;
+
+type KeyNameOf<C extends Columns, Key> =
+  Key extends Ref<infer N, C> ? N : Key extends { readonly key: Ref<infer N, C> } ? N : never;
+
+/** An index key that is neither a ref nor a wrapped ref is an expression, which no column list infers. */
+type HasExpression<C extends Columns, Keys extends readonly unknown[]> = [
+  Exclude<Keys[number], OwnRef<C> | { readonly key: OwnRef<C> }>,
+] extends [never]
+  ? false
+  : true;
+
+type IndexSets<C extends Columns, R> = R extends { readonly indexes: readonly (infer Entry)[] }
+  ? Entry extends { readonly unique: true; readonly columns: infer Keys extends readonly unknown[] }
+    ? HasExpression<C, Keys> extends true
+      ? never
+      : readonly [
+          KeyNameOf<C, Keys[number]>,
+          Entry extends { readonly where: object } ? true : false,
+        ]
+    : never
+  : never;
+
+/** Every column set the table declares unique, as `KeySet`s. */
+export type KeySetsOf<C extends Columns, Args extends unknown[]> =
+  | PrimaryKeySet<KeyOf<C, Args>>
+  | ColumnKeySets<C>
+  | UniqueSets<C, ReturnOf<Args>>
+  | IndexSets<C, ReturnOf<Args>>;
