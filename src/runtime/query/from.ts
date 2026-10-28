@@ -35,14 +35,17 @@ type SelectableColumn<V> = {
   readonly "~value"?: V;
 };
 
+/** A value, or another column holding the same type, nullable or not. */
+export type Operand<V> = NonNullable<V> | SelectableColumn<NonNullable<V> | null>;
+
 export type ColumnRef<V> = SelectableColumn<V> &
   (null extends V ? NullChecks : unknown) & {
-    eq(value: NonNullable<V>): Predicate;
-    ne(value: NonNullable<V>): Predicate;
-    gt(value: NonNullable<V>): Predicate;
-    gte(value: NonNullable<V>): Predicate;
-    lt(value: NonNullable<V>): Predicate;
-    lte(value: NonNullable<V>): Predicate;
+    eq(value: Operand<V>): Predicate;
+    ne(value: Operand<V>): Predicate;
+    gt(value: Operand<V>): Predicate;
+    gte(value: Operand<V>): Predicate;
+    lt(value: Operand<V>): Predicate;
+    lte(value: Operand<V>): Predicate;
   };
 
 export type Refs<T extends Table> = {
@@ -72,11 +75,24 @@ type State = {
 /** Built when the statement renders, so a codec that throws rejects the query instead of the builder. */
 const predicate = (piece: () => Fragment): Predicate => ({ "~predicate": piece });
 
-function refOf(table: Table, name: string): ColumnRef<string | null> {
-  const column = columnIdentifier(table, name);
+/** The SQL each ref renders as an operand; a WeakMap, so no row value can pass for a column. */
+const operands = new WeakMap<object, Fragment>();
+
+/** The column `value` refers to, or `undefined` for a plain value. */
+export function operandOf(value: unknown): Fragment | undefined {
+  return typeof value === "object" && value !== null ? operands.get(value) : undefined;
+}
+
+function refOf(table: Table, name: string, qualifier?: Fragment): ColumnRef<string | null> {
+  const column =
+    qualifier === undefined
+      ? columnIdentifier(table, name)
+      : fragment`${qualifier}.${columnIdentifier(table, name)}`;
   const compare = (operator: Fragment, value: unknown) =>
-    predicate(() => fragment`${column} ${operator} ${encodeValue(table, name, value)}`);
-  return {
+    predicate(
+      () => fragment`${column} ${operator} ${operandOf(value) ?? encodeValue(table, name, value)}`,
+    );
+  const ref: ColumnRef<string | null> = {
     name,
     eq: (value) => compare(fragment`=`, value),
     ne: (value) => compare(fragment`<>`, value),
@@ -87,11 +103,14 @@ function refOf(table: Table, name: string): ColumnRef<string | null> {
     isNull: () => predicate(() => fragment`${column} is null`),
     isNotNull: () => predicate(() => fragment`${column} is not null`),
   };
+  operands.set(ref, column);
+  return ref;
 }
 
-export function refsOf<T extends Table>(table: T): Refs<T> {
+/** `qualifier` prefixes each column, as `excluded` or the table name does in `on conflict do update`. */
+export function refsOf<T extends Table>(table: T, qualifier?: Fragment): Refs<T> {
   const refs = Object.fromEntries(
-    Object.keys(table.columns).map((name) => [name, refOf(table, name)]),
+    Object.keys(table.columns).map((name) => [name, refOf(table, name, qualifier)]),
   );
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries loses the keys.
   return refs as unknown as Refs<T>;

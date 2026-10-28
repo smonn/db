@@ -1,18 +1,17 @@
 import type { Row, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
-import {
-  brand,
-  columnIdentifier,
-  refsOf,
-  renderOutput,
-  type Predicate,
-  type Query,
-  type Refs,
-  type Selected,
-  type Selection,
-  type Statement,
-} from "./from.ts";
+import { brand, columnIdentifier, refsOf, renderOutput } from "./from.ts";
 import { decoderFor, encodeValue, withDecoder } from "./codecs.ts";
+import {
+  conflictAction,
+  conflictRefsOf,
+  conflictTarget,
+  type ConflictAction,
+  type ConflictRef,
+  type ConflictRefs,
+  type ConflictStatement,
+  type TargetCheck,
+} from "./on-conflict.ts";
 
 type NullableKeys<R> = { [K in keyof R]: null extends R[K] ? K : never }[keyof R];
 
@@ -26,61 +25,12 @@ export type NewRow<T extends Table> = {
 /** Marks a query that can change several rows, which `client.one` can't take. */
 type Many = { readonly "~many": true };
 
-/** A column as a conflict target names it; its type carries the key, so a target checks against the table's keys. */
-type ConflictRef<K extends string> = { readonly "~column": K };
-
-export type ConflictRefs<T extends Table> = {
-  readonly [K in keyof T["columns"] & string]: ConflictRef<K>;
-};
-
-type TargetNames<G> = G extends readonly ConflictRef<infer K>[] ? K : never;
-
-type JoinNames<G> = G extends readonly [ConflictRef<infer K>]
-  ? K
-  : G extends readonly [ConflictRef<infer K>, ...infer Rest]
-    ? `${K}, ${JoinNames<Rest>}`
-    : "";
-
-/** The table's key sets that `N` names exactly, in any order. */
-type Matching<U, N extends string> = U extends readonly [infer S, boolean]
-  ? [S] extends [N]
-    ? [N] extends [S]
-      ? U
-      : never
-    : never
-  : never;
-
-type TargetCheck<T extends Table, G> = [Matching<T["~keys"], TargetNames<G>>] extends [never]
-  ? { readonly [M in `(${JoinNames<G>}) is not a key of the table`]: never }
-  : unknown;
-
-/** A target only a partial unique index backs needs the index's predicate, or Postgres infers no arbiter. */
-type PartialOnly<T extends Table, G> = [Matching<T["~keys"], TargetNames<G>>] extends [never]
-  ? false
-  : [Matching<T["~keys"], TargetNames<G>>] extends [readonly [string, true]]
-    ? true
-    : false;
-
-export type ConflictAction<T extends Table, Marker> = {
-  doNothing(): InsertStatement<T, Marker>;
-};
-
-/** A target only a partial index backs offers `where` alone, since Postgres needs the predicate to pick it. */
-export type ConflictClause<T extends Table, G, Marker> =
-  PartialOnly<T, G> extends true
-    ? { where(pick: (columns: Refs<T>) => Predicate): ConflictAction<T, Marker> }
-    : ConflictAction<T, Marker>;
-
 /** `Marker` is `Many` for a multi-row insert, carried over to what `returning` makes. */
-export type InsertStatement<T extends Table, Marker = unknown> = Statement & {
-  /** Type-only: a plain insert reports a count, so only `client.run` takes it. */
-  readonly "~returns": "count";
+export type InsertStatement<T extends Table, Marker = unknown> = ConflictStatement<T, Marker> & {
   /** The columns of a key; Postgres picks the constraint or unique index that matches them, in any order. */
   onConflict<const G extends readonly ConflictRef<keyof T["columns"] & string>[]>(
     target: (columns: ConflictRefs<T>) => G & TargetCheck<T, G>,
-  ): ConflictClause<T, G, Marker>;
-  /** The keys of the returned object name the output columns. */
-  returning<S extends Selection>(pick: (columns: Refs<T>) => S): Query<Selected<S>> & Marker;
+  ): ConflictAction<T, Marker>;
 };
 
 function has(row: Record<string, unknown>, name: string): boolean {
@@ -106,55 +56,17 @@ function insertRows(table: Table, rows: readonly Record<string, unknown>[]): Fra
   return fragment`${target} (${columns}) values ${join(tuples, fragment`, `)}`;
 }
 
-function conflictRefsOf<T extends Table>(table: T): ConflictRefs<T> {
-  const refs = Object.fromEntries(
-    Object.keys(table.columns).map((name) => [name, { "~column": name }]),
-  );
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- prototype stub: one ref per column key.
-  return refs as unknown as ConflictRefs<T>;
-}
-
-function conflictClause(
+/** `conflict` renders the `on conflict` clause, when one follows the rows. */
+function insertStatement(
   table: Table,
   rows: readonly Record<string, unknown>[],
-  names: readonly string[],
-): never {
-  const columns = join(
-    names.map((name) => columnIdentifier(table, name)),
-    fragment`, `,
-  );
-  const action = (where: Fragment | undefined) => ({
-    doNothing: () =>
-      insertStatement(
-        table,
-        rows,
-        where === undefined
-          ? fragment`on conflict (${columns}) do nothing`
-          : fragment`on conflict (${columns}) where ${where} do nothing`,
-      ),
-  });
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- prototype stub: the type picks which half applies.
-  return {
-    ...action(undefined),
-    where: (pick: (columns: Refs<Table>) => Predicate) =>
-      action(pick(refsOf(table))["~predicate"]()),
-  } as never;
-}
-
-function insertStatement<T extends Table>(
-  table: T,
-  rows: readonly Record<string, unknown>[],
-  conflict?: Fragment,
-): InsertStatement<T> {
-  const insertInto = (target: Table, given: readonly Record<string, unknown>[]): Fragment =>
+  conflict?: () => Fragment,
+): ConflictStatement<Table, unknown> {
+  const render = (): Fragment =>
     conflict === undefined
-      ? insertRows(target, given)
-      : fragment`${insertRows(target, given)} ${conflict}`;
-  return brand<InsertStatement<T>>({
-    onConflict(target) {
-      const names = target(conflictRefsOf(table)).map((ref) => ref["~column"]);
-      return conflictClause(table, rows, names);
-    },
+      ? insertRows(table, rows)
+      : fragment`${insertRows(table, rows)} ${conflict()}`;
+  return brand<ConflictStatement<Table, unknown>>({
     returning(pick) {
       const picked = Object.entries(pick(refsOf(table)));
       if (picked.length === 0) throw new Error("returning needs at least one column");
@@ -163,16 +75,32 @@ function insertStatement<T extends Table>(
       return withDecoder(
         brand({
           toSql() {
-            return fragment`${insertInto(table, rows)} returning ${join(outputs, fragment`, `)}`.toSql();
+            return fragment`${render()} returning ${join(outputs, fragment`, `)}`.toSql();
           },
         }),
         decoderFor(table, named),
       );
     },
     toSql() {
-      return insertInto(table, rows).toSql();
+      return render().toSql();
     },
   });
+}
+
+function upsertable<T extends Table>(
+  table: T,
+  rows: readonly Record<string, unknown>[],
+): InsertStatement<T> {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- prototype: the types pick which clause applies.
+  return {
+    ...insertStatement(table, rows),
+    onConflict(target: (columns: ConflictRefs<T>) => readonly { readonly "~column": string }[]) {
+      const names = target(conflictRefsOf(table)).map((ref) => ref["~column"]);
+      return conflictAction(table, conflictTarget(table, names), (conflict) =>
+        insertStatement(table, rows, conflict),
+      );
+    },
+  } as unknown as InsertStatement<T>;
 }
 
 function check(table: Table, rows: readonly Record<string, unknown>[]): void {
@@ -199,7 +127,7 @@ export function insert<T extends Table>(
       const list: readonly Record<string, unknown>[] = Array.isArray(rows) ? rows : [rows];
       check(table, list);
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The marker exists only in types; the overloads decide it.
-      return insertStatement(table, list) as InsertStatement<T, Many>;
+      return upsertable(table, list) as InsertStatement<T, Many>;
     },
   };
 }

@@ -96,3 +96,112 @@ The wrong-target errors name the bad columns in the first line, as a property ke
 - `onConflict` stays callable after `doNothing()` in this stub. The real one drops it from the returned type.
 - Postgres accepts a predicate on a full key and a target with an expression key. The prototype refuses the first and leaves out the second.
 - The runtime never checks a target against `uniques` and `indexes`. A JavaScript caller can name any column (CODING_STANDARDS: reject unknown input by name).
+
+## Second probe: the maintainer's decisions (Q5, Q6, Q7, Q12)
+
+All four hold. Two needed a change to the obvious shape: the set check is a generic with a self-referential constraint, since excess-property checks skip a callback's returned object, and `identity()` carries its mode in the column type. tsc 7, `--pretty false`, PostgreSQL 18 in the test container.
+
+### What changed
+
+- `on-conflict.ts` holds the clause types and runtime. `insert.ts` keeps `onConflict` as one generic method.
+- `KeySet` is `readonly [columns, false | position]`: `false` for a full key, the `indexes` position for a partial unique index. `indexes` is typed `readonly [] | readonly IndexEntry[]`, so TypeScript infers a tuple and two partial indexes on one column set stay apart in the union.
+- `Column`'s `Gen` parameter widens to `boolean | "always"`. `identity<G>()` is generic, `~types` gains `generated`, and the `default()`/`identity()` gate flips to `Gen extends false`. No new type parameter, no overload.
+- `ColumnRef`'s comparisons take `Operand<V>`: a value, or any column of the same type, nullable or not. A WeakMap from ref to its SQL tells a ref from a row value at run time, so a jsonb value can't pass for a column.
+- `refsOf(table, qualifier)` prefixes columns: `excluded."name"` and `"public"."items"."version"`.
+- `sql/` gains `verbatim(text)`, which inlines the Definition's already-rendered index predicate.
+- The runtime now checks every target against the table's keys and indexes and throws, naming the columns and table, when none matches or two partial indexes do. This closes the first probe's last open point.
+
+### 1. Target predicate (Q12): holds
+
+The builder appends the predicate of the one partial unique index behind a target, through the index's remembered expression, so `casing` renames its columns. A full key on the same set wins and adds nothing.
+
+| Definition                                  | Rendered                                                    |
+| ------------------------------------------- | ----------------------------------------------------------- |
+| `(tag)` partial `where deletedAt is null`   | `on conflict ("tag") where "deleted_at" is null do nothing` |
+| `(c, d)` partial, target `[u.d, u.c]`       | `on conflict ("d", "c") where "c" is not null do nothing`   |
+| `tag` `.unique()` plus a partial on `(tag)` | `on conflict ("tag") do nothing`                            |
+| `(b, a)` for `unique (a, b)`                | `on conflict ("b", "a") do nothing`                         |
+
+Against Postgres, the partial case inserts once (`count: 1`) and skips the second insert (`count: 0`), so Postgres infers the index.
+
+Two partial unique indexes on `(tag)`, no full key:
+
+```
+error TS2322: Type 'readonly [ConflictRef<"tag">]' is not assignable to type 'readonly [ConflictRef<"tag">] & Refusal<"(tag) has several partial unique indexes and no full key">'.
+  Property '"(tag) has several partial unique indexes and no full key"' is missing in type 'readonly [ConflictRef<"tag">]' but required in type 'Refusal<"(tag) has several partial unique indexes and no full key">'.
+```
+
+The run-time twin throws `("tag") has several partial unique indexes on "public"."twice"`.
+
+Gaps: a column-level `.index()` takes no `unique` or `where` today, so only the second callback's `indexes` feeds this. The tuple inference rests on the `readonly []` member of the contextual type. A Definition that builds `indexes` as a variable typed as an array, not a tuple, should get one merged set again, so the type would stop refusing the duplicate while the runtime still does (untested).
+
+### 2. `doUpdate` (Q5): holds with a change
+
+`doUpdate((excluded) => ({ name: excluded.name, seenAt: new Date(), note: null }))` renders `do update set "name" = excluded."name", "seen_at" = $5, "note" = $6`. An `undefined` value is skipped, and a set left empty throws `doUpdate needs at least one column to set`.
+
+The first shape, an optional mapped type as the callback's return type, let `{ name: "x", nope: 1 }` and `{ tag: "y", id: 3 }` compile: TypeScript runs no excess-property check on a callback's returned object. The probe infers the object as `S` and constrains `S` against a mapped type over its own keys, which turns each bad key into a message. It still prints the column keys inline, not `Table<...>`:
+
+| Misuse                                         | tsc                                                                                                                                                                                                     |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| wrong key `{ nope: 1 }`                        | `Type 'number' is not assignable to type '"nope is not a column"'.`                                                                                                                                     |
+| wrong literal `{ name: 1 }`                    | `Type 'number' is not assignable to type 'string \| ColumnOf<string> \| undefined'.`                                                                                                                    |
+| `name: excluded.version`                       | `Type 'ColumnRef<number>' is not assignable to type 'string \| ColumnOf<string> \| undefined'.` then `Types of property '"~value"' are incompatible. Type 'number' is not assignable to type 'string'.` |
+| identity always `{ id: 3 }`                    | `Type 'number' is not assignable to type '"id is an identity always column, which Postgres won't update"'.`                                                                                             |
+| `{ name: null }` on NOT NULL                   | `Type 'null' is not assignable to type 'string \| ColumnOf<string> \| undefined'.`                                                                                                                      |
+| `name: excluded.note` (nullable into NOT NULL) | as the excluded-ref row, ending `Type 'null' is not assignable to type 'string'.`                                                                                                                       |
+
+Each error points at the offending property. A NOT NULL excluded ref into a nullable column passes. A string literal equal to a refusal message would pass the type, and the runtime refusals still apply.
+
+Cost of identity: `Gen` widens rather than a tenth parameter, so the change is one generic method and a flipped gate. `NewRow` still requires an identity column's value on insert, a separate gap, so the Postgres run uses a table without one.
+
+### 3. `DO UPDATE ... WHERE` (Q6): holds
+
+`.where((existing, excluded) => excluded.version.gt(existing.version)).where((existing) => existing.note.isNull())` renders:
+
+```
+... do update set "name" = excluded."name", "version" = excluded."version" where (excluded."version" > "public"."items"."version" and "public"."items"."note" is null)
+```
+
+Postgres rejects the unqualified form, `where excluded.v > v`, with `column reference "v" is ambiguous`, so the existing row's columns carry the schema-qualified table name. Against Postgres, versions 1, 2, then 1 return `[{one, 1}]`, `[{two, 2}]`, then `[]`. The comparisons gained a column operand for this, which every `where` now shares.
+
+### 4. `~maybe` (Q7): holds
+
+`doNothing()` and `doUpdate(...).where(...)` add `Maybe`, carried through `returning`. A bare `doUpdate` keeps the insert's marker: `client.one` takes it after `values(row)` and refuses it after `values([...])` through `~many`. `client.all` takes them all. The marker's value is the message:
+
+```
+error TS2345: Argument of type 'Statement & { readonly "~returns": "rows"; readonly "~row": Selected<{ sku: ColumnRef<string>; }>; } & Maybe' is not assignable to parameter of type 'Statement & { ... } & { readonly "~many"?: never; readonly "~maybe"?: never; }'.
+  ...
+    Types of property '"~maybe"' are incompatible.
+      Type '"on conflict may skip the row; run it with client.all"' is not assignable to type 'never'.
+```
+
+The last line reads as a missing-row problem. The first line prints the query type, which grows with the selection, as the existing `~many` refusal does.
+
+### 5. Chain order: the shape prevents it
+
+`doNothing()` returns `ConflictStatement` (`returning`, `toSql`), and `doUpdate()` returns `UpdateStatement` (adds `where`). Neither has `onConflict` or `doUpdate`, so a second clause is absent:
+
+```
+error TS2339: Property 'onConflict' does not exist on type 'ConflictStatement<Table<{ sku: Column<string, true, ...>; ... }, never, readonly [...]>, Maybe>'.
+```
+
+That error prints the `Table<...>` wall. `where` after `doNothing()` fails the same way. A real version could give each a message key, as #656 asks.
+
+### Cost (against the first probe's head, 9844ee9)
+
+| Measure                          | 9844ee9                | This probe     | Delta        |
+| -------------------------------- | ---------------------- | -------------- | ------------ |
+| Types, with probe tests          | 190,636                | 193,141        | +1.3%        |
+| Instantiations, with probe tests | 431,157                | 439,844        | +2.0%        |
+| Types, without probe tests       | 187,682 (first README) | 188,351        | +0.4%        |
+| Instantiations, without          | 421,164 (first README) | 423,668        | +0.6%        |
+| Check time, 3 runs               | 0.25 to 0.31 s         | 0.28 to 0.33 s | within noise |
+
+`pnpm test`: 282 files, 3068 tests pass. `pnpm run check:static` passes.
+
+### Open for the real design
+
+- The set and target refusals print as `Refusal<...>` and template-literal types. Spelling out `Refusal` would drop one alias from the first line.
+- `operandOf` widens every comparison to take a column. That also opens joins and column-to-column filters, so it needs its own decision rather than riding in with upsert.
+- `NewRow` should let an identity or default column be left out (#657's territory).
+- `Statement` errors from the chain-order mistakes print the table type; message keys would fix it.

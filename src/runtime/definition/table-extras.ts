@@ -39,7 +39,8 @@ type TableExtras<C extends Columns> = {
   readonly name?: string;
   readonly unique?: readonly UniqueEntry<C>[];
   readonly foreignKeys?: ForeignKeyEntries<C>;
-  readonly indexes?: readonly IndexEntry<OwnRef<C>>[];
+  /** The empty tuple makes TypeScript infer a tuple, so two partial indexes on one column set stay apart. */
+  readonly indexes?: readonly [] | readonly IndexEntry<OwnRef<C>>[];
 } & ([KeyedColumns<C>] extends [never]
   ? { readonly primaryKey?: KeyEntry<C> }
   : { readonly primaryKey?: never });
@@ -67,9 +68,10 @@ export type KeyOf<C extends Columns, Args extends unknown[]> = Args extends [
 
 /**
  * One column set a conflict target may name: the column keys as a union, since Postgres infers the
- * arbiter regardless of order, and whether only a partial unique index backs it.
+ * arbiter regardless of order, and `false` for a full key or the position of the partial unique
+ * index behind it, which keeps two partial indexes on one column set from merging into one.
  */
-export type KeySet = readonly [columns: string, partial: boolean];
+export type KeySet = readonly [columns: string, partial: false | string];
 
 type ReturnOf<Args extends unknown[]> = Args extends [(t: never) => infer R] ? R : unknown;
 
@@ -97,15 +99,19 @@ type HasExpression<C extends Columns, Keys extends readonly unknown[]> = [
   ? false
   : true;
 
-type IndexSets<C extends Columns, R> = R extends { readonly indexes: readonly (infer Entry)[] }
-  ? Entry extends { readonly unique: true; readonly columns: infer Keys extends readonly unknown[] }
-    ? HasExpression<C, Keys> extends true
-      ? never
-      : readonly [
-          KeyNameOf<C, Keys[number]>,
-          Entry extends { readonly where: object } ? true : false,
-        ]
-    : never
+type IndexSet<C extends Columns, Entry, At> = Entry extends {
+  readonly unique: true;
+  readonly columns: infer Keys extends readonly unknown[];
+}
+  ? HasExpression<C, Keys> extends true
+    ? never
+    : readonly [KeyNameOf<C, Keys[number]>, Entry extends { readonly where: object } ? At : false]
+  : never;
+
+type IndexSets<C extends Columns, R> = R extends {
+  readonly indexes: infer List extends readonly unknown[];
+}
+  ? { [At in keyof List]: IndexSet<C, List[At], At> }[number]
   : never;
 
 /** Every column set the table declares unique, as `KeySet`s. */

@@ -5,7 +5,7 @@ import type { Query, Statement } from "./from.ts";
 export type Client = {
   all<R>(query: Query<R>): Promise<R[]>;
   /** Rejects unless the query returns exactly one row. */
-  one<R>(query: Query<R> & { readonly "~many"?: never }): Promise<R>;
+  one<R>(query: Query<R> & { readonly "~many"?: never; readonly "~maybe"?: never }): Promise<R>;
   /** Runs any statement and reports how many rows it returned or changed. */
   run(statement: Statement): Promise<{ count: number }>;
 };
@@ -22,7 +22,9 @@ export function createClient(queryable: Queryable): Client {
 
   return {
     all,
-    async one<R>(query: Query<R> & { readonly "~many"?: never }): Promise<R> {
+    async one<R>(
+      query: Query<R> & { readonly "~many"?: never; readonly "~maybe"?: never },
+    ): Promise<R> {
       const rows = await all(query);
       const row = rows.length === 1 ? rows[0] : undefined;
       if (row === undefined) {

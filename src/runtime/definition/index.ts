@@ -12,6 +12,7 @@ export { defineTable } from "./definition.ts";
 export { defineEnum, isEnum } from "./enum.ts";
 export type { Casing, DatabaseOptions } from "./casing.ts";
 export { sqlDefinition } from "./sql-definition.ts";
+export { renamedExpression } from "./index-expressions.ts";
 export type { SqlDefinition } from "./sql-definition.ts";
 export { defineDomain } from "./define-domain.ts";
 export type { BaseFactories, DomainOptions } from "./define-domain.ts";

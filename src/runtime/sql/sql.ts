@@ -63,6 +63,11 @@ export function identifier(name: string): Fragment {
   return new Fragment([quoteIdentifier(name)], []);
 }
 
+/** Text the Definition already rendered, such as a partial index predicate; never user input. */
+export function verbatim(text: string): Fragment {
+  return new Fragment([text], []);
+}
+
 export function join(fragments: readonly Fragment[], separator: Fragment): Fragment {
   const values = fragments.flatMap((piece, index) => (index === 0 ? [piece] : [separator, piece]));
   return new Fragment(["", ...values.map(() => "")], values);

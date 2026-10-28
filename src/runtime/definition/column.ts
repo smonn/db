@@ -49,7 +49,7 @@ export type Column<
   V,
   N extends boolean = false,
   Int extends boolean = false,
-  Gen extends boolean = false,
+  Gen extends boolean | "always" = false,
   Pk extends boolean = false,
   Key extends boolean = false,
   Co extends boolean = false,
@@ -65,6 +65,8 @@ export type Column<
     readonly notNull: N;
     readonly primaryKey: Pk;
     readonly key: Key;
+    /** `"always"` for an `identity("always")` column, which Postgres refuses to update. */
+    readonly generated: Gen;
   };
   notNull(): Column<V, true, Int, Gen, Pk, Key, Co, Fk, false>;
   /**
@@ -124,17 +126,19 @@ export type Column<
           options?: ForeignKeyOptions,
         ): Column<V, N, Int, Gen, Pk, Key, Co, true, false>;
       }) &
-  (Gen extends true
-    ? unknown
-    : {
+  (Gen extends false
+    ? {
         /** Takes a SQL expression, such as `now()`; a string literal needs its quotes (`"'new'"`). */
         default(expression: string): Column<V, N, Int, true, Pk, Key, Co, Fk, false>;
       } & (Int extends true
         ? {
             /** Generates the value from a sequence. */
-            identity(generated?: Identity): Column<V, true, Int, true, Pk, Key, Co, Fk, false>;
+            identity<G extends Identity = "by default">(
+              generated?: G,
+            ): Column<V, true, Int, G extends "always" ? "always" : true, Pk, Key, Co, Fk, false>;
           }
-        : unknown));
+        : unknown)
+    : unknown);
 
 /** A column of any kind, which is all a table needs to read. */
 type AnyColumn = {
@@ -145,6 +149,7 @@ type AnyColumn = {
     readonly notNull: boolean;
     readonly primaryKey: boolean;
     readonly key: boolean;
+    readonly generated: boolean | "always";
   };
 };
 
@@ -152,7 +157,7 @@ export function column<
   V,
   N extends boolean,
   Int extends boolean,
-  Gen extends boolean,
+  Gen extends boolean | "always",
   Pk extends boolean,
   Key extends boolean,
   Co extends boolean,

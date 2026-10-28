@@ -12,11 +12,11 @@ export type {
   Statement,
 } from "./from.ts";
 export { insert } from "./insert.ts";
+export type { InsertStatement, NewRow } from "./insert.ts";
 export type {
   ConflictAction,
-  ConflictClause,
   ConflictRefs,
-  InsertStatement,
-  NewRow,
-} from "./insert.ts";
+  ConflictStatement,
+  UpdateStatement,
+} from "./on-conflict.ts";
 export { sql } from "./sql.ts";

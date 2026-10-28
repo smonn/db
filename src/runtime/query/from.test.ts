@@ -1,6 +1,16 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineDatabase, defineTable } from "../definition/index.ts";
-import { and, from, not, or, renderOutput, type Predicate, type Query, type Refs } from "./from.ts";
+import {
+  and,
+  from,
+  not,
+  or,
+  renderOutput,
+  type Operand,
+  type Predicate,
+  type Query,
+  type Refs,
+} from "./from.ts";
 
 const db = defineDatabase({
   public: {
@@ -163,10 +173,10 @@ describe("where", () => {
     >();
   });
 
-  it("compares a column only with its own value type, never null", () => {
+  it("compares a column only with its own value type, or a column of it, never null", () => {
     type UserRefs = Refs<typeof db.public.users>;
-    expectTypeOf<Parameters<UserRefs["id"]["eq"]>>().toEqualTypeOf<[value: string]>();
-    expectTypeOf<Parameters<UserRefs["email"]["eq"]>>().toEqualTypeOf<[value: string]>();
+    expectTypeOf<Parameters<UserRefs["id"]["eq"]>>().toEqualTypeOf<[value: Operand<string>]>();
+    expectTypeOf<Parameters<UserRefs["email"]["eq"]>>().toEqualTypeOf<[value: Operand<string>]>();
   });
 });
 
