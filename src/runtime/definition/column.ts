@@ -6,6 +6,9 @@ import type { ColumnReference, ForeignKeyOptions, Target } from "./references.ts
 
 type Identity = "always" | "by default";
 
+/** PROBE (#657): `true` for a default, the identity mode for an identity, `false` for neither. */
+export type Generated = boolean | Identity;
+
 export type ColumnState = {
   /** Empty for an enum or domain column, whose type is `enumType` or `domainType`. */
   readonly sqlType: string;
@@ -49,7 +52,7 @@ export type Column<
   V,
   N extends boolean = false,
   Int extends boolean = false,
-  Gen extends boolean = false,
+  Gen extends Generated = false,
   Pk extends boolean = false,
   Key extends boolean = false,
   Co extends boolean = false,
@@ -65,6 +68,7 @@ export type Column<
     readonly notNull: N;
     readonly primaryKey: Pk;
     readonly key: Key;
+    readonly generated: Gen;
   };
   notNull(): Column<V, true, Int, Gen, Pk, Key, Co, Fk, false>;
   /**
@@ -124,17 +128,19 @@ export type Column<
           options?: ForeignKeyOptions,
         ): Column<V, N, Int, Gen, Pk, Key, Co, true, false>;
       }) &
-  (Gen extends true
-    ? unknown
-    : {
+  (Gen extends false
+    ? {
         /** Takes a SQL expression, such as `now()`; a string literal needs its quotes (`"'new'"`). */
         default(expression: string): Column<V, N, Int, true, Pk, Key, Co, Fk, false>;
       } & (Int extends true
         ? {
             /** Generates the value from a sequence. */
-            identity(generated?: Identity): Column<V, true, Int, true, Pk, Key, Co, Fk, false>;
+            identity<G extends Identity = "by default">(
+              generated?: G,
+            ): Column<V, true, Int, G, Pk, Key, Co, Fk, false>;
           }
-        : unknown));
+        : unknown)
+    : unknown);
 
 /** A column of any kind, which is all a table needs to read. */
 type AnyColumn = {
@@ -145,6 +151,7 @@ type AnyColumn = {
     readonly notNull: boolean;
     readonly primaryKey: boolean;
     readonly key: boolean;
+    readonly generated: Generated;
   };
 };
 
@@ -152,7 +159,7 @@ export function column<
   V,
   N extends boolean,
   Int extends boolean,
-  Gen extends boolean,
+  Gen extends Generated,
   Pk extends boolean,
   Key extends boolean,
   Co extends boolean,
