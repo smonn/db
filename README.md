@@ -124,7 +124,7 @@ Results go to stdout and errors to stderr, as plain text with no colors. `genera
 
 `defineEnum` and `defineDomain` declare a Postgres type. Each sits in a schema's object beside the tables and takes its SQL name from its key. A column uses it through `c.enum(...)` or `c.domain(...)`, and the row type follows:
 
-```ts
+```ts file=db/enums.ts
 import { defineDatabase, defineDomain, defineEnum, defineTable } from "@smonn/db";
 
 const mood = defineEnum(["sad", "ok", "good"]);
@@ -158,7 +158,7 @@ hint: column "public"."users"."full_name" may be a rename of "name": add .rename
 
 Add the marker it names. A column takes `.renamedFrom("old_name")`:
 
-```ts
+```ts wrap=table
 users: defineTable((c) => ({
   id: c.text().notNull(),
   full_name: c.text().renamedFrom("name"),
@@ -167,7 +167,7 @@ users: defineTable((c) => ({
 
 A table takes `renamedFrom: "old_name"` in its second callback:
 
-```ts
+```ts wrap=table
 people: defineTable(
   (c) => ({ id: c.text().notNull(), name: c.text() }),
   () => ({ renamedFrom: "users" }),
@@ -176,7 +176,7 @@ people: defineTable(
 
 An enum and a domain take the same marker in their options, and an enum also takes `renamedLabels`, keyed new label to old. Without it, a renamed label is a type swap that rewrites every table using the enum, and `generate` prints a hint naming the entry to add when an enum removes one label and adds one at the same position. A domain check renames on its own when its expression stays the same.
 
-```ts
+```ts wrap=type
 mood: defineEnum(["great", "bad"], {
   renamedFrom: "old_mood",
   renamedLabels: { great: "good" },
@@ -198,7 +198,7 @@ Remove the marker once you have run `commit`, or leave it: from then on the Comm
 
 A key is its SQL name by default. Pass `casing` to map schema, table, column, enum, and domain keys to snake_case:
 
-```ts
+```ts wrap=module
 export default defineDatabase(
   { public: { userAccounts: defineTable((c) => ({ userId: c.text().primaryKey() })) } },
   { casing: "snake_case" },
@@ -211,7 +211,7 @@ Builder queries return rows keyed by your keys. Raw `sql` returns the SQL names 
 
 Turning casing on for an existing database renames every name it changes, so each one needs a `renamedFrom` marker with its old SQL name. Without them, `generate` drops and recreates each table and column:
 
-```ts
+```ts wrap=table
 userAccounts: defineTable(
   (c) => ({ userId: c.text().primaryKey().renamedFrom("userId") }),
   () => ({ renamedFrom: "userAccounts" }),
