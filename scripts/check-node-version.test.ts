@@ -9,10 +9,16 @@ function lockfile(specifier: string, version: string, keys: string[] = [version]
   return `importers:\n\n  .:\n    devDependencies:\n      node:\n        specifier: ${specifier}\n        version: ${version}\n\npackages:\n\n${packages}`;
 }
 
+const node24 = { name: "node", version: "^24.22.1" };
+
+function packageJson(runtime: unknown = node24, types = "^24.19.2"): string {
+  return JSON.stringify({ devEngines: { runtime }, devDependencies: { "@types/node": types } });
+}
+
 function sources(overrides: Partial<NodeVersionSources> = {}): NodeVersionSources {
   return {
     toolVersions: "nodejs 24.22.1\n",
-    packageJson: JSON.stringify({ devEngines: { runtime: { name: "node", version: "^24.22.1" } } }),
+    packageJson: packageJson(),
     lockfile: lockfile("runtime:^24.22.1", "runtime:24.22.1", ["24.22.1"]),
     ...overrides,
   };
@@ -24,22 +30,42 @@ describe("checkNodeVersion", () => {
   });
 
   test("accepts devEngines.runtime as an array", () => {
-    const packageJson = JSON.stringify({
-      devEngines: { runtime: [{ name: "node", version: "^24.22.1" }] },
-    });
-    expect(checkNodeVersion(sources({ packageJson }))).toEqual([]);
+    const pkg = packageJson([{ name: "node", version: "^24.22.1" }]);
+    expect(checkNodeVersion(sources({ packageJson: pkg }))).toEqual([]);
   });
 
   test("finds the node entry after a non-node entry in the array", () => {
-    const packageJson = JSON.stringify({
-      devEngines: {
-        runtime: [
-          { name: "bun", version: "1" },
-          { name: "node", version: "^24.22.1" },
-        ],
-      },
-    });
-    expect(checkNodeVersion(sources({ packageJson }))).toEqual([]);
+    const pkg = packageJson([
+      { name: "bun", version: "1" },
+      { name: "node", version: "^24.22.1" },
+    ]);
+    expect(checkNodeVersion(sources({ packageJson: pkg }))).toEqual([]);
+  });
+
+  test.each(["24", "~24.0.0", "24.x"])("accepts @types/node %s on Node 24", (types) => {
+    const pkg = packageJson(undefined, types);
+    expect(checkNodeVersion(sources({ packageJson: pkg }))).toEqual([]);
+  });
+
+  test("flags an @types/node major that differs from .tool-versions", () => {
+    const pkg = packageJson(undefined, "^26.0.0");
+    expect(checkNodeVersion(sources({ packageJson: pkg }))).toEqual([
+      "package.json @types/node is ^26.0.0, expected major 24 (.tool-versions)",
+    ]);
+  });
+
+  test("flags an @types/node with no leading major", () => {
+    const pkg = packageJson(undefined, "npm:@types/node@24.0.0");
+    expect(checkNodeVersion(sources({ packageJson: pkg }))).toEqual([
+      "package.json @types/node is npm:@types/node@24.0.0, expected major 24 (.tool-versions)",
+    ]);
+  });
+
+  test("flags an @types/node major that only prefixes the runtime major", () => {
+    const pkg = packageJson(undefined, "^2.0.0");
+    expect(checkNodeVersion(sources({ packageJson: pkg }))).toEqual([
+      "package.json @types/node is ^2.0.0, expected major 24 (.tool-versions)",
+    ]);
   });
 
   test("flags an asdf version that differs from the lockfile", () => {
@@ -51,10 +77,8 @@ describe("checkNodeVersion", () => {
   });
 
   test("flags a lockfile specifier that differs from devEngines", () => {
-    const packageJson = JSON.stringify({
-      devEngines: { runtime: { name: "node", version: "^24" } },
-    });
-    expect(checkNodeVersion(sources({ packageJson }))).toEqual([
+    const pkg = packageJson({ name: "node", version: "^24" });
+    expect(checkNodeVersion(sources({ packageJson: pkg }))).toEqual([
       "pnpm-lock.yaml node specifier is runtime:^24.22.1, expected runtime:^24 (devEngines.runtime)",
     ]);
   });
@@ -104,7 +128,7 @@ describe("main", () => {
   });
 
   test("prints each problem and sets exit code 1", () => {
-    setup(sources({ toolVersions: "nodejs 25.0.0\n" }));
+    setup(sources({ toolVersions: "nodejs 24.22.2\n" }));
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     main(dir);
     expect(error).toHaveBeenCalledTimes(2);

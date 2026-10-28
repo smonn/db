@@ -35,6 +35,11 @@
       "groupName": "Node.js runtime"
     },
     {
+      "description": "@types/node stays on the runtime's major, which scripts/check-node-version.ts enforces. Raise the cap in the PR that moves the Node.js runtime to a new major.",
+      "matchDepNames": ["@types/node"],
+      "allowedVersions": "<25"
+    },
+    {
       "matchDepTypes": ["devDependencies"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "devDependencies (non-major)"
