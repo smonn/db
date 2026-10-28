@@ -73,6 +73,8 @@ function escapeRegExp(text: string): string {
   return text.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
+const withoutCodeSpans = (line: string): string => line.replaceAll(/`[^`]*`/gu, "code");
+
 export function checkAvoidTerms(file: string, text: string, entries: GlossaryEntry[]): Problem[] {
   const rules = entries.flatMap((entry) =>
     entry.avoid.map((term) => ({
@@ -83,11 +85,12 @@ export function checkAvoidTerms(file: string, text: string, entries: GlossaryEnt
   );
   return text.split("\n").flatMap((line, index) => {
     const lineNumber = index + 1;
+    const prose = withoutCodeSpans(line);
     return rules
       .filter(({ entry, pattern }) => {
         const inOwnEntry =
           file === "GLOSSARY.md" && lineNumber >= entry.startLine && lineNumber <= entry.endLine;
-        return !inOwnEntry && pattern.test(line);
+        return !inOwnEntry && pattern.test(prose);
       })
       .map(({ entry, term }) => ({
         file,
@@ -101,7 +104,7 @@ export function checkAvoidTerms(file: string, text: string, entries: GlossaryEnt
 export function checkHeadwordCase(file: string, text: string, entries: GlossaryEntry[]): Problem[] {
   const headwords = entries.map((entry) => entry.headword).filter((word) => word.includes(" "));
   return text.split("\n").flatMap((line, index) => {
-    const prose = line.replaceAll(/`[^`]*`/gu, "code");
+    const prose = withoutCodeSpans(line);
     return headwords.flatMap((headword) =>
       [...prose.matchAll(new RegExp(`\\b${escapeRegExp(headword)}(?=(?:s|es)?\\b)`, "giu"))]
         .map(([variant]) => variant)
