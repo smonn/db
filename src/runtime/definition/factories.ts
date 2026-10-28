@@ -4,8 +4,8 @@ import type { Enum } from "./enum.ts";
 
 export type ColumnFactories = {
   /** `T` narrows the TypeScript type only, like `jsonb<T>()`: the catalog and the database never see it. */
-  readonly text: <T extends string = string>() => Column<T>;
-  readonly varchar: <T extends string = string>(length: number) => Column<T>;
+  readonly text: <T extends string = string>() => Column<T, false, false, true>;
+  readonly varchar: <T extends string = string>(length: number) => Column<T, false, false, true>;
   readonly smallint: () => Column<number, false, true>;
   readonly integer: () => Column<number, false, true>;
   readonly bigint: () => Column<bigint, false, true>;
@@ -23,14 +23,21 @@ export type ColumnFactories = {
   /** An enum from the same Database, rolled up under a schema beside the tables. */
   readonly enum: <L extends readonly string[]>(type: Enum<L>) => Column<L[number]>;
   /** A domain from the same Database; a NOT NULL one makes the column non-null in `Row`. */
-  readonly domain: <V, N extends boolean>(type: Domain<V, N>) => Column<V, N>;
+  readonly domain: <V, N extends boolean, Text extends boolean>(
+    type: Domain<V, N, Text>,
+  ) => Column<V, N, false, Text>;
 };
 
-function of<V, Int extends boolean = false, N extends boolean = false>(
+function of<
+  V,
+  Int extends boolean = false,
+  N extends boolean = false,
+  Text extends boolean = false,
+>(
   sqlType: string,
   named: { readonly enumType?: Enum; readonly domainType?: Domain } = {},
-): Column<V, N, Int> {
-  return column<V, N, Int, false, false, false, false, false, true>({
+): Column<V, N, Int, Text> {
+  return column<V, N, Int, Text, false, false, false, false, false, true>({
     sqlType,
     enumType: named.enumType,
     domainType: named.domainType,

@@ -2,6 +2,23 @@ import type { Row, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment, type RenderedSql } from "../sql/index.ts";
 import { isTextArray } from "./array-text.ts";
 import { decoderFor, encodeValue, withDecoder } from "./codecs.ts";
+import {
+  arrayMethods,
+  countOf,
+  orderingMethods,
+  orderingsOf,
+  renderOrderBy,
+  renderPaging,
+  setMethods,
+  textMethods,
+  type ArrayMethods,
+  type Ordering,
+  type OrderingMethods,
+  type OrderTerm,
+  type SetMethods,
+  type TextMethods,
+  type TextOf,
+} from "./probe-order.ts";
 
 export type Statement = {
   toSql(): RenderedSql;
@@ -35,7 +52,7 @@ type SelectableColumn<V> = {
   readonly "~value"?: V;
 };
 
-export type ColumnRef<V> = SelectableColumn<V> &
+export type ColumnRef<V, Text extends boolean = false> = SelectableColumn<V> &
   (null extends V ? NullChecks : unknown) & {
     eq(value: NonNullable<V>): Predicate;
     ne(value: NonNullable<V>): Predicate;
@@ -43,10 +60,13 @@ export type ColumnRef<V> = SelectableColumn<V> &
     gte(value: NonNullable<V>): Predicate;
     lt(value: NonNullable<V>): Predicate;
     lte(value: NonNullable<V>): Predicate;
-  };
+  } & OrderingMethods<V> &
+  SetMethods<V> &
+  (Text extends true ? TextMethods : unknown) &
+  ArrayMethods<V>;
 
 export type Refs<T extends Table> = {
-  readonly [K in keyof Row<T> & string]: ColumnRef<Row<T>[K]>;
+  readonly [K in keyof Row<T> & string]: ColumnRef<Row<T>[K], TextOf<T["columns"][K]>>;
 };
 
 export type Selection = Record<string, SelectableColumn<unknown>>;
@@ -60,6 +80,10 @@ export type SelectQuery<T extends Table, R> = Query<R> & {
   select<S extends Selection>(pick: (columns: Refs<T>) => S): SelectQuery<T, Selected<S>>;
   /** Combines with any earlier `where` using `and`. */
   where(pick: (columns: Refs<T>) => Predicate): SelectQuery<T, R>;
+  /** A bare column means ascending. Appends to any earlier `orderBy`. */
+  orderBy(pick: (columns: Refs<T>) => OrderTerm | readonly OrderTerm[]): SelectQuery<T, R>;
+  limit(count: number): SelectQuery<T, R>;
+  offset(count: number): SelectQuery<T, R>;
 };
 
 type Output = readonly [alias: string, column: string];
@@ -67,17 +91,24 @@ type Output = readonly [alias: string, column: string];
 type State = {
   readonly outputs: readonly Output[];
   readonly predicate?: Predicate;
+  readonly orderings?: readonly Ordering[];
+  readonly limit?: number;
+  readonly offset?: number;
 };
 
 /** Built when the statement renders, so a codec that throws rejects the query instead of the builder. */
 const predicate = (piece: () => Fragment): Predicate => ({ "~predicate": piece });
 
-function refOf(table: Table, name: string): ColumnRef<string | null> {
+function refOf(table: Table, name: string): ColumnRef<string | null, true> {
   const column = columnIdentifier(table, name);
   const compare = (operator: Fragment, value: unknown) =>
     predicate(() => fragment`${column} ${operator} ${encodeValue(table, name, value)}`);
   return {
     name,
+    ...orderingMethods(column),
+    ...setMethods(table, name, column),
+    ...textMethods(column),
+    ...arrayMethods(table, name, column),
     eq: (value) => compare(fragment`=`, value),
     ne: (value) => compare(fragment`<>`, value),
     gt: (value) => compare(fragment`>`, value),
@@ -156,6 +187,16 @@ function selectQuery<T extends Table, R>(table: T, state: State): SelectQuery<T,
         predicate: state.predicate ? and(state.predicate, next) : next,
       });
     },
+    orderBy(pick) {
+      const orderings = [...(state.orderings ?? []), ...orderingsOf(pick(refsOf(table)))];
+      return selectQuery(table, { ...state, orderings });
+    },
+    limit(count) {
+      return selectQuery(table, { ...state, limit: countOf("limit", count) });
+    },
+    offset(count) {
+      return selectQuery(table, { ...state, offset: countOf("offset", count) });
+    },
     toSql() {
       const columns = join(
         state.outputs.map((output) => renderOutput(table, output)),
@@ -164,7 +205,8 @@ function selectQuery<T extends Table, R>(table: T, state: State): SelectQuery<T,
       const filter = state.predicate
         ? fragment` where ${state.predicate["~predicate"]()}`
         : fragment``;
-      return fragment`select ${columns} from ${identifier(table.schema)}.${identifier(table.name)}${filter}`.toSql();
+      const tail = fragment`${renderOrderBy(state.orderings ?? [])}${renderPaging(state.limit, state.offset)}`;
+      return fragment`select ${columns} from ${identifier(table.schema)}.${identifier(table.name)}${filter}${tail}`.toSql();
     },
   });
   return withDecoder(query, decoderFor(table, state.outputs));
