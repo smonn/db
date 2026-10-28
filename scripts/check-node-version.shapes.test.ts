@@ -5,7 +5,13 @@ function lockfile(specifier: string, version: string): string {
   return `importers:\n\n  .:\n    devDependencies:\n      node:\n        specifier: ${specifier}\n        version: ${version}\n\npackages:\n\n  node@runtime:24.22.1:\n    hasBin: true\n`;
 }
 
-const runtime = (value: unknown): string => JSON.stringify({ devEngines: { runtime: value } });
+const runtime = (value: unknown): string =>
+  JSON.stringify({
+    devEngines: { runtime: value },
+    devDependencies: { "@types/node": "^24.19.2" },
+  });
+
+const node24 = { devEngines: { runtime: { name: "node", version: "^24.22.1" } } };
 
 function sources(overrides: Partial<NodeVersionSources> = {}): NodeVersionSources {
   return {
@@ -35,6 +41,16 @@ describe("checkNodeVersion package.json shapes", () => {
   test("skips a null entry in the runtime list", () => {
     const packageJson = runtime([null, { name: "node", version: "^24.22.1" }]);
     expect(checkNodeVersion(sources({ packageJson }))).toEqual([]);
+  });
+
+  test.each([
+    ["no devDependencies", node24],
+    ["devDependencies of null", { ...node24, devDependencies: null }],
+    ["an @types/node of a number", { ...node24, devDependencies: { "@types/node": 24 } }],
+  ])("names a missing @types/node for %s", (_name, pkg) => {
+    expect(checkNodeVersion(sources({ packageJson: JSON.stringify(pkg) }))).toEqual([
+      "package.json devDependencies has no @types/node",
+    ]);
   });
 
   test("names package.json when it is not JSON", () => {

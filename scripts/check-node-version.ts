@@ -6,7 +6,8 @@
  * does no semver: if `.tool-versions` and the lockfile are bumped together to a version outside
  * `devEngines.runtime` (25.0.0 against `^24.22.1`), it passes, because a frozen install checks
  * specifiers, not whether the resolved version satisfies them. Accepted to avoid a semver dependency.
- * Prints each problem and exits 1.
+ * It also holds the `@types/node` major in package.json to the `.tool-versions` major, so the types
+ * never describe a newer Node major than the one that runs. Prints each problem and exits 1.
  *
  * Run from the repo root with `pnpm check:node-version`; CI runs it in the Lint job.
  */
@@ -40,6 +41,21 @@ function nodeRange(pkg: unknown): string | undefined {
   return undefined;
 }
 
+function typesNode(pkg: unknown): unknown {
+  return isRecord(pkg) && isRecord(pkg["devDependencies"])
+    ? pkg["devDependencies"]["@types/node"]
+    : undefined;
+}
+
+const major = (version: string): string | undefined => /^[\^~]?(\d+)/u.exec(version)?.[1];
+
+function typesProblems(types: string, asdf: string): string[] {
+  const expected = major(asdf);
+  return major(types) === expected
+    ? []
+    : [`package.json @types/node is ${types}, expected major ${expected} (.tool-versions)`];
+}
+
 function importerProblems(importer: RegExpExecArray, range: string, asdf: string): string[] {
   const problems: string[] = [];
   if (importer[1] !== `runtime:${range}`)
@@ -67,13 +83,18 @@ export function checkNodeVersion(sources: NodeVersionSources): string[] {
   const asdf = /^nodejs[ \t]+(\S+)[ \t]*$/mu.exec(sources.toolVersions)?.[1];
   if (asdf === undefined) return [".tool-versions has no nodejs entry"];
 
-  const range = nodeRange(parseJson(sources.packageJson, "package.json"));
+  const pkg = parseJson(sources.packageJson, "package.json");
+  const range = nodeRange(pkg);
   if (range === undefined) return ["package.json devEngines.runtime has no node version"];
+
+  const types = typesNode(pkg);
+  if (typeof types !== "string") return ["package.json devDependencies has no @types/node"];
 
   const importer = /^ {6}node:\n {8}specifier: (\S+)\n {8}version: (\S+)$/mu.exec(sources.lockfile);
   if (importer === null) return ["pnpm-lock.yaml has no node runtime importer entry"];
 
   return [
+    ...typesProblems(types, asdf),
     ...importerProblems(importer, range, asdf),
     ...runtimeKeyProblems(sources.lockfile, asdf),
   ];
