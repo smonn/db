@@ -18,6 +18,8 @@ pre-commit:
       run: pnpm run fta
     - name: import cycles
       run: pnpm run check:imports
+    - name: knip
+      run: pnpm run knip
 
 pre-push:
   parallel: true
