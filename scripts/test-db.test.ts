@@ -117,7 +117,9 @@ describe("main", () => {
     ]);
     expect(docker.mock.calls[1]?.[2].cwd).toBe(root);
     expect(docker.mock.calls[1]?.[2].encoding).toBe("utf8");
-    expect(console.log).toHaveBeenCalledWith(`${name} is on port 32768; wrote .env.test`);
+    expect(console.log).toHaveBeenCalledWith(
+      `Container ${name}-postgres-1 is on port 32768; wrote .env.test`,
+    );
     expect(docker.mock.calls[1]?.[2].env?.["POSTGRES_PORT"]).toBe("0");
     expect(readFileSync(envFile(), "utf8")).toBe(
       "DATABASE_URL=postgres://postgres:postgres@localhost:32768/postgres\n",
