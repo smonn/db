@@ -40,6 +40,15 @@ describe("fragment", () => {
     const inner = fragment`${1}${2}`;
     expect(fragment`(${inner})`.toSql()).toStrictEqual({ text: "($1$2)", params: [1, 2] });
   });
+
+  it("gives each occurrence of a reused fragment its own params", () => {
+    const expr = fragment`coalesce(id, ${0})`;
+    const built = fragment`${"a"} ${expr} ${"b"} ${expr} ${"c"}`;
+    expect(built.toSql()).toStrictEqual({
+      text: "$1 coalesce(id, $2) $3 coalesce(id, $4) $5",
+      params: ["a", 0, "b", 0, "c"],
+    });
+  });
 });
 
 describe("identifier", () => {
@@ -56,6 +65,17 @@ describe("join", () => {
   it("puts the separator between fragments", () => {
     const built = join([fragment`${1}`, identifier("b"), fragment`${2}`], fragment`, `);
     expect(built.toSql()).toStrictEqual({ text: '$1, "b", $2', params: [1, 2] });
+  });
+
+  it("binds a separator's params at each occurrence", () => {
+    const built = join(
+      [fragment`${1}`, fragment`${2}`, fragment`${3}`],
+      fragment` or x = ${9} or `,
+    );
+    expect(built.toSql()).toStrictEqual({
+      text: "$1 or x = $2 or $3 or x = $4 or $5",
+      params: [1, 9, 2, 9, 3],
+    });
   });
 
   it("renders no fragments as empty text", () => {
