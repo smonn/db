@@ -51,7 +51,9 @@ function start(root: string, name: string): void {
     join(root, ".env.test"),
     `DATABASE_URL=postgres://postgres:postgres@localhost:${port}/postgres\n`,
   );
-  console.log(`${name} is on port ${port}; wrote .env.test`);
+  console.log(
+    `${name} is on port ${port}; wrote .env.test; psql: docker compose -p ${name} exec postgres psql -U postgres`,
+  );
 }
 
 function stop(root: string, name: string): void {
