@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0](https://github.com/smonn/db/compare/v0.2.0...v0.3.0) (2026-10-31)
+
+
+### Features
+
+* **tooling:** append to an issue body section with issue-section.ts ([#689](https://github.com/smonn/db/issues/689)) ([edf6148](https://github.com/smonn/db/commit/edf614873cf90929715f3585728998631d9f6353))
+
+
+### Bug Fixes
+
+* **queries:** let an insert skip a NOT NULL column with a default or identity ([#688](https://github.com/smonn/db/issues/688)) ([0c4bb22](https://github.com/smonn/db/commit/0c4bb22679511694183ef5e7745aedf377fd9dc5))
+* **tooling:** ignore code spans when checking avoided glossary terms ([#666](https://github.com/smonn/db/issues/666)) ([d796f18](https://github.com/smonn/db/commit/d796f18f318a3b6fc63164517cae1b8c2e46f47b))
+* **tooling:** print the test database's container name ([#681](https://github.com/smonn/db/issues/681)) ([f14fd3e](https://github.com/smonn/db/commit/f14fd3e64a5389ca830f9ad8fdb62c3634ebc3b3))
+* **tooling:** read the OIDC check fixtures' action SHAs from publishJob ([#670](https://github.com/smonn/db/issues/670)) ([a626eef](https://github.com/smonn/db/commit/a626eef3057af564b7658df1d2bc32f6b3d45cc8))
+* **tooling:** remove test databases whose worktree is gone ([#691](https://github.com/smonn/db/issues/691)) ([842f160](https://github.com/smonn/db/commit/842f160bb63934591db5c38498f35986463cbd00))
+
 ## [0.2.0](https://github.com/smonn/db/compare/v0.1.0...v0.2.0) (2026-10-28)
 
 
