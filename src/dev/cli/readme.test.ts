@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  type TestDatabase,
   testServerUrl,
   useTestDatabase,
 } from "../../adapters/postgres-js/test-database.test-helper.ts";
@@ -11,6 +12,8 @@ import { nameOf, repo, usePackedPackage } from "./packed-package.test-helper.ts"
 
 const dev = useTestDatabase();
 const production = useTestDatabase();
+const enumsDev = useTestDatabase();
+const enumsProduction = useTestDatabase();
 const packed = usePackedPackage();
 
 const FENCE = /^```(\w+)([^\n]*)\n([\s\S]*?)^```$/gmu;
@@ -129,5 +132,40 @@ describe("README getting started", () => {
       false,
     ]);
     expect(outputs).toStrictEqual(steps.map((s) => s.expected));
+
+    // The config loads db/definition.ts, so a config of its own runs the enums block too.
+    await writeFile(
+      join(project, "enums.config.ts"),
+      [
+        `import { defineConfig } from "@smonn/db/dev";`,
+        `export default defineConfig({`,
+        `  definition: "./db/enums.ts",`,
+        `  migrations: "./db/enums-migrations",`,
+        `  url: process.env.DATABASE_URL,`,
+        `});`,
+        ``,
+      ].join("\n"),
+    );
+    const enumsCommand = (database: TestDatabase, command: string): void => {
+      execFileSync("sh", ["-c", `${command} --config enums.config.ts`], {
+        cwd: project,
+        env: { ...env, DATABASE_URL: database.url },
+        encoding: "utf8",
+      });
+    };
+    enumsCommand(enumsDev, "smonndb generate");
+    enumsCommand(enumsDev, "smonndb commit create-entries");
+    enumsCommand(enumsProduction, "smonndb migrate");
+
+    await Promise.all(
+      [enumsDev, enumsProduction].map(async (database) => {
+        await database.driver.query(
+          "insert into entries (id, mood, score, lately) values ('a', 'good', 3, '{ok,good}')",
+        );
+        await expect(
+          database.driver.query("insert into entries (id, score, lately) values ('b', 0, '{}')"),
+        ).rejects.toThrow(/posint_positive/u);
+      }),
+    );
   }, 120_000);
 });

@@ -2,14 +2,16 @@
  * Starts this worktree's own test Postgres and writes its URL to `.env.test`, which
  * vitest.config.ts reads when `DATABASE_URL` is unset. The compose project is named after the
  * worktree's directory, and Docker picks the host port, so parallel worktrees never collide.
- * Rerunning it reuses a running server.
+ * Rerunning it reuses a running server. Starting also removes the test servers of worktrees under
+ * the main checkout's `.claude/worktrees/` that no longer exist.
  *
  * Run it with `node scripts/test-db.ts`, and `node scripts/test-db.ts stop` to remove the server.
  */
 import { spawnSync } from "node:child_process";
-import { rmSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { orphanedProjects, worktreesFolder } from "./compose-orphans.ts";
 
 export function projectName(root: string): string {
   return `smonndb-${basename(root)
@@ -38,7 +40,34 @@ function runningPort(root: string, name: string): number | undefined {
   return result.ok ? parsePort(result.out) : undefined;
 }
 
+function gitCommonDir(root: string): string | undefined {
+  const result = spawnSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
+    encoding: "utf8",
+    cwd: root,
+  });
+  const dir = result.status === 0 ? result.stdout.trim() : "";
+  return dir === "" ? undefined : dir;
+}
+
+function removeOrphans(root: string): void {
+  // A failed listing has empty stdout, which names nothing; `up` then reports the real error.
+  const { stdout } = spawnSync("docker", ["compose", "ls", "--all", "--format", "json"], {
+    encoding: "utf8",
+    cwd: root,
+  });
+  for (const name of orphanedProjects(
+    stdout,
+    worktreesFolder(root, gitCommonDir(root)),
+    existsSync,
+  )) {
+    const down = compose(root, name, ["down", "--volumes"]);
+    if (down.ok) console.log(`Removed ${name}, whose worktree is gone`);
+    else console.warn(`Could not remove ${name}:\n${down.out}`);
+  }
+}
+
 function start(root: string, name: string): void {
+  removeOrphans(root);
   let port = runningPort(root, name);
   if (port === undefined) {
     // Port 0 lets Docker choose a free host port.
