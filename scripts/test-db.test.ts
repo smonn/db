@@ -1,4 +1,3 @@
-import type { SpawnSyncOptionsWithStringEncoding } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
@@ -12,23 +11,15 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { main, parsePort, projectName } from "./test-db.ts";
+import { docker, fail, git, ok } from "./test-db.test-helper.ts";
 
-type Result = { status: number | null; stdout: string; stderr: string };
-type Spawn = (
-  command: string,
-  args: string[],
-  options: SpawnSyncOptionsWithStringEncoding,
-) => Result;
+vi.mock("node:child_process", async (importOriginal) =>
+  (await import("./test-db.test-helper.ts")).routeSpawn(
+    await importOriginal<typeof import("node:child_process")>(),
+  ),
+);
 
-const docker = vi.hoisted(() => vi.fn<Spawn>());
-
-vi.mock("node:child_process", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:child_process")>();
-  return { ...actual, spawnSync: docker };
-});
-
-const ok = (stdout = ""): Result => ({ status: 0, stdout, stderr: "" });
-const fail = (stderr: string): Result => ({ status: 1, stdout: "", stderr });
+const noProjects = ok("[]");
 
 function calls(): string[] {
   return docker.mock.calls.map(([command, args]) => [command, ...args].join(" "));
@@ -94,6 +85,8 @@ describe("main", () => {
     root = realpathSync(mkdtempSync(join(tmpdir(), "test-db-")));
     name = projectName(root);
     docker.mockReset();
+    git.mockReset();
+    git.mockImplementation(() => ok(`${join(root, ".git")}\n`));
     vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
@@ -104,6 +97,7 @@ describe("main", () => {
 
   test("starts compose on a Docker-assigned port and writes .env.test", () => {
     docker
+      .mockReturnValueOnce(noProjects)
       .mockReturnValueOnce(fail('service "postgres" is not running'))
       .mockReturnValueOnce(ok())
       .mockReturnValueOnce(ok("0.0.0.0:32768\n"));
@@ -111,32 +105,39 @@ describe("main", () => {
     main([], root);
 
     expect(calls()).toEqual([
+      "docker compose ls --all --format json",
       `docker compose -p ${name} port postgres 5432`,
       `docker compose -p ${name} up -d --wait`,
       `docker compose -p ${name} port postgres 5432`,
     ]);
-    expect(docker.mock.calls[1]?.[2].cwd).toBe(root);
-    expect(docker.mock.calls[1]?.[2].encoding).toBe("utf8");
+    expect(docker.mock.calls[2]?.[2].cwd).toBe(root);
+    expect(docker.mock.calls[2]?.[2].encoding).toBe("utf8");
     expect(console.log).toHaveBeenCalledWith(
       `Container ${name}-postgres-1 is on port 32768; wrote .env.test`,
     );
-    expect(docker.mock.calls[1]?.[2].env?.["POSTGRES_PORT"]).toBe("0");
+    expect(docker.mock.calls[2]?.[2].env?.["POSTGRES_PORT"]).toBe("0");
     expect(readFileSync(envFile(), "utf8")).toBe(
       "DATABASE_URL=postgres://postgres:postgres@localhost:32768/postgres\n",
     );
   });
 
   test("reuses a running server's port without recreating it", () => {
-    docker.mockReturnValueOnce(ok("0.0.0.0:32770\n"));
+    docker.mockReturnValueOnce(noProjects).mockReturnValueOnce(ok("0.0.0.0:32770\n"));
 
     main(["start"], root);
 
-    expect(calls()).toEqual([`docker compose -p ${name} port postgres 5432`]);
+    expect(calls()).toEqual([
+      "docker compose ls --all --format json",
+      `docker compose -p ${name} port postgres 5432`,
+    ]);
     expect(readFileSync(envFile(), "utf8")).toContain("localhost:32770/");
   });
 
   test("throws with compose's output when up fails", () => {
-    docker.mockReturnValueOnce(fail("not running")).mockReturnValueOnce(fail("no daemon \n"));
+    docker
+      .mockReturnValueOnce(noProjects)
+      .mockReturnValueOnce(fail("not running"))
+      .mockReturnValueOnce(fail("no daemon \n"));
 
     expect(() => {
       main([], root);
@@ -146,6 +147,7 @@ describe("main", () => {
 
   test("throws when the server has no port after starting", () => {
     docker
+      .mockReturnValueOnce(noProjects)
       .mockReturnValueOnce(fail("not running"))
       .mockReturnValueOnce(ok())
       .mockReturnValueOnce(fail("not running"));
@@ -175,13 +177,16 @@ describe("main", () => {
   });
 
   test("works on the repo root when given no root", () => {
-    docker.mockReturnValueOnce(fail("not running")).mockReturnValueOnce(fail("no daemon"));
+    docker
+      .mockReturnValueOnce(noProjects)
+      .mockReturnValueOnce(fail("not running"))
+      .mockReturnValueOnce(fail("no daemon"));
     const repo = fileURLToPath(new URL("..", import.meta.url));
 
     expect(() => {
       main([]);
     }).toThrow(`docker compose -p ${projectName(repo)} up -d --wait failed`);
-    expect(docker.mock.calls[0]?.[2].cwd).toBe(repo);
+    expect(docker.mock.calls[1]?.[2].cwd).toBe(repo);
   });
 
   test("stop throws with compose's output when down fails", () => {
