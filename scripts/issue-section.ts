@@ -18,7 +18,6 @@ const USAGE =
 
 const HEADING = /^(#{1,6})(?: |$)/u;
 const FENCE = /^ {0,3}([`~])\1{2}/u;
-// Stryker disable next-line Regex: 1 survivors: an indented item matches the same lines through its parent item, so `\s*` is not observable.
 const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s/u;
 
 type Line = { text: string; code: boolean };
@@ -91,10 +90,21 @@ export function appendToSection(body: string, heading: string, added: string[]):
   const after = listEnd(parsed, section);
   const at = after ?? lastContent(parsed, section);
   const eol = body.includes("\r\n") ? "\r" : "";
-  const inserted = added.map((line) => line + eol);
-  if (after === undefined) inserted.unshift(eol);
-  lines.splice(at + 1, 0, ...inserted);
+  const inserted = after === undefined ? ["", ...added] : added;
+  insertAfter(lines, at, inserted, eol);
   return lines.join("\n");
+}
+
+/**
+ * Splices `inserted` in after `lines[at]`, each ending in `eol`. When `at` is the body's last line,
+ * which has no break of its own, that line gains one and the last inserted line takes none.
+ */
+function insertAfter(lines: string[], at: number, inserted: string[], eol: string): void {
+  const atEnd = at === lines.length - 1;
+  if (atEnd) lines[at] += eol;
+  const last = inserted.length - 1;
+  const ended = inserted.map((line, index) => (atEnd && index === last ? line : line + eol));
+  lines.splice(at + 1, 0, ...ended);
 }
 
 /** The lines of an append file, without the file's final line break. */

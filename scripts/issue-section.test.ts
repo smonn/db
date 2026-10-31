@@ -123,6 +123,20 @@ describe("appendToSection", () => {
     );
   });
 
+  test("keeps CRLF line endings when the append point is the last line with no final break", () => {
+    expect(appendToSection("## A\r\n- a", "## A", ["- y"])).toBe("## A\r\n- a\r\n- y");
+    expect(appendToSection("## A\r\nprose", "## A", ["- y"])).toBe("## A\r\nprose\r\n\r\n- y");
+    expect(appendToSection("## A\r\n- a", "## A", ["- y", "- z"])).toBe(
+      "## A\r\n- a\r\n- y\r\n- z",
+    );
+  });
+
+  test("appends after a list indented one to three spaces, not after the prose that follows", () => {
+    expect(appendToSection("## A\n\n  - x\n\nprose\n", "## A", ["- y"])).toBe(
+      "## A\n\n  - x\n- y\n\nprose\n",
+    );
+  });
+
   test("closes a fence and reads the headings after it", () => {
     const text = "## A\n- x\n```\n## B\n```\n## C\n- z\n";
     expect(appendToSection(text, "## C", ["- y"])).toBe(text + "- y\n");
