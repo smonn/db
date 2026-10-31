@@ -52,6 +52,7 @@ describe("main's orphaned projects", () => {
       "docker compose -p t71 down --volumes",
       `docker compose -p ${name} port postgres 5432`,
     ]);
+    expect(docker.mock.calls[0]?.[2]).toMatchObject({ encoding: "utf8", cwd: root });
     expect(docker.mock.calls[1]?.[2].cwd).toBe(root);
     expect(console.log).toHaveBeenCalledWith("Removed t71, whose worktree is gone");
   });

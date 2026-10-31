@@ -12,6 +12,7 @@ export function worktreesFolder(root: string, gitCommonDir: string | undefined):
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
+  // Stryker disable next-line ConditionalExpression: 1 survivor: JSON.parse yields no undefined, and destructuring any other primitive gives undefined fields that toProject drops
   return typeof value === "object" && value !== null;
 }
 
@@ -24,13 +25,18 @@ function toProject(entry: unknown): Project[] {
 }
 
 function parseListing(listing: string): Project[] {
-  let parsed: unknown;
+  return entries(listing).flatMap((entry) => toProject(entry));
+}
+
+function entries(listing: string): unknown[] {
   try {
-    parsed = JSON.parse(listing);
+    const parsed: unknown = JSON.parse(listing);
+    // Stryker disable next-line ArrayDeclaration: 1 survivor: toProject drops a non-record entry, so a filler entry still yields no projects
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
+    // Stryker disable next-line ArrayDeclaration: 1 survivor: toProject drops a non-record entry, so a filler entry still yields no projects
     return [];
   }
-  return Array.isArray(parsed) ? parsed.flatMap((entry) => toProject(entry)) : [];
 }
 
 /**
