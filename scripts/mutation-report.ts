@@ -67,6 +67,10 @@ const survivorCount = (mutants: Mutant[]): number =>
   mutants.filter(({ status }) => isSurvivor(status)).length;
 
 // A timeout alone is inconclusive: an equivalent mutant can still time out on a loaded runner.
+// Only the stale check counts timeouts. The hide check leaves them out on purpose: if the
+// equivalent mutant times out in the run where a killable twin survives, the twin stays hidden
+// until the next run (#647). Counting timeouts there would list a marked line's survivors every
+// week whenever a mutant on it is killed by timeout.
 const timedOut = (mutants: Mutant[]): number =>
   mutants.filter(({ status }) => status === "Timeout").length;
 
