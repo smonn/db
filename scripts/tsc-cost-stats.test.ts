@@ -42,7 +42,9 @@ describe("parseDiagnostics", () => {
 
   test.each([
     ["Types", "Types:  ", "Total Types:  "],
+    ["Types", "182650\n", "182650x\n"],
     ["Instantiations", "Instantiations:  ", "Total Instantiations:  "],
+    ["Instantiations", "393467\n", "393467x\n"],
     ["Check time", "0.212s", "0.212s elapsed"],
     ["Check time", "Check time:", "Total Check time:"],
   ])('ignores a "%s" figure that is not the whole line', (label, from, to) => {
