@@ -59,10 +59,11 @@ export type Column<
   readonly state: ColumnState;
   /** Runtime-only: the codec `.codec()` set. It stays out of `state`, so it never reaches the catalog. */
   readonly "~codec": RuntimeCodec | undefined;
-  /** Type-only: the value a row holds, whether the column is NOT NULL, the primary key, or a key a foreign key may point at. */
+  /** Type-only: the value a row holds, whether the column is NOT NULL, has a default or an identity, is the primary key, or is a key a foreign key may point at. */
   readonly "~types": {
     readonly value: V;
     readonly notNull: N;
+    readonly generated: Gen;
     readonly primaryKey: Pk;
     readonly key: Key;
   };
@@ -143,6 +144,7 @@ type AnyColumn = {
   readonly "~types": {
     readonly value: unknown;
     readonly notNull: boolean;
+    readonly generated: boolean;
     readonly primaryKey: boolean;
     readonly key: boolean;
   };
