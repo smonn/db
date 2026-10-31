@@ -3,7 +3,7 @@ import { defineDatabase, defineEnum, defineTable } from "../definition/index.ts"
 import type { NewRow } from "./index.ts";
 
 describe("array columns", () => {
-  it("type as (V | null)[] in NewRow, optional when the column is nullable", () => {
+  it("type as (V | null)[] in NewRow, optional when the column is nullable or defaulted", () => {
     const mood = defineEnum(["sad", "ok"]);
     const db = defineDatabase({
       public: {
@@ -17,7 +17,8 @@ describe("array columns", () => {
     });
 
     expectTypeOf<NewRow<typeof db.public.t>>().toEqualTypeOf<
-      { required: (string | null)[]; defaulted: (number | null)[] } & {
+      { required: (string | null)[] } & {
+        defaulted?: (number | null)[];
         nullable?: ("sad" | "ok" | null)[] | null;
       }
     >();
