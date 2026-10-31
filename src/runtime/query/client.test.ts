@@ -186,7 +186,7 @@ describe("client.run", () => {
 
   it("runs a hand-written statement and reports the count", async () => {
     await testDatabase.driver.execute(
-      "create table public.tags(name text not null); insert into public.tags values ('a'), ('b'), ('c');",
+      "create table public.tags (name text not null); insert into public.tags values ('a'), ('b'), ('c');",
     );
     expect(await client.run(sql`delete from public.tags where name <> ${"b"}`)).toStrictEqual({
       count: 2,
