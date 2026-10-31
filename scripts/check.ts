@@ -32,7 +32,7 @@ export const checks = [
   "mutation:dry",
 ] as const;
 
-const needsDatabase: ReadonlySet<string> = new Set(["coverage", "mutation:dry"]);
+export const needsDatabase: ReadonlySet<string> = new Set(["coverage", "mutation:dry"]);
 
 type Run = (script: string) => boolean;
 

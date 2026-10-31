@@ -1,6 +1,6 @@
 import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { main } from "./check.ts";
+import { checks, main, needsDatabase } from "./check.ts";
 import { isReachable, testDatabaseUrl } from "./test-database-url.ts";
 
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn<typeof spawnSync>() }));
@@ -17,6 +17,8 @@ const exit = (status: number): SpawnSyncReturns<string> => ({
   status,
   signal: null,
 });
+
+const staticCount = checks.filter((script) => !needsDatabase.has(script)).length;
 
 const ranScripts = (): string[] =>
   vi.mocked(spawnSync).mock.calls.map(([, args]) => String(args?.[1]));
@@ -41,14 +43,14 @@ describe("main with the default runner and database lookup", () => {
     await main(undefined, ["--static"]);
     expect(spawnSync).toHaveBeenCalledWith("pnpm", ["run", "format:check"], { stdio: "inherit" });
     expect(console.log).toHaveBeenCalledWith("\n> pnpm run format:check");
-    expect(console.log).toHaveBeenLastCalledWith("\nAll 14 checks passed");
+    expect(console.log).toHaveBeenLastCalledWith(`\nAll ${staticCount} checks passed`);
     expect(process.exitCode).toBeUndefined();
   });
 
   test("counts a script that exits non-zero as failed", async () => {
     vi.mocked(spawnSync).mockReturnValueOnce(exit(1));
     await main(undefined, ["--static"]);
-    expect(console.error).toHaveBeenCalledWith("\n1 of 14 checks failed: format:check");
+    expect(console.error).toHaveBeenCalledWith(`\n1 of ${staticCount} checks failed: format:check`);
     expect(console.error).toHaveBeenLastCalledWith("Run `pnpm run format` to fix formatting.");
     expect(process.exitCode).toBe(1);
   });
@@ -101,7 +103,7 @@ describe("main with the default runner and database lookup", () => {
   test("adds the formatting hint only when the format check failed", async () => {
     vi.mocked(spawnSync).mockReturnValueOnce(exit(0)).mockReturnValueOnce(exit(1));
     await main(undefined, ["--static"]);
-    expect(console.error).toHaveBeenCalledWith("\n1 of 14 checks failed: check:docs");
+    expect(console.error).toHaveBeenCalledWith(`\n1 of ${staticCount} checks failed: check:docs`);
     expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining("pnpm run format"));
     expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining("test-db.ts"));
   });
