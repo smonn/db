@@ -120,6 +120,34 @@ describe("insert", () => {
     expect(() => insert(db.public.users).values({ id: null })).not.toThrow();
   });
 
+  it("lets a NOT NULL column with a default or an identity be skipped", () => {
+    const { jobs } = defineDatabase({
+      public: {
+        jobs: defineTable((c) => ({
+          id: c.integer().identity(),
+          always: c.integer().identity("always"),
+          created: c.timestamptz().notNull().default("now()"),
+          title: c.text().notNull(),
+          note: c.text(),
+        })),
+      },
+    }).public;
+    expectTypeOf<NewRow<typeof jobs>>().toEqualTypeOf<
+      { title: string } & {
+        id?: number;
+        always?: number;
+        created?: Date;
+        note?: string | null;
+      }
+    >();
+    expect(insert(jobs).values({ title: "t" }).toSql()).toStrictEqual({
+      text: 'insert into "public"."jobs" ("title") values ($1)',
+      params: ["t"],
+    });
+    // @ts-expect-error title has no default, so it is required
+    expect(() => insert(jobs).values({ id: 1 })).not.toThrow();
+  });
+
   it("requires every composite-key column, and none can be null", () => {
     const { memberships } = defineDatabase({
       public: {
