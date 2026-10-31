@@ -42,7 +42,7 @@ type ConstraintOptions = { readonly name: string };
  * `Int` is true for the types Postgres allows an identity on. `Gen` is true once the column has a
  * default or an identity, which Postgres allows only one of. `Pk` is true once `.primaryKey()` ran,
  * and `Key` once `.primaryKey()` or `.unique()` ran, since a primary key is already unique. `Fk` is
- * true once `.references()` ran. `Fresh` is true until a modifier (anything but `.name()`, `.renamedFrom()`, and `.codec()`)
+ * true once `.references()` ran. `Fresh` is true until a modifier (anything but `.name()`, `.renamedFrom()`, `.index()`, and `.codec()`)
  * or `.array()` ran, since `.array()` must come first.
  */
 export type Column<
