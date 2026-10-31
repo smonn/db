@@ -1,12 +1,14 @@
-import { join, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
 
 type Project = { name: string; configFiles: string[] };
 
-/** The repo's `.claude/worktrees/` folder, found from the repo root or from inside one of its worktrees. */
-export function worktreesFolder(root: string): string {
-  const marker = join(".claude", "worktrees");
-  const at = root.indexOf(`${sep}${marker}${sep}`);
-  return join(at === -1 ? root : root.slice(0, at), marker);
+/**
+ * The main checkout's `.claude/worktrees/` folder. `gitCommonDir` is the absolute
+ * `git rev-parse --git-common-dir` of `root`, which every worktree of a repo shares wherever the
+ * worktree lives; without it (git failed) the folder is `root`'s own.
+ */
+export function worktreesFolder(root: string, gitCommonDir: string | undefined): string {
+  return join(gitCommonDir === undefined ? root : dirname(gitCommonDir), ".claude", "worktrees");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

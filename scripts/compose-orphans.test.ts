@@ -19,12 +19,14 @@ function listing(...projects: { name: string; files: string[] }[]): string {
 }
 
 describe("worktreesFolder", () => {
-  test("is the repo root's .claude/worktrees", () => {
-    expect(worktreesFolder(join("/code", "db"))).toBe(worktrees);
+  test("is the main checkout's .claude/worktrees, whichever worktree git ran in", () => {
+    expect(worktreesFolder(join("/elsewhere", "mine"), join("/code", "db", ".git"))).toBe(
+      worktrees,
+    );
   });
 
-  test("is the same from inside one of the repo's worktrees", () => {
-    expect(worktreesFolder(join(worktrees, "mine"))).toBe(worktrees);
+  test("is the root's own .claude/worktrees without a git directory", () => {
+    expect(worktreesFolder(join("/code", "db"), undefined)).toBe(worktrees);
   });
 });
 

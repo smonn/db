@@ -1,7 +1,5 @@
-import type { SpawnSyncOptionsWithStringEncoding } from "node:child_process";
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -13,48 +11,18 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { main, parsePort, projectName } from "./test-db.ts";
+import { docker, fail, git, ok } from "./test-db.test-helper.ts";
 
-type Result = { status: number | null; stdout: string; stderr: string };
-type Spawn = (
-  command: string,
-  args: string[],
-  options: SpawnSyncOptionsWithStringEncoding,
-) => Result;
+vi.mock("node:child_process", async (importOriginal) =>
+  (await import("./test-db.test-helper.ts")).routeSpawn(
+    await importOriginal<typeof import("node:child_process")>(),
+  ),
+);
 
-const docker = vi.hoisted(() => vi.fn<Spawn>());
-
-vi.mock("node:child_process", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:child_process")>();
-  return { ...actual, spawnSync: docker };
-});
-
-const ok = (stdout = ""): Result => ({ status: 0, stdout, stderr: "" });
-const fail = (stderr: string): Result => ({ status: 1, stdout: "", stderr });
 const noProjects = ok("[]");
-
-// `docker compose ls --all --format json` lists each project's config files, comma-separated.
-function listing(...projects: { name: string; files: string[] }[]): Result {
-  return ok(
-    JSON.stringify(
-      projects.map(({ name, files }) => ({
-        Name: name,
-        Status: "running(1)",
-        ConfigFiles: files.join(","),
-      })),
-    ),
-  );
-}
 
 function calls(): string[] {
   return docker.mock.calls.map(([command, args]) => [command, ...args].join(" "));
-}
-
-function worktreeFile(root: string, worktree: string): string {
-  return join(root, ".claude", "worktrees", worktree, "compose.yaml");
-}
-
-function downs(): string[] {
-  return calls().filter((call) => call.endsWith(" down --volumes"));
 }
 
 describe("projectName", () => {
@@ -117,6 +85,8 @@ describe("main", () => {
     root = realpathSync(mkdtempSync(join(tmpdir(), "test-db-")));
     name = projectName(root);
     docker.mockReset();
+    git.mockReset();
+    git.mockImplementation(() => ok(`${join(root, ".git")}\n`));
     vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
@@ -185,58 +155,6 @@ describe("main", () => {
     expect(() => {
       main([], root);
     }).toThrow(`${name} started but publishes no port for 5432`);
-  });
-
-  describe("orphaned projects", () => {
-    beforeEach(() => {
-      mkdirSync(join(root, ".claude", "worktrees", "live"), { recursive: true });
-      writeFileSync(worktreeFile(root, "live"), "");
-    });
-
-    test("takes down a project whose worktree is gone before starting", () => {
-      docker
-        .mockReturnValueOnce(listing({ name: "t71", files: [worktreeFile(root, "gone")] }))
-        .mockReturnValueOnce(ok())
-        .mockReturnValueOnce(ok("0.0.0.0:32768\n"));
-
-      main([], root);
-
-      expect(calls()).toEqual([
-        "docker compose ls --all --format json",
-        "docker compose -p t71 down --volumes",
-        `docker compose -p ${name} port postgres 5432`,
-      ]);
-      expect(docker.mock.calls[1]?.[2].cwd).toBe(root);
-      expect(console.log).toHaveBeenCalledWith("Removed t71, whose worktree is gone");
-    });
-
-    test("leaves projects whose config file exists or is outside the worktrees folder", () => {
-      docker
-        .mockReturnValueOnce(
-          listing(
-            { name: "live", files: [worktreeFile(root, "live")] },
-            { name: "elsewhere", files: [join(root, "other", "compose.yaml")] },
-          ),
-        )
-        .mockReturnValueOnce(ok("0.0.0.0:32768\n"));
-
-      main([], root);
-
-      expect(downs()).toEqual([]);
-    });
-
-    test("warns about a project it can't take down and goes on", () => {
-      vi.spyOn(console, "warn").mockImplementation(() => {});
-      docker
-        .mockReturnValueOnce(listing({ name: "t71", files: [worktreeFile(root, "gone")] }))
-        .mockReturnValueOnce(fail("in use\n"))
-        .mockReturnValueOnce(ok("0.0.0.0:32768\n"));
-
-      main([], root);
-
-      expect(console.warn).toHaveBeenCalledWith("Could not remove t71:\nin use");
-      expect(readFileSync(envFile(), "utf8")).toContain("localhost:32768/");
-    });
   });
 
   test("stop takes the project down and removes .env.test", () => {
