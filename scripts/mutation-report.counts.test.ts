@@ -72,6 +72,17 @@ describe("findings with a survivor count", () => {
     expect(findings(parsed).stale).toEqual([]);
   });
 
+  test("hides the one survivor of a marked line that also has a timeout", () => {
+    const parsed = report(
+      [
+        { mutatorName: "StringLiteral", status: "Survived", line: 2 },
+        { mutatorName: "StringLiteral", status: "Timeout", line: 2 },
+      ],
+      [marker, "g('x', 'y');"],
+    );
+    expect(findings(parsed)).toEqual({ survivors: [], stale: [] });
+  });
+
   test("lists the mutator of a marker that finds no mutant while another still survives", () => {
     const parsed = report(
       [{ mutatorName: "StringLiteral", status: "Survived", line: 2 }],
