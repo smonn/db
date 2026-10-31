@@ -5,12 +5,15 @@
  * the median types, instantiations, and check time of each with the percent change.
  *
  * Run with `node scripts/tsc-cost.ts [base-ref]`; the base defaults to `origin/main`. The base
- * worktree links the working tree's `node_modules`, and is removed afterwards, also when tsc fails.
+ * worktree links the working tree's `node_modules`, and is removed afterwards, also when tsc fails
+ * or the process gets SIGINT or SIGTERM.
  */
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { onProcessInterrupt } from "../src/dev/cli/signals.ts";
+import type { OnInterrupt } from "../src/dev/shadow/index.ts";
 import { formatTable, medianSample, parseDiagnostics, type Sample } from "./tsc-cost-stats.ts";
 
 const RUNS = 3;
@@ -20,23 +23,19 @@ function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 }
 
-/** What a failed `execFileSync` printed; a command that never started printed nothing. */
-function stdoutOf(error: unknown): string {
-  // Stryker disable next-line ConditionalExpression, LogicalOperator: 2 survivors: the `typeof` check below already rejects a missing stdout, so the guard only narrows the type.
-  const stdout = error instanceof Error && "stdout" in error ? error.stdout : undefined;
-  return typeof stdout === "string" ? stdout : "";
-}
-
-function runTsc(root: string, cwd: string): string {
-  try {
-    return execFileSync(
+/** Runs tsc without blocking, so a signal handler can run and `signal` can stop it. */
+function runTsc(root: string, cwd: string, signal: AbortSignal): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
       join(root, "node_modules", ".bin", "tsc"),
       ["--noEmit", "--extendedDiagnostics"],
-      { cwd, encoding: "utf8" },
+      { cwd, encoding: "utf8", signal },
+      (error, stdout) => {
+        if (error === null) resolve(stdout);
+        else reject(new Error(`tsc failed in ${cwd}:\n${stdout}`, { cause: error }));
+      },
     );
-  } catch (error) {
-    throw new Error(`tsc failed in ${cwd}:\n${stdoutOf(error)}`, { cause: error });
-  }
+  });
 }
 
 function resolveBase(root: string, ref: string): string {
@@ -49,51 +48,75 @@ function resolveBase(root: string, ref: string): string {
 }
 
 /** Alternates the trees, so a drift in machine load hits both alike. */
-function sampleInterleaved(root: string, baseTree: string): { base: Sample[]; head: Sample[] } {
+async function sampleInterleaved(
+  root: string,
+  baseTree: string,
+  signal: AbortSignal,
+): Promise<{ base: Sample[]; head: Sample[] }> {
   const base: Sample[] = [];
   const head: Sample[] = [];
   for (let run = 0; run < RUNS; run += 1) {
-    base.push(parseDiagnostics(runTsc(root, baseTree)));
-    head.push(parseDiagnostics(runTsc(root, root)));
+    // oxlint-disable-next-line eslint/no-await-in-loop -- the runs must not overlap, or they skew each other's time.
+    base.push(parseDiagnostics(await runTsc(root, baseTree, signal)));
+    // oxlint-disable-next-line eslint/no-await-in-loop -- see above.
+    head.push(parseDiagnostics(await runTsc(root, root, signal)));
   }
   return { base, head };
 }
 
-export function measure(root: string, ref: string): string {
+export async function measure(
+  root: string,
+  ref: string,
+  onInterrupt: OnInterrupt = onProcessInterrupt(),
+): Promise<string> {
   const commit = resolveBase(root, ref);
   const scratch = mkdtempSync(join(tmpdir(), "tsc-cost-"));
   const baseTree = join(scratch, "base");
+  const stop = new AbortController();
   let added = false;
+  let cleanedUp = false;
+  // Runs on a signal and again once measure unwinds; the second run finds nothing left to do.
+  const cleanUp = (): Promise<void> =>
+    new Promise((resolve) => {
+      if (!cleanedUp) {
+        cleanedUp = true;
+        stop.abort();
+        try {
+          if (added) git(root, "worktree", "remove", "--force", baseTree);
+        } finally {
+          rmSync(scratch, { recursive: true });
+        }
+      }
+      resolve();
+    });
+  const unregister = onInterrupt(cleanUp);
   try {
     git(root, "worktree", "add", "--quiet", "--detach", baseTree, commit);
     added = true;
     symlinkSync(join(root, "node_modules"), join(baseTree, "node_modules"), "dir");
-    const { base, head } = sampleInterleaved(root, baseTree);
+    const { base, head } = await sampleInterleaved(root, baseTree, stop.signal);
     return formatTable(medianSample(base), medianSample(head));
   } finally {
-    try {
-      if (added) git(root, "worktree", "remove", "--force", baseTree);
-    } finally {
-      rmSync(scratch, { recursive: true });
-    }
+    unregister();
+    await cleanUp();
   }
 }
 
-function report(args: readonly string[], cwd: string): string {
+function report(args: readonly string[], cwd: string): Promise<string> {
   if (args.length > 1) throw new Error("Usage: node scripts/tsc-cost.ts [base-ref]");
   return measure(git(cwd, "rev-parse", "--show-toplevel"), args[0] ?? DEFAULT_BASE);
 }
 
-export function main(
+export async function main(
   args: readonly string[] = process.argv.slice(2),
   cwd: string = process.cwd(),
-): void {
+): Promise<void> {
   try {
-    console.log(report(args, cwd));
+    console.log(await report(args, cwd));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
 }
 
-if (import.meta.main) main();
+if (import.meta.main) await main();

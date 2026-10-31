@@ -28,6 +28,10 @@ describe("parseDiagnostics", () => {
     expect(parseDiagnostics(output.replace("0.212s", "2s")).checkTime).toBe(2);
   });
 
+  test("reads a check time of ten seconds or more", () => {
+    expect(parseDiagnostics(output.replace("0.212s", "12.345s")).checkTime).toBe(12.345);
+  });
+
   test.each([
     ["Types", "Types:           182650\n"],
     ["Instantiations", "Instantiations:  393467\n"],
@@ -36,10 +40,13 @@ describe("parseDiagnostics", () => {
     expect(() => parseDiagnostics(output.replace(line, ""))).toThrow(`printed no "${label}" line`);
   });
 
-  test("ignores a figure that is not the whole line", () => {
-    expect(() => parseDiagnostics(output.replace("Types:  ", "Total Types:  "))).toThrow(
-      'no "Types" line',
-    );
+  test.each([
+    ["Types", "Types:  ", "Total Types:  "],
+    ["Instantiations", "Instantiations:  ", "Total Instantiations:  "],
+    ["Check time", "0.212s", "0.212s elapsed"],
+    ["Check time", "Check time:", "Total Check time:"],
+  ])('ignores a "%s" figure that is not the whole line', (label, from, to) => {
+    expect(() => parseDiagnostics(output.replace(from, to))).toThrow(`no "${label}" line`);
   });
 });
 

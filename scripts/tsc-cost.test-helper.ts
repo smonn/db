@@ -19,7 +19,8 @@ export const diagnostics = (types: number, instantiations: number): string =>
  * A directory with a fake `node_modules/.bin/tsc`, for a test that runs `tsc-cost.ts` against a
  * temp git repository without paying for a real tsc. Each run appends its directory to the log
  * and prints `cost.txt` plus a check time of its run number in tenths of a second; it exits 3
- * when `node_modules` is not linked into the tree, and 2 with an error when `fail.txt` exists.
+ * when `node_modules` is not linked into the tree, 2 with an error when `fail.txt` exists, and
+ * sleeps for 30 seconds when `slow.txt` exists.
  */
 export function createFixture(): Fixture {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "tsc-cost-test-")));
@@ -36,6 +37,7 @@ export function createFixture(): Fixture {
       "#!/bin/sh",
       `pwd -P >> "${log}"`,
       "test -f node_modules/marker || exit 3",
+      "if [ -e slow.txt ]; then exec sleep 30; fi",
       'if [ -e fail.txt ]; then echo "error TS1: boom"; exit 2; fi',
       "cat cost.txt",
       `printf 'Check time:      0.%ds\\n' "$(wc -l < "${log}" | tr -d ' ')"`,
@@ -56,15 +58,27 @@ export function runDirs({ log }: Fixture): string[] {
 }
 
 type ChildProcess = typeof import("node:child_process");
-type Guarded = Omit<ChildProcess, "execFileSync"> & {
-  execFileSync: (
-    command: string,
-    args: readonly string[],
-    options: ExecFileSyncOptionsWithStringEncoding,
-  ) => string;
+type ExecFileSync = (
+  command: string,
+  args: readonly string[],
+  options: import("node:child_process").ExecFileSyncOptionsWithStringEncoding,
+) => string;
+type ExecFile = (
+  command: string,
+  args: readonly string[],
+  options: import("node:child_process").ExecFileOptionsWithStringEncoding,
+  callback: Parameters<ChildProcess["execFile"]>[3],
+) => import("node:child_process").ChildProcess;
+type Guarded = Omit<ChildProcess, "execFile" | "execFileSync"> & {
+  execFile: ExecFile;
+  execFileSync: ExecFileSync;
 };
-type ExecFileSyncOptionsWithStringEncoding =
-  import("node:child_process").ExecFileSyncOptionsWithStringEncoding;
+
+function refuseOthers(command: string): void {
+  if (command !== "git" && !command.endsWith("/node_modules/.bin/tsc")) {
+    throw new Error(`Only git and the fake tsc may run here, not ${command}`);
+  }
+}
 
 /**
  * The `node:child_process` a `tsc-cost` test runs against: real git and the fake tsc, with any
@@ -72,15 +86,13 @@ type ExecFileSyncOptionsWithStringEncoding =
  * hoisted mock runs before this file's static imports.
  */
 export function guardChildProcess(actual: ChildProcess): Guarded {
-  const execFileSync = (
-    command: string,
-    args: readonly string[],
-    options: ExecFileSyncOptionsWithStringEncoding,
-  ): string => {
-    if (command !== "git" && !command.endsWith("/node_modules/.bin/tsc")) {
-      throw new Error(`Only git and the fake tsc may run here, not ${command}`);
-    }
+  const execFileSync: ExecFileSync = (command, args, options) => {
+    refuseOthers(command);
     return actual.execFileSync(command, args, options);
   };
-  return { ...actual, execFileSync };
+  const execFile: ExecFile = (command, args, options, callback) => {
+    refuseOthers(command);
+    return actual.execFile(command, args, options, callback);
+  };
+  return { ...actual, execFile, execFileSync };
 }

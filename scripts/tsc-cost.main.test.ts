@@ -40,12 +40,12 @@ describe("main against a real git repository and a fake tsc", () => {
     process.exitCode = undefined;
   });
 
-  test("prints the table against origin/main by default, from a subdirectory", () => {
+  test("prints the table against origin/main by default, from a subdirectory", async () => {
     const base = commit("base");
     git("update-ref", "refs/remotes/origin/main", base);
     mkdirSync(join(dir, "sub"));
 
-    main([], join(dir, "sub"));
+    await main([], join(dir, "sub"));
 
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining("types              100     100    0.0%"),
@@ -53,37 +53,37 @@ describe("main against a real git repository and a fake tsc", () => {
     expect(process.exitCode).toBeUndefined();
   });
 
-  test("reads its arguments and directory from the process by default", () => {
+  test("reads its arguments and directory from the process by default", async () => {
     commit("base");
     vi.spyOn(process, "argv", "get").mockReturnValue(["node", "tsc-cost.ts", "HEAD"]);
     vi.spyOn(process, "cwd").mockReturnValue(dir);
 
-    main();
+    await main();
 
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining("types              100"));
   });
 
-  test("takes the base ref from its argument", () => {
+  test("takes the base ref from its argument", async () => {
     commit("base");
     writeFileSync(join(dir, "cost.txt"), diagnostics(110, 1000));
 
-    main(["HEAD"], dir);
+    await main(["HEAD"], dir);
 
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining("+10.0%"));
   });
 
-  test("fails with a usage line on more than one argument", () => {
-    main(["a", "b"], dir);
+  test("fails with a usage line on more than one argument", async () => {
+    await main(["a", "b"], dir);
 
     expect(console.error).toHaveBeenCalledWith("Usage: node scripts/tsc-cost.ts [base-ref]");
     expect(process.exitCode).toBe(1);
     expect(existsSync(fixture.log)).toBe(false);
   });
 
-  test("reports a failure and sets the exit code", () => {
+  test("reports a failure and sets the exit code", async () => {
     commit("base");
 
-    main(["nope"], dir);
+    await main(["nope"], dir);
 
     expect(console.error).toHaveBeenCalledWith('Base ref "nope" is not a commit');
     expect(process.exitCode).toBe(1);

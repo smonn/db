@@ -17,9 +17,9 @@ vi.mock("node:child_process", async (importOriginal) =>
   (await import("./tsc-cost.test-helper.ts")).guardChildProcess(await importOriginal()),
 );
 
-const thrownBy = (run: () => unknown): Error => {
+const thrownBy = async (run: () => Promise<unknown>): Promise<Error> => {
   try {
-    run();
+    await run();
   } catch (error) {
     if (error instanceof Error) return error;
     throw error;
@@ -60,11 +60,11 @@ describe("measure against a real git repository and a fake tsc", () => {
     vi.unstubAllEnvs();
   });
 
-  test("prints the median of three interleaved runs of the base and the working tree", () => {
+  test("prints the median of three interleaved runs of the base and the working tree", async () => {
     commit("base");
     writeFileSync(join(dir, "cost.txt"), diagnostics(150, 900));
 
-    expect(measure(dir, "HEAD")).toBe(
+    expect(await measure(dir, "HEAD")).toBe(
       [
         "                  base    head  change",
         "types              100     150  +50.0%",
@@ -80,70 +80,72 @@ describe("measure against a real git repository and a fake tsc", () => {
     expect(dirs[0]).not.toBe(dir);
   });
 
-  test("checks out the base ref, not the current commit", () => {
+  test("checks out the base ref, not the current commit", async () => {
     const base = commit("base");
     writeFileSync(join(dir, "cost.txt"), diagnostics(200, 2000));
     commit("head");
 
-    expect(measure(dir, base)).toContain("types              100     200  +100.0%");
+    expect(await measure(dir, base)).toContain("types              100     200  +100.0%");
   });
 
-  test("removes the temporary worktree and leaves node_modules alone", () => {
+  test("removes the temporary worktree and leaves node_modules alone", async () => {
     commit("base");
-    measure(dir, "HEAD");
+    await measure(dir, "HEAD");
 
     expect(existsSync(dirname(firstRunDir()))).toBe(false);
     expect(worktrees()).toEqual([`worktree ${dir}`]);
     expect(existsSync(join(dir, "node_modules", "marker"))).toBe(true);
   });
 
-  test("removes the temporary worktree when tsc fails on the working tree", () => {
+  test("removes the temporary worktree when tsc fails on the working tree", async () => {
     commit("base");
     writeFileSync(join(dir, "fail.txt"), "");
 
-    expect(() => measure(dir, "HEAD")).toThrow(/tsc failed in .*:\nerror TS1: boom/u);
+    await expect(measure(dir, "HEAD")).rejects.toThrow(/tsc failed in .*:\nerror TS1: boom/u);
 
     expect(existsSync(dirname(firstRunDir()))).toBe(false);
     expect(worktrees()).toEqual([`worktree ${dir}`]);
     expect(existsSync(join(dir, "node_modules", "marker"))).toBe(true);
   });
 
-  test("removes the temporary worktree when tsc fails on the base", () => {
+  test("removes the temporary worktree when tsc fails on the base", async () => {
     writeFileSync(join(dir, "fail.txt"), "");
     commit("base");
     rmSync(join(dir, "fail.txt"));
 
-    expect(() => measure(dir, "HEAD")).toThrow("tsc failed in");
+    await expect(measure(dir, "HEAD")).rejects.toThrow("tsc failed in");
 
     expect(runDirs(fixture)).toHaveLength(1);
     expect(existsSync(dirname(firstRunDir()))).toBe(false);
     expect(worktrees()).toEqual([`worktree ${dir}`]);
   });
 
-  test("names the tree when tsc cannot start, and keeps the cause", () => {
+  test("names the tree when tsc cannot start, and keeps the cause", async () => {
     commit("base");
     rmSync(join(dir, "node_modules", ".bin", "tsc"));
 
-    const error = thrownBy(() => measure(dir, "HEAD"));
+    const error = await thrownBy(() => measure(dir, "HEAD"));
 
     expect(error.message).toMatch(/^tsc failed in [^\n]+:\n$/u);
     expect(error.cause).toBeInstanceOf(Error);
     expect(worktrees()).toEqual([`worktree ${dir}`]);
   });
 
-  test("names a base ref that is not a commit, and keeps the cause", () => {
+  test("names a base ref that is not a commit, and keeps the cause", async () => {
     commit("base");
 
-    const error = thrownBy(() => measure(dir, "nope"));
+    const error = await thrownBy(() => measure(dir, "nope"));
 
     expect(error.message).toBe('Base ref "nope" is not a commit');
     expect(error.cause).toBeInstanceOf(Error);
     expect(existsSync(fixture.log)).toBe(false);
   });
 
-  test("refuses a base ref that reads as an option", () => {
+  test("refuses a base ref that reads as an option", async () => {
     commit("base");
 
-    expect(() => measure(dir, "--help")).toThrow('Base ref "--help" must not start with "-"');
+    await expect(measure(dir, "--help")).rejects.toThrow(
+      'Base ref "--help" must not start with "-"',
+    );
   });
 });
