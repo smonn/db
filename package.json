@@ -77,7 +77,7 @@
     "oxfmt": "^0.74.0",
     "oxlint": "^1.89.0",
     "oxlint-tsgolint": "^7.0.2004",
-    "postgres": "^3.4.9",
+    "postgres": "^4.0.0",
     "rev-dep": "^3.3.0",
     "tsdown": "^0.23.0",
     "typescript": "^7.0.2",
