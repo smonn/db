@@ -183,6 +183,24 @@ export default defineDatabase({
 
 On an array column, the codec belongs to the element, so call `.codec()` before `.array()`, as `days` does. It then runs on each element and skips NULL ones. `.array().codec(plainDate)` is a type error, since `.array()` leaves no `codec` method and a codec on a whole array isn't offered.
 
+### Passing run-time values
+
+A value binds when the statement is built, and a client takes no second argument. To run one statement with different values, write a function that builds it:
+
+```ts file=by-email.ts
+import { from, type Client } from "@smonn/db";
+import db from "./db/definition.ts";
+
+declare const client: Client;
+
+const byEmail = (email: string) => from(db.public.users).where((u) => u.email.eq(email));
+
+await client.all(byEmail("a@example.com"));
+await client.all(byEmail("b@example.com"));
+```
+
+TypeScript types the parameters, and values go through column codecs as they do anywhere else. postgres.js caches a prepared statement per connection by its types and text, so both calls reuse one.
+
 ### Renaming a table, column, enum, or domain
 
 Rename a key in the Definition and `generate` sees a drop and a create, which it flags as `data_loss`. It prints a hint when it spots a likely rename: a table that drops exactly one column and adds exactly one of the same type, a schema that drops exactly one table and adds one with identical columns, or an enum that drops exactly one label and adds one at the same position. With more than one drop or add, no hint appears, so check for renames yourself.
