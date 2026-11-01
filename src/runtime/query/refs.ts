@@ -1,4 +1,4 @@
-import type { SqlClass, Table } from "../definition/index.ts";
+import type { ScalarClass, SqlClass, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import { isTextArray } from "./array-text.ts";
 import { decoderFor, encodeElement, encodeList, encodeValue, withDecoder } from "./codecs.ts";
@@ -60,7 +60,8 @@ type PatternMatches = {
 export type ColumnRef<V, S extends SqlClass = SqlClass> = SelectableColumn<V> &
   Sortable<V> &
   (null extends V ? NullChecks : unknown) &
-  ([S] extends [`${string}[]`] ? ArrayMatches<V> : SetMatches<V>) &
+  ([S] extends [ScalarClass] ? SetMatches<V> : unknown) &
+  ([S] extends [`${string}[]`] ? ArrayMatches<V> : unknown) &
   ([S] extends ["text"] ? PatternMatches : unknown) & {
     eq(value: NonNullable<V>): Predicate;
     ne(value: NonNullable<V>): Predicate;
