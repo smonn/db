@@ -14,7 +14,11 @@ type Schemas = Record<string, Record<string, SchemaEntry>>;
 export type Database<S extends Schemas> = {
   readonly [Schema in keyof S]: {
     readonly [Name in keyof S[Schema]]: S[Schema][Name] extends TableDefinition
-      ? Table<S[Schema][Name]["columns"], S[Schema][Name]["primaryKey"][number]>
+      ? Table<
+          S[Schema][Name]["columns"],
+          S[Schema][Name]["primaryKey"][number],
+          S[Schema][Name]["~keys"]
+        >
       : S[Schema][Name];
   };
 };
