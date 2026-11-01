@@ -124,6 +124,7 @@ describe("README getting started", () => {
       "file=joins.ts",
       "file=update.ts",
       "file=delete.ts",
+      "file=upsert.ts",
       "file=db/enums.ts",
     ]);
     expect(steps.map((s) => s.command.split(" ").at(-1))).toStrictEqual([
@@ -138,20 +139,12 @@ describe("README getting started", () => {
       "joins.ts",
       "update.ts",
       "delete.ts",
+      "upsert.ts",
     ]);
-    expect(steps.map((s) => s.command.includes("smonndb"))).toStrictEqual([
-      true,
-      true,
-      true,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-    ]);
+    // The three CLI steps come first; every example after them runs with node.
+    expect(steps.map((s) => s.command.includes("smonndb"))).toStrictEqual(
+      steps.map((_, index) => index < 3),
+    );
     expect(outputs).toStrictEqual(steps.map((s) => s.expected));
 
     // The config loads db/definition.ts, so a config of its own runs the enums block too.
