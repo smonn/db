@@ -135,7 +135,8 @@ function refOf(source: ColumnSource, definition: Column): AnyRef {
   const { table, key: name, alias } = source;
   const column = () => columnSql(source);
   const compared = {
-    label: `${alias}.${table.columnNames[name] ?? name}`,
+    alias,
+    column: table.columnNames[name] ?? name,
     state: definition.state,
   };
   const compare = (operator: Fragment, operand: unknown) => {

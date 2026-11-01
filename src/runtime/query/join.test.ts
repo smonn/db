@@ -223,7 +223,7 @@ describe("column operands", () => {
 
   it("refuses two different enums, naming both columns", () => {
     expect(() => from(users).innerJoin(posts, (u, p) => p.mood.eq(u.mood))).toThrow(
-      "Can't compare posts.mood with users.mood: Postgres compares an enum, a domain over one, or an array only with the identical type",
+      'Can\'t compare "posts"."mood" with "users"."mood": Postgres compares an enum, a domain over one, or an array only with the identical type',
     );
     expect(() => from(users).innerJoin(users, (a, b) => b.mood.eq(a.mood))).not.toThrow();
   });
@@ -239,7 +239,7 @@ describe("column operands", () => {
     });
     const notes = dbs.public.notes;
     expect(() => from(notes).innerJoin(notes, (a, b) => b.plain.eq(a.mood))).toThrow(
-      "Can't compare notes_2.plain with notes.mood",
+      'Can\'t compare "notes_2"."plain" with "notes"."mood"',
     );
   });
 });
