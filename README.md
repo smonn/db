@@ -105,6 +105,45 @@ DATABASE_URL=postgres://localhost/app_prod node query.ts
 [ { id: 'u1', email: 'a@example.com' } ]
 ```
 
+### Ordering and paging
+
+`orderBy`, `limit`, and `offset` add the clauses of the same names. `orderBy` takes the columns `where` gets and returns one ordering or an array of them: `u.email.asc()`, `u.email.desc()`, or a bare column, which sorts ascending. A repeated call appends, so the first call's orderings sort first. On a nullable column, `asc` and `desc` take `{ nulls: "first" | "last" }`; without it Postgres's default holds. On a NOT NULL column, `nulls` is a type error.
+
+```ts file=paging.ts
+import postgres from "postgres";
+import { createClient, from, insert } from "@smonn/db";
+import { postgresJsConnection, postgresJsDriver, postgresJsTypes } from "@smonn/db/postgres-js";
+import db from "./db/definition.ts";
+
+const sql = postgres(process.env.DATABASE_URL ?? "", {
+  types: postgresJsTypes,
+  connection: postgresJsConnection,
+});
+const client = createClient(postgresJsDriver(sql));
+
+await client.run(insert(db.public.users).values({ id: "u2" }));
+await client.run(insert(db.public.users).values({ id: "u3", email: "c@example.com" }));
+const page = await client.all(
+  from(db.public.users)
+    .orderBy((u) => [u.email.desc({ nulls: "last" }), u.id])
+    .limit(2)
+    .offset(1),
+);
+console.log(page);
+
+await sql.end();
+```
+
+```sh
+DATABASE_URL=postgres://localhost/app_prod node paging.ts
+```
+
+```text
+[ { id: 'u1', email: 'a@example.com' }, { id: 'u2', email: null } ]
+```
+
+`limit(n)` and `offset(n)` bind `n` as a param and throw unless it is a non-negative safe integer. Neither needs an `orderBy`, though without one Postgres promises no row order. A later call replaces an earlier one. `client.one` ignores `limit(1)`: it counts the rows that come back and throws unless there is exactly one.
+
 ### Commands
 
 Run each as `smonndb <command>`, with `--config <path>` to pick a config file other than `smonndb.config.ts`.

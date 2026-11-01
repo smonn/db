@@ -19,7 +19,24 @@ type SelectableColumn<V> = {
   readonly "~value"?: V;
 };
 
+/** One sort key for `orderBy`, made by `asc` or `desc`; a bare column sorts ascending. */
+export type Ordering = { readonly "~ordering": () => Fragment };
+
+type NullsOptions = { readonly nulls?: "first" | "last" };
+
+/** A NOT NULL column has no NULLs to place, so its options type names `nulls` in the error. */
+type Sortable<V> = null extends V
+  ? {
+      asc(options?: NullsOptions): Ordering;
+      desc(options?: NullsOptions): Ordering;
+    }
+  : {
+      asc(options?: { readonly "nulls needs a nullable column"?: never }): Ordering;
+      desc(options?: { readonly "nulls needs a nullable column"?: never }): Ordering;
+    };
+
 export type ColumnRef<V> = SelectableColumn<V> &
+  Sortable<V> &
   (null extends V ? NullChecks : unknown) & {
     eq(value: NonNullable<V>): Predicate;
     ne(value: NonNullable<V>): Predicate;
@@ -42,11 +59,31 @@ export type Selected<S extends Selection> = {
 
 export type Output = readonly [alias: string, column: string];
 
+/** What `orderBy` takes: an ordering, or a bare column, which sorts ascending. */
+export type Orderable = Ordering | SelectableColumn<unknown>;
+
 /** Built when the statement renders, so a codec that throws rejects the query instead of the builder. */
 const predicate = (piece: () => Fragment): Predicate => ({ "~predicate": piece });
 
+function nullsOf(options: NullsOptions | undefined): Fragment {
+  if (options === undefined) return fragment``;
+  const unknown = Object.keys(options).filter((key) => key !== "nulls");
+  if (unknown.length > 0) {
+    throw new Error(`Unknown ordering option ${unknown.map((key) => `"${key}"`).join(", ")}`);
+  }
+  const { nulls } = options;
+  if (nulls === undefined) return fragment``;
+  if (nulls === "first") return fragment` nulls first`;
+  if (nulls === "last") return fragment` nulls last`;
+  throw new Error(`nulls must be "first" or "last", got ${JSON.stringify(nulls)}`);
+}
+
 function refOf(table: Table, name: string): ColumnRef<string | null> {
   const column = columnIdentifier(table, name);
+  const order = (direction: Fragment, options: NullsOptions | undefined): Ordering => {
+    const nulls = nullsOf(options);
+    return { "~ordering": () => fragment`${column} ${direction}${nulls}` };
+  };
   const compare = (operator: Fragment, value: unknown) =>
     predicate(() => fragment`${column} ${operator} ${encodeValue(table, name, value)}`);
   return {
@@ -57,6 +94,8 @@ function refOf(table: Table, name: string): ColumnRef<string | null> {
     gte: (value) => compare(fragment`>=`, value),
     lt: (value) => compare(fragment`<`, value),
     lte: (value) => compare(fragment`<=`, value),
+    asc: (options) => order(fragment`asc`, options),
+    desc: (options) => order(fragment`desc`, options),
     isNull: () => predicate(() => fragment`${column} is null`),
     isNotNull: () => predicate(() => fragment`${column} is not null`),
   };
@@ -95,6 +134,16 @@ export function not(term: Predicate): Predicate {
 /** The column of key `key` as SQL names it, once `defineDatabase` mapped it. */
 export function columnIdentifier(table: Table, key: string): Fragment {
   return identifier(table.columnNames[key] ?? key);
+}
+
+/** The `order by` list of `terms`, in the order given. */
+export function renderOrderBy(table: Table, terms: readonly Orderable[]): Fragment {
+  return join(
+    terms.map((term) =>
+      "~ordering" in term ? term["~ordering"]() : columnIdentifier(table, term.name),
+    ),
+    fragment`, `,
+  );
 }
 
 /**
