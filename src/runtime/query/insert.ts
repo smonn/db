@@ -11,7 +11,7 @@ import {
   type Selection,
   type Statement,
 } from "./from.ts";
-import { decoderFor, encodeValue, withDecoder } from "./codecs.ts";
+import { decoderFor, encodeAssigned, withDecoder } from "./codecs.ts";
 
 /** A column the database can fill: nullable, or with a default or an identity. */
 type OptionalKeys<T extends Table> = {
@@ -52,7 +52,7 @@ function insertInto(table: Table, rows: readonly Record<string, unknown>[]): Fra
   const names = given.length > 0 ? given : Object.keys(table.columns).slice(0, 1);
   const tuples = rows.map((row) => {
     const cells = names.map((name) =>
-      has(row, name) ? fragment`${encodeValue(table, name, row[name])}` : fragment`default`,
+      has(row, name) ? fragment`${encodeAssigned(table, name, row[name])}` : fragment`default`,
     );
     return fragment`(${join(cells, fragment`, `)})`;
   });

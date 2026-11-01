@@ -88,6 +88,26 @@ export function encodeValue(table: Table, column: string, value: unknown): unkno
     : encoded;
 }
 
+function isJsonDomain(definition: Column): boolean {
+  return (
+    !definition.state.array &&
+    definition.state.domainType !== undefined &&
+    jsonTypes.has(elementSqlType(definition))
+  );
+}
+
+/**
+ * `encodeValue` for a value an insert assigns. A param assigned to a domain column keeps the
+ * domain's OID, which the driver has no serializer for, so a json or jsonb domain's value is
+ * written as JSON here. A comparison's param takes the base type, which the driver serializes.
+ */
+export function encodeAssigned(table: Table, column: string, value: unknown): unknown {
+  const encoded = encodeValue(table, column, value);
+  const definition = table.columns[column];
+  if (encoded === null || encoded === undefined || definition === undefined) return encoded;
+  return isJsonDomain(definition) ? JSON.stringify(encoded) : encoded;
+}
+
 function readArray(table: Table, column: string, definition: Column, value: unknown): unknown {
   if (typeof value !== "string") return value;
   try {
