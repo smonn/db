@@ -26,5 +26,5 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["src", "scripts", "*.config.ts"]
+  "include": ["src", "scripts", "*.config.ts", "prototypes"]
 }
