@@ -60,8 +60,11 @@ function deleteStatement<T>(table: Table, predicate: Predicate | undefined): Del
 
 function filteredDelete<T, C extends Classes<T>>(
   table: Table,
-  predicate: Predicate,
+  predicate: Predicate | undefined,
 ): FilteredDelete<T, C> {
+  if (predicate === undefined) {
+    throw new Error("deleteFrom.where callback must return a predicate");
+  }
   return brand<FilteredDelete<T, C>>({
     ...deleteStatement<T>(table, predicate),
     where(pick) {
