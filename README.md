@@ -105,6 +105,37 @@ DATABASE_URL=postgres://localhost/app_prod node query.ts
 [ { id: 'u1', email: 'a@example.com' } ]
 ```
 
+### Selecting columns
+
+`pick` selects the columns you name, each under its own key, in the order you name them. `select` takes a callback for the cases `pick` can't express, such as renaming a column. Either replaces an earlier one, and `where`, `orderBy`, `limit`, and `offset` can come before or after it. A name that is no column is a type error that lists the table's columns.
+
+```ts file=select.ts
+import postgres from "postgres";
+import { createClient, from } from "@smonn/db";
+import { postgresJsConnection, postgresJsDriver, postgresJsTypes } from "@smonn/db/postgres-js";
+import db from "./db/definition.ts";
+
+const sql = postgres(process.env.DATABASE_URL ?? "", {
+  types: postgresJsTypes,
+  connection: postgresJsConnection,
+});
+const client = createClient(postgresJsDriver(sql));
+
+console.log(await client.all(from(db.public.users).pick("email", "id")));
+console.log(await client.all(from(db.public.users).select((u) => ({ mail: u.email }))));
+
+await sql.end();
+```
+
+```sh
+DATABASE_URL=postgres://localhost/app_prod node select.ts
+```
+
+```text
+[ { email: 'a@example.com', id: 'u1' } ]
+[ { mail: 'a@example.com' } ]
+```
+
 ### Ordering and paging
 
 `orderBy`, `limit`, and `offset` add the clauses of the same names. `orderBy` takes the columns `where` gets and returns one ordering or an array of them: `u.email.asc()`, `u.email.desc()`, or a bare column, which sorts ascending. A repeated call appends, so the first call's orderings sort first. On a nullable column, `asc` and `desc` take `{ nulls: "first" | "last" }`; without it Postgres's default holds. On a NOT NULL column, `nulls` is a type error.

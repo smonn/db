@@ -19,6 +19,8 @@ import { assertRegistered, brand, type Query } from "./statement.ts";
 export type SelectQuery<T, R = T> = Query<R> & {
   /** The keys of the returned object name the output columns. */
   select<S extends Selection>(pick: (columns: Refs<T>) => S): SelectQuery<T, Selected<S>>;
+  /** Selects each named column under its own key. The names are typed inline, so a wrong one prints the row's keys. */
+  pick<K extends keyof T & string>(...names: [K, ...K[]]): SelectQuery<T, { [P in K]: T[P] }>;
   /** Combines with any earlier `where` using `and`. */
   where(pick: (columns: Refs<T>) => Predicate): SelectQuery<T, R>;
   /** Repeated calls append, so the first call's orderings sort first. */
@@ -47,6 +49,17 @@ function assertCount(clause: "limit" | "offset", count: number): void {
   }
 }
 
+/** One output per distinct name, each under its own key. */
+function pickedOutputs(table: Table, names: readonly string[]): Output[] {
+  if (names.length === 0) throw new Error("pick needs at least one column");
+  for (const name of names) {
+    if (!Object.hasOwn(table.columns, name)) {
+      throw new Error(`pick: "${name}" is not a column of "${table.schema}"."${table.name}"`);
+    }
+  }
+  return [...new Set(names)].map((name): Output => [name, name]);
+}
+
 function selectQuery<T, R>(table: Table, state: State): SelectQuery<T, R> {
   const query = brand<SelectQuery<T, R>>({
     select(pick) {
@@ -54,6 +67,9 @@ function selectQuery<T, R>(table: Table, state: State): SelectQuery<T, R> {
       if (picked.length === 0) throw new Error("select needs at least one column");
       const outputs = picked.map(([alias, ref]): Output => [alias, ref.name]);
       return selectQuery(table, { ...state, outputs });
+    },
+    pick(...names) {
+      return selectQuery(table, { ...state, outputs: pickedOutputs(table, names) });
     },
     where(pick) {
       const next = pick(refsOf<T>(table));

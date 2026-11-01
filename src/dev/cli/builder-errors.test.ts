@@ -45,6 +45,25 @@ void users.offset(null);
 void users.limit();
 `;
 
+const PICK_FIXTURE = `import { defineDatabase, defineTable, from } from ${JSON.stringify(join(repo, "src/runtime/index.ts"))};
+
+const db = defineDatabase({
+  public: {
+    users: defineTable((c) => ({
+      id: c.integer().identity().primaryKey(),
+      email: c.text().notNull(),
+      name: c.text(),
+    })),
+  },
+});
+const users = from(db.public.users);
+
+void users.pick("nope");
+void users.pick("id", "nope");
+void users.pick();
+void users.pick(1);
+`;
+
 const ROW = "{ id: number; email: string; name: string | null; }";
 const NEW_ROW = "{ email: string; } & { id?: number; name?: string | null; }";
 
@@ -72,5 +91,17 @@ describe("Builder type errors", () => {
       `error TS2554: Expected 1 arguments, but got 0.`,
     ]);
     expect(errors.filter((line) => line.includes("Table<"))).toEqual([]);
+  });
+
+  it("print the valid keys for a wrong name, with no overload to blame", async () => {
+    const KEYS = `'"email" | "id" | "name"'`;
+    const errors = await typeErrors(PICK_FIXTURE);
+    expect(errors).toEqual([
+      `error TS2345: Argument of type '"nope"' is not assignable to parameter of type ${KEYS}.`,
+      `error TS2345: Argument of type '"nope"' is not assignable to parameter of type ${KEYS}.`,
+      `error TS2555: Expected at least 1 arguments, but got 0.`,
+      `error TS2345: Argument of type '1' is not assignable to parameter of type ${KEYS}.`,
+    ]);
+    expect(errors.join("\n")).not.toMatch(/Table<|No overload/u);
   });
 });

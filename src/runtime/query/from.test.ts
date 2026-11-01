@@ -65,6 +65,107 @@ describe("select", () => {
   });
 });
 
+describe("pick", () => {
+  it("selects each named column under its own key", () => {
+    expect(from(db.public.users).pick("id", "email").toSql()).toStrictEqual({
+      text: 'select "id", "email" from "public"."users"',
+      params: [],
+    });
+  });
+
+  it("selects in the order named, not the table's", () => {
+    expect(from(db.public.users).pick("email", "id").toSql().text).toBe(
+      'select "email", "id" from "public"."users"',
+    );
+  });
+
+  it("types each named column by its key, keeping nullability", () => {
+    const query = from(db.public.users).pick("email", "id");
+    expectTypeOf(query).toExtend<Query<{ email: string | null; id: string }>>();
+    expectTypeOf(query).not.toExtend<Query<{ email: string; id: string }>>();
+    expectTypeOf(query).not.toExtend<Query<{ email: string | null; id: string; extra: number }>>();
+  });
+
+  it("replaces an earlier select or pick, and is replaced by a later one", () => {
+    const users = from(db.public.users);
+    expect(
+      users
+        .select((u) => ({ mail: u.email }))
+        .pick("id")
+        .toSql().text,
+    ).toBe('select "id" from "public"."users"');
+    expect(
+      users
+        .pick("id")
+        .select((u) => ({ mail: u.email }))
+        .toSql().text,
+    ).toBe('select "email" as "mail" from "public"."users"');
+    expect(users.pick("id").pick("email").toSql().text).toBe(
+      'select "email" from "public"."users"',
+    );
+  });
+
+  it("selects a column once however often it is named", () => {
+    const query = from(db.public.users).pick("id", "id", "email");
+    expect(query.toSql().text).toBe('select "id", "email" from "public"."users"');
+  });
+
+  it("refuses a name that is no column, for a caller the types don't stop", () => {
+    const users = from(db.public.users);
+    // @ts-expect-error the name is no column
+    expect(() => users.pick("nope")).toThrow('pick: "nope" is not a column of "public"."users"');
+    // @ts-expect-error toString is inherited, not a column
+    expect(() => users.pick("toString")).toThrow('pick: "toString" is not a column');
+  });
+
+  it("refuses an empty list, for a caller the types don't stop", () => {
+    const users: { pick(...names: string[]): unknown } = from(db.public.users);
+    expect(() => users.pick()).toThrow("pick needs at least one column");
+  });
+
+  it("follows the SQL names defineDatabase mapped", () => {
+    const odd = defineDatabase({
+      public: {
+        "Odd Table": defineTable((c) => ({ rank: c.integer().name("Odd Rank"), tags: c.text() })),
+      },
+    });
+    expect(from(odd.public["Odd Table"]).pick("rank", "tags").toSql().text).toBe(
+      'select "Odd Rank" as "rank", "tags" from "public"."Odd Table"',
+    );
+  });
+
+  it("combines with where, orderBy, limit, and offset, whichever call comes first", () => {
+    const query = from(db.public.users)
+      .offset(4)
+      .limit(2)
+      .orderBy((u) => u.email.desc())
+      .where((u) => u.id.gt("a"))
+      .pick("id");
+    expect(query.toSql()).toStrictEqual({
+      text: 'select "id" from "public"."users" where "id" > $1 order by "email" desc limit $2 offset $3',
+      params: ["a", 2, 4],
+    });
+  });
+
+  it("keeps the earlier clauses when it comes first", () => {
+    const query = from(db.public.users)
+      .pick("id")
+      .where((u) => u.email.isNull())
+      .orderBy((u) => u.id)
+      .limit(1);
+    expect(query.toSql().text).toBe(
+      'select "id" from "public"."users" where "email" is null order by "id" limit $1',
+    );
+  });
+
+  it("hands where and orderBy the whole row, not only the picked columns", () => {
+    const query = from(db.public.users).pick("id");
+    expectTypeOf<Parameters<Parameters<typeof query.where>[0]>[0]>().toEqualTypeOf<
+      Refs<{ id: string; email: string | null }>
+    >();
+  });
+});
+
 describe("where", () => {
   const users = from(db.public.users);
 

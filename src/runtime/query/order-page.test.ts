@@ -267,4 +267,18 @@ describe("ordering and paging against Postgres", () => {
       "Expected one row but the query returned 2",
     );
   });
+
+  it("orders and pages by a column pick leaves out", async () => {
+    const page = scores
+      .pick("id", "note")
+      .where((s) => s.points.gte(5))
+      .orderBy((s) => s.points.desc())
+      .orderBy((s) => s.id)
+      .limit(2)
+      .offset(1);
+    expect(await client.all(page)).toStrictEqual([
+      { id: "b", note: null },
+      { id: "e", note: "z" },
+    ]);
+  });
 });
