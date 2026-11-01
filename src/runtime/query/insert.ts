@@ -13,9 +13,11 @@ type OptionalKeys<T extends Table> = {
       : never;
 }[keyof Row<T>];
 
+type RequiredKeys<T extends Table> = Exclude<keyof Row<T>, OptionalKeys<T>>;
+
 /** A NOT NULL column with neither a default nor an identity is required; the rest may be left out. */
 export type NewRow<T extends Table> = {
-  [K in Exclude<keyof Row<T>, OptionalKeys<T>>]: Row<T>[K];
+  [K in RequiredKeys<T>]: Row<T>[K];
 } & {
   [K in OptionalKeys<T>]?: Row<T>[K];
 };
