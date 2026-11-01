@@ -1,5 +1,5 @@
 import { fragment } from "../sql/index.ts";
-import { brand, type Query, type Statement } from "./from.ts";
+import { brand, type Query, type Statement } from "./statement.ts";
 
 /**
  * A whole hand-written statement, for what the builder can't express. Give the row type,

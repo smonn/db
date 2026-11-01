@@ -1,16 +1,10 @@
 export { createClient } from "./client.ts";
 export type { Client } from "./client.ts";
-export { and, from, not, or } from "./from.ts";
-export type {
-  ColumnRef,
-  Predicate,
-  Query,
-  Refs,
-  Selected,
-  Selection,
-  SelectQuery,
-  Statement,
-} from "./from.ts";
+export { from } from "./from.ts";
+export type { SelectQuery } from "./from.ts";
+export { and, not, or } from "./refs.ts";
+export type { ColumnRef, Predicate, Refs, Selected, Selection } from "./refs.ts";
+export type { Query, Statement } from "./statement.ts";
 export { insert } from "./insert.ts";
 export type { InsertStatement, NewRow } from "./insert.ts";
 export { sql } from "./sql.ts";

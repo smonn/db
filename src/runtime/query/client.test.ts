@@ -2,7 +2,9 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../definition/index.ts";
 import { createClient } from "./client.ts";
-import { and, from, not, or, type Statement } from "./from.ts";
+import { from } from "./from.ts";
+import { and, not, or } from "./refs.ts";
+import type { Statement } from "./statement.ts";
 import { insert } from "./insert.ts";
 import { sql } from "./sql.ts";
 

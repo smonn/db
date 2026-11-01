@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineDatabase, defineTable } from "../definition/index.ts";
-import type { Query } from "./from.ts";
+import type { Query } from "./statement.ts";
 import { insert, type NewRow } from "./insert.ts";
 
 const db = defineDatabase({
