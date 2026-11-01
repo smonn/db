@@ -1,4 +1,4 @@
-export type { Column, Columns, ColumnState } from "./column.ts";
+export type { Column, ColumnFlags, Columns, ColumnState } from "./column.ts";
 export type { ColumnFactories } from "./factories.ts";
 export type { ForeignKeyAction, ForeignKeyOptions, Target } from "./references.ts";
 export type { ForeignKey } from "./foreign-keys.ts";

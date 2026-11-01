@@ -1,4 +1,4 @@
-import type { Column, ColumnState } from "./column.ts";
+import type { Column, ColumnState, FreshFlags, WithFlags } from "./column.ts";
 import type { Domain } from "./domain.ts";
 import { type ColumnFactories, factories } from "./factories.ts";
 
@@ -40,8 +40,8 @@ function modified(state: ColumnState, codec: unknown): boolean {
  * A domain over the type `define` returns, a factory type or an enum. It sits in a schema's object
  * beside its tables, named by its key, and a column takes it with `c.domain(posint)`.
  */
-export function defineDomain<V, Int extends boolean, N extends boolean = false>(
-  define: (c: BaseFactories) => Column<V, false, Int>,
+export function defineDomain<V, N extends boolean = false>(
+  define: (c: BaseFactories) => Column<V, WithFlags<FreshFlags, { int: boolean }>>,
   options: DomainOptions<N> = {},
 ): Domain<V, N> {
   const base = define(factories);

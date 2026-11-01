@@ -1,14 +1,23 @@
-import { column, type Column } from "./column.ts";
+import {
+  column,
+  type Column,
+  type ColumnFlags,
+  type FreshFlags,
+  type WithFlags,
+} from "./column.ts";
 import type { Domain } from "./domain.ts";
 import type { Enum } from "./enum.ts";
+
+/** A fresh column of a type Postgres allows an identity on. */
+type FreshIntFlags = WithFlags<FreshFlags, { int: true }>;
 
 export type ColumnFactories = {
   /** `T` narrows the TypeScript type only, like `jsonb<T>()`: the catalog and the database never see it. */
   readonly text: <T extends string = string>() => Column<T>;
   readonly varchar: <T extends string = string>(length: number) => Column<T>;
-  readonly smallint: () => Column<number, false, true>;
-  readonly integer: () => Column<number, false, true>;
-  readonly bigint: () => Column<bigint, false, true>;
+  readonly smallint: () => Column<number, FreshIntFlags>;
+  readonly integer: () => Column<number, FreshIntFlags>;
+  readonly bigint: () => Column<bigint, FreshIntFlags>;
   /** Without a precision the column holds any number of digits. */
   readonly numeric: (precision?: number, scale?: number) => Column<string>;
   readonly real: () => Column<number>;
@@ -23,14 +32,16 @@ export type ColumnFactories = {
   /** An enum from the same Database, rolled up under a schema beside the tables. */
   readonly enum: <L extends readonly string[]>(type: Enum<L>) => Column<L[number]>;
   /** A domain from the same Database; a NOT NULL one makes the column non-null in `Row`. */
-  readonly domain: <V, N extends boolean>(type: Domain<V, N>) => Column<V, N>;
+  readonly domain: <V, N extends boolean>(
+    type: Domain<V, N>,
+  ) => Column<V, WithFlags<FreshFlags, { notNull: N }>>;
 };
 
-function of<V, Int extends boolean = false, N extends boolean = false>(
+function of<V, F extends ColumnFlags>(
   sqlType: string,
   named: { readonly enumType?: Enum; readonly domainType?: Domain } = {},
-): Column<V, N, Int> {
-  return column<V, N, Int, false, false, false, false, false, true>({
+): Column<V, F> {
+  return column({
     sqlType,
     enumType: named.enumType,
     domainType: named.domainType,
