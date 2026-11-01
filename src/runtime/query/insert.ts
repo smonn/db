@@ -1,16 +1,8 @@
 import type { Row, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import type { Expr } from "./expr.ts";
-import {
-  assertColumns,
-  cellOf,
-  columnIdentifier,
-  has,
-  returning,
-  type Refs,
-  type Selected,
-  type Selection,
-} from "./refs.ts";
+import { assertColumns, cellOf, has, returning } from "./clauses.ts";
+import { columnIdentifier, type Refs, type Selected, type Selection } from "./refs.ts";
 import {
   assertRegistered,
   brand,

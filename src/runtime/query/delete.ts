@@ -1,14 +1,7 @@
 import type { Row, SqlClass, Table } from "../definition/index.ts";
 import { fragment, identifier, type Fragment } from "../sql/index.ts";
-import {
-  and,
-  refsOf,
-  returning,
-  type Classes,
-  type Refs,
-  type Selected,
-  type Selection,
-} from "./refs.ts";
+import { returning } from "./clauses.ts";
+import { and, refsOf, type Classes, type Refs, type Selected, type Selection } from "./refs.ts";
 import type { Expr } from "./expr.ts";
 import {
   assertRegistered,

@@ -1,13 +1,10 @@
 import type { Row, SqlClass, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
+import { assertColumns, cellOf, has, returning } from "./clauses.ts";
 import {
   and,
-  assertColumns,
-  cellOf,
   columnIdentifier,
-  has,
   refsOf,
-  returning,
   type Classes,
   type Refs,
   type Selected,

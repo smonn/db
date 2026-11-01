@@ -2,16 +2,12 @@ import type { Row, SqlClass, Table } from "../definition/index.ts";
 import { fragment, identifier, join } from "../sql/index.ts";
 import { withDecoder } from "./codecs.ts";
 import type { Expr } from "./expr.ts";
+import { decodeOutputs, outputsOf, renderOrderBy, renderOutput, type Output } from "./clauses.ts";
 import {
   and,
-  decodeOutputs,
-  outputsOf,
   refsOf,
-  renderOrderBy,
-  renderOutput,
   type Classes,
   type Orderable,
-  type Output,
   type Refs,
   type Selected,
   type Selection,
