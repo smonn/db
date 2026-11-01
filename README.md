@@ -213,7 +213,7 @@ DATABASE_URL=postgres://localhost/app_prod node matching.ts
 [ { id: 'u3' } ]
 ```
 
-`in` renders `= any($1)` and `notIn` renders `<> all($1)`. The list binds as one array param, so the statement stays the same whatever the list's length. `in([])` matches no row and `notIn([])` matches every row. Elements are the column's non-null type and go through its codec. A NULL column never matches either call. `like` and `ilike` take the pattern as written, so `%` and `_` are wildcards. `includes(value)` renders `$1 = any(column)` and takes one element, such as `e.lately.includes("good")` on the `lately` column above.
+`in` renders `= any($1)` and `notIn` renders `<> all($1)`. The list binds as one array param, so the statement stays the same whatever the list's length. `in([])` matches no row and `notIn([])` matches every row. Elements are the column's non-null type and go through its codec. A NULL column matches neither call, except `notIn([])`, which matches every row. `like` and `ilike` take the pattern as written, so `%` and `_` are wildcards. `includes(value)` renders `$1 = any(column)` and takes one element, such as `e.lately.includes("good")` on the `lately` column above.
 
 Each call exists only where Postgres accepts it. `like` and `ilike` are offered on `text` and `varchar` columns and domains over them, and on no other type. `in` and `notIn` are offered on every column except arrays. `includes` is offered on arrays alone. Calling one elsewhere is a type error that names the call and the column's type, such as `Property 'like' does not exist on type 'ColumnRef<number, "number">'`. There is no `between`, `notLike`, `@>`, or `&&`; write `gte` and `lte`, `not(...)`, or a `sql` statement instead.
 

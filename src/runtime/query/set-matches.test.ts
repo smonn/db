@@ -265,3 +265,14 @@ describe("which calls a column offers", () => {
     expect(query.where((t) => t.moods.includes("ok")).toSql().params).toStrictEqual(["ok"]);
   });
 });
+
+describe("an unknown class", () => {
+  it("offers no class-bound call on a ref whose class is unknown", () => {
+    type Unknown = Refs<{ x: string }>["x"];
+    expectTypeOf<Unknown>().not.toHaveProperty("in");
+    expectTypeOf<Unknown>().not.toHaveProperty("notIn");
+    expectTypeOf<Unknown>().not.toHaveProperty("includes");
+    expectTypeOf<Unknown>().not.toHaveProperty("like");
+    expectTypeOf<Unknown>().toHaveProperty("eq");
+  });
+});
