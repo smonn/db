@@ -121,6 +121,7 @@ describe("README getting started", () => {
       "file=paging.ts",
       "file=matching.ts",
       "file=fragments.ts",
+      "file=update.ts",
       "file=delete.ts",
       "file=db/enums.ts",
     ]);
@@ -133,12 +134,14 @@ describe("README getting started", () => {
       "paging.ts",
       "matching.ts",
       "fragments.ts",
+      "update.ts",
       "delete.ts",
     ]);
     expect(steps.map((s) => s.command.includes("smonndb"))).toStrictEqual([
       true,
       true,
       true,
+      false,
       false,
       false,
       false,

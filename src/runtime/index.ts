@@ -43,7 +43,17 @@ export type {
   QueryResult,
   Session,
 } from "./ports/index.ts";
-export { and, createClient, deleteFrom, from, insert, not, or, sql } from "./query/index.ts";
+export {
+  and,
+  createClient,
+  deleteFrom,
+  from,
+  insert,
+  not,
+  or,
+  sql,
+  update,
+} from "./query/index.ts";
 export type {
   Client,
   ColumnRef,
@@ -51,6 +61,7 @@ export type {
   DeleteStatement,
   Expr,
   FilteredDelete,
+  FilteredUpdate,
   InsertStatement,
   NewRow,
   Orderable,
@@ -62,6 +73,9 @@ export type {
   Selection,
   SelectQuery,
   Statement,
+  UpdateNeedsSet,
+  UpdateNeedsWhereOrAllRows,
+  UpdateStatement,
 } from "./query/index.ts";
 export { fragment, identifier, join } from "./sql/index.ts";
 export type { Fragment, RenderedSql } from "./sql/index.ts";

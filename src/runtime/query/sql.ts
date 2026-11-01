@@ -18,7 +18,7 @@ type Sql = {
   (strings: TemplateStringsArray, ...values: unknown[]): Statement;
   <R>(strings: TemplateStringsArray, ...values: unknown[]): Query<R>;
   /**
-   * An expression of type `V` for `where`, `select`, `returning`, `orderBy`, and `values`. A
+   * An expression of type `V` for `where`, `select`, `returning`, `orderBy`, `values`, and `set`. A
    * column ref renders as its column, an Expr inlines in parentheses, and any other value binds
    * as a param, with no codec. A statement inside one is refused, so it holds no subquery.
    */

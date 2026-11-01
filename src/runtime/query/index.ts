@@ -10,4 +10,11 @@ export { deleteFrom } from "./delete.ts";
 export type { DeleteNeedsWhereOrAllRows, DeleteStatement, FilteredDelete } from "./delete.ts";
 export { insert } from "./insert.ts";
 export type { InsertStatement, NewRow } from "./insert.ts";
+export { update } from "./update.ts";
+export type {
+  FilteredUpdate,
+  UpdateNeedsSet,
+  UpdateNeedsWhereOrAllRows,
+  UpdateStatement,
+} from "./update.ts";
 export { sql } from "./sql.ts";
