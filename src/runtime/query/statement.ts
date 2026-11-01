@@ -1,5 +1,5 @@
 import type { Table } from "../definition/index.ts";
-import type { RenderedSql } from "../sql/index.ts";
+import { isFragment, type RenderedSql } from "../sql/index.ts";
 
 export type Statement = {
   toSql(): RenderedSql;
@@ -34,9 +34,18 @@ export function unfinished<B extends object>(builder: B): B {
   return builder;
 }
 
-/** "a statement" or "an unfinished statement" for what `brand` or `unfinished` marked, else `undefined`. */
+/**
+ * "a statement" or "an unfinished statement" for what `brand` or `unfinished` marked, and a third
+ * kind for any other `toSql` but a Fragment, such as a statement a second copy of the package made.
+ * `undefined` for a value.
+ */
 export function statementKind(value: unknown): string | undefined {
-  return typeof value === "object" && value !== null ? made.get(value) : undefined;
+  if (typeof value !== "object" || value === null) return undefined;
+  const kind = made.get(value);
+  if (kind !== undefined) return kind;
+  return "toSql" in value && !isFragment(value)
+    ? "a statement this copy of the package did not make"
+    : undefined;
 }
 
 /**

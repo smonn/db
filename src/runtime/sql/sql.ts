@@ -54,6 +54,10 @@ export function fragment(strings: TemplateStringsArray, ...values: unknown[]): F
   return new Fragment(strings, values);
 }
 
+export function isFragment(value: unknown): value is Fragment {
+  return value instanceof Fragment;
+}
+
 /** `piece` as DDL text, with each value replaced by what `inline` returns; `undefined` for a non-Fragment. */
 export function inlineSql(piece: unknown, inline: (value: unknown) => string): string | undefined {
   return Fragment.inline(piece, inline);
