@@ -1,0 +1,16 @@
+[
+  [
+    {
+      "html_url": "https://github.com/smonn/db/issues/614#issuecomment-6444028387",
+      "body": "<!-- smonn-db:missing-parent -->\nThis issue has no parent, and its milestone has a parent for its area: #434. If it belongs there, attach it as a sub-issue (`gh issue edit <parent> --add-sub-issue 614`). Not every issue needs a parent, so ignore this if it doesn't."
+    },
+    {
+      "html_url": "https://github.com/smonn/db/issues/614#issuecomment-6448730206",
+      "body": "Related, found in review of #613: with `postgresJsTypes`, postgres.js's `sql.array()` types the param as the scalar element. `sql.array([1n, 2n])` throws `invalid input syntax for type bigint: \"1,2\"`, and `sql.array(['a','b'])` returns the string `\"a,b\"`. `addArrayType` skips our array OIDs, so it never fills `typeArrayMap`. #613 documents it in the `postgresJsTypes` JSDoc: pass a plain JS array. A real fix would touch postgres.js internals; check it again whenever this issue changes how types load.\n"
+    },
+    {
+      "html_url": "https://github.com/smonn/db/issues/614#issuecomment-6456420907",
+      "body": "Another case for this issue, found in the #641 review: in raw `sql`, a domain array's elements stay strings even when the domain's base isn't text. On a fresh connection, a `posints_d[]` column (a domain over `integer`) returned `['1','NULL']`, while a scalar `posint` column returned the number `1`. postgres.js resolves a scalar domain through its base OID but finds no parser for the domain's array OID. ADR-0023 covers the `\"NULL\"` element but not this case, so it should say so too, or this issue should fix it with the `fetch_types` work.\n"
+    }
+  ]
+]
