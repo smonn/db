@@ -63,13 +63,13 @@ function pickedOutputs(table: Table, names: readonly string[]): Output[] {
       throw new Error(`pick: "${name}" is not a column of "${table.schema}"."${table.name}"`);
     }
   }
-  return [...new Set(names)].map((name): Output => [name, name]);
+  return [...new Set(names)].map((key): Output => [key, { table, key, alias: table.name }]);
 }
 
 function selectQuery<T, R, C extends Classes<T>>(table: Table, state: State): SelectQuery<T, R, C> {
   const query = brand<SelectQuery<T, R, C>>({
     select(pick) {
-      const outputs = outputsOf(pick(refsOf<T>(table)));
+      const outputs = outputsOf(table, pick(refsOf<T>(table)));
       if (outputs.length === 0) throw new Error("select needs at least one column");
       return selectQuery(table, { ...state, outputs });
     },
@@ -99,7 +99,7 @@ function selectQuery<T, R, C extends Classes<T>>(table: Table, state: State): Se
     },
     toSql() {
       const columns = join(
-        state.outputs.map((output) => renderOutput(table, output)),
+        state.outputs.map((output) => renderOutput(output)),
         fragment`, `,
       );
       const filter = state.predicate ? fragment` where ${state.predicate["~expr"]()}` : fragment``;
@@ -111,7 +111,7 @@ function selectQuery<T, R, C extends Classes<T>>(table: Table, state: State): Se
       return fragment`select ${columns} from ${identifier(table.schema)}.${identifier(table.name)}${filter}${order}${limit}${offset}`.toSql();
     },
   });
-  return withDecoder(query, decodeOutputs(table, state.outputs));
+  return withDecoder(query, decodeOutputs(state.outputs));
 }
 
 /** The row type is written out, not named `Row<T>`, so tsc prints its keys instead of the Table. */
@@ -130,6 +130,9 @@ export function from<T extends Table>(
 > {
   assertRegistered(table);
   return selectQuery(table, {
-    outputs: Object.keys(table.columns).map((name): Output => [name, name]),
+    outputs: Object.keys(table.columns).map((key): Output => [
+      key,
+      { table, key, alias: table.name },
+    ]),
   });
 }

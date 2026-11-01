@@ -278,7 +278,9 @@ describe("where", () => {
 
 describe("renderOutput", () => {
   it("names an output that is no column of the table as its own identifier", () => {
-    expect(renderOutput(db.public.users, ["alias", "missing"]).toSql()).toStrictEqual({
+    expect(
+      renderOutput(["alias", { table: db.public.users, key: "missing", alias: "users" }]).toSql(),
+    ).toStrictEqual({
       text: '"missing" as "alias"',
       params: [],
     });
