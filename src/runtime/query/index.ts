@@ -1,7 +1,8 @@
 export { createClient } from "./client.ts";
 export type { Client } from "./client.ts";
 export { from } from "./from.ts";
-export type { SelectQuery } from "./from.ts";
+export type { FromQuery, SelectQuery } from "./from.ts";
+export type { JoinedQuery, JoinNeedsSelect } from "./join.ts";
 export { and, not, or } from "./refs.ts";
 export type { ColumnRef, Orderable, Predicate, Refs, Selected, Selection } from "./refs.ts";
 export type { Expr, Ordering } from "./expr.ts";

@@ -74,7 +74,7 @@ function filteredDelete<T, C extends Classes<T>>(
   return brand<FilteredDelete<T, C>>({
     ...deleteStatement<T>(table, predicate),
     where(pick) {
-      return filteredDelete(table, and(predicate, pick(refsOf<T>(table))));
+      return filteredDelete(table, and(predicate, pick(refsOf<T, C>(table))));
     },
   });
 }
@@ -84,7 +84,7 @@ function needsWhereOrAllRows<T, C extends Classes<T>>(
 ): DeleteNeedsWhereOrAllRows<T, C> {
   const parts: DeleteNeedsWhereOrAllRows<T, C> & Pick<Statement, "toSql"> = {
     where(pick) {
-      return filteredDelete(table, pick(refsOf<T>(table)));
+      return filteredDelete(table, pick(refsOf<T, C>(table)));
     },
     allRows() {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The marker exists only in types.

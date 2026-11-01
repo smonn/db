@@ -269,12 +269,6 @@ describe("where", () => {
       Query<{ id: string; email: string | null }>
     >();
   });
-
-  it("compares a column only with its own value type, never null", () => {
-    type UserRefs = Refs<Row<typeof db.public.users>>;
-    expectTypeOf<Parameters<UserRefs["id"]["eq"]>>().toEqualTypeOf<[value: string]>();
-    expectTypeOf<Parameters<UserRefs["email"]["eq"]>>().toEqualTypeOf<[value: string]>();
-  });
 });
 
 describe("renderOutput", () => {

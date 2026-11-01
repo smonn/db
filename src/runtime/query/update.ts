@@ -98,7 +98,7 @@ function filteredUpdate<T, C extends Classes<T>>(
   return brand<FilteredUpdate<T, C>>({
     ...updateStatement<T>(table, assignments, predicate),
     where(pick) {
-      const next: Expr<boolean | null> | undefined = pick(refsOf<T>(table));
+      const next: Expr<boolean | null> | undefined = pick(refsOf<T, C>(table));
       return filteredUpdate(
         table,
         assignments,
@@ -114,7 +114,7 @@ function needsWhereOrAllRows<T, C extends Classes<T>>(
 ): UpdateNeedsWhereOrAllRows<T, C> {
   const parts: UpdateNeedsWhereOrAllRows<T, C> & Pick<Statement, "toSql"> = {
     where(pick) {
-      return filteredUpdate(table, assignments, pick(refsOf<T>(table)));
+      return filteredUpdate(table, assignments, pick(refsOf<T, C>(table)));
     },
     allRows() {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The marker exists only in types.

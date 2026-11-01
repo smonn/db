@@ -28,6 +28,11 @@ export default defineDatabase({
       id: c.text().notNull(),
       email: c.text(),
     })),
+    posts: defineTable((c) => ({
+      id: c.text().notNull(),
+      authorId: c.text().notNull(),
+      title: c.text().notNull(),
+    })),
   },
 });
 ```
@@ -250,6 +255,64 @@ DATABASE_URL=postgres://localhost/app_prod node fragments.ts
 ```
 
 `where`, `and`, `or`, and `not` take an `Expr<boolean | null>`, which a fragment in `where` becomes without a type argument. A comparison such as `u.id.eq("u1")` is an `Expr<boolean>`, so it also selects as a boolean or sorts in `orderBy`. A fragment in `orderBy` sorts ascending, or takes `asc()` and `desc()`, with `nulls` only when `V` includes `null`. A fragment runs no codec: its params bind as given and its value comes back as the driver reads it. A nested fragment or comparison inlines in parentheses, and a statement inside a fragment throws, so it can't hold a subquery.
+
+### Joining tables
+
+`innerJoin(table, on)` and `leftJoin(table, on)` add a table, and `on` is required. Each callback, in `on`, `where`, `select`, and `orderBy`, gets one parameter per table in join order, so a table joined to itself needs no alias: `from(users).innerJoin(users, (a, b) => ...)`.
+
+```ts file=joins.ts
+import postgres from "postgres";
+import { createClient, from, insert } from "@smonn/db";
+import { postgresJsConnection, postgresJsDriver, postgresJsTypes } from "@smonn/db/postgres-js";
+import db from "./db/definition.ts";
+
+const sql = postgres(process.env.DATABASE_URL ?? "", {
+  types: postgresJsTypes,
+  connection: postgresJsConnection,
+});
+const client = createClient(postgresJsDriver(sql));
+const { users, posts } = db.public;
+
+await client.run(
+  insert(posts).valuesMany([
+    { id: "p1", authorId: "u1", title: "Hello" },
+    { id: "p2", authorId: "u1", title: "Again" },
+  ]),
+);
+const titles = from(users)
+  .innerJoin(posts, (u, p) => p.authorId.eq(u.id))
+  .orderBy((_u, p) => p.title)
+  .select((u, p) => ({ email: u.email, title: p.title }));
+console.log(await client.all(titles));
+const silent = from(users)
+  .leftJoin(posts, (u, p) => p.authorId.eq(u.id))
+  .where((_u, p) => p.id.isNull())
+  .orderBy((u) => u.id)
+  .select((u, p) => ({ id: u.id, title: p.title }));
+console.log(await client.all(silent));
+
+await sql.end();
+```
+
+```sh
+DATABASE_URL=postgres://localhost/app_prod node joins.ts
+```
+
+```text
+[
+  { email: 'a@example.com', title: 'Again' },
+  { email: 'a@example.com', title: 'Hello' }
+]
+[ { id: 'u2', title: null }, { id: 'u3', title: null } ]
+```
+
+A joined builder is no query until `select` names its columns, since two tables can share a name such as `id`, so `client.all` refuses it, and a JavaScript caller that runs it gets an error that says so. `pick` isn't offered after a join. Joins come before `select`, whose result takes no more of them; `where`, `orderBy`, `limit`, and `offset` can come before or after it.
+
+After `leftJoin`, that table's columns read `V | null` in later callbacks and in the rows, since a row with no match there reads NULL, and they gain `isNull()`. Its `on` sees them as declared. A NULL runs no codec; each other value goes through its own table's codec.
+
+A comparison takes a value or another column, as `p.authorId.eq(u.id)` does. A column operand runs no codec, and it must share the column's SQL type class, nullable or not: Postgres compares `integer` with `bigint` but not `uuid` with `text`, so comparing those two is a type error. An enum, a domain over one, or an array compares only with the identical type, so building such a comparison throws, naming both columns.
+
+The SQL qualifies every column by its table's alias, the table's SQL name, so `titles` renders `select "users"."email", "posts"."title" from "public"."users" inner join "public"."posts" on "posts"."authorId" = "users"."id" order by "posts"."title"`. A repeated table takes `_2`, `_3`, and so on, skipping names in use and cut so the alias fits Postgres's 63 bytes. A column ref in `sql.expr` renders qualified too, and a query with no join keeps its bare column names. Right, full, and cross joins aren't offered; write them with `sql`.
 
 ### Updating rows
 

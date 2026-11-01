@@ -121,6 +121,7 @@ describe("README getting started", () => {
       "file=paging.ts",
       "file=matching.ts",
       "file=fragments.ts",
+      "file=joins.ts",
       "file=update.ts",
       "file=delete.ts",
       "file=db/enums.ts",
@@ -134,6 +135,7 @@ describe("README getting started", () => {
       "paging.ts",
       "matching.ts",
       "fragments.ts",
+      "joins.ts",
       "update.ts",
       "delete.ts",
     ]);
@@ -141,6 +143,7 @@ describe("README getting started", () => {
       true,
       true,
       true,
+      false,
       false,
       false,
       false,

@@ -2,12 +2,10 @@ import type { Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import { isTextArray } from "./array-text.ts";
 import { decoderFor, encodeValue, withDecoder, type Decode } from "./codecs.ts";
-import { isExpr, type Expr } from "./expr.ts";
+import { isExpr, isOrdering, type Expr } from "./expr.ts";
 import {
-  columnIdentifier,
   columnSql,
   refsOf,
-  refSql,
   sourceOf,
   type ColumnSource,
   type Orderable,
@@ -41,24 +39,25 @@ export function assertColumns(table: Table, keys: readonly string[]): void {
   }
 }
 
-/** The `order by` list of `terms`, in the order given. */
-export function renderOrderBy(table: Table, terms: readonly Orderable[]): Fragment {
-  return join(
-    terms.map((term) => {
-      if ("~ordering" in term) return term["~ordering"]();
-      if (isExpr(term)) return term["~expr"]();
-      return refSql(term) ?? columnIdentifier(table, term.name);
-    }),
-    fragment`, `,
-  );
+/** What renders one `orderBy` term; throws for a term that is no column, Expr, or ordering. */
+export function sortKeyOf(term: Orderable, index: number): () => Fragment {
+  if (isOrdering(term)) return () => term["~ordering"]();
+  if (isExpr(term)) return () => term["~expr"]();
+  const source = sourceOf(term);
+  if (source === undefined) {
+    throw new Error(`orderBy: term ${index + 1} is no column, Expr, or ordering`);
+  }
+  return () => columnSql(source);
 }
 
 /** The outputs of a `select` or `returning` callback's result, in its key order. */
-export function outputsOf(table: Table, selection: Selection): Output[] {
-  return Object.entries(selection).map(([alias, value]): Output => [
-    alias,
-    isExpr(value) ? value : (sourceOf(value) ?? { table, key: value.name, alias: table.name }),
-  ]);
+export function outputsOf(clause: "select" | "returning", selection: Selection): Output[] {
+  return Object.entries(selection).map(([alias, value]): Output => {
+    if (isExpr(value)) return [alias, value];
+    const source = sourceOf(value);
+    if (source === undefined) throw new Error(`${clause}: "${alias}" is no column or Expr`);
+    return [alias, source];
+  });
 }
 
 /** Decodes each column output through its own table's codecs; an Expr's value runs no codec. */
@@ -98,7 +97,7 @@ export function returning<R, S extends Selection>(
   pick: (columns: Refs<R>) => S,
   body: () => Fragment,
 ): Query<Selected<S>> {
-  const outputs = outputsOf(table, pick(refsOf(table)));
+  const outputs = outputsOf("returning", pick(refsOf(table)));
   if (outputs.length === 0) throw new Error("returning needs at least one column");
   return withDecoder(
     brand<Query<Selected<S>>>({

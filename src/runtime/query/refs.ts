@@ -1,6 +1,7 @@
 import type { ScalarClass, SqlClass, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import { encodeElement, encodeList, encodeValue } from "./codecs.ts";
+import { assertComparable, type ComparedColumn } from "./comparable.ts";
 import { expr, sortable, termOf, type Expr, type Ordering, type Sortable } from "./expr.ts";
 
 type Column = Table["columns"][string];
@@ -37,8 +38,16 @@ type PatternMatches = {
 };
 
 /**
+ * A column as the other side of a comparison: any column of the same SQL type class, nullable or
+ * not, whatever its TypeScript type, since Postgres compares `integer` with `bigint` but not `uuid`
+ * with `text`.
+ */
+type ColumnOperand<S extends SqlClass> = { readonly "~class": S };
+
+/**
  * `S` is the column's SQL type class. Each test wraps it in a tuple, so a union such as the
- * default offers a call only when every member does.
+ * default offers a call only when every member does. A comparison takes a value, which binds
+ * through the column's codec, or a column, which runs none.
  */
 export type ColumnRef<V, S extends SqlClass = SqlClass> = SelectableColumn<V> &
   Sortable<V> &
@@ -46,12 +55,14 @@ export type ColumnRef<V, S extends SqlClass = SqlClass> = SelectableColumn<V> &
   ([S] extends [ScalarClass] ? SetMatches<V> : unknown) &
   ([S] extends [`${string}[]`] ? ArrayMatches<V> : unknown) &
   ([S] extends ["text"] ? PatternMatches : unknown) & {
-    eq(value: NonNullable<V>): Predicate;
-    ne(value: NonNullable<V>): Predicate;
-    gt(value: NonNullable<V>): Predicate;
-    gte(value: NonNullable<V>): Predicate;
-    lt(value: NonNullable<V>): Predicate;
-    lte(value: NonNullable<V>): Predicate;
+    /** Type-only: the column's SQL type class, which a column operand shares. */
+    readonly "~class": S;
+    eq(operand: NonNullable<V> | ColumnOperand<S>): Predicate;
+    ne(operand: NonNullable<V> | ColumnOperand<S>): Predicate;
+    gt(operand: NonNullable<V> | ColumnOperand<S>): Predicate;
+    gte(operand: NonNullable<V> | ColumnOperand<S>): Predicate;
+    lt(operand: NonNullable<V> | ColumnOperand<S>): Predicate;
+    lte(operand: NonNullable<V> | ColumnOperand<S>): Predicate;
   };
 
 /** The SQL type class of each key of a row `R`. */
@@ -81,17 +92,62 @@ export type Orderable = Ordering | SelectableColumn<unknown> | Expr;
 
 const predicate: (render: () => Fragment) => Predicate = expr;
 
-/** The column each ref reads, so a template, `select`, and `orderBy` can tell a ref from a value. */
-const refSources = new WeakMap<object, ColumnSource>();
+type RefEntry = { readonly source: ColumnSource; readonly compared: ComparedColumn };
 
-/** What every ref carries at run time; `Refs` hides the calls a column's class can't take. */
-type AnyRef = ColumnRef<string | null, "text"> & { includes(value: string): Predicate };
+/** The column each ref reads, so a template, `select`, `orderBy`, and `eq` can tell a ref from a value. */
+const refEntries = new WeakMap<object, RefEntry>();
+
+/**
+ * What every ref carries at run time; `Refs` hides the calls a column's class can't take, and
+ * `~class` exists only in types.
+ */
+type AnyRef = Omit<ColumnRef<string | null, "text">, "~class"> & {
+  includes(value: string): Predicate;
+};
+
+/** Whether refs render qualified by their table's alias, as they do while a joined query renders. */
+let qualifying = false;
+
+/**
+ * Runs `render` with every ref qualified by its alias when `qualified`. A ref renders when its
+ * statement does, so a `where` written before a join still renders qualified once joined.
+ */
+export function renderQualified<T>(qualified: boolean, render: () => T): T {
+  const outer = qualifying;
+  qualifying = qualified;
+  try {
+    return render();
+  } finally {
+    qualifying = outer;
+  }
+}
+
+export function columnSql({ table, key, alias }: ColumnSource): Fragment {
+  const column = columnIdentifier(table, key);
+  return qualifying ? fragment`${identifier(alias)}.${column}` : column;
+}
+
+function entryOf(value: unknown): RefEntry | undefined {
+  return typeof value === "object" && value !== null ? refEntries.get(value) : undefined;
+}
 
 function refOf(source: ColumnSource, definition: Column): AnyRef {
-  const { table, key: name } = source;
-  const column = columnIdentifier(table, name);
-  const compare = (operator: Fragment, value: unknown) =>
-    predicate(() => fragment`${column} ${operator} ${encodeValue(table, name, value)}`);
+  const { table, key: name, alias } = source;
+  const column = () => columnSql(source);
+  const compared = {
+    label: `${alias}.${table.columnNames[name] ?? name}`,
+    state: definition.state,
+  };
+  const compare = (operator: Fragment, operand: unknown) => {
+    const other = entryOf(operand);
+    if (other === undefined) {
+      return predicate(
+        () => fragment`${column()} ${operator} ${encodeValue(table, name, operand)}`,
+      );
+    }
+    assertComparable(compared, other.compared);
+    return predicate(() => fragment`${column()} ${operator} ${columnSql(other.source)}`);
+  };
   const ref: AnyRef = {
     name,
     eq: (value) => compare(fragment`=`, value),
@@ -101,28 +157,24 @@ function refOf(source: ColumnSource, definition: Column): AnyRef {
     lt: (value) => compare(fragment`<`, value),
     lte: (value) => compare(fragment`<=`, value),
     in: (values) =>
-      predicate(() => fragment`${column} = any(${encodeList(table, name, definition, values)})`),
+      predicate(() => fragment`${column()} = any(${encodeList(table, name, definition, values)})`),
     notIn: (values) =>
-      predicate(() => fragment`${column} <> all(${encodeList(table, name, definition, values)})`),
+      predicate(() => fragment`${column()} <> all(${encodeList(table, name, definition, values)})`),
     includes: (value) =>
-      predicate(() => fragment`${encodeElement(table, name, value)} = any(${column})`),
-    like: (pattern) => predicate(() => fragment`${column} like ${pattern}`),
-    ilike: (pattern) => predicate(() => fragment`${column} ilike ${pattern}`),
-    ...sortable(() => column),
-    isNull: () => predicate(() => fragment`${column} is null`),
-    isNotNull: () => predicate(() => fragment`${column} is not null`),
+      predicate(() => fragment`${encodeElement(table, name, value)} = any(${column()})`),
+    like: (pattern) => predicate(() => fragment`${column()} like ${pattern}`),
+    ilike: (pattern) => predicate(() => fragment`${column()} ilike ${pattern}`),
+    ...sortable(column),
+    isNull: () => predicate(() => fragment`${column()} is null`),
+    isNotNull: () => predicate(() => fragment`${column()} is not null`),
   };
-  refSources.set(ref, source);
+  refEntries.set(ref, { source, compared });
   return ref;
 }
 
 /** The column `value` reads; `undefined` for a value that is no ref. */
 export function sourceOf(value: unknown): ColumnSource | undefined {
-  return typeof value === "object" && value !== null ? refSources.get(value) : undefined;
-}
-
-export function columnSql({ table, key }: ColumnSource): Fragment {
-  return columnIdentifier(table, key);
+  return entryOf(value)?.source;
 }
 
 /** The SQL a ref renders inside a template, the same its comparisons render; `undefined` for a value that is no ref. */
@@ -131,7 +183,10 @@ export function refSql(value: unknown): Fragment | undefined {
   return source === undefined ? undefined : columnSql(source);
 }
 
-export function refsOf<R>(table: Table, alias: string = table.name): Refs<R> {
+export function refsOf<R, C extends Classes<R> = Classes<R>>(
+  table: Table,
+  alias: string = table.name,
+): Refs<R, C> {
   const refs = Object.fromEntries(
     Object.entries(table.columns).map(([key, definition]) => [
       key,
@@ -139,7 +194,7 @@ export function refsOf<R>(table: Table, alias: string = table.name): Refs<R> {
     ]),
   );
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries loses the keys.
-  return refs as unknown as Refs<R>;
+  return refs as unknown as Refs<R, C>;
 }
 
 function combine(separator: Fragment, terms: readonly Expr<boolean | null>[]): Predicate {
