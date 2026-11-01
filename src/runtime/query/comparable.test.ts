@@ -28,8 +28,8 @@ type Key = keyof typeof columns;
 
 const compare = (left: Key, right: Key) => () => {
   assertComparable(
-    { label: `t.${left}`, state: columns[left].state },
-    { label: `u.${right}`, state: columns[right].state },
+    { alias: "t", column: left, state: columns[left].state },
+    { alias: "u", column: right, state: columns[right].state },
   );
 };
 
@@ -45,15 +45,23 @@ describe("assertComparable", () => {
 
   it("refuses an enum, a domain over one, or an array against any other type, naming both", () => {
     expect(compare("mood", "twin")).toThrow(
-      "Can't compare t.mood with u.twin: Postgres compares an enum, a domain over one, or an array only with the identical type",
+      'Can\'t compare "t"."mood" with "u"."twin": Postgres compares an enum, a domain over one, or an array only with the identical type',
     );
-    expect(compare("moodDomain", "mood")).toThrow("Can't compare t.moodDomain with u.mood");
-    expect(compare("mood", "moodDomain")).toThrow("Can't compare t.mood with u.moodDomain");
-    expect(compare("moods", "twins")).toThrow("Can't compare t.moods with u.twins");
-    expect(compare("integers", "bigints")).toThrow("Can't compare t.integers with u.bigints");
-    expect(compare("texts", "varchars")).toThrow("Can't compare t.texts with u.varchars");
-    expect(compare("texts", "textDomains")).toThrow("Can't compare t.texts with u.textDomains");
-    expect(compare("moods", "mood")).toThrow("Can't compare t.moods with u.mood");
-    expect(compare("text", "texts")).toThrow("Can't compare t.text with u.texts");
+    expect(compare("moodDomain", "mood")).toThrow(
+      'Can\'t compare "t"."moodDomain" with "u"."mood"',
+    );
+    expect(compare("mood", "moodDomain")).toThrow(
+      'Can\'t compare "t"."mood" with "u"."moodDomain"',
+    );
+    expect(compare("moods", "twins")).toThrow('Can\'t compare "t"."moods" with "u"."twins"');
+    expect(compare("integers", "bigints")).toThrow(
+      'Can\'t compare "t"."integers" with "u"."bigints"',
+    );
+    expect(compare("texts", "varchars")).toThrow('Can\'t compare "t"."texts" with "u"."varchars"');
+    expect(compare("texts", "textDomains")).toThrow(
+      'Can\'t compare "t"."texts" with "u"."textDomains"',
+    );
+    expect(compare("moods", "mood")).toThrow('Can\'t compare "t"."moods" with "u"."mood"');
+    expect(compare("text", "texts")).toThrow('Can\'t compare "t"."text" with "u"."texts"');
   });
 });
