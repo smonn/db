@@ -3,6 +3,10 @@ import { fragment, type Fragment } from "../sql/index.ts";
 /** One sort key for `orderBy`, made by `asc` or `desc`; a bare column sorts ascending. */
 export type Ordering = { readonly "~ordering": () => Fragment };
 
+export function isOrdering(value: unknown): value is Ordering {
+  return typeof value === "object" && value !== null && "~ordering" in value;
+}
+
 /**
  * The forbidding key lets a NOT NULL `Sortable` stand in for a nullable one, so `Expr<boolean>`
  * passes for `Expr<boolean | null>`: two option types with no key in common never match.
