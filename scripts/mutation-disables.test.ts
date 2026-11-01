@@ -189,6 +189,23 @@ describe("checkDisables", () => {
     expect(console.log).not.toHaveBeenCalled();
   });
 
+  test("keeps a file edited during the run and warns that its disables stay marked", async () => {
+    write("a.ts", disabled);
+    write("b.ts", disabled);
+    const edited = `${marked}g();\n`;
+    const run: RunStryker = () => {
+      write("a.ts", edited);
+      writeReport([mutant("StringLiteral", "Survived")]);
+      return Promise.resolve();
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await checkDisables(["a.ts", "b.ts"], dir, run, noInterrupt);
+    expect(read("a.ts")).toBe(edited);
+    expect(read("b.ts")).toBe(disabled);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("a.ts changed during the run"));
+  });
+
   test("the registered cleanup restores the files and stops Stryker", async () => {
     write("a.ts", disabled);
     const registered = Promise.withResolvers<() => Promise<void>>();

@@ -3,7 +3,7 @@
  * comment in the named files for the inert marker (`mark-stryker-disables.ts`), runs Stryker on
  * those files, prints each disable with the survivors it states and the survivors its mutators
  * have on its line, and puts the files back as they were, also when Stryker fails or the process
- * gets SIGINT or SIGTERM.
+ * gets SIGINT or SIGTERM. A file edited during the run is left as saved, with a warning.
  *
  * Run with `pnpm mutation:disables --mutate a.ts,b.ts`. A file with no disable is left out of the
  * run, since Stryker would mutate it for nothing.
@@ -88,6 +88,14 @@ function sourcesWithDisables(files: string[], cwd: string): Map<string, string> 
   return sources;
 }
 
+function readIfPresent(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Marks the disables in `files` (relative to `cwd`), runs `run` on those that hold one, prints
  * the outcome of each disable, and restores every file it rewrote.
@@ -110,7 +118,14 @@ export async function checkDisables(
     if (!restored) {
       restored = true;
       stop.abort();
-      for (const [file, source] of sources) writeFileSync(resolve(cwd, file), source);
+      for (const [file, source] of sources) {
+        const path = resolve(cwd, file);
+        if (readIfPresent(path) === markDisables(source)) writeFileSync(path, source);
+        else
+          console.warn(
+            `${file} changed during the run: left as is, its disables are still marked inert`,
+          );
+      }
     }
     return Promise.resolve();
   };
