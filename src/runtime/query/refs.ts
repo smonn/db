@@ -2,6 +2,7 @@ import type { ScalarClass, SqlClass, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import { isTextArray } from "./array-text.ts";
 import { decoderFor, encodeElement, encodeList, encodeValue, withDecoder } from "./codecs.ts";
+import { sortable, type Ordering, type Sortable } from "./expr.ts";
 import { brand, type Query } from "./statement.ts";
 
 type Column = Table["columns"][string];
@@ -20,22 +21,6 @@ type SelectableColumn<V> = {
   /** Type-only: the value this column yields when selected. */
   readonly "~value"?: V;
 };
-
-/** One sort key for `orderBy`, made by `asc` or `desc`; a bare column sorts ascending. */
-export type Ordering = { readonly "~ordering": () => Fragment };
-
-type NullsOptions = { readonly nulls?: "first" | "last" };
-
-/** A NOT NULL column has no NULLs to place, so its options type names `nulls` in the error. */
-type Sortable<V> = null extends V
-  ? {
-      asc(options?: NullsOptions): Ordering;
-      desc(options?: NullsOptions): Ordering;
-    }
-  : {
-      asc(options?: { readonly "nulls needs a nullable column"?: never }): Ordering;
-      desc(options?: { readonly "nulls needs a nullable column"?: never }): Ordering;
-    };
 
 /** An array column takes `includes` in place of these: `= any($1)` would compare the array with each item. */
 type SetMatches<V> = {
@@ -93,28 +78,11 @@ export type Orderable = Ordering | SelectableColumn<unknown>;
 /** Built when the statement renders, so a codec that throws rejects the query instead of the builder. */
 const predicate = (piece: () => Fragment): Predicate => ({ "~predicate": piece });
 
-function nullsOf(options: NullsOptions | undefined): Fragment {
-  if (options === undefined) return fragment``;
-  const unknown = Object.keys(options).filter((key) => key !== "nulls");
-  if (unknown.length > 0) {
-    throw new Error(`Unknown ordering option ${unknown.map((key) => `"${key}"`).join(", ")}`);
-  }
-  const { nulls } = options;
-  if (nulls === undefined) return fragment``;
-  if (nulls === "first") return fragment` nulls first`;
-  if (nulls === "last") return fragment` nulls last`;
-  throw new Error(`nulls must be "first" or "last", got ${JSON.stringify(nulls)}`);
-}
-
 /** What every ref carries at run time; `Refs` hides the calls a column's class can't take. */
 type AnyRef = ColumnRef<string | null, "text"> & { includes(value: string): Predicate };
 
 function refOf(table: Table, name: string, definition: Column): AnyRef {
   const column = columnIdentifier(table, name);
-  const order = (direction: Fragment, options: NullsOptions | undefined): Ordering => {
-    const nulls = nullsOf(options);
-    return { "~ordering": () => fragment`${column} ${direction}${nulls}` };
-  };
   const compare = (operator: Fragment, value: unknown) =>
     predicate(() => fragment`${column} ${operator} ${encodeValue(table, name, value)}`);
   return {
@@ -133,8 +101,7 @@ function refOf(table: Table, name: string, definition: Column): AnyRef {
       predicate(() => fragment`${encodeElement(table, name, value)} = any(${column})`),
     like: (pattern) => predicate(() => fragment`${column} like ${pattern}`),
     ilike: (pattern) => predicate(() => fragment`${column} ilike ${pattern}`),
-    asc: (options) => order(fragment`asc`, options),
-    desc: (options) => order(fragment`desc`, options),
+    ...sortable(() => column),
     isNull: () => predicate(() => fragment`${column} is null`),
     isNotNull: () => predicate(() => fragment`${column} is not null`),
   };

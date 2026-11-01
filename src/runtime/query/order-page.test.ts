@@ -3,7 +3,8 @@ import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-h
 import { defineDatabase, defineTable, type Row } from "../definition/index.ts";
 import { createClient } from "./client.ts";
 import { from } from "./from.ts";
-import type { Ordering, Refs } from "./refs.ts";
+import type { Ordering } from "./expr.ts";
+import type { Refs } from "./refs.ts";
 
 const testDatabase = useTestDatabase();
 const client = createClient(testDatabase.driver);
