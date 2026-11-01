@@ -1,4 +1,4 @@
-import type { Row, Table } from "../definition/index.ts";
+import type { Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import { isTextArray } from "./array-text.ts";
 import { decoderFor, encodeValue, withDecoder } from "./codecs.ts";
@@ -29,8 +29,9 @@ export type ColumnRef<V> = SelectableColumn<V> &
     lte(value: NonNullable<V>): Predicate;
   };
 
-export type Refs<T extends Table> = {
-  readonly [K in keyof Row<T> & string]: ColumnRef<Row<T>[K]>;
+/** Typed over the row, not its Table, so an error prints the row's keys. */
+export type Refs<R> = {
+  readonly [K in keyof R & string]: ColumnRef<R[K]>;
 };
 
 export type Selection = Record<string, SelectableColumn<unknown>>;
@@ -61,12 +62,12 @@ function refOf(table: Table, name: string): ColumnRef<string | null> {
   };
 }
 
-export function refsOf<T extends Table>(table: T): Refs<T> {
+export function refsOf<R>(table: Table): Refs<R> {
   const refs = Object.fromEntries(
     Object.keys(table.columns).map((name) => [name, refOf(table, name)]),
   );
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries loses the keys.
-  return refs as unknown as Refs<T>;
+  return refs as unknown as Refs<R>;
 }
 
 function combine(separator: Fragment, terms: readonly Predicate[]): Predicate {
@@ -114,9 +115,9 @@ export function renderOutput(table: Table, [alias, key]: Output): Fragment {
 }
 
 /** Appends `returning` to the statement `body` builds, and decodes each row the picked columns return. */
-export function returning<T extends Table, S extends Selection>(
-  table: T,
-  pick: (columns: Refs<T>) => S,
+export function returning<R, S extends Selection>(
+  table: Table,
+  pick: (columns: Refs<R>) => S,
   body: () => Fragment,
 ): Query<Selected<S>> {
   const picked = Object.entries(pick(refsOf(table)));

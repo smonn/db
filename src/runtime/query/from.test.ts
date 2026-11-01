@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { defineDatabase, defineTable } from "../definition/index.ts";
+import { defineDatabase, defineTable, type Row } from "../definition/index.ts";
 import { from } from "./from.ts";
 import { and, not, or, renderOutput, type Predicate, type Refs } from "./refs.ts";
 import type { Query } from "./statement.ts";
@@ -61,7 +61,7 @@ describe("select", () => {
   });
 
   it("hands select only the table's columns", () => {
-    expectTypeOf<keyof Refs<typeof db.public.users>>().toEqualTypeOf<"id" | "email">();
+    expectTypeOf<keyof Refs<Row<typeof db.public.users>>>().toEqualTypeOf<"id" | "email">();
   });
 });
 
@@ -166,7 +166,7 @@ describe("where", () => {
   });
 
   it("compares a column only with its own value type, never null", () => {
-    type UserRefs = Refs<typeof db.public.users>;
+    type UserRefs = Refs<Row<typeof db.public.users>>;
     expectTypeOf<Parameters<UserRefs["id"]["eq"]>>().toEqualTypeOf<[value: string]>();
     expectTypeOf<Parameters<UserRefs["email"]["eq"]>>().toEqualTypeOf<[value: string]>();
   });

@@ -22,8 +22,11 @@ export type NewRow<T extends Table> = {
   [K in OptionalKeys<T>]?: Row<T>[K];
 };
 
-/** `Marker` is `Many` for a multi-row insert, carried over to what `returning` makes. */
-export type InsertStatement<T extends Table, Marker = unknown> = Statement & {
+/**
+ * Typed over the table's row `T`, not its Table, so an error prints the row's keys. `Marker` is
+ * `Many` for a multi-row insert, carried over to what `returning` makes.
+ */
+export type InsertStatement<T, Marker = unknown> = Statement & {
   /** Type-only: a plain insert reports a count, so only `client.run` takes it. */
   readonly "~returns": "count";
   /** The keys of the returned object name the output columns. */
@@ -53,8 +56,8 @@ function insertInto(table: Table, rows: readonly Record<string, unknown>[]): Fra
   return fragment`${target} (${columns}) values ${join(tuples, fragment`, `)}`;
 }
 
-function insertStatement<T extends Table>(
-  table: T,
+function insertStatement<T>(
+  table: Table,
   rows: readonly Record<string, unknown>[],
 ): InsertStatement<T> {
   return brand<InsertStatement<T>>({
@@ -80,18 +83,29 @@ function check(table: Table, rows: readonly Record<string, unknown>[]): void {
   }
 }
 
-export function insert<T extends Table>(
-  table: T,
-): {
-  values(row: NewRow<T>): InsertStatement<T>;
-  values(rows: readonly NewRow<T>[]): InsertStatement<T, Many>;
-} {
+/** An insert with no rows yet, which is no Statement: call `values`. `N` is the row it takes. */
+export type InsertNeedsValues<T, N> = {
+  values(row: N): InsertStatement<T>;
+  values(rows: readonly N[]): InsertStatement<T, Many>;
+};
+
+function needsValues<T, N extends Record<string, unknown>>(table: Table): InsertNeedsValues<T, N> {
   return {
-    values(rows: NewRow<T> | readonly NewRow<T>[]): InsertStatement<T, Many> {
+    values(rows: N | readonly N[]): InsertStatement<T, Many> {
       const list: readonly Record<string, unknown>[] = Array.isArray(rows) ? rows : [rows];
       check(table, list);
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The marker exists only in types; the overloads decide it.
       return insertStatement(table, list) as InsertStatement<T, Many>;
     },
   };
+}
+
+/** The row types are written out, not named `Row<T>` and `NewRow<T>`, so tsc prints their keys instead of the Table. */
+export function insert<T extends Table>(
+  table: T,
+): InsertNeedsValues<
+  { [K in keyof Row<T>]: Row<T>[K] },
+  { [K in RequiredKeys<T>]: Row<T>[K] } & { [K in OptionalKeys<T>]?: Row<T>[K] }
+> {
+  return needsValues(table);
 }
