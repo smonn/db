@@ -13,6 +13,8 @@ export type {
   Selection,
 } from "./refs.ts";
 export type { Query, Statement } from "./statement.ts";
+export { deleteFrom } from "./delete.ts";
+export type { DeleteNeedsWhereOrAllRows, DeleteStatement, FilteredDelete } from "./delete.ts";
 export { insert } from "./insert.ts";
 export type { InsertStatement, NewRow } from "./insert.ts";
 export { sql } from "./sql.ts";

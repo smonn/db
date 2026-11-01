@@ -43,10 +43,13 @@ export type {
   QueryResult,
   Session,
 } from "./ports/index.ts";
-export { and, createClient, from, insert, not, or, sql } from "./query/index.ts";
+export { and, createClient, deleteFrom, from, insert, not, or, sql } from "./query/index.ts";
 export type {
   Client,
   ColumnRef,
+  DeleteNeedsWhereOrAllRows,
+  DeleteStatement,
+  FilteredDelete,
   InsertStatement,
   NewRow,
   Orderable,

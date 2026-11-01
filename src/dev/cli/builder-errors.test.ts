@@ -112,6 +112,31 @@ void users.where((u) => u.email.in([null]));
 void users.where((u) => u.tags.includes(1));
 `;
 
+const DELETE_FIXTURE = `import { createClient, defineDatabase, defineTable, deleteFrom } from ${JSON.stringify(join(repo, "src/runtime/index.ts"))};
+
+const db = defineDatabase({
+  public: {
+    users: defineTable((c) => ({
+      id: c.integer().identity().primaryKey(),
+      email: c.text().notNull(),
+      name: c.text(),
+    })),
+  },
+});
+declare const client: ReturnType<typeof createClient>;
+const users = db.public.users;
+
+void client.run(deleteFrom(users));
+void client.all(deleteFrom(users).where((u) => u.id.eq(1)));
+void client.one(deleteFrom(users).where((u) => u.id.eq(1)));
+void client.one(deleteFrom(users).allRows().returning((u) => ({ id: u.id })));
+void deleteFrom(users).where((u) => u.nope.eq(1));
+void deleteFrom(users).where((u) => u.email.eq(1));
+void deleteFrom(users).where((u) => u.id.like("1%"));
+void deleteFrom(users).returning(() => ({}));
+void deleteFrom(users).allRows().where;
+`;
+
 const ROW = "{ id: number; email: string; name: string | null; }";
 const CLASSES = '{ id: "number"; email: "text"; name: "text"; }';
 const NEW_ROW = "{ email: string; id?: number; name?: string | null; }";
@@ -184,6 +209,24 @@ describe("Builder type errors", () => {
       `error TS2322: Type 'string' is not assignable to type 'number'.`,
       `error TS2322: Type 'null' is not assignable to type 'string'.`,
       `error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.`,
+    ]);
+    expect(errors.join("\n")).not.toMatch(/Table<|No overload/u);
+  });
+
+  it("name the call an unfinished delete needs, and print the row for the rest", async () => {
+    const BUILDER = `DeleteNeedsWhereOrAllRows<${ROW}, ${CLASSES}>`;
+    const FILTERED = `FilteredDelete<${ROW}, ${CLASSES}>`;
+    const errors = await typeErrors(DELETE_FIXTURE);
+    expect(errors).toEqual([
+      `error TS2741: Property 'toSql' is missing in type '${BUILDER}' but required in type 'Statement'.`,
+      `error TS2345: Argument of type '${FILTERED}' is not assignable to parameter of type 'Query<unknown>'.`,
+      `error TS2345: Argument of type '${FILTERED}' is not assignable to parameter of type 'Statement & { readonly "~returns": "rows"; readonly "~row": unknown; } & { readonly "~many"?: never; }'.`,
+      `error TS2345: Argument of type 'Statement & { readonly "~returns": "rows"; readonly "~row": Selected<{ id: ColumnRef<number, SqlClass>; }>; } & Many' is not assignable to parameter of type 'Statement & { readonly "~returns": "rows"; readonly "~row": Selected<{ id: ColumnRef<number, SqlClass>; }>; } & { readonly "~many"?: never; }'.`,
+      `error TS2339: Property 'nope' does not exist on type 'Refs<${ROW}, ${CLASSES}>'.`,
+      `error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.`,
+      `error TS2339: Property 'like' does not exist on type 'ColumnRef<number, "number">'.`,
+      `error TS2339: Property 'returning' does not exist on type '${BUILDER}'.`,
+      `error TS2339: Property 'where' does not exist on type 'DeleteStatement<${ROW}, Many>'.`,
     ]);
     expect(errors.join("\n")).not.toMatch(/Table<|No overload/u);
   });

@@ -217,6 +217,50 @@ DATABASE_URL=postgres://localhost/app_prod node matching.ts
 
 Each call exists only where Postgres accepts it. `like` and `ilike` are offered on `text` and `varchar` columns and domains over them, and on no other type. `in` and `notIn` are offered on every column except arrays. `includes` is offered on arrays alone. Calling one elsewhere is a type error that names the call and the column's type, such as `Property 'like' does not exist on type 'ColumnRef<number, "number">'`. There is no `between`, `notLike`, `@>`, or `&&`; write `gte` and `lte`, `not(...)`, or a `sql` statement instead.
 
+### Deleting rows
+
+`deleteFrom(table)` takes `where(...)` or `allRows()` and nothing else. It is not a statement until you call one, so `client.run(deleteFrom(db.public.users))` is a type error that names both calls, and a JavaScript caller that runs it gets an error that says the same. A forgotten `where` can't empty a table. Repeated `where` calls combine with `and`, and the predicates are the ones `from` takes.
+
+```ts file=delete.ts
+import postgres from "postgres";
+import { createClient, deleteFrom, from } from "@smonn/db";
+import { postgresJsConnection, postgresJsDriver, postgresJsTypes } from "@smonn/db/postgres-js";
+import db from "./db/definition.ts";
+
+const sql = postgres(process.env.DATABASE_URL ?? "", {
+  types: postgresJsTypes,
+  connection: postgresJsConnection,
+});
+const client = createClient(postgresJsDriver(sql));
+const { users } = db.public;
+
+console.log(await client.run(deleteFrom(users).where((u) => u.email.isNull())));
+console.log(
+  await client.one(
+    deleteFrom(users)
+      .where((u) => u.id.eq("u3"))
+      .returning((u) => ({ id: u.id })),
+  ),
+);
+console.log(await client.run(deleteFrom(users).allRows()));
+console.log(await client.all(from(users)));
+
+await sql.end();
+```
+
+```sh
+DATABASE_URL=postgres://localhost/app_prod node delete.ts
+```
+
+```text
+{ count: 1 }
+{ id: 'u3' }
+{ count: 1 }
+[]
+```
+
+Without `returning`, only `client.run` takes the statement, and it reports how many rows went. `returning` takes the same column picks as `insert`, reads the deleted rows, and makes a query for `client.all` and `client.one`. `client.one` on a primary-key `where` is the not-found check: it throws when no row matched. `allRows()` can delete several rows, so `client.one` refuses what its `returning` makes. `DELETE ... USING` is not covered; write it with `sql`.
+
 ### Commands
 
 Run each as `smonndb <command>`, with `--config <path>` to pick a config file other than `smonndb.config.ts`.
