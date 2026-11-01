@@ -215,7 +215,41 @@ DATABASE_URL=postgres://localhost/app_prod node matching.ts
 
 `in` renders `= any($1)` and `notIn` renders `<> all($1)`. The list binds as one array param, so the statement stays the same whatever the list's length. `in([])` matches no row and `notIn([])` matches every row. Elements are the column's non-null type and go through its codec. A NULL column matches neither call, except `notIn([])`, which matches every row. `like` and `ilike` take the pattern as written, so `%` and `_` are wildcards. `includes(value)` renders `$1 = any(column)` and takes one element, such as `e.lately.includes("good")` on the `lately` column above.
 
-Each call exists only where Postgres accepts it. `like` and `ilike` are offered on `text` and `varchar` columns and domains over them, and on no other type. `in` and `notIn` are offered on every column except arrays. `includes` is offered on arrays alone. Calling one elsewhere is a type error that names the call and the column's type, such as `Property 'like' does not exist on type 'ColumnRef<number, "number">'`. There is no `between`, `notLike`, `@>`, or `&&`; write `gte` and `lte`, `not(...)`, or a `sql` statement instead.
+Each call exists only where Postgres accepts it. `like` and `ilike` are offered on `text` and `varchar` columns and domains over them, and on no other type. `in` and `notIn` are offered on every column except arrays. `includes` is offered on arrays alone. Calling one elsewhere is a type error that names the call and the column's type, such as `Property 'like' does not exist on type 'ColumnRef<number, "number">'`. There is no `between`, `notLike`, `@>`, or `&&`; write `gte` and `lte`, `not(...)`, or a `sql.expr` fragment instead.
+
+### SQL fragments
+
+`` sql.expr<V>`...` `` writes one expression the builder lacks, such as a function call, for `where`, `select`, `returning`, `orderBy`, `values`, and `valuesMany`. A column ref in the template renders as its column, and any other value binds as a param. `V` is the expression's type, and defaults to `unknown` where nothing names it.
+
+```ts file=fragments.ts
+import postgres from "postgres";
+import { createClient, from, sql } from "@smonn/db";
+import { postgresJsConnection, postgresJsDriver, postgresJsTypes } from "@smonn/db/postgres-js";
+import db from "./db/definition.ts";
+
+const pg = postgres(process.env.DATABASE_URL ?? "", {
+  types: postgresJsTypes,
+  connection: postgresJsConnection,
+});
+const client = createClient(postgresJsDriver(pg));
+
+const query = from(db.public.users)
+  .where((u) => sql.expr`upper(${u.email}) like ${"C%"}`)
+  .select((u) => ({ id: u.id, domain: sql.expr<string>`split_part(${u.email}, '@', 2)` }));
+console.log(await client.all(query));
+
+await pg.end();
+```
+
+```sh
+DATABASE_URL=postgres://localhost/app_prod node fragments.ts
+```
+
+```text
+[ { id: 'u3', domain: 'example.com' } ]
+```
+
+`where`, `and`, `or`, and `not` take an `Expr<boolean | null>`, which a fragment in `where` becomes without a type argument. A comparison such as `u.id.eq("u1")` is an `Expr<boolean>`, so it also selects as a boolean or sorts in `orderBy`. A fragment in `orderBy` sorts ascending, or takes `asc()` and `desc()`, with `nulls` only when `V` includes `null`. A fragment runs no codec: its params bind as given and its value comes back as the driver reads it. A nested fragment or comparison inlines in parentheses, and a statement inside a fragment throws, so it can't hold a subquery.
 
 ### Deleting rows
 
