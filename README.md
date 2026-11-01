@@ -219,7 +219,7 @@ Each call exists only where Postgres accepts it. `like` and `ilike` are offered 
 
 ### SQL fragments
 
-`` sql.expr<V>`...` `` writes one expression the builder lacks, such as a function call, for `where`, `select`, `returning`, `orderBy`, `values`, and `valuesMany`. A column ref in the template renders as its column, and any other value binds as a param. `V` is the expression's type, and defaults to `unknown` where nothing names it.
+`` sql.expr<V>`...` `` writes one expression the builder lacks, such as a function call, for `where`, `select`, `returning`, `orderBy`, `values`, `valuesMany`, and `set`. A column ref in the template renders as its column, and any other value binds as a param. `V` is the expression's type, and defaults to `unknown` where nothing names it.
 
 ```ts file=fragments.ts
 import postgres from "postgres";
@@ -250,6 +250,57 @@ DATABASE_URL=postgres://localhost/app_prod node fragments.ts
 ```
 
 `where`, `and`, `or`, and `not` take an `Expr<boolean | null>`, which a fragment in `where` becomes without a type argument. A comparison such as `u.id.eq("u1")` is an `Expr<boolean>`, so it also selects as a boolean or sorts in `orderBy`. A fragment in `orderBy` sorts ascending, or takes `asc()` and `desc()`, with `nulls` only when `V` includes `null`. A fragment runs no codec: its params bind as given and its value comes back as the driver reads it. A nested fragment or comparison inlines in parentheses, and a statement inside a fragment throws, so it can't hold a subquery.
+
+### Updating rows
+
+`update(table).set({...})` takes `where(...)` or `allRows()` and nothing else, as `deleteFrom` does. It is not a statement until you call one, so `client.run(update(db.public.users).set({ email: null }))` is a type error that names both calls, and a JavaScript caller that runs it gets an error that says the same. A forgotten `where` can't rewrite a table. Repeated `where` calls combine with `and`, and the predicates are the ones `from` takes.
+
+```ts file=update.ts
+import postgres from "postgres";
+import { createClient, sql, update } from "@smonn/db";
+import { postgresJsConnection, postgresJsDriver, postgresJsTypes } from "@smonn/db/postgres-js";
+import db from "./db/definition.ts";
+
+const pg = postgres(process.env.DATABASE_URL ?? "", {
+  types: postgresJsTypes,
+  connection: postgresJsConnection,
+});
+const client = createClient(postgresJsDriver(pg));
+const { users } = db.public;
+
+console.log(
+  await client.run(
+    update(users)
+      .set({ email: "a@example.org" })
+      .where((u) => u.id.eq("u1")),
+  ),
+);
+console.log(
+  await client.one(
+    update(users)
+      .set({ email: (u) => sql.expr<string | null>`upper(${u.email})` })
+      .where((u) => u.id.eq("u3"))
+      .returning((u) => ({ id: u.id, email: u.email })),
+  ),
+);
+
+await pg.end();
+```
+
+```sh
+DATABASE_URL=postgres://localhost/app_prod node update.ts
+```
+
+```text
+{ count: 1 }
+{ id: 'u3', email: 'C@EXAMPLE.COM' }
+```
+
+`set` takes the columns to change, each optional, with `null` only on a nullable column. A value is the column's type, a `sql.expr` fragment of that type, or a callback that gets the columns and returns one, so ``n: (u) => sql.expr<number>`${u.n} + 1` `` adds one. Each key takes one callback. A fragment runs no codec; any other value goes through the column's codec when the statement renders. A value that is `undefined` is skipped, and a `set` left with no column throws `update needs at least one column to set`.
+
+An `identity("always")` column can't be set: Postgres refuses a written value for it. Its type lists the column under the key `"id is generated always, so update can't set it"`, so `set({ id: 5 })` prints that reason. The key compiles, and throws at run time as an unknown column.
+
+Without `returning`, only `client.run` takes the statement, and it reports how many rows changed. `returning` takes the same column picks as `insert`, reads the updated rows, so it holds the new values, and makes a query for `client.all` and `client.one`. `client.one` on a primary-key `where` is the not-found check: it throws when no row matched. `allRows()` can change several rows, so `client.one` refuses what its `returning` makes. `UPDATE ... FROM` is not covered; write it with `sql`.
 
 ### Deleting rows
 
