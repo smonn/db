@@ -118,7 +118,7 @@ function viewIndex(
  * The expression behind `holder` with each column named in SQL, from what `defineTable`
  * remembered. Without that, `text` holds keys, so it stands only when no key changes its name.
  */
-function expressionText(table: Table, holder: object, text: string): string {
+export function expressionText(table: Table, holder: object, text: string): string {
   const renamed = renamedExpression(holder, (key) => table.columnNames[key] ?? key);
   if (renamed !== undefined) return renamed;
   if (Object.entries(table.columnNames).every(([key, name]) => key === name)) return text;

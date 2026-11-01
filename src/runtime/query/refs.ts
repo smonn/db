@@ -84,8 +84,16 @@ export type Selected<S extends Selection> = {
       : never;
 };
 
-/** The column a ref reads: key `key` of `table`, which a joined query qualifies by `alias`. */
-export type ColumnSource = { readonly table: Table; readonly key: string; readonly alias: string };
+/**
+ * The column a ref reads: key `key` of `table`, which a joined query qualifies by `alias`, and an
+ * upsert's existing row by `schema` too, so a table named `excluded` can't pass for that row.
+ */
+export type ColumnSource = {
+  readonly table: Table;
+  readonly key: string;
+  readonly alias: string;
+  readonly schema?: string | undefined;
+};
 
 /** What `orderBy` takes: an ordering, or a bare column or Expr, which sorts ascending. */
 export type Orderable = Ordering | SelectableColumn<unknown> | Expr;
@@ -122,9 +130,11 @@ export function renderQualified<T>(qualified: boolean, render: () => T): T {
   }
 }
 
-export function columnSql({ table, key, alias }: ColumnSource): Fragment {
+export function columnSql({ table, key, alias, schema }: ColumnSource): Fragment {
   const column = columnIdentifier(table, key);
-  return qualifying ? fragment`${identifier(alias)}.${column}` : column;
+  if (!qualifying) return column;
+  const qualified = fragment`${identifier(alias)}.${column}`;
+  return schema === undefined ? qualified : fragment`${identifier(schema)}.${qualified}`;
 }
 
 function entryOf(value: unknown): RefEntry | undefined {
@@ -173,6 +183,17 @@ function refOf(source: ColumnSource, definition: Column): AnyRef {
   return ref;
 }
 
+/**
+ * Throws when Postgres can't compare the columns refs `left` and `right` read, nor so assign one
+ * to the other; a value that is no ref passes.
+ */
+export function assertComparableRefs(left: unknown, right: unknown): void {
+  const [first, second] = [entryOf(left), entryOf(right)];
+  if (first !== undefined && second !== undefined) {
+    assertComparable(first.compared, second.compared);
+  }
+}
+
 /** The column `value` reads; `undefined` for a value that is no ref. */
 export function sourceOf(value: unknown): ColumnSource | undefined {
   return entryOf(value)?.source;
@@ -184,14 +205,16 @@ export function refSql(value: unknown): Fragment | undefined {
   return source === undefined ? undefined : columnSql(source);
 }
 
+/** `schema` qualifies each ref by schema too, as an upsert's existing row needs. */
 export function refsOf<R, C extends Classes<R> = Classes<R>>(
   table: Table,
   alias: string = table.name,
+  schema?: string,
 ): Refs<R, C> {
   const refs = Object.fromEntries(
     Object.entries(table.columns).map(([key, definition]) => [
       key,
-      refOf({ table, key, alias }, definition),
+      refOf({ table, key, alias, schema }, definition),
     ]),
   );
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries loses the keys.

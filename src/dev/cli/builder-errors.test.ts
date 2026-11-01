@@ -171,7 +171,7 @@ const NEW_ROW =
 describe("Builder type errors", () => {
   it("print rows, and name the call an unfinished insert needs", async () => {
     expect(await typeErrors(FIXTURE)).toEqual([
-      `error TS2741: Property 'toSql' is missing in type 'InsertNeedsValues<${ROW}, ${NEW_ROW}>' but required in type 'Statement'.`,
+      `error TS2741: Property 'toSql' is missing in type 'InsertNeedsValues<${ROW}, ${NEW_ROW}, { ...; }, readonly [...], never>' but required in type 'Statement'.`,
       `error TS2322: Type 'FromQuery<${ROW}, ${CLASSES}>' is not assignable to type 'SelectQuery<{ id: string; }>'.`,
       `error TS2339: Property 'nope' does not exist on type 'Refs<${ROW}, ${CLASSES}>'.`,
     ]);
@@ -266,8 +266,8 @@ describe("Builder type errors", () => {
     expect(errors).toEqual([
       `error TS2741: Property 'toSql' is missing in type '${BUILDER}' but required in type 'Statement'.`,
       `error TS2345: Argument of type '${FILTERED}' is not assignable to parameter of type 'Query<unknown>'.`,
-      `error TS2345: Argument of type '${FILTERED}' is not assignable to parameter of type 'Statement & { readonly "~returns": "rows"; readonly "~row": unknown; } & { readonly "~many"?: never; }'.`,
-      `error TS2345: Argument of type 'Statement & { readonly "~returns": "rows"; readonly "~row": Selected<{ id: ColumnRef<number, SqlClass>; }>; } & Many' is not assignable to parameter of type 'Statement & { readonly "~returns": "rows"; readonly "~row": Selected<{ id: ColumnRef<number, SqlClass>; }>; } & { readonly "~many"?: never; }'.`,
+      `error TS2345: Argument of type '${FILTERED}' is not assignable to parameter of type 'Statement & { readonly "~returns": "rows"; readonly "~row": unknown; } & { readonly "~many"?: never; readonly "~maybe"?: never; }'.`,
+      `error TS2345: Argument of type 'Statement & { readonly "~returns": "rows"; readonly "~row": Selected<{ id: ColumnRef<number, SqlClass>; }>; } & Many' is not assignable to parameter of type 'Statement & { readonly "~returns": "rows"; readonly "~row": Selected<{ id: ColumnRef<number, SqlClass>; }>; } & { readonly "~many"?: never; readonly "~maybe"?: never; }'.`,
       `error TS2339: Property 'nope' does not exist on type 'Refs<${ROW}, ${CLASSES}>'.`,
       `error TS2345: Argument of type 'number' is not assignable to parameter of type 'string | ColumnOperand<"text">'.`,
       `error TS2339: Property 'like' does not exist on type 'ColumnRef<number, "number">'.`,

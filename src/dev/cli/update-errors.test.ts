@@ -51,7 +51,7 @@ describe("Update type errors", () => {
     expect(errors.slice(1, 4)).toEqual([
       `error TS2741: Property 'toSql' is missing in type 'UpdateNeedsWhereOrAllRows<${ROW}, ${CLASSES}>' but required in type 'Statement'.`,
       `error TS2345: Argument of type 'FilteredUpdate<${ROW}, ${CLASSES}>' is not assignable to parameter of type 'Query<unknown>'.`,
-      `error TS2345: Argument of type 'Statement & { readonly "~returns": "rows"; readonly "~row": Selected<{ id: ColumnRef<number, SqlClass>; }>; } & Many' is not assignable to parameter of type 'Statement & { readonly "~returns": "rows"; readonly "~row": Selected<{ id: ColumnRef<number, SqlClass>; }>; } & { readonly "~many"?: never; }'.`,
+      `error TS2345: Argument of type 'Statement & { readonly "~returns": "rows"; readonly "~row": Selected<{ id: ColumnRef<number, SqlClass>; }>; } & Many' is not assignable to parameter of type 'Statement & { readonly "~returns": "rows"; readonly "~row": Selected<{ id: ColumnRef<number, SqlClass>; }>; } & { readonly "~many"?: never; readonly "~maybe"?: never; }'.`,
     ]);
     expect(errors[4]).toContain(
       `${UNKNOWN} 'id' does not exist in type '{ email?: ${VALUE}; "id is generated always, so update can't set it"?: number |`,
