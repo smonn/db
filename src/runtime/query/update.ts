@@ -93,12 +93,20 @@ function updateStatement<T>(
 function filteredUpdate<T, C extends Classes<T>>(
   table: Table,
   assignments: readonly Assignment[],
-  predicate: Expr<boolean | null>,
+  predicate: Expr<boolean | null> | undefined,
 ): FilteredUpdate<T, C> {
+  if (predicate === undefined) {
+    throw new Error("update.where callback must return a predicate");
+  }
   return brand<FilteredUpdate<T, C>>({
     ...updateStatement<T>(table, assignments, predicate),
     where(pick) {
-      return filteredUpdate(table, assignments, and(predicate, pick(refsOf<T>(table))));
+      const next: Expr<boolean | null> | undefined = pick(refsOf<T>(table));
+      return filteredUpdate(
+        table,
+        assignments,
+        next === undefined ? undefined : and(predicate, next),
+      );
     },
   });
 }
