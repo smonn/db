@@ -119,6 +119,7 @@ describe("README getting started", () => {
       "file=query.ts",
       "file=select.ts",
       "file=paging.ts",
+      "file=matching.ts",
       "file=db/enums.ts",
     ]);
     expect(steps.map((s) => s.command.split(" ").at(-1))).toStrictEqual([
@@ -128,11 +129,13 @@ describe("README getting started", () => {
       "query.ts",
       "select.ts",
       "paging.ts",
+      "matching.ts",
     ]);
     expect(steps.map((s) => s.command.includes("smonndb"))).toStrictEqual([
       true,
       true,
       true,
+      false,
       false,
       false,
       false,

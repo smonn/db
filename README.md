@@ -177,6 +177,46 @@ DATABASE_URL=postgres://localhost/app_prod node paging.ts
 
 `limit(n)` and `offset(n)` bind `n` as a param and throw unless it is a non-negative safe integer. Neither needs an `orderBy`, though without one Postgres promises no row order. A later call replaces an earlier one. `client.one` ignores `limit(1)`: it counts the rows that come back and throws unless there is exactly one.
 
+### Matching sets and patterns
+
+`in(list)` and `notIn(list)` compare a column with a list of values. `like(pattern)` and `ilike(pattern)` match text, and `ilike` ignores case. An array column takes `includes(value)`, which asks whether the array holds that value.
+
+```ts file=matching.ts
+import postgres from "postgres";
+import { createClient, from } from "@smonn/db";
+import { postgresJsConnection, postgresJsDriver, postgresJsTypes } from "@smonn/db/postgres-js";
+import db from "./db/definition.ts";
+
+const sql = postgres(process.env.DATABASE_URL ?? "", {
+  types: postgresJsTypes,
+  connection: postgresJsConnection,
+});
+const client = createClient(postgresJsDriver(sql));
+
+const ids = from(db.public.users)
+  .pick("id")
+  .orderBy((u) => u.id);
+console.log(await client.all(ids.where((u) => u.id.in(["u1", "u3", "nope"]))));
+console.log(await client.all(ids.where((u) => u.id.notIn(["u1"]))));
+console.log(await client.all(ids.where((u) => u.email.ilike("C%"))));
+
+await sql.end();
+```
+
+```sh
+DATABASE_URL=postgres://localhost/app_prod node matching.ts
+```
+
+```text
+[ { id: 'u1' }, { id: 'u3' } ]
+[ { id: 'u2' }, { id: 'u3' } ]
+[ { id: 'u3' } ]
+```
+
+`in` renders `= any($1)` and `notIn` renders `<> all($1)`. The list binds as one array param, so the statement stays the same whatever the list's length. `in([])` matches no row and `notIn([])` matches every row. Elements are the column's non-null type and go through its codec. A NULL column never matches either call. `like` and `ilike` take the pattern as written, so `%` and `_` are wildcards. `includes(value)` renders `$1 = any(column)` and takes one element, such as `e.lately.includes("good")` on the `lately` column above.
+
+Each call exists only where Postgres accepts it. `like` and `ilike` are offered on `text` and `varchar` columns and domains over them, and on no other type. `in` and `notIn` are offered on every column except arrays. `includes` is offered on arrays alone. Calling one elsewhere is a type error that names the call and the column's type, such as `Property 'like' does not exist on type 'ColumnRef<number, "number">'`. There is no `between`, `notLike`, `@>`, or `&&`; write `gte` and `lte`, `not(...)`, or a `sql` statement instead.
+
 ### Commands
 
 Run each as `smonndb <command>`, with `--config <path>` to pick a config file other than `smonndb.config.ts`.

@@ -87,15 +87,41 @@ void users.valuesMany([{ email: 1 }]);
 void users.valuesMany({ email: "a" });
 `;
 
+const MATCH_FIXTURE = `import { defineDatabase, defineEnum, defineTable, from } from ${JSON.stringify(join(repo, "src/runtime/index.ts"))};
+
+const db = defineDatabase({
+  public: {
+    users: defineTable((c) => ({
+      id: c.integer().identity().primaryKey(),
+      email: c.text().notNull(),
+      role: c.enum(defineEnum(["admin", "member"])).notNull(),
+      tags: c.text().array().notNull(),
+    })),
+  },
+});
+const users = from(db.public.users);
+
+void users.where((u) => u.id.like("1%"));
+void users.where((u) => u.role.ilike("a%"));
+void users.where((u) => u.tags.like("a%"));
+void users.where((u) => u.tags.in([["a"]]));
+void users.where((u) => u.tags.notIn([["a"]]));
+void users.where((u) => u.email.includes("a"));
+void users.where((u) => u.id.in(["1"]));
+void users.where((u) => u.email.in([null]));
+void users.where((u) => u.tags.includes(1));
+`;
+
 const ROW = "{ id: number; email: string; name: string | null; }";
+const CLASSES = '{ id: "number"; email: "text"; name: "text"; }';
 const NEW_ROW = "{ email: string; id?: number; name?: string | null; }";
 
 describe("Builder type errors", () => {
   it("print rows, and name the call an unfinished insert needs", async () => {
     expect(await typeErrors(FIXTURE)).toEqual([
       `error TS2741: Property 'toSql' is missing in type 'InsertNeedsValues<${ROW}, ${NEW_ROW}>' but required in type 'Statement'.`,
-      `error TS2322: Type 'SelectQuery<${ROW}, ${ROW}>' is not assignable to type 'SelectQuery<{ id: string; }>'.`,
-      `error TS2339: Property 'nope' does not exist on type 'Refs<${ROW}>'.`,
+      `error TS2322: Type 'SelectQuery<${ROW}, ${ROW}, ${CLASSES}>' is not assignable to type 'SelectQuery<{ id: string; }>'.`,
+      `error TS2339: Property 'nope' does not exist on type 'Refs<${ROW}, ${CLASSES}>'.`,
     ]);
   });
 
@@ -106,7 +132,7 @@ describe("Builder type errors", () => {
       `error TS2353: Object literal may only specify known properties, and ${NOT_NULLABLE}`,
       `error TS2353: Object literal may only specify known properties, and ${NOT_NULLABLE}`,
       `error TS2322: Type '"middle"' is not assignable to type '"first" | "last" | undefined'.`,
-      `error TS2339: Property 'nope' does not exist on type 'Refs<${ROW}>'.`,
+      `error TS2339: Property 'nope' does not exist on type 'Refs<${ROW}, ${CLASSES}>'.`,
       `error TS2322: Type 'Predicate' is not assignable to type 'readonly Orderable[] | Orderable'.`,
       `error TS2322: Type 'string' is not assignable to type 'Orderable'.`,
       `error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.`,
@@ -142,6 +168,22 @@ describe("Builder type errors", () => {
       `error TS2345: Argument of type '"nope"' is not assignable to parameter of type ${KEYS}.`,
       `error TS2555: Expected at least 1 arguments, but got 0.`,
       `error TS2345: Argument of type '1' is not assignable to parameter of type ${KEYS}.`,
+    ]);
+    expect(errors.join("\n")).not.toMatch(/Table<|No overload/u);
+  });
+
+  it("hide a call its column can't take, and name the bad element", async () => {
+    const errors = await typeErrors(MATCH_FIXTURE);
+    expect(errors).toEqual([
+      `error TS2339: Property 'like' does not exist on type 'ColumnRef<number, "number">'.`,
+      `error TS2339: Property 'ilike' does not exist on type 'ColumnRef<"admin" | "member", "enum">'.`,
+      `error TS2339: Property 'like' does not exist on type 'ColumnRef<(string | null)[], "text[]">'.`,
+      `error TS2339: Property 'in' does not exist on type 'ColumnRef<(string | null)[], "text[]">'.`,
+      `error TS2339: Property 'notIn' does not exist on type 'ColumnRef<(string | null)[], "text[]">'.`,
+      `error TS2339: Property 'includes' does not exist on type 'ColumnRef<string, "text">'.`,
+      `error TS2322: Type 'string' is not assignable to type 'number'.`,
+      `error TS2322: Type 'null' is not assignable to type 'string'.`,
+      `error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.`,
     ]);
     expect(errors.join("\n")).not.toMatch(/Table<|No overload/u);
   });

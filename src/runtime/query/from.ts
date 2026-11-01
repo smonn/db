@@ -1,4 +1,4 @@
-import type { Row, Table } from "../definition/index.ts";
+import type { Row, SqlClass, Table } from "../definition/index.ts";
 import { fragment, identifier, join } from "../sql/index.ts";
 import { decoderFor, withDecoder } from "./codecs.ts";
 import {
@@ -6,6 +6,7 @@ import {
   refsOf,
   renderOrderBy,
   renderOutput,
+  type Classes,
   type Orderable,
   type Output,
   type Predicate,
@@ -15,20 +16,23 @@ import {
 } from "./refs.ts";
 import { assertRegistered, brand, type Query } from "./statement.ts";
 
-/** Typed over the table's row `T`, not its Table, so an error prints the row's keys; `R` is the result row. */
-export type SelectQuery<T, R = T> = Query<R> & {
+/**
+ * Typed over the table's row `T` and its SQL type classes `C`, not its Table, so an error prints
+ * the row's keys; `R` is the result row.
+ */
+export type SelectQuery<T, R = T, C extends Classes<T> = Classes<T>> = Query<R> & {
   /** The keys of the returned object name the output columns. */
-  select<S extends Selection>(pick: (columns: Refs<T>) => S): SelectQuery<T, Selected<S>>;
+  select<S extends Selection>(pick: (columns: Refs<T, C>) => S): SelectQuery<T, Selected<S>, C>;
   /** Selects each named column under its own key. The names are typed inline, so a wrong one prints the row's keys. */
-  pick<K extends keyof T & string>(...names: [K, ...K[]]): SelectQuery<T, { [P in K]: T[P] }>;
+  pick<K extends keyof T & string>(...names: [K, ...K[]]): SelectQuery<T, { [P in K]: T[P] }, C>;
   /** Combines with any earlier `where` using `and`. */
-  where(pick: (columns: Refs<T>) => Predicate): SelectQuery<T, R>;
+  where(pick: (columns: Refs<T, C>) => Predicate): SelectQuery<T, R, C>;
   /** Repeated calls append, so the first call's orderings sort first. */
-  orderBy(pick: (columns: Refs<T>) => Orderable | readonly Orderable[]): SelectQuery<T, R>;
+  orderBy(pick: (columns: Refs<T, C>) => Orderable | readonly Orderable[]): SelectQuery<T, R, C>;
   /** A non-negative safe integer. A later call replaces an earlier one. */
-  limit(count: number): SelectQuery<T, R>;
+  limit(count: number): SelectQuery<T, R, C>;
   /** A non-negative safe integer. A later call replaces an earlier one. */
-  offset(count: number): SelectQuery<T, R>;
+  offset(count: number): SelectQuery<T, R, C>;
 };
 
 type State = {
@@ -60,8 +64,8 @@ function pickedOutputs(table: Table, names: readonly string[]): Output[] {
   return [...new Set(names)].map((name): Output => [name, name]);
 }
 
-function selectQuery<T, R>(table: Table, state: State): SelectQuery<T, R> {
-  const query = brand<SelectQuery<T, R>>({
+function selectQuery<T, R, C extends Classes<T>>(table: Table, state: State): SelectQuery<T, R, C> {
+  const query = brand<SelectQuery<T, R, C>>({
     select(pick) {
       const picked = Object.entries(pick(refsOf<T>(table)));
       if (picked.length === 0) throw new Error("select needs at least one column");
@@ -112,7 +116,19 @@ function selectQuery<T, R>(table: Table, state: State): SelectQuery<T, R> {
 }
 
 /** The row type is written out, not named `Row<T>`, so tsc prints its keys instead of the Table. */
-export function from<T extends Table>(table: T): SelectQuery<{ [K in keyof Row<T>]: Row<T>[K] }> {
+export function from<T extends Table>(
+  table: T,
+): SelectQuery<
+  { [K in keyof Row<T>]: Row<T>[K] },
+  { [K in keyof Row<T>]: Row<T>[K] },
+  {
+    [K in keyof Row<T>]: T["columns"][K] extends {
+      readonly "~types": { readonly sqlClass: infer S extends SqlClass };
+    }
+      ? S
+      : never;
+  }
+> {
   assertRegistered(table);
   return selectQuery(table, {
     outputs: Object.keys(table.columns).map((name): Output => [name, name]),

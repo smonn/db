@@ -5,6 +5,7 @@ export type { ForeignKey } from "./foreign-keys.ts";
 export { INDEX_METHODS } from "./index-options.ts";
 export type { IndexMethod, IndexOptions } from "./index-options.ts";
 export type { Codec } from "./codec.ts";
+export type { SqlClass } from "./sql-class.ts";
 export { plainDate } from "./plain-date.ts";
 export type { PlainDate } from "./plain-date.ts";
 export { defineDatabase } from "./database.ts";

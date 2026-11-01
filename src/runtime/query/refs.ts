@@ -1,8 +1,10 @@
-import type { Table } from "../definition/index.ts";
+import type { SqlClass, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import { isTextArray } from "./array-text.ts";
-import { decoderFor, encodeValue, withDecoder } from "./codecs.ts";
+import { decoderFor, encodeElement, encodeList, encodeValue, withDecoder } from "./codecs.ts";
 import { brand, type Query } from "./statement.ts";
+
+type Column = Table["columns"][string];
 
 /** A boolean SQL expression, built from column comparisons and the `and`, `or`, `not` exports. */
 export type Predicate = { readonly "~predicate": () => Fragment };
@@ -35,9 +37,31 @@ type Sortable<V> = null extends V
       desc(options?: { readonly "nulls needs a nullable column"?: never }): Ordering;
     };
 
-export type ColumnRef<V> = SelectableColumn<V> &
+/** An array column takes `includes` in place of these: `= any($1)` would compare the array with each item. */
+type SetMatches<V> = {
+  in(values: readonly NonNullable<V>[]): Predicate;
+  notIn(values: readonly NonNullable<V>[]): Predicate;
+};
+
+/** An array column's element, as `includes` takes it: NULL never matches. */
+type Element<V> = NonNullable<V> extends readonly (infer E)[] ? NonNullable<E> : never;
+
+type ArrayMatches<V> = { includes(value: Element<V>): Predicate };
+
+type PatternMatches = {
+  like(pattern: string): Predicate;
+  ilike(pattern: string): Predicate;
+};
+
+/**
+ * `S` is the column's SQL type class. Each test wraps it in a tuple, so a union such as the
+ * default offers a call only when every member does.
+ */
+export type ColumnRef<V, S extends SqlClass = SqlClass> = SelectableColumn<V> &
   Sortable<V> &
-  (null extends V ? NullChecks : unknown) & {
+  (null extends V ? NullChecks : unknown) &
+  ([S] extends [`${string}[]`] ? ArrayMatches<V> : SetMatches<V>) &
+  ([S] extends ["text"] ? PatternMatches : unknown) & {
     eq(value: NonNullable<V>): Predicate;
     ne(value: NonNullable<V>): Predicate;
     gt(value: NonNullable<V>): Predicate;
@@ -46,9 +70,12 @@ export type ColumnRef<V> = SelectableColumn<V> &
     lte(value: NonNullable<V>): Predicate;
   };
 
-/** Typed over the row, not its Table, so an error prints the row's keys. */
-export type Refs<R> = {
-  readonly [K in keyof R & string]: ColumnRef<R[K]>;
+/** The SQL type class of each key of a row `R`. */
+export type Classes<R> = { readonly [K in keyof R]: SqlClass };
+
+/** Typed over the row and its classes, not its Table, so an error prints the row's keys. */
+export type Refs<R, C extends Classes<R> = Classes<R>> = {
+  readonly [K in keyof R & string]: ColumnRef<R[K], C[K]>;
 };
 
 export type Selection = Record<string, SelectableColumn<unknown>>;
@@ -78,7 +105,10 @@ function nullsOf(options: NullsOptions | undefined): Fragment {
   throw new Error(`nulls must be "first" or "last", got ${JSON.stringify(nulls)}`);
 }
 
-function refOf(table: Table, name: string): ColumnRef<string | null> {
+/** What every ref carries at run time; `Refs` hides the calls a column's class can't take. */
+type AnyRef = ColumnRef<string | null, "text"> & { includes(value: string): Predicate };
+
+function refOf(table: Table, name: string, definition: Column): AnyRef {
   const column = columnIdentifier(table, name);
   const order = (direction: Fragment, options: NullsOptions | undefined): Ordering => {
     const nulls = nullsOf(options);
@@ -94,6 +124,14 @@ function refOf(table: Table, name: string): ColumnRef<string | null> {
     gte: (value) => compare(fragment`>=`, value),
     lt: (value) => compare(fragment`<`, value),
     lte: (value) => compare(fragment`<=`, value),
+    in: (values) =>
+      predicate(() => fragment`${column} = any(${encodeList(table, name, definition, values)})`),
+    notIn: (values) =>
+      predicate(() => fragment`${column} <> all(${encodeList(table, name, definition, values)})`),
+    includes: (value) =>
+      predicate(() => fragment`${encodeElement(table, name, value)} = any(${column})`),
+    like: (pattern) => predicate(() => fragment`${column} like ${pattern}`),
+    ilike: (pattern) => predicate(() => fragment`${column} ilike ${pattern}`),
     asc: (options) => order(fragment`asc`, options),
     desc: (options) => order(fragment`desc`, options),
     isNull: () => predicate(() => fragment`${column} is null`),
@@ -103,7 +141,10 @@ function refOf(table: Table, name: string): ColumnRef<string | null> {
 
 export function refsOf<R>(table: Table): Refs<R> {
   const refs = Object.fromEntries(
-    Object.keys(table.columns).map((name) => [name, refOf(table, name)]),
+    Object.entries(table.columns).map(([name, definition]) => [
+      name,
+      refOf(table, name, definition),
+    ]),
   );
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries loses the keys.
   return refs as unknown as Refs<R>;

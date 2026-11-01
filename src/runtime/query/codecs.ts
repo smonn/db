@@ -156,3 +156,21 @@ export function decoderFor(
     return next;
   };
 }
+
+/** The value of `includes`: one element of an array column, through the codec that runs on each. */
+export function encodeElement(table: Table, column: string, value: unknown): unknown {
+  return elementEncoder(table, column)(value);
+}
+
+/**
+ * The list `in` and `notIn` match: each value through the column's codec, written as array text so
+ * Postgres types the param from the column, even for an enum created after the connection opened.
+ */
+export function encodeList(
+  table: Table,
+  column: string,
+  definition: Column,
+  values: readonly unknown[],
+): string {
+  return arrayText(table, column, definition, values.map(elementEncoder(table, column)));
+}

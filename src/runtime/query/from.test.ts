@@ -161,7 +161,7 @@ describe("pick", () => {
   it("hands where and orderBy the whole row, not only the picked columns", () => {
     const query = from(db.public.users).pick("id");
     expectTypeOf<Parameters<Parameters<typeof query.where>[0]>[0]>().toEqualTypeOf<
-      Refs<{ id: string; email: string | null }>
+      Refs<{ id: string; email: string | null }, { id: "text"; email: "text" }>
     >();
   });
 });
