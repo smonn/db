@@ -177,6 +177,12 @@ describe("update on Postgres", () => {
     expect(result).toHaveLength(3);
   });
 
+  it("leaves an identity always column to Postgres, which refuses it", async () => {
+    await expect(client.run(looseSet({ id: 5 }).allRows())).rejects.toThrow(
+      /column "id" can only be updated to DEFAULT/u,
+    );
+  });
+
   it("rejects a codec that throws when the statement renders", async () => {
     const throwing = defineDatabase({
       public: {
