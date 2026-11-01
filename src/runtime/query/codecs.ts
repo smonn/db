@@ -36,18 +36,23 @@ function mapElements(value: unknown, step: (element: unknown) => unknown): unkno
   return value.map((item: unknown) => (item === null || item === undefined ? item : step(item)));
 }
 
-function encode(table: Table, column: string, value: unknown): unknown {
-  const definition = table.columns[column];
-  if (definition === undefined) return value;
-  const codec = definition["~codec"];
-  if (codec === undefined) return value;
-  const run = (base: unknown): unknown => {
+/** Runs the column's codec on one value, or on one element of an array column. */
+function elementEncoder(table: Table, column: string): (base: unknown) => unknown {
+  const codec = table.columns[column]?.["~codec"];
+  if (codec === undefined) return (base) => base;
+  return (base) => {
     try {
       return codec.encode(base);
     } catch (error) {
       throw failure(table, column, "encoding a value", error);
     }
   };
+}
+
+function encode(table: Table, column: string, value: unknown): unknown {
+  const definition = table.columns[column];
+  if (definition === undefined) return value;
+  const run = elementEncoder(table, column);
   return definition.state.array ? mapElements(value, run) : run(value);
 }
 
