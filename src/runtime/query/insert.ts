@@ -1,8 +1,16 @@
 import type { Row, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
-import { encodeValue } from "./codecs.ts";
-import { isExpr, type Expr } from "./expr.ts";
-import { columnIdentifier, returning, type Refs, type Selected, type Selection } from "./refs.ts";
+import type { Expr } from "./expr.ts";
+import {
+  assertColumns,
+  cellOf,
+  columnIdentifier,
+  has,
+  returning,
+  type Refs,
+  type Selected,
+  type Selection,
+} from "./refs.ts";
 import {
   assertRegistered,
   brand,
@@ -41,15 +49,6 @@ export type InsertStatement<T, Marker = unknown> = Statement & {
   returning<S extends Selection>(pick: (columns: Refs<T>) => S): Query<Selected<S>> & Marker;
 };
 
-function has(row: Record<string, unknown>, name: string): boolean {
-  return Object.hasOwn(row, name) && row[name] !== undefined;
-}
-
-/** An Expr inlines and runs no codec; any other value binds through the column's codec. */
-function cellOf(table: Table, name: string, value: unknown): Fragment {
-  return isExpr(value) ? value["~expr"]() : fragment`${encodeValue(table, name, value)}`;
-}
-
 /** A column no row gives a value for is left out; a row that skips a column gets its default. */
 function insertInto(table: Table, rows: readonly Record<string, unknown>[]): Fragment {
   const target = fragment`insert into ${identifier(table.schema)}.${identifier(table.name)}`;
@@ -87,13 +86,7 @@ function check(table: Table, rows: readonly Record<string, unknown>[]): void {
   if (rows.length === 0) throw new Error("insert needs at least one row");
   if (Object.keys(table.columns).length === 0)
     throw new Error("insert needs a table with a column");
-  for (const row of rows) {
-    for (const key of Object.keys(row)) {
-      if (!Object.hasOwn(table.columns, key)) {
-        throw new Error(`"${key}" is not a column of "${table.schema}"."${table.name}"`);
-      }
-    }
-  }
+  for (const row of rows) assertColumns(table, Object.keys(row));
 }
 
 /**

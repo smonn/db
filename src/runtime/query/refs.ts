@@ -167,6 +167,25 @@ export function columnIdentifier(table: Table, key: string): Fragment {
   return identifier(table.columnNames[key] ?? key);
 }
 
+/** Whether `row` gives a value for `name`; an undefined value stands for none. */
+export function has(row: Record<string, unknown>, name: string): boolean {
+  return Object.hasOwn(row, name) && row[name] !== undefined;
+}
+
+/** An Expr inlines and runs no codec; any other value binds through the column's codec. */
+export function cellOf(table: Table, name: string, value: unknown): Fragment {
+  return isExpr(value) ? value["~expr"]() : fragment`${encodeValue(table, name, value)}`;
+}
+
+/** Throws for a key that is no column of `table`. */
+export function assertColumns(table: Table, keys: readonly string[]): void {
+  for (const key of keys) {
+    if (!Object.hasOwn(table.columns, key)) {
+      throw new Error(`"${key}" is not a column of "${table.schema}"."${table.name}"`);
+    }
+  }
+}
+
 /** The `order by` list of `terms`, in the order given. */
 export function renderOrderBy(table: Table, terms: readonly Orderable[]): Fragment {
   return join(
