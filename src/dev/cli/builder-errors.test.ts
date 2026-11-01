@@ -64,8 +64,31 @@ void users.pick();
 void users.pick(1);
 `;
 
+const VALUES_FIXTURE = `import { defineDatabase, defineTable, insert } from ${JSON.stringify(join(repo, "src/runtime/index.ts"))};
+
+const db = defineDatabase({
+  public: {
+    users: defineTable((c) => ({
+      id: c.integer().identity().primaryKey(),
+      email: c.text().notNull(),
+      name: c.text(),
+    })),
+  },
+});
+const users = insert(db.public.users);
+
+void users.values({ email: "a", nope: 1 });
+void users.values({ name: "a" });
+void users.values({ email: 1 });
+void users.values([{ email: "a" }]);
+void users.valuesMany([{ email: "a", nope: 1 }]);
+void users.valuesMany([{ name: "a" }]);
+void users.valuesMany([{ email: 1 }]);
+void users.valuesMany({ email: "a" });
+`;
+
 const ROW = "{ id: number; email: string; name: string | null; }";
-const NEW_ROW = "{ email: string; } & { id?: number; name?: string | null; }";
+const NEW_ROW = "{ email: string; id?: number; name?: string | null; }";
 
 describe("Builder type errors", () => {
   it("print rows, and name the call an unfinished insert needs", async () => {
@@ -91,6 +114,24 @@ describe("Builder type errors", () => {
       `error TS2554: Expected 1 arguments, but got 0.`,
     ]);
     expect(errors.filter((line) => line.includes("Table<"))).toEqual([]);
+  });
+
+  it("name the bad key of one row or many, with no overload to blame", async () => {
+    const errors = await typeErrors(VALUES_FIXTURE);
+    const MISSING = `error TS2741: Property 'email' is missing in type '{ name: string; }' but required in type '${NEW_ROW}'.`;
+    const UNKNOWN = `error TS2353: Object literal may only specify known properties, and 'nope' does not exist in type '${NEW_ROW}'.`;
+    const WRONG_TYPE = `error TS2322: Type 'number' is not assignable to type 'string'.`;
+    expect(errors).toEqual([
+      UNKNOWN,
+      MISSING,
+      WRONG_TYPE,
+      `error TS2741: Property 'email' is missing in type '{ email: string; }[]' but required in type '${NEW_ROW}'.`,
+      UNKNOWN,
+      MISSING,
+      WRONG_TYPE,
+      `error TS2353: Object literal may only specify known properties, and 'email' does not exist in type 'readonly ${NEW_ROW}[]'.`,
+    ]);
+    expect(errors.join("\n")).not.toMatch(/Table<|No overload/u);
   });
 
   it("print the valid keys for a wrong name, with no overload to blame", async () => {

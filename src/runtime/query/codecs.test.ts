@@ -95,7 +95,7 @@ describe("codec through the query layer", () => {
 
   it("encodes every row of a multi-row insert", async () => {
     await client.run(
-      insert(db.public.events).values([
+      insert(db.public.events).valuesMany([
         { id: 1, happened: { iso: "2024-01-01" } },
         { id: 2, happened: { iso: "2024-01-02" } },
       ]),
@@ -129,7 +129,7 @@ describe("codec through the query layer", () => {
 
   it("encodes a predicate value compared against a codec'd column", async () => {
     await client.run(
-      insert(db.public.events).values([
+      insert(db.public.events).valuesMany([
         { id: 1, happened: { iso: "2024-01-01" } },
         { id: 2, happened: { iso: "2024-02-01" } },
       ]),

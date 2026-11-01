@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineDatabase, defineTable } from "../definition/index.ts";
-import type { Query } from "./statement.ts";
+import type { Many, Query } from "./statement.ts";
 import { insert, type NewRow } from "./insert.ts";
 
 const db = defineDatabase({
@@ -21,7 +21,7 @@ describe("insert", () => {
   });
 
   it("binds every row, defaulting a column that a row skips", () => {
-    const statement = insert(db.public.users).values([
+    const statement = insert(db.public.users).valuesMany([
       { id: "u1", email: "a@example.com" },
       { id: "u2", name: "Bo" },
     ]);
@@ -36,7 +36,7 @@ describe("insert", () => {
       text: 'insert into "public"."flags" ("note") values (default)',
       params: [],
     });
-    expect(insert(db.public.flags).values([{}, {}]).toSql()).toStrictEqual({
+    expect(insert(db.public.flags).valuesMany([{}, {}]).toSql()).toStrictEqual({
       text: 'insert into "public"."flags" ("note") values (default), (default)',
       params: [],
     });
@@ -78,6 +78,7 @@ describe("insert", () => {
       '"nickname" is not a column of "public"."users"',
     );
     const onlyUnknown = { nickname: "x" };
+    // @ts-expect-error no property in common with the row
     expect(() => insert(db.public.flags).values(onlyUnknown)).toThrow(
       '"nickname" is not a column of "public"."flags"',
     );
@@ -92,7 +93,7 @@ describe("insert", () => {
   });
 
   it("refuses an empty list of rows", () => {
-    expect(() => insert(db.public.users).values([])).toThrow("insert needs at least one row");
+    expect(() => insert(db.public.users).valuesMany([])).toThrow("insert needs at least one row");
   });
 
   it("returns the columns that returning picks, named by key", () => {
@@ -166,6 +167,22 @@ describe("insert", () => {
     expect(() => insert(memberships).values({ team_id: 1 })).not.toThrow();
     // @ts-expect-error account_id is part of the key, so null is no value
     expect(() => insert(memberships).values({ account_id: null, team_id: 1 })).not.toThrow();
+  });
+
+  it("carries the many marker through returning only for valuesMany", () => {
+    const many = insert(db.public.users)
+      .valuesMany([{ id: "u1" }])
+      .returning((u) => ({ id: u.id }));
+    const one = insert(db.public.users)
+      .values({ id: "u1" })
+      .returning((u) => ({ id: u.id }));
+    expectTypeOf(many).toExtend<Many>();
+    expectTypeOf(one).not.toExtend<Many>();
+  });
+
+  it("refuses an array in values, which takes one row", () => {
+    // @ts-expect-error values takes one row; valuesMany takes an array
+    expect(() => insert(db.public.users).values([{ id: "u1" }])).toThrow('"0" is not a column');
   });
 
   it("is not a Query without returning", () => {

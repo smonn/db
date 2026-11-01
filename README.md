@@ -105,6 +105,8 @@ DATABASE_URL=postgres://localhost/app_prod node query.ts
 [ { id: 'u1', email: 'a@example.com' } ]
 ```
 
+`values` takes one row. `valuesMany` takes an array of rows, and its `returning` makes a query that `client.one` refuses. A wrong or missing key in either is a type error that names it.
+
 ### Selecting columns
 
 `pick` selects the columns you name, each under its own key, in the order you name them. `select` takes a callback for the cases `pick` can't express, such as renaming a column. Either replaces an earlier one, and `where`, `orderBy`, `limit`, and `offset` can come before or after it. A name that is no column is a type error that lists the table's columns.

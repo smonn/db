@@ -83,19 +83,26 @@ function check(table: Table, rows: readonly Record<string, unknown>[]): void {
   }
 }
 
-/** An insert with no rows yet, which is no Statement: call `values`. `N` is the row it takes. */
+/**
+ * An insert with no rows yet, which is no Statement: call `values` for one row or `valuesMany` for
+ * an array. `N` is the row each takes, typed inline so a wrong key is named, not blamed on another.
+ */
 export type InsertNeedsValues<T, N> = {
   values(row: N): InsertStatement<T>;
-  values(rows: readonly N[]): InsertStatement<T, Many>;
+  valuesMany(rows: readonly N[]): InsertStatement<T, Many>;
 };
 
 function needsValues<T, N extends Record<string, unknown>>(table: Table): InsertNeedsValues<T, N> {
   return {
-    values(rows: N | readonly N[]): InsertStatement<T, Many> {
-      const list: readonly Record<string, unknown>[] = Array.isArray(rows) ? rows : [rows];
+    values(row: N): InsertStatement<T> {
+      const list: readonly Record<string, unknown>[] = [row];
       check(table, list);
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The marker exists only in types; the overloads decide it.
-      return insertStatement(table, list) as InsertStatement<T, Many>;
+      return insertStatement(table, list);
+    },
+    valuesMany(rows: readonly N[]): InsertStatement<T, Many> {
+      check(table, rows);
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The marker exists only in types.
+      return insertStatement(table, rows) as InsertStatement<T, Many>;
     },
   };
 }
@@ -105,7 +112,13 @@ export function insert<T extends Table>(
   table: T,
 ): InsertNeedsValues<
   { [K in keyof Row<T>]: Row<T>[K] },
-  { [K in RequiredKeys<T>]: Row<T>[K] } & { [K in OptionalKeys<T>]?: Row<T>[K] }
+  {
+    [
+      K in keyof ({ [P in RequiredKeys<T>]: Row<T>[P] } & { [P in OptionalKeys<T>]?: Row<T>[P] })
+    ]: ({
+      [P in RequiredKeys<T>]: Row<T>[P];
+    } & { [P in OptionalKeys<T>]?: Row<T>[P] })[K];
+  }
 > {
   assertRegistered(table);
   return needsValues(table);

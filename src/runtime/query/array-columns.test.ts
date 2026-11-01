@@ -62,7 +62,7 @@ beforeEach(async () => {
 
 describe("array columns through the query builder", () => {
   it("round-trips arrays of every type, with NULL elements, and empty arrays", async () => {
-    await client.run(insert(db.public.arrays).values([filled, empty]));
+    await client.run(insert(db.public.arrays).valuesMany([filled, empty]));
 
     const rows = await client.all(from(db.public.arrays));
 
@@ -83,7 +83,7 @@ describe("array columns through the query builder", () => {
   });
 
   it("compares an array column with an array", async () => {
-    await client.run(insert(db.public.arrays).values([filled, empty]));
+    await client.run(insert(db.public.arrays).valuesMany([filled, empty]));
 
     const rows = await client.all(
       from(db.public.arrays)
@@ -117,7 +117,7 @@ describe("array values in a raw sql template", () => {
   });
 
   it("binds an array where Postgres infers an array type", async () => {
-    await client.run(insert(db.public.arrays).values([filled, empty]));
+    await client.run(insert(db.public.arrays).valuesMany([filled, empty]));
 
     const rows = await client.all(
       sql<{ id: number }>`select id from public.arrays where ${9007199254740993n} = any(bigint)
