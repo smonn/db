@@ -4,7 +4,7 @@ export { from } from "./from.ts";
 export type { SelectQuery } from "./from.ts";
 export { and, not, or } from "./refs.ts";
 export type { ColumnRef, Orderable, Predicate, Refs, Selected, Selection } from "./refs.ts";
-export type { Ordering } from "./expr.ts";
+export type { Expr, Ordering } from "./expr.ts";
 export type { Query, Statement } from "./statement.ts";
 export { deleteFrom } from "./delete.ts";
 export type { DeleteNeedsWhereOrAllRows, DeleteStatement, FilteredDelete } from "./delete.ts";

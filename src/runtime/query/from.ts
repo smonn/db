@@ -1,15 +1,17 @@
 import type { Row, SqlClass, Table } from "../definition/index.ts";
 import { fragment, identifier, join } from "../sql/index.ts";
-import { decoderFor, withDecoder } from "./codecs.ts";
+import { withDecoder } from "./codecs.ts";
+import type { Expr } from "./expr.ts";
 import {
   and,
+  decodeOutputs,
+  outputsOf,
   refsOf,
   renderOrderBy,
   renderOutput,
   type Classes,
   type Orderable,
   type Output,
-  type Predicate,
   type Refs,
   type Selected,
   type Selection,
@@ -21,12 +23,12 @@ import { assertRegistered, brand, type Query } from "./statement.ts";
  * the row's keys; `R` is the result row.
  */
 export type SelectQuery<T, R = T, C extends Classes<T> = Classes<T>> = Query<R> & {
-  /** The keys of the returned object name the output columns. */
+  /** The keys of the returned object name the output columns; each value is a column or an Expr. */
   select<S extends Selection>(pick: (columns: Refs<T, C>) => S): SelectQuery<T, Selected<S>, C>;
   /** Selects each named column under its own key. The names are typed inline, so a wrong one prints the row's keys. */
   pick<K extends keyof T & string>(...names: [K, ...K[]]): SelectQuery<T, { [P in K]: T[P] }, C>;
   /** Combines with any earlier `where` using `and`. */
-  where(pick: (columns: Refs<T, C>) => Predicate): SelectQuery<T, R, C>;
+  where(pick: (columns: Refs<T, C>) => Expr<boolean | null>): SelectQuery<T, R, C>;
   /** Repeated calls append, so the first call's orderings sort first. */
   orderBy(pick: (columns: Refs<T, C>) => Orderable | readonly Orderable[]): SelectQuery<T, R, C>;
   /** A non-negative safe integer. A later call replaces an earlier one. */
@@ -37,7 +39,7 @@ export type SelectQuery<T, R = T, C extends Classes<T> = Classes<T>> = Query<R> 
 
 type State = {
   readonly outputs: readonly Output[];
-  readonly predicate?: Predicate;
+  readonly predicate?: Expr<boolean | null>;
   readonly orderings?: readonly Orderable[];
   readonly limit?: number;
   readonly offset?: number;
@@ -67,9 +69,8 @@ function pickedOutputs(table: Table, names: readonly string[]): Output[] {
 function selectQuery<T, R, C extends Classes<T>>(table: Table, state: State): SelectQuery<T, R, C> {
   const query = brand<SelectQuery<T, R, C>>({
     select(pick) {
-      const picked = Object.entries(pick(refsOf<T>(table)));
-      if (picked.length === 0) throw new Error("select needs at least one column");
-      const outputs = picked.map(([alias, ref]): Output => [alias, ref.name]);
+      const outputs = outputsOf(pick(refsOf<T>(table)));
+      if (outputs.length === 0) throw new Error("select needs at least one column");
       return selectQuery(table, { ...state, outputs });
     },
     pick(...names) {
@@ -101,9 +102,7 @@ function selectQuery<T, R, C extends Classes<T>>(table: Table, state: State): Se
         state.outputs.map((output) => renderOutput(table, output)),
         fragment`, `,
       );
-      const filter = state.predicate
-        ? fragment` where ${state.predicate["~predicate"]()}`
-        : fragment``;
+      const filter = state.predicate ? fragment` where ${state.predicate["~expr"]()}` : fragment``;
       const order = state.orderings
         ? fragment` order by ${renderOrderBy(table, state.orderings)}`
         : fragment``;
@@ -112,7 +111,7 @@ function selectQuery<T, R, C extends Classes<T>>(table: Table, state: State): Se
       return fragment`select ${columns} from ${identifier(table.schema)}.${identifier(table.name)}${filter}${order}${limit}${offset}`.toSql();
     },
   });
-  return withDecoder(query, decoderFor(table, state.outputs));
+  return withDecoder(query, decodeOutputs(table, state.outputs));
 }
 
 /** The row type is written out, not named `Row<T>`, so tsc prints its keys instead of the Table. */

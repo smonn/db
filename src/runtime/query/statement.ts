@@ -15,10 +15,28 @@ export type Query<R> = Statement & {
 /** Marks a query that can change several rows, which `client.one` can't take. */
 export type Many = { readonly "~many": true };
 
+/**
+ * What the builder and `sql` made, so `sql` can refuse one by identity rather than by shape: an
+ * unfinished `deleteFrom` has a `toSql` that throws, and a Fragment one that isn't a statement.
+ */
+const made = new WeakMap<object, "a statement" | "an unfinished statement">();
+
 /** The type-only brands have no runtime value, so a statement is built from its parts and cast once. */
 export function brand<Q extends Statement>(parts: Omit<Q, "~returns" | "~row" | "~many">): Q {
+  made.set(parts, "a statement");
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The brands exist only in types.
   return parts as Q;
+}
+
+/** Marks a builder that needs another call before it is a statement, such as `insert` before `values`. */
+export function unfinished<B extends object>(builder: B): B {
+  made.set(builder, "an unfinished statement");
+  return builder;
+}
+
+/** "a statement" or "an unfinished statement" for what `brand` or `unfinished` marked, else `undefined`. */
+export function statementKind(value: unknown): string | undefined {
+  return typeof value === "object" && value !== null ? made.get(value) : undefined;
 }
 
 /**

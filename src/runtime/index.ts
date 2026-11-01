@@ -49,6 +49,7 @@ export type {
   ColumnRef,
   DeleteNeedsWhereOrAllRows,
   DeleteStatement,
+  Expr,
   FilteredDelete,
   InsertStatement,
   NewRow,

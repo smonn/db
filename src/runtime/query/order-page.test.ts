@@ -21,7 +21,10 @@ const db = defineDatabase({
 const scores = from(db.public.scores);
 const ALL = '"id", "points", "note"';
 
-type NullsOptions = { readonly nulls?: "first" | "last" };
+type NullsOptions = {
+  readonly nulls?: "first" | "last";
+  readonly "nulls needs a nullable column"?: never;
+};
 type NotNullableOptions = { readonly "nulls needs a nullable column"?: never };
 
 const ids = async (query: typeof scores) => (await client.all(query)).map((row) => row.id);

@@ -3,7 +3,14 @@ import { fragment, type Fragment } from "../sql/index.ts";
 /** One sort key for `orderBy`, made by `asc` or `desc`; a bare column sorts ascending. */
 export type Ordering = { readonly "~ordering": () => Fragment };
 
-type NullsOptions = { readonly nulls?: "first" | "last" };
+/**
+ * The forbidding key lets a NOT NULL `Sortable` stand in for a nullable one, so `Expr<boolean>`
+ * passes for `Expr<boolean | null>`: two option types with no key in common never match.
+ */
+type NullsOptions = {
+  readonly nulls?: "first" | "last";
+  readonly "nulls needs a nullable column"?: never;
+};
 
 /** A NOT NULL column has no NULLs to place, so its options type names `nulls` in the error. */
 export type Sortable<V> = null extends V
@@ -39,4 +46,42 @@ export function sortable(sortKey: () => Fragment): Sortable<null> {
     asc: (options) => order(fragment`asc`, options),
     desc: (options) => order(fragment`desc`, options),
   };
+}
+
+/**
+ * An SQL expression whose value is a `V`: a column comparison, `and`, `or`, `not`, or a
+ * `` sql.expr<V>`...` `` fragment. It renders when its statement does, so a codec that throws
+ * rejects the query instead of the builder.
+ */
+export type Expr<V = unknown> = Sortable<V> & {
+  readonly "~expr": () => Fragment;
+  /** Type-only: the value the expression yields. */
+  readonly "~value": V;
+};
+
+const exprs = new WeakSet<object>();
+
+/** A hand-written fragment may hold any operator, so a term of `and` or `or` wraps it in parentheses. */
+const handWritten = new WeakSet<object>();
+
+export function expr<V>(render: () => Fragment): Expr<V> {
+  const made = { "~expr": render, ...sortable(render) };
+  exprs.add(made);
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- `~value` exists only in types.
+  return made as unknown as Expr<V>;
+}
+
+export function writtenExpr<V>(render: () => Fragment): Expr<V> {
+  const made = expr<V>(render);
+  handWritten.add(made);
+  return made;
+}
+
+export function isExpr(value: unknown): value is Expr {
+  return typeof value === "object" && value !== null && exprs.has(value);
+}
+
+/** `term` as one operand of `and` or `or`. */
+export function termOf(term: Expr): Fragment {
+  return handWritten.has(term) ? fragment`(${term["~expr"]()})` : term["~expr"]();
 }

@@ -1,8 +1,16 @@
 import type { Row, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import { encodeValue } from "./codecs.ts";
+import { isExpr, type Expr } from "./expr.ts";
 import { columnIdentifier, returning, type Refs, type Selected, type Selection } from "./refs.ts";
-import { assertRegistered, brand, type Many, type Query, type Statement } from "./statement.ts";
+import {
+  assertRegistered,
+  brand,
+  unfinished,
+  type Many,
+  type Query,
+  type Statement,
+} from "./statement.ts";
 
 /** A column the database can fill: nullable, or with a default or an identity. */
 type OptionalKeys<T extends Table> = {
@@ -29,12 +37,17 @@ export type NewRow<T extends Table> = {
 export type InsertStatement<T, Marker = unknown> = Statement & {
   /** Type-only: a plain insert reports a count, so only `client.run` takes it. */
   readonly "~returns": "count";
-  /** The keys of the returned object name the output columns. */
+  /** The keys of the returned object name the output columns; each value is a column or an Expr. */
   returning<S extends Selection>(pick: (columns: Refs<T>) => S): Query<Selected<S>> & Marker;
 };
 
 function has(row: Record<string, unknown>, name: string): boolean {
   return Object.hasOwn(row, name) && row[name] !== undefined;
+}
+
+/** An Expr inlines and runs no codec; any other value binds through the column's codec. */
+function cellOf(table: Table, name: string, value: unknown): Fragment {
+  return isExpr(value) ? value["~expr"]() : fragment`${encodeValue(table, name, value)}`;
 }
 
 /** A column no row gives a value for is left out; a row that skips a column gets its default. */
@@ -45,7 +58,7 @@ function insertInto(table: Table, rows: readonly Record<string, unknown>[]): Fra
   const names = given.length > 0 ? given : Object.keys(table.columns).slice(0, 1);
   const tuples = rows.map((row) => {
     const cells = names.map((name) =>
-      has(row, name) ? fragment`${encodeValue(table, name, row[name])}` : fragment`default`,
+      has(row, name) ? cellOf(table, name, row[name]) : fragment`default`,
     );
     return fragment`(${join(cells, fragment`, `)})`;
   });
@@ -93,7 +106,7 @@ export type InsertNeedsValues<T, N> = {
 };
 
 function needsValues<T, N extends Record<string, unknown>>(table: Table): InsertNeedsValues<T, N> {
-  return {
+  return unfinished({
     values(row: N): InsertStatement<T> {
       const list: readonly Record<string, unknown>[] = [row];
       check(table, list);
@@ -104,10 +117,13 @@ function needsValues<T, N extends Record<string, unknown>>(table: Table): Insert
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The marker exists only in types.
       return insertStatement(table, rows) as InsertStatement<T, Many>;
     },
-  };
+  });
 }
 
-/** The row types are written out, not named `Row<T>` and `NewRow<T>`, so tsc prints their keys instead of the Table. */
+/**
+ * The row types are written out, not named `Row<T>` and `NewRow<T>`, so tsc prints their keys
+ * instead of the Table. A new row's value may also be an Expr of its column's type.
+ */
 export function insert<T extends Table>(
   table: T,
 ): InsertNeedsValues<
@@ -116,8 +132,8 @@ export function insert<T extends Table>(
     [
       K in keyof ({ [P in RequiredKeys<T>]: Row<T>[P] } & { [P in OptionalKeys<T>]?: Row<T>[P] })
     ]: ({
-      [P in RequiredKeys<T>]: Row<T>[P];
-    } & { [P in OptionalKeys<T>]?: Row<T>[P] })[K];
+      [P in RequiredKeys<T>]: Row<T>[P] | Expr<Row<T>[P]>;
+    } & { [P in OptionalKeys<T>]?: Row<T>[P] | Expr<Row<T>[P]> })[K];
   }
 > {
   assertRegistered(table);

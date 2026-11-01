@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineDatabase, defineTable, type Row } from "../definition/index.ts";
+import type { Expr } from "./expr.ts";
 import { from } from "./from.ts";
 import { and, not, or, renderOutput, type Predicate, type Refs } from "./refs.ts";
 import type { Query } from "./statement.ts";
@@ -240,9 +241,11 @@ describe("where", () => {
   });
 
   it("takes one or more predicates in and and or, and exactly one in not", () => {
-    expectTypeOf(and).parameters.toEqualTypeOf<[first: Predicate, ...rest: Predicate[]]>();
-    expectTypeOf(or).parameters.toEqualTypeOf<[first: Predicate, ...rest: Predicate[]]>();
-    expectTypeOf(not).parameters.toEqualTypeOf<[term: Predicate]>();
+    type Term = Expr<boolean | null>;
+    expectTypeOf(and).parameters.toEqualTypeOf<[first: Term, ...rest: Term[]]>();
+    expectTypeOf(or).parameters.toEqualTypeOf<[first: Term, ...rest: Term[]]>();
+    expectTypeOf(not).parameters.toEqualTypeOf<[term: Term]>();
+    expectTypeOf(and).returns.toEqualTypeOf<Predicate>();
   });
 
   it("offers isNull and isNotNull only on nullable columns", () => {

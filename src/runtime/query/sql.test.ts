@@ -1,6 +1,8 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineDatabase, defineTable } from "../definition/index.ts";
+import { deleteFrom } from "./delete.ts";
 import { from } from "./from.ts";
+import { insert } from "./insert.ts";
 import type { Query, Statement } from "./statement.ts";
 import { sql } from "./sql.ts";
 
@@ -30,6 +32,18 @@ describe("sql", () => {
     );
     expect(() => sql`select ${1}, (${from(users.public.users)})`).toThrow(
       "sql takes values, not statements: value 2 is a statement",
+    );
+  });
+
+  it("rejects an unfinished statement by name, not as a statement", () => {
+    const { users } = defineDatabase({
+      public: { users: defineTable((c) => ({ id: c.text().notNull() })) },
+    }).public;
+    expect(() => sql`select ${deleteFrom(users)}`).toThrow(
+      "sql takes values, not statements: value 1 is an unfinished statement",
+    );
+    expect(() => sql`select ${1}, ${insert(users)}`).toThrow(
+      "sql takes values, not statements: value 2 is an unfinished statement",
     );
   });
 

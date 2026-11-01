@@ -38,7 +38,6 @@ void users.orderBy((u) => u.email.asc({ nulls: "first" }));
 void users.orderBy((u) => u.id.desc({ nulls: "last" }));
 void users.orderBy((u) => u.name.asc({ nulls: "middle" }));
 void users.orderBy((u) => u.nope);
-void users.orderBy((u) => u.name.eq("a"));
 void users.orderBy((u) => [u.id, "name"]);
 void users.limit("5");
 void users.offset(null);
@@ -137,9 +136,37 @@ void deleteFrom(users).returning(() => ({}));
 void deleteFrom(users).allRows().where;
 `;
 
+const EXPR_FIXTURE = `import { and, defineDatabase, defineTable, deleteFrom, from, insert, not, sql } from ${JSON.stringify(join(repo, "src/runtime/index.ts"))};
+
+const db = defineDatabase({
+  public: {
+    users: defineTable((c) => ({
+      id: c.integer().identity().primaryKey(),
+      email: c.text().notNull(),
+      name: c.text(),
+    })),
+  },
+});
+const users = from(db.public.users);
+const lower = sql.expr<string>\`lower('A')\`;
+
+void users.where(() => lower);
+void users.orderBy(() => lower.asc({ nulls: "first" }));
+void users.orderBy(() => sql.expr<string | null>\`null\`.desc({ nulls: "middle" }));
+void users.select(() => ({ one: 1 }));
+void users.pick(lower);
+void and(sql.expr<number>\`1\`);
+void not(lower);
+void insert(db.public.users).values({ email: sql.expr<number>\`1\` });
+void insert(db.public.users).valuesMany([{ email: sql.expr<string | null>\`null\` }]);
+void deleteFrom(db.public.users).where(() => lower);
+void deleteFrom(db.public.users).allRows().returning(() => ({ one: 1 }));
+`;
+
 const ROW = "{ id: number; email: string; name: string | null; }";
 const CLASSES = '{ id: "number"; email: "text"; name: "text"; }';
-const NEW_ROW = "{ email: string; id?: number; name?: string | null; }";
+const NEW_ROW =
+  "{ email: string | Expr<string>; id?: number | Expr<number>; name?: string | Expr<string | null> | null; }";
 
 describe("Builder type errors", () => {
   it("print rows, and name the call an unfinished insert needs", async () => {
@@ -158,7 +185,6 @@ describe("Builder type errors", () => {
       `error TS2353: Object literal may only specify known properties, and ${NOT_NULLABLE}`,
       `error TS2322: Type '"middle"' is not assignable to type '"first" | "last" | undefined'.`,
       `error TS2339: Property 'nope' does not exist on type 'Refs<${ROW}, ${CLASSES}>'.`,
-      `error TS2322: Type 'Predicate' is not assignable to type 'readonly Orderable[] | Orderable'.`,
       `error TS2322: Type 'string' is not assignable to type 'Orderable'.`,
       `error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.`,
       `error TS2345: Argument of type 'null' is not assignable to parameter of type 'number'.`,
@@ -171,7 +197,7 @@ describe("Builder type errors", () => {
     const errors = await typeErrors(VALUES_FIXTURE);
     const MISSING = `error TS2741: Property 'email' is missing in type '{ name: string; }' but required in type '${NEW_ROW}'.`;
     const UNKNOWN = `error TS2353: Object literal may only specify known properties, and 'nope' does not exist in type '${NEW_ROW}'.`;
-    const WRONG_TYPE = `error TS2322: Type 'number' is not assignable to type 'string'.`;
+    const WRONG_TYPE = `error TS2322: Type 'number' is not assignable to type 'string | Expr<string>'.`;
     expect(errors).toEqual([
       UNKNOWN,
       MISSING,
@@ -209,6 +235,26 @@ describe("Builder type errors", () => {
       `error TS2322: Type 'string' is not assignable to type 'number'.`,
       `error TS2322: Type 'null' is not assignable to type 'string'.`,
       `error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.`,
+    ]);
+    expect(errors.join("\n")).not.toMatch(/Table<|No overload/u);
+  });
+
+  it("name the Expr type a clause needs, and keep nulls and pick as for columns", async () => {
+    const errors = await typeErrors(EXPR_FIXTURE);
+    const NOT_CONDITION = `'Expr<string>' is not assignable to type 'Expr<boolean | null>'.`;
+    const NOT_SELECTABLE = `error TS2322: Type 'number' is not assignable to type 'SelectableColumn<unknown> | Expr'.`;
+    expect(errors).toEqual([
+      `error TS2322: Type ${NOT_CONDITION}`,
+      `error TS2353: Object literal may only specify known properties, and 'nulls' does not exist in type '{ readonly "nulls needs a nullable column"?: never; }'.`,
+      `error TS2322: Type '"middle"' is not assignable to type '"first" | "last" | undefined'.`,
+      NOT_SELECTABLE,
+      `error TS2345: Argument of type 'Expr<string>' is not assignable to parameter of type '"email" | "id" | "name"'.`,
+      `error TS2345: Argument of type 'Expr<number>' is not assignable to parameter of type 'Expr<boolean | null>'.`,
+      `error TS2345: Argument of type 'Expr<string>' is not assignable to parameter of type 'Expr<boolean | null>'.`,
+      `error TS2322: Type 'Expr<number>' is not assignable to type 'string | Expr<string>'.`,
+      `error TS2322: Type 'Expr<string | null>' is not assignable to type 'string | Expr<string>'.`,
+      `error TS2322: Type ${NOT_CONDITION}`,
+      NOT_SELECTABLE,
     ]);
     expect(errors.join("\n")).not.toMatch(/Table<|No overload/u);
   });

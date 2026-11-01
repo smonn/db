@@ -1,14 +1,21 @@
 import type { ScalarClass, SqlClass, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import { isTextArray } from "./array-text.ts";
-import { decoderFor, encodeElement, encodeList, encodeValue, withDecoder } from "./codecs.ts";
-import { sortable, type Ordering, type Sortable } from "./expr.ts";
+import {
+  decoderFor,
+  encodeElement,
+  encodeList,
+  encodeValue,
+  withDecoder,
+  type Decode,
+} from "./codecs.ts";
+import { expr, isExpr, sortable, termOf, type Expr, type Ordering, type Sortable } from "./expr.ts";
 import { brand, type Query } from "./statement.ts";
 
 type Column = Table["columns"][string];
 
 /** A boolean SQL expression, built from column comparisons and the `and`, `or`, `not` exports. */
-export type Predicate = { readonly "~predicate": () => Fragment };
+export type Predicate = Expr<boolean>;
 
 type NullChecks = {
   isNull(): Predicate;
@@ -64,19 +71,27 @@ export type Refs<R, C extends Classes<R> = Classes<R>> = {
   readonly [K in keyof R & string]: ColumnRef<R[K], C[K]>;
 };
 
-export type Selection = Record<string, SelectableColumn<unknown>>;
+/** Each value is a column or an Expr, under the key that names its output. */
+export type Selection = Record<string, SelectableColumn<unknown> | Expr>;
 
 export type Selected<S extends Selection> = {
-  -readonly [K in keyof S]: S[K] extends SelectableColumn<infer V> ? V : never;
+  -readonly [K in keyof S]: S[K] extends Expr<infer V>
+    ? V
+    : S[K] extends SelectableColumn<infer V>
+      ? V
+      : never;
 };
 
-export type Output = readonly [alias: string, column: string];
+/** An output reads a column, by its key, or an Expr. */
+export type Output = readonly [alias: string, source: string | Expr];
 
-/** What `orderBy` takes: an ordering, or a bare column, which sorts ascending. */
-export type Orderable = Ordering | SelectableColumn<unknown>;
+/** What `orderBy` takes: an ordering, or a bare column or Expr, which sorts ascending. */
+export type Orderable = Ordering | SelectableColumn<unknown> | Expr;
 
-/** Built when the statement renders, so a codec that throws rejects the query instead of the builder. */
-const predicate = (piece: () => Fragment): Predicate => ({ "~predicate": piece });
+const predicate: (render: () => Fragment) => Predicate = expr;
+
+/** How each ref renders in a template, the same SQL its comparisons render. */
+const refColumns = new WeakMap<object, Fragment>();
 
 /** What every ref carries at run time; `Refs` hides the calls a column's class can't take. */
 type AnyRef = ColumnRef<string | null, "text"> & { includes(value: string): Predicate };
@@ -85,7 +100,7 @@ function refOf(table: Table, name: string, definition: Column): AnyRef {
   const column = columnIdentifier(table, name);
   const compare = (operator: Fragment, value: unknown) =>
     predicate(() => fragment`${column} ${operator} ${encodeValue(table, name, value)}`);
-  return {
+  const ref: AnyRef = {
     name,
     eq: (value) => compare(fragment`=`, value),
     ne: (value) => compare(fragment`<>`, value),
@@ -105,6 +120,13 @@ function refOf(table: Table, name: string, definition: Column): AnyRef {
     isNull: () => predicate(() => fragment`${column} is null`),
     isNotNull: () => predicate(() => fragment`${column} is not null`),
   };
+  refColumns.set(ref, column);
+  return ref;
+}
+
+/** The SQL a ref renders inside a template; `undefined` for a value that is no ref. */
+export function refSql(value: unknown): Fragment | undefined {
+  return typeof value === "object" && value !== null ? refColumns.get(value) : undefined;
 }
 
 export function refsOf<R>(table: Table): Refs<R> {
@@ -118,26 +140,26 @@ export function refsOf<R>(table: Table): Refs<R> {
   return refs as unknown as Refs<R>;
 }
 
-function combine(separator: Fragment, terms: readonly Predicate[]): Predicate {
+function combine(separator: Fragment, terms: readonly Expr<boolean | null>[]): Predicate {
   return predicate(() => {
     const inner = join(
-      terms.map((term) => term["~predicate"]()),
+      terms.map((term) => termOf(term)),
       separator,
     );
     return fragment`(${inner})`;
   });
 }
 
-export function and(first: Predicate, ...rest: Predicate[]): Predicate {
+export function and(first: Expr<boolean | null>, ...rest: Expr<boolean | null>[]): Predicate {
   return combine(fragment` and `, [first, ...rest]);
 }
 
-export function or(first: Predicate, ...rest: Predicate[]): Predicate {
+export function or(first: Expr<boolean | null>, ...rest: Expr<boolean | null>[]): Predicate {
   return combine(fragment` or `, [first, ...rest]);
 }
 
-export function not(term: Predicate): Predicate {
-  return predicate(() => fragment`not (${term["~predicate"]()})`);
+export function not(term: Expr<boolean | null>): Predicate {
+  return predicate(() => fragment`not (${term["~expr"]()})`);
 }
 
 /** The column of key `key` as SQL names it, once `defineDatabase` mapped it. */
@@ -148,19 +170,37 @@ export function columnIdentifier(table: Table, key: string): Fragment {
 /** The `order by` list of `terms`, in the order given. */
 export function renderOrderBy(table: Table, terms: readonly Orderable[]): Fragment {
   return join(
-    terms.map((term) =>
-      "~ordering" in term ? term["~ordering"]() : columnIdentifier(table, term.name),
-    ),
+    terms.map((term) => {
+      if ("~ordering" in term) return term["~ordering"]();
+      return isExpr(term) ? term["~expr"]() : columnIdentifier(table, term.name);
+    }),
     fragment`, `,
+  );
+}
+
+/** The outputs of a `select` or `returning` callback's result, in its key order. */
+export function outputsOf(selection: Selection): Output[] {
+  return Object.entries(selection).map(([alias, value]): Output => [
+    alias,
+    isExpr(value) ? value : value.name,
+  ]);
+}
+
+/** Decodes the column outputs; an Expr's value runs no codec. */
+export function decodeOutputs(table: Table, outputs: readonly Output[]): Decode | undefined {
+  return decoderFor(
+    table,
+    outputs.flatMap(([alias, source]) => (typeof source === "string" ? [[alias, source]] : [])),
   );
 }
 
 /**
  * An output aliases its column back to the key the row type names, unless the two are one. An
  * enum or domain array is cast to text, which `decoderFor` reads: its OID differs per database, so
- * the driver can't be relied on to parse it (ADR-0023).
+ * the driver can't be relied on to parse it (ADR-0023). An Expr always takes its alias.
  */
 export function renderOutput(table: Table, [alias, key]: Output): Fragment {
+  if (typeof key !== "string") return fragment`${key["~expr"]()} as ${identifier(alias)}`;
   const name = table.columnNames[key] ?? key;
   const column = table.columns[key];
   const cast = column !== undefined && isTextArray(column);
@@ -178,16 +218,18 @@ export function returning<R, S extends Selection>(
   pick: (columns: Refs<R>) => S,
   body: () => Fragment,
 ): Query<Selected<S>> {
-  const picked = Object.entries(pick(refsOf(table)));
-  if (picked.length === 0) throw new Error("returning needs at least one column");
-  const named = picked.map(([alias, ref]): Output => [alias, ref.name]);
-  const outputs = named.map((output) => renderOutput(table, output));
+  const outputs = outputsOf(pick(refsOf(table)));
+  if (outputs.length === 0) throw new Error("returning needs at least one column");
   return withDecoder(
     brand<Query<Selected<S>>>({
       toSql() {
-        return fragment`${body()} returning ${join(outputs, fragment`, `)}`.toSql();
+        const list = join(
+          outputs.map((output) => renderOutput(table, output)),
+          fragment`, `,
+        );
+        return fragment`${body()} returning ${list}`.toSql();
       },
     }),
-    decoderFor(table, named),
+    decodeOutputs(table, outputs),
   );
 }
