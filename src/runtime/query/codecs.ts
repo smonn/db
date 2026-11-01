@@ -176,5 +176,15 @@ export function encodeList(
   definition: Column,
   values: readonly unknown[],
 ): string {
-  return arrayText(table, column, definition, values.map(elementEncoder(table, column)));
+  const encoded = values.map(elementEncoder(table, column));
+  if (!jsonTypes.has(elementSqlType(definition))) {
+    return arrayText(table, column, definition, encoded);
+  }
+  try {
+    return formatArrayLiteral(
+      encoded.map((value) => (value === null ? null : JSON.stringify(value))),
+    );
+  } catch (error) {
+    throw arrayWriteFailure(table, column, error);
+  }
 }
