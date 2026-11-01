@@ -32,6 +32,12 @@ describe("findReferences", () => {
     expect(find(text)).toEqual([{ repo: "porsager/postgres", number: 1240 }]);
   });
 
+  test("reads a file path with an anchor as no reference, but keeps a dotted repository name", () => {
+    const text =
+      "docs/foo.md#2, scripts/x.ts#12, a/b.tsx#1, a/b.mts#1, a/b.json#1, a/b.yml#1, a/b.yaml#1, vercel/next.js#7";
+    expect(find(text)).toEqual([{ repo: "vercel/next.js", number: 7 }]);
+  });
+
   test("treats a repository name by its lower case", () => {
     expect(find("Porsager/Postgres#7 and porsager/postgres#7")).toHaveLength(1);
   });

@@ -26,7 +26,10 @@ import {
 
 export type Reference = { repo: string; number: number };
 
-const SHORTHAND = /(?<![\w./-])([A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+)#(\d+)(?!\w)/gu;
+// A repository name may hold a dot (`vercel/next.js`), but one ending in a docs or source file
+// extension is a path with an anchor, such as `docs/foo.md#2`.
+const SHORTHAND =
+  /(?<![\w./-])([A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+)(?<!\.(?:md|mts|ts|tsx|json|ya?ml))#(\d+)(?!\w)/gu;
 const URL_FORM =
   /https?:\/\/github\.com\/([A-Za-z0-9-]+\/[A-Za-z0-9._-]+)\/(?:issues|pull)\/(\d+)/gu;
 
