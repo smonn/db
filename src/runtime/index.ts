@@ -10,7 +10,6 @@ export type {
   Codec,
   Column,
   ColumnFactories,
-  ColumnFlags,
   Columns,
   ColumnState,
   Database,

@@ -34,10 +34,15 @@ async function typeErrors(source: string): Promise<string[]> {
         files: ["fixture.ts"],
       }),
     );
-    const { stdout } = spawnSync(join(repo, "node_modules/.bin/tsc"), ["--pretty", "false"], {
-      cwd: dir,
-      encoding: "utf8",
-    });
+    const { stdout, error } = spawnSync(
+      join(repo, "node_modules/.bin/tsc"),
+      ["--pretty", "false"],
+      {
+        cwd: dir,
+        encoding: "utf8",
+      },
+    );
+    if (error !== undefined) throw error;
     return stdout
       .split("\n")
       .filter((line) => line.startsWith("fixture.ts("))

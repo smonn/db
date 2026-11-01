@@ -40,8 +40,8 @@ type ConstraintOptions = { readonly name: string };
 
 /**
  * What a column's type knows about its modifiers, one key each, so an error names every flag. The
- * keys aren't `readonly`, since the flags exist only in types and the modifier would double each
- * error's length.
+ * keys aren't `readonly`, since the flags exist only in types and the modifier would lengthen
+ * every error.
  */
 export type ColumnFlags = {
   /** True for a primary key, an identity, or a NOT NULL domain too, as Postgres makes them. */
