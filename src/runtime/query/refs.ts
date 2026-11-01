@@ -74,12 +74,12 @@ export type Refs<R, C extends Classes<R> = Classes<R>> = {
 /** Each value is a column or an Expr, under the key that names its output. */
 export type Selection = Record<string, SelectableColumn<unknown> | Expr>;
 
+// Distribute over a conditional selection's column and Expr alternatives.
+type SelectedValue<S> =
+  S extends Expr<infer V> ? V : S extends SelectableColumn<infer V> ? V : never;
+
 export type Selected<S extends Selection> = {
-  -readonly [K in keyof S]: S[K] extends Expr<infer V>
-    ? V
-    : S[K] extends SelectableColumn<infer V>
-      ? V
-      : never;
+  -readonly [K in keyof S]: SelectedValue<S[K]>;
 };
 
 /** An output reads a column, by its key, or an Expr. */
