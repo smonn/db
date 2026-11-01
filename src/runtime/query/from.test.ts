@@ -180,3 +180,13 @@ describe("renderOutput", () => {
     });
   });
 });
+
+describe("from on an unregistered table", () => {
+  it("throws when called, naming defineDatabase", () => {
+    const bare: unknown = defineTable((c) => ({ id: c.text().notNull() }));
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Plain-JS callers reach this; TypeScript rejects it.
+    const call = () => from(bare as typeof db.public.users);
+    expect(call).toThrow(Error);
+    expect(call).toThrow(/lacks SQL names.*defineDatabase/u);
+  });
+});

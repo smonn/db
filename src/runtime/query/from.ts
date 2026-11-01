@@ -11,7 +11,7 @@ import {
   type Selected,
   type Selection,
 } from "./refs.ts";
-import { brand, type Query } from "./statement.ts";
+import { assertRegistered, brand, type Query } from "./statement.ts";
 
 /** Typed over the table's row `T`, not its Table, so an error prints the row's keys; `R` is the result row. */
 export type SelectQuery<T, R = T> = Query<R> & {
@@ -57,6 +57,7 @@ function selectQuery<T, R>(table: Table, state: State): SelectQuery<T, R> {
 
 /** The row type is written out, not named `Row<T>`, so tsc prints its keys instead of the Table. */
 export function from<T extends Table>(table: T): SelectQuery<{ [K in keyof Row<T>]: Row<T>[K] }> {
+  assertRegistered(table);
   return selectQuery(table, {
     outputs: Object.keys(table.columns).map((name): Output => [name, name]),
   });
