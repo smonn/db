@@ -58,6 +58,13 @@ function encode(table: Table, column: string, value: unknown): unknown {
 
 const jsonTypes = new Set(["json", "jsonb"]);
 
+function arrayWriteFailure(table: Table, column: string, cause: unknown): Error {
+  const where = `${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)}`;
+  return new Error(`Can't write the array in column ${quoteIdentifier(column)} of ${where}`, {
+    cause,
+  });
+}
+
 // Array text leaves no array for a driver to type by its first element, and Postgres types the
 // param from the column it meets, as ADR-0023 asks.
 function arrayText(
@@ -72,10 +79,7 @@ function arrayText(
   try {
     return formatArrayLiteral(value, formatElement);
   } catch (error) {
-    const where = `${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)}`;
-    throw new Error(`Can't write the array in column ${quoteIdentifier(column)} of ${where}`, {
-      cause: error,
-    });
+    throw arrayWriteFailure(table, column, error);
   }
 }
 
