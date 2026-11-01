@@ -8,7 +8,7 @@ status: proposed
 
 ## Considered Options
 
-- **Running a missing `where` as written, or behind an opt-in flag**: the first lets a forgotten `where` through. Spelling `allRows()` out makes every whole-table write deliberate.
+- **Running a missing `where` as written**: it lets a forgotten `where` through.
 - **`UPDATE ... FROM` and `DELETE ... USING`**: Postgres picks an arbitrary row when several join rows match, and a missing join condition is a cross join. Whole-statement `sql` covers them until the builder has joins.
 - **Postgres 18 `old` and `new` in `returning`**: not in v0.3.
 - **Column arithmetic in `set`** (`n = n + 1`, `now()`): handled by fragments (ADR-0004's amendment), not by new operators on columns.

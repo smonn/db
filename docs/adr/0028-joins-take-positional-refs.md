@@ -8,7 +8,7 @@ status: proposed
 
 ## Considered Options
 
-- **Right, full, and cross joins**: two join kinds keep the types small. A cross join is what a forgotten condition would produce, so whole-statement `sql` covers all three.
+- **Right, full, and cross joins**: two join kinds keep the types small, and whole-statement `sql` covers the rest.
 - **An optional `on`**: a missing condition would compile into a cross join.
 - **Named aliases for each table**: a self-join then needs an alias argument, which positional refs avoid.
 - **Literal table and schema names**: they would cost only 148 more instantiations, so cost didn't decide it. Nothing in the positional design reads them.

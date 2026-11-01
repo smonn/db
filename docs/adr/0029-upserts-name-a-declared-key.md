@@ -8,7 +8,7 @@ status: proposed
 
 ## Considered Options
 
-- **Targets by constraint name or by expression**: `sql` covers them, since the builder can check neither against a declared key.
+- **Targets by constraint name or by expression**: they need whole-statement `sql`.
 - **No compile-time target check**: first judged too costly. A probe showed it costs 7% more tsc instantiations and no measurable check time, so a wrong target fails to compile.
 - **Overloaded targets, one per kind**: ADR-0004's amendment rules overloads out, so each target kind would be its own method or option, and only the column list ships.
 

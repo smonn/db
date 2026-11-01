@@ -9,7 +9,7 @@ status: proposed
 ## Considered Options
 
 - **A bare `IN (...)` list per value**: it renders one statement per list length, so the prepared-statement cache fills with variants, and it stops at 65533 params. `= any($1)` binds one array, keeps one prepared statement, and accepts an empty list. Postgres already stores `IN (...)` as `= ANY(ARRAY[...])`, and a generic plan of `= any($1)` estimates 10 rows for any array.
-- **`between`, `notLike`, `@>`, and `&&`**: `between` parses to `>= and <=` with identical plans, so it adds a method and no capability. The others are left out of v0.3 and can come later without a breaking change.
+- **`between`, `notLike`, `@>`, and `&&`**: `between` parses to `>= and <=` with identical plans, so it adds a method and no capability. The others are left out of v0.3.
 - **Requiring `orderBy` before `limit`**: `limit` and `offset` work alone, and the builder doesn't enforce an ordering.
 - **Keyset paging helpers, and `client.one` honoring `limit(1)`**: keyset paging is out of v0.3. `client.one` ignores `limit(1)` and still throws unless exactly one row comes back.
 - **A SQL type class that replaces `Int` on `Column`**: it saves no position once the flags are a named object. A merged class also compiled an identity on a domain over an integer, which Postgres refuses, so each flag keeps answering one question.
