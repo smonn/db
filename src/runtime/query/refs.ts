@@ -82,7 +82,9 @@ function refOf(table: Table, name: string): ColumnRef<string | null> {
   const column = columnIdentifier(table, name);
   const order = (direction: Fragment, options: NullsOptions | undefined): Ordering => {
     const nulls = nullsOf(options);
-    return { "~ordering": () => fragment`${column} ${direction}${nulls}` };
+    return {
+      "~ordering": () => fragment`${identifier(table.name)}.${column} ${direction}${nulls}`,
+    };
   };
   const compare = (operator: Fragment, value: unknown) =>
     predicate(() => fragment`${column} ${operator} ${encodeValue(table, name, value)}`);
@@ -140,7 +142,9 @@ export function columnIdentifier(table: Table, key: string): Fragment {
 export function renderOrderBy(table: Table, terms: readonly Orderable[]): Fragment {
   return join(
     terms.map((term) =>
-      "~ordering" in term ? term["~ordering"]() : columnIdentifier(table, term.name),
+      "~ordering" in term
+        ? term["~ordering"]()
+        : fragment`${identifier(table.name)}.${columnIdentifier(table, term.name)}`,
     ),
     fragment`, `,
   );
