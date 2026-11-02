@@ -10,7 +10,7 @@ const domains = {
   domjsonb: defineDomain((c) => c.jsonb()),
 };
 const t = defineTable((c) => ({
-  id: c.integer().notNull(),
+  id: c.integer().primaryKey(),
   b: c.domain(domains.domjsonb),
 }));
 const db = defineDatabase({ public: { ...domains, t } });
@@ -19,7 +19,7 @@ const setup = [
   "drop table if exists public.t",
   "drop domain if exists public.domjsonb",
   "create domain public.domjsonb as jsonb",
-  "create table public.t (id integer not null, b public.domjsonb)",
+  "create table public.t (id integer primary key, b public.domjsonb)",
 ].join("; ");
 
 beforeAll(async () => {
@@ -104,6 +104,20 @@ describe("domains over jsonb", () => {
       update(db.public.t)
         .set({ b: value })
         .where((r) => r.id.eq(1)),
+    );
+
+    expect(await client.all(from(db.public.t))).toStrictEqual([{ id: 1, b: value }]);
+  });
+
+  it.each(values)("writes %s through upsert's doUpdate", async (_name, value) => {
+    await seedRow();
+
+    // The inserted row leaves `b` out, so only doUpdate's assignment carries the value.
+    await client.run(
+      insert(db.public.t)
+        .values({ id: 1 })
+        .onConflict((r) => [r.id])
+        .doUpdate(() => ({ b: value })),
     );
 
     expect(await client.all(from(db.public.t))).toStrictEqual([{ id: 1, b: value }]);

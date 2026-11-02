@@ -25,7 +25,7 @@ import { defineDatabase, defineTable } from "@smonn/db";
 export default defineDatabase({
   public: {
     users: defineTable((c) => ({
-      id: c.text().notNull(),
+      id: c.text().primaryKey(),
       email: c.text(),
     })),
     posts: defineTable((c) => ({
@@ -408,6 +408,75 @@ DATABASE_URL=postgres://localhost/app_prod node delete.ts
 ```
 
 Without `returning`, only `client.run` takes the statement, and it reports how many rows went. `returning` takes the same column picks as `insert`, reads the deleted rows, and makes a query for `client.all` and `client.one`. `client.one` on a primary-key `where` is the not-found check: it throws when no row matched. `allRows()` can delete several rows, so `client.one` refuses what its `returning` makes. `DELETE ... USING` is not covered; write it with `sql`.
+
+### Upserting rows
+
+`onConflict((u) => [...])` on an insert names the columns of a key the Definition declares: the primary key, a `unique()` column, a `unique` entry, or a unique index on plain columns, in any order. A list that matches no key is a type error, such as `(email) is not a key of the table`, and a JavaScript caller gets the same error when the statement is built. A key that only a partial unique index backs takes that index's `where`, so Postgres infers it; two partial indexes on the same columns are a type error. A constraint name or an expression target needs `sql`.
+
+```ts file=upsert.ts
+import postgres from "postgres";
+import { createClient, insert } from "@smonn/db";
+import { postgresJsConnection, postgresJsDriver, postgresJsTypes } from "@smonn/db/postgres-js";
+import db from "./db/definition.ts";
+
+const pg = postgres(process.env.DATABASE_URL ?? "", {
+  types: postgresJsTypes,
+  connection: postgresJsConnection,
+});
+const client = createClient(postgresJsDriver(pg));
+const { users } = db.public;
+const upsert = (email: string) =>
+  insert(users)
+    .values({ id: "u1", email })
+    .onConflict((u) => [u.id]);
+
+console.log(
+  await client.all(
+    upsert("a@example.com")
+      .doNothing()
+      .returning((u) => ({ id: u.id })),
+  ),
+);
+console.log(
+  await client.all(
+    upsert("b@example.com")
+      .doNothing()
+      .returning((u) => ({ id: u.id })),
+  ),
+);
+console.log(
+  await client.one(
+    upsert("c@example.com")
+      .doUpdate((_, excluded) => ({ email: excluded.email }))
+      .returning((u) => ({ id: u.id, email: u.email })),
+  ),
+);
+console.log(
+  await client.all(
+    upsert("d@example.com")
+      .doUpdate((_, excluded) => ({ email: excluded.email }))
+      .where((existing) => existing.email.isNull())
+      .returning((u) => ({ email: u.email })),
+  ),
+);
+
+await pg.end();
+```
+
+```sh
+DATABASE_URL=postgres://localhost/app_prod node upsert.ts
+```
+
+```text
+[ { id: 'u1' } ]
+[]
+{ id: 'u1', email: 'c@example.com' }
+[]
+```
+
+`onConflict` takes `doNothing()` or `doUpdate(...)` and nothing else; neither alone is a statement. `doUpdate((existing, excluded) => ({...}))` follows `set`'s rules: each column optional, `undefined` skipped, an empty object refused, and no `identity("always")` column. A value is the column's type, a column of the same type such as `excluded.email`, or a `sql.expr` fragment that may name both rows, such as ``n: sql.expr<number>`${existing.n} + ${excluded.n}` ``. `.where((existing, excluded) => ...)` updates only the rows it holds for, and repeated calls combine with `and`. An enum column takes no column of another enum, in either place: Postgres has no cast between two enums.
+
+`returning` reads the rows inserted or updated, so a skipped row returns nothing. `client.one` refuses what `doNothing()` and a `doUpdate` with `where` make, since either may return no row (`on conflict may skip the row; run it with client.all`); a bare `doUpdate` of one row returns it. Postgres finds no conflict on a NULL in a nullable key, unless the key is `nullsNotDistinct`, so that row inserts. A key repeated within one `valuesMany` fails under `doUpdate`, and `doNothing` keeps the first of those rows.
 
 ### Commands
 

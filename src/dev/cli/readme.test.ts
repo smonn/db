@@ -124,6 +124,7 @@ describe("README getting started", () => {
       "file=joins.ts",
       "file=update.ts",
       "file=delete.ts",
+      "file=upsert.ts",
       "file=db/enums.ts",
       "file=by-email.ts",
     ]);
@@ -139,6 +140,7 @@ describe("README getting started", () => {
       "joins.ts",
       "update.ts",
       "delete.ts",
+      "upsert.ts",
     ]);
     // The three CLI steps come first; every example after them runs with node.
     expect(steps.map((s) => s.command.includes("smonndb"))).toStrictEqual(
