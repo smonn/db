@@ -11,7 +11,7 @@
 import { execFile } from "node:child_process";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { onProcessInterrupt } from "../src/dev/cli/signals.ts";
+import { onProcessInterrupt } from "../src/dev/cli/index.ts";
 import type { OnInterrupt } from "../src/dev/shadow/index.ts";
 import { array, field, parseJson, record, string } from "./github-json.ts";
 import {
