@@ -1,6 +1,6 @@
 import type { Row, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
-import { encodeValue } from "./codecs.ts";
+import { encodeAssigned } from "./codecs.ts";
 import { isExpr, type Expr } from "./expr.ts";
 import { columnIdentifier, returning, type Refs, type Selected, type Selection } from "./refs.ts";
 import {
@@ -47,7 +47,7 @@ function has(row: Record<string, unknown>, name: string): boolean {
 
 /** An Expr inlines and runs no codec; any other value binds through the column's codec. */
 function cellOf(table: Table, name: string, value: unknown): Fragment {
-  return isExpr(value) ? value["~expr"]() : fragment`${encodeValue(table, name, value)}`;
+  return isExpr(value) ? value["~expr"]() : fragment`${encodeAssigned(table, name, value)}`;
 }
 
 /** A column no row gives a value for is left out; a row that skips a column gets its default. */

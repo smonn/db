@@ -1,4 +1,5 @@
 import type { Row, SqlClass, Table } from "../definition/index.ts";
+import { quoteIdentifier } from "../internal/index.ts";
 import { fragment, identifier, join } from "../sql/index.ts";
 import { withDecoder } from "./codecs.ts";
 import type { Expr } from "./expr.ts";
@@ -60,7 +61,9 @@ function pickedOutputs(table: Table, names: readonly string[]): Output[] {
   if (names.length === 0) throw new Error("pick needs at least one column");
   for (const name of names) {
     if (!Object.hasOwn(table.columns, name)) {
-      throw new Error(`pick: "${name}" is not a column of "${table.schema}"."${table.name}"`);
+      throw new Error(
+        `pick: ${quoteIdentifier(name)} is not a column of ${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)}`,
+      );
     }
   }
   return [...new Set(names)].map((name): Output => [name, name]);

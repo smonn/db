@@ -116,7 +116,7 @@ function refOf(table: Table, name: string, definition: Column): AnyRef {
       predicate(() => fragment`${encodeElement(table, name, value)} = any(${column})`),
     like: (pattern) => predicate(() => fragment`${column} like ${pattern}`),
     ilike: (pattern) => predicate(() => fragment`${column} ilike ${pattern}`),
-    ...sortable(() => column),
+    ...sortable(() => fragment`${identifier(table.name)}.${column}`),
     isNull: () => predicate(() => fragment`${column} is null`),
     isNotNull: () => predicate(() => fragment`${column} is not null`),
   };
@@ -172,7 +172,9 @@ export function renderOrderBy(table: Table, terms: readonly Orderable[]): Fragme
   return join(
     terms.map((term) => {
       if ("~ordering" in term) return term["~ordering"]();
-      return isExpr(term) ? term["~expr"]() : columnIdentifier(table, term.name);
+      return isExpr(term)
+        ? term["~expr"]()
+        : fragment`${identifier(table.name)}.${columnIdentifier(table, term.name)}`;
     }),
     fragment`, `,
   );

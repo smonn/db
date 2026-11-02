@@ -180,6 +180,10 @@ describe("README getting started", () => {
         await expect(
           database.driver.query("insert into entries (id, score, lately) values ('b', 0, '{}')"),
         ).rejects.toThrow(/posint_positive/u);
+        await expect(database.driver.query("select 'sad'::upbeat")).rejects.toThrow(
+          /upbeat_not_sad/u,
+        );
+        await expect(database.driver.query("select 'ok'::upbeat")).resolves.toBeDefined();
       }),
     );
   }, 120_000);

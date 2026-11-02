@@ -143,7 +143,7 @@ describe("an Expr in select and returning", () => {
       .orderBy((u) => u.id)
       .limit(1);
     expect(query.toSql().text).toBe(
-      'select "id", "born", "born" as "rawBorn", lower("E-mail") as "mail" from "public"."users" order by "id" limit $1',
+      'select "id", "born", "born" as "rawBorn", lower("E-mail") as "mail" from "public"."users" order by "users"."id" limit $1',
     );
     const rows = await client.all(query);
     expectTypeOf(rows).toEqualTypeOf<
@@ -191,7 +191,7 @@ describe("an Expr in orderBy", () => {
       .pick("id")
       .orderBy((u) => [sql.expr<string | null>`upper(${u.name})`.asc({ nulls: "first" }), u.id]);
     expect(byName.toSql().text).toBe(
-      'select "id" from "public"."users" order by upper("name") asc nulls first, "id"',
+      'select "id" from "public"."users" order by upper("name") asc nulls first, "users"."id"',
     );
     expect((await client.all(byName)).map((row) => row.id)).toStrictEqual([2, 1, 3]);
   });
@@ -201,7 +201,7 @@ describe("an Expr in orderBy", () => {
       .pick("id")
       .orderBy((u) => [u.name.isNull(), u.id.desc()]);
     expect(query.toSql().text).toBe(
-      'select "id" from "public"."users" order by "name" is null, "id" desc',
+      'select "id" from "public"."users" order by "name" is null, "users"."id" desc',
     );
     expect((await client.all(query)).map((row) => row.id)).toStrictEqual([3, 1, 2]);
   });

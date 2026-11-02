@@ -1,12 +1,14 @@
 /**
  * Appends lines to the end of one section's list in a GitHub issue body, such as the map's
- * Decisions so far or a ticket's Done when, and leaves the rest of the body byte-identical. It
- * reads the body right before it writes, and exits 1 without writing when the heading is missing
- * or appears more than once. See "Wayfinding operations" in docs/agents/issue-tracker.md.
+ * Decisions so far or a ticket's Done when, or removes lines from it, and leaves the rest of the
+ * body byte-identical. It reads the body right before it writes, and exits 1 without writing when
+ * the heading is missing or appears more than once, or when a line to remove is not in the
+ * section. See "Wayfinding operations" in docs/agents/issue-tracker.md.
  *
  * Run it with `node scripts/issue-section.ts <issue number> --section "<## heading>" --append
- * <line-file>` from a clone with `gh` signed in. Writing is a read-modify-write, so an edit made
- * by someone else between the read and the write is still lost.
+ * <line-file>` (or `--remove <line-file>`) from a clone with `gh` signed in. Writing is a
+ * read-modify-write, so an edit made by someone else between the read and the write is still
+ * lost.
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -14,7 +16,7 @@ import { parseArgs } from "node:util";
 import { field, nullable, parseJson, record, string } from "./github-json.ts";
 
 const USAGE =
-  'Usage: node scripts/issue-section.ts <issue number> --section "<## heading>" --append <line-file>';
+  'Usage: node scripts/issue-section.ts <issue number> --section "<## heading>" (--append | --remove) <line-file>';
 
 const HEADING = /^(#{1,6})(?: |$)/u;
 const FENCE = /^ {0,3}([`~])\1{2}/u;
@@ -73,12 +75,11 @@ function lastContent(lines: Line[], { start, end }: Section): number {
   return start + lines.slice(start, end).findLastIndex(({ text }) => text.trim() !== "");
 }
 
-/**
- * The body with `added` placed after the section's last list item. A section without a list gets
- * the lines after its last content, set off by a blank line. Throws when the heading is missing
- * or repeated.
- */
-export function appendToSection(body: string, heading: string, added: string[]): string {
+/** The lines of `body` and the one section under `heading`; throws when it is missing or repeated. */
+function locate(
+  body: string,
+  heading: string,
+): { lines: string[]; parsed: Line[]; section: Section } {
   const lines = body.split("\n");
   const parsed = classify(lines);
   const sections = findSections(parsed, heading);
@@ -87,12 +88,48 @@ export function appendToSection(body: string, heading: string, added: string[]):
   if (sections.length > 1) {
     throw new Error(`"${heading}" appears ${sections.length} times in the issue body`);
   }
+  return { lines, parsed, section };
+}
+
+/**
+ * The body with `added` placed after the section's last list item. A section without a list gets
+ * the lines after its last content, set off by a blank line. Throws when the heading is missing
+ * or repeated.
+ */
+export function appendToSection(body: string, heading: string, added: string[]): string {
+  const { lines, parsed, section } = locate(body, heading);
   const after = listEnd(parsed, section);
   const at = after ?? lastContent(parsed, section);
   const eol = body.includes("\r\n") ? "\r" : "";
   const inserted = after === undefined ? ["", ...added] : added;
   insertAfter(lines, at, inserted, eol);
   return lines.join("\n");
+}
+
+/**
+ * The body without the lines of `section` that equal one of `removed`, compared exactly, apart
+ * from a trailing carriage return. Blank lines in `removed` are ignored. Every copy in the
+ * section goes; the same text in another section stays. Throws when the heading is missing or
+ * repeated, or when a line is not in the section.
+ */
+export function removeFromSection(body: string, heading: string, removed: string[]): string {
+  const { parsed, section } = locate(body, heading);
+  const targets = new Set(removed.filter((line) => line.trim() !== ""));
+  const found = new Set<string>();
+  const kept = parsed.filter(({ text, code }, index) => {
+    const line = text.replace(/\r$/u, "");
+    const inSection = index > section.start && index < section.end;
+    if (!inSection || code || !targets.has(line)) return true;
+    found.add(line);
+    return false;
+  });
+  const missing = [...targets].filter((line) => !found.has(line));
+  if (missing.length > 0) {
+    throw new Error(
+      `not in "${heading}": ${missing.map((line) => JSON.stringify(line)).join(", ")}`,
+    );
+  }
+  return kept.map(({ text }) => text).join("\n");
 }
 
 /**
@@ -125,22 +162,32 @@ function readBody(path: string): string {
   return body;
 }
 
-type Request = { issue: number; heading: string; file: string };
+const MODES = ["append", "remove"] as const;
+
+type Request = { issue: number; heading: string; mode: (typeof MODES)[number]; file: string };
 
 function parseRequest(args: string[]): Request | undefined {
   const { values, positionals } = parseArgs({
     args,
-    options: { section: { type: "string" }, append: { type: "string" } },
+    options: {
+      section: { type: "string" },
+      append: { type: "string" },
+      remove: { type: "string" },
+    },
     allowPositionals: true,
     strict: false,
   });
   const issue = Number(positionals[0]);
-  const { section: heading, append: file } = values;
+  const { section: heading } = values;
   // Strict parsing throws on an unknown flag; without it one shows up as a third key.
   const unknownFlag = Object.keys(values).length !== 2;
   if (positionals.length !== 1 || !isIssueNumber(issue) || unknownFlag) return undefined;
   if (!isHeadingLine(heading)) return undefined;
-  return typeof file === "string" ? { issue, heading, file } : undefined;
+  const [given] = MODES.flatMap((mode) => {
+    const file = values[mode];
+    return typeof file === "string" ? [{ mode, file }] : [];
+  });
+  return given === undefined ? undefined : { issue, heading, ...given };
 }
 
 function isIssueNumber(value: number): boolean {
@@ -152,11 +199,12 @@ function isHeadingLine(value: unknown): value is string {
   return typeof value === "string" && /^#{1,6} \S/u.test(value);
 }
 
-function run({ issue, heading, file }: Request): void {
-  const added = parseLines(readFileSync(file, "utf8"));
-  if (added.every((line) => line.trim() === "")) throw new Error(`${file} has no lines to append`);
+function run({ issue, heading, mode, file }: Request): void {
+  const lines = parseLines(readFileSync(file, "utf8"));
+  if (lines.every((line) => line.trim() === "")) throw new Error(`${file} has no lines to ${mode}`);
   const path = `repos/{owner}/{repo}/issues/${issue}`;
-  const body = appendToSection(readBody(path), heading, added);
+  const edit = mode === "append" ? appendToSection : removeFromSection;
+  const body = edit(readBody(path), heading, lines);
   gh(["api", "--method", "PATCH", path, "--input", "-"], JSON.stringify({ body }));
 }
 
