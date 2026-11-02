@@ -2,6 +2,7 @@ import type { Codec, RuntimeCodec } from "./codec.ts";
 import type { Domain } from "./domain.ts";
 import type { Enum } from "./enum.ts";
 import { columnIndexOf, type ColumnIndex, type IndexOptions } from "./index-options.ts";
+import type { ScalarClass, SqlClass } from "./sql-class.ts";
 import type { ColumnReference, ForeignKeyOptions, Target } from "./references.ts";
 
 type Identity = "always" | "by default";
@@ -48,8 +49,12 @@ export type ColumnFlags = {
   notNull: boolean;
   /** True for the types Postgres allows an identity on. */
   int: boolean;
+  /** Which types the column compares and matches with; a domain has its base's. */
+  sqlClass: SqlClass;
   /** True once the column has a default or an identity, which Postgres allows only one of. */
   generated: boolean;
+  /** The mode `.identity()` was given, or `undefined` without one; an `"always"` column takes no written value. */
+  identityMode: Identity | undefined;
   /** True once `.primaryKey()` ran. */
   primaryKey: boolean;
   /** True once `.primaryKey()` or `.unique()` ran, since a primary key is already unique. */
@@ -65,11 +70,16 @@ export type ColumnFlags = {
   fresh: boolean;
 };
 
-/** The flags of a column no modifier has touched, of a type that takes no identity. */
+/**
+ * The flags of a column no modifier has touched, of a type that takes no identity. A factory
+ * narrows `sqlClass`.
+ */
 export type FreshFlags = {
   notNull: false;
   int: false;
+  sqlClass: SqlClass;
   generated: false;
+  identityMode: undefined;
   primaryKey: false;
   key: false;
   codec: false;
@@ -90,11 +100,13 @@ export type Column<V, F extends ColumnFlags = FreshFlags> = {
   readonly state: ColumnState;
   /** Runtime-only: the codec `.codec()` set. It stays out of `state`, so it never reaches the catalog. */
   readonly "~codec": RuntimeCodec | undefined;
-  /** Type-only: the value a row holds, whether the column is NOT NULL, has a default or an identity, is the primary key, or is a key a foreign key may point at. */
+  /** Type-only: the value a row holds, whether the column is NOT NULL, has a default or an identity, is the primary key, or is a key a foreign key may point at, its SQL type class, and its identity mode. */
   readonly "~types": {
     readonly value: V;
+    readonly sqlClass: F["sqlClass"];
     readonly notNull: F["notNull"];
     readonly generated: F["generated"];
+    readonly identityMode: F["identityMode"];
     readonly primaryKey: F["primaryKey"];
     readonly key: F["key"];
   };
@@ -119,7 +131,13 @@ export type Column<V, F extends ColumnFlags = FreshFlags> = {
        * the whole column. Postgres ignores declared dimensions, so there is no way to ask for more.
        * A `.codec()` before it runs on each element, and none is offered after it.
        */
-      array(): Column<(V | null)[], WithFlags<FreshFlags, { codec: true; fresh: false }>>;
+      array(): Column<
+        (V | null)[],
+        WithFlags<
+          FreshFlags,
+          { sqlClass: `${Extract<F["sqlClass"], ScalarClass>}[]`; codec: true; fresh: false }
+        >
+      >;
     }
   : unknown) &
   (F["codec"] extends true
@@ -173,9 +191,20 @@ export type Column<V, F extends ColumnFlags = FreshFlags> = {
       } & (F["int"] extends true
         ? {
             /** Generates the value from a sequence. */
-            identity(
-              generated?: Identity,
-            ): Column<V, WithFlags<F, { notNull: true; generated: true; fresh: false }>>;
+            identity<Mode extends Identity | undefined = undefined>(
+              ...args: [] | [generated: Mode]
+            ): Column<
+              V,
+              WithFlags<
+                F,
+                {
+                  notNull: true;
+                  generated: true;
+                  identityMode: Mode extends undefined ? "by default" : Mode;
+                  fresh: false;
+                }
+              >
+            >;
           }
         : unknown));
 

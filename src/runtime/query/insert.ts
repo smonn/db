@@ -2,7 +2,7 @@ import type { Row, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import { encodeValue } from "./codecs.ts";
 import { columnIdentifier, returning, type Refs, type Selected, type Selection } from "./refs.ts";
-import { brand, type Many, type Query, type Statement } from "./statement.ts";
+import { assertRegistered, brand, type Many, type Query, type Statement } from "./statement.ts";
 
 /** A column the database can fill: nullable, or with a default or an identity. */
 type OptionalKeys<T extends Table> = {
@@ -107,5 +107,6 @@ export function insert<T extends Table>(
   { [K in keyof Row<T>]: Row<T>[K] },
   { [K in RequiredKeys<T>]: Row<T>[K] } & { [K in OptionalKeys<T>]?: Row<T>[K] }
 > {
+  assertRegistered(table);
   return needsValues(table);
 }

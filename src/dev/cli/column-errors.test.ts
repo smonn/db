@@ -14,8 +14,8 @@ defineTable((c) => ({
 describe("Column type errors", () => {
   it("name each flag", async () => {
     expect(await typeErrors(FIXTURE)).toEqual([
-      "error TS2339: Property 'identity' does not exist on type 'Column<number, { notNull: false; int: true; generated: true; primaryKey: false; key: false; codec: false; references: false; fresh: false; }>'.",
-      "error TS2339: Property 'array' does not exist on type 'Column<string, { notNull: true; int: false; generated: false; primaryKey: false; key: false; codec: false; references: false; fresh: false; }>'.",
+      "error TS2339: Property 'identity' does not exist on type 'Column<number, { notNull: false; int: true; sqlClass: \"number\"; generated: true; identityMode: undefined; primaryKey: false; key: false; codec: false; references: false; fresh: false; }>'.",
+      "error TS2339: Property 'array' does not exist on type 'Column<string, { notNull: true; int: false; sqlClass: \"text\"; generated: false; identityMode: undefined; primaryKey: false; key: false; codec: false; references: false; fresh: false; }>'.",
     ]);
   });
 });
