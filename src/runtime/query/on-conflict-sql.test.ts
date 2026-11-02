@@ -233,7 +233,7 @@ describe("onConflict refuses", () => {
         return { sku: o.sku };
       });
     expect(() => conflict.doUpdate(() => loose({ sku: foreign }))).toThrow(
-      'doUpdate: "sku" takes a column of another table',
+      'doUpdate: "public"."items"."sku" takes a column of another table',
     );
     expect(() => conflict.doUpdate((_, excluded) => loose({ mood: excluded.tone }))).toThrow(
       `Can't compare "items"."mood" with "excluded"."tone"`,

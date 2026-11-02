@@ -1,4 +1,5 @@
 import type { Table } from "../definition/index.ts";
+import { quoteIdentifier } from "../internal/index.ts";
 import { fragment, join, type Fragment } from "../sql/index.ts";
 import { assertColumns, cellOf, has, returning } from "./clauses.ts";
 import { conflictTarget, targetNames, type ConflictRefs } from "./conflict-target.ts";
@@ -96,7 +97,10 @@ function assignmentOf<T, C extends Classes<T>>(
   const source = sourceOf(value);
   if (source === undefined) return () => cellOf(table, name, value);
   if (source.table !== table) {
-    throw new Error(`doUpdate: "${name}" takes a column of another table`);
+    const where = `${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)}`;
+    throw new Error(
+      `doUpdate: ${where}.${quoteIdentifier(table.columnNames[name] ?? name)} takes a column of another table`,
+    );
   }
   assertComparableRefs(Reflect.get(existing, name), value);
   return () => columnSql(source);
