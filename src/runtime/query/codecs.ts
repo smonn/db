@@ -76,8 +76,8 @@ function arrayText(
 
 /**
  * Runs the column's codec on a value headed for the driver, on each element of an array column,
- * then writes an array column's value
- * as array text; NULL passes through.
+ * then writes an array column's value as array text; NULL passes through. Use it for a
+ * comparison operand; a value written to a column goes through `encodeAssigned`.
  */
 export function encodeValue(table: Table, column: string, value: unknown): unknown {
   if (value === null || value === undefined) return value;
@@ -86,6 +86,27 @@ export function encodeValue(table: Table, column: string, value: unknown): unkno
   return definition?.state.array === true && Array.isArray(encoded)
     ? arrayText(table, column, definition, encoded)
     : encoded;
+}
+
+function isJsonDomain(definition: Column): boolean {
+  return (
+    !definition.state.array &&
+    definition.state.domainType !== undefined &&
+    jsonTypes.has(elementSqlType(definition))
+  );
+}
+
+/**
+ * `encodeValue` for a value an insert assigns. A param assigned to a domain column keeps the
+ * domain's OID, which the driver has no serializer for, so a json or jsonb domain's value is
+ * written as JSON here. A comparison's param takes the base type, which the driver serializes.
+ * Use it for every value written to a column: insert values, update `set`, upsert `doUpdate`.
+ */
+export function encodeAssigned(table: Table, column: string, value: unknown): unknown {
+  const encoded = encodeValue(table, column, value);
+  const definition = table.columns[column];
+  if (encoded === null || encoded === undefined || definition === undefined) return encoded;
+  return isJsonDomain(definition) ? JSON.stringify(encoded) : encoded;
 }
 
 function readArray(table: Table, column: string, definition: Column, value: unknown): unknown {
