@@ -11,10 +11,10 @@ vi.mock("dependency-cruiser", async (importOriginal) => {
 afterEach(removeRepos);
 
 describe("checkImports through dependency-cruiser", () => {
-  test("cruises src with the swc parser, validating against the rules", async () => {
+  test("cruises src and scripts with the swc parser, validating against the rules", async () => {
     await checkImports(repo({ "src/runtime/sql/index.ts": "export type S = 1;" }));
     expect(cruise).toHaveBeenCalledWith(
-      ["src"],
+      ["src", "scripts"],
       expect.objectContaining({
         parser: "swc",
         validate: true,
