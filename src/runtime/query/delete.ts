@@ -81,7 +81,8 @@ function filteredDelete<T, C extends Classes<T>>(
   return brand<FilteredDelete<T, C>>({
     ...deleteStatement<T>(table, predicate),
     where(pick) {
-      return filteredDelete(table, and(predicate, pick(refsOf<T>(table))));
+      const next: Expr<boolean | null> | undefined = pick(refsOf<T>(table));
+      return filteredDelete(table, next === undefined ? undefined : and(predicate, next));
     },
   });
 }

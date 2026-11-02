@@ -3,6 +3,7 @@ import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import { isTextArray } from "./array-text.ts";
 import {
   decoderFor,
+  encodeAssigned,
   encodeElement,
   encodeList,
   encodeValue,
@@ -74,12 +75,12 @@ export type Refs<R, C extends Classes<R> = Classes<R>> = {
 /** Each value is a column or an Expr, under the key that names its output. */
 export type Selection = Record<string, SelectableColumn<unknown> | Expr>;
 
+// Distribute over a conditional selection's column and Expr alternatives.
+type SelectedValue<S> =
+  S extends Expr<infer V> ? V : S extends SelectableColumn<infer V> ? V : never;
+
 export type Selected<S extends Selection> = {
-  -readonly [K in keyof S]: S[K] extends Expr<infer V>
-    ? V
-    : S[K] extends SelectableColumn<infer V>
-      ? V
-      : never;
+  -readonly [K in keyof S]: SelectedValue<S[K]>;
 };
 
 /** An output reads a column, by its key, or an Expr. */
@@ -116,7 +117,7 @@ function refOf(table: Table, name: string, definition: Column): AnyRef {
       predicate(() => fragment`${encodeElement(table, name, value)} = any(${column})`),
     like: (pattern) => predicate(() => fragment`${column} like ${pattern}`),
     ilike: (pattern) => predicate(() => fragment`${column} ilike ${pattern}`),
-    ...sortable(() => column),
+    ...sortable(() => fragment`${identifier(table.name)}.${column}`),
     isNull: () => predicate(() => fragment`${column} is null`),
     isNotNull: () => predicate(() => fragment`${column} is not null`),
   };
@@ -174,7 +175,7 @@ export function has(row: Record<string, unknown>, name: string): boolean {
 
 /** An Expr inlines and runs no codec; any other value binds through the column's codec. */
 export function cellOf(table: Table, name: string, value: unknown): Fragment {
-  return isExpr(value) ? value["~expr"]() : fragment`${encodeValue(table, name, value)}`;
+  return isExpr(value) ? value["~expr"]() : fragment`${encodeAssigned(table, name, value)}`;
 }
 
 /** Throws for a key that is no column of `table`. */
@@ -191,7 +192,9 @@ export function renderOrderBy(table: Table, terms: readonly Orderable[]): Fragme
   return join(
     terms.map((term) => {
       if ("~ordering" in term) return term["~ordering"]();
-      return isExpr(term) ? term["~expr"]() : columnIdentifier(table, term.name);
+      return isExpr(term)
+        ? term["~expr"]()
+        : fragment`${identifier(table.name)}.${columnIdentifier(table, term.name)}`;
     }),
     fragment`, `,
   );

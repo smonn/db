@@ -4,6 +4,7 @@ import { MARKER, main } from "./check-issue-labels.ts";
 import {
   comment,
   commentsRoute,
+  deletion,
   event,
   fakeGh,
   fetched,
@@ -34,6 +35,15 @@ describe("the marker", () => {
 });
 
 describe("reads of the API", () => {
+  test("delete a marker comment through the REST API", () => {
+    const gh = run(event(fetched()), fetched(), [[MARKER]]);
+    expect(gh.mock.calls.map(([args]) => args)).toEqual([
+      ["api", issueRoute],
+      ["api", "--paginate", "--slurp", commentsRoute],
+      deletion(101),
+    ]);
+  });
+
   test("ask gh for the issue, then its comments, then post", () => {
     const gh = run(event(missingPriority));
     expect(gh.mock.calls.map(([args]) => args)).toEqual([
@@ -67,6 +77,31 @@ describe("reads of the API", () => {
         fakeGh({ [issueRoute]: missingPriority, [commentsRoute]: [[{ body: 5 }]] }),
       );
     }).toThrow("$[0][0].body: expected string");
+    expect(() => {
+      main(
+        { GITHUB_EVENT_PATH: path },
+        fakeGh({ [issueRoute]: missingPriority, [commentsRoute]: [[{ body: "hi", id: "1" }]] }),
+      );
+    }).toThrow("$[0][0].id: expected number");
+    expect(() => {
+      main(
+        { GITHUB_EVENT_PATH: path },
+        fakeGh({
+          [issueRoute]: missingPriority,
+          [commentsRoute]: [[{ body: "hi", id: 1, user: { type: 5 } }]],
+        }),
+      );
+    }).toThrow("$[0][0].user.type: expected string");
+  });
+
+  test("name the label when the event's label has no name", () => {
+    const path = writeEvent(
+      { ...event(missingPriority, "unlabeled"), label: { name: 5 } },
+      "bad-label.json",
+    );
+    expect(() => {
+      main({ GITHUB_EVENT_PATH: path }, fakeGh({}));
+    }).toThrow("$.label.name: expected string, got number");
   });
 
   test("name the repository when the event's repository has no name", () => {

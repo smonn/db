@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { main, projectName } from "./test-db.ts";
-import { docker, fail, git, listing, ok, worktreeFile } from "./test-db.test-helper.ts";
+import { docker, fail, listing, ok } from "./test-db.test-helper.ts";
 
 vi.mock("node:child_process", async (importOriginal) =>
   (await import("./test-db.test-helper.ts")).routeSpawn(
@@ -22,16 +22,18 @@ function downs(): string[] {
 describe("main's orphaned projects", () => {
   let root: string;
   let name: string;
+  let live: string;
+  let gone: string;
 
   beforeEach(() => {
     root = realpathSync(mkdtempSync(join(tmpdir(), "test-db-")));
     name = projectName(root);
     docker.mockReset();
-    git.mockReset();
-    git.mockImplementation(() => ok(`${join(root, ".git")}\n`));
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mkdirSync(join(root, ".claude", "worktrees", "live"), { recursive: true });
-    writeFileSync(worktreeFile(root, "live"), "");
+    mkdirSync(join(root, "live"));
+    live = join(root, "live", "compose.yaml");
+    gone = join(root, "gone", "compose.yaml");
+    writeFileSync(live, "");
   });
 
   afterEach(() => {
@@ -39,9 +41,9 @@ describe("main's orphaned projects", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  test("takes down a project whose worktree is gone before starting", () => {
+  test("takes down a prefixed project whose config file is gone before starting", () => {
     docker
-      .mockReturnValueOnce(listing({ name: "t71", files: [worktreeFile(root, "gone")] }))
+      .mockReturnValueOnce(listing({ name: "smonndb-t3-1a2b", files: [gone] }))
       .mockReturnValueOnce(ok())
       .mockReturnValueOnce(ok("0.0.0.0:32768\n"));
 
@@ -49,60 +51,18 @@ describe("main's orphaned projects", () => {
 
     expect(calls()).toEqual([
       "docker compose ls --all --format json",
-      "docker compose -p t71 down --volumes",
+      "docker compose -p smonndb-t3-1a2b down --volumes",
       `docker compose -p ${name} port postgres 5432`,
     ]);
     expect(docker.mock.calls[0]?.[2]).toMatchObject({ encoding: "utf8", cwd: root });
     expect(docker.mock.calls[1]?.[2].cwd).toBe(root);
-    expect(console.log).toHaveBeenCalledWith("Removed t71, whose worktree is gone");
+    expect(console.log).toHaveBeenCalledWith("Removed smonndb-t3-1a2b, whose worktree is gone");
   });
 
-  test("sweeps the main checkout's folder when the worktree lives outside the repo", () => {
-    const mainCheckout = join("/code", "db");
-    git.mockReturnValueOnce(ok(`${join(mainCheckout, ".git")}\n`));
+  test("leaves projects whose config file exists or whose name lacks the prefix", () => {
     docker
       .mockReturnValueOnce(
-        listing(
-          { name: "t71", files: [worktreeFile(mainCheckout, "gone")] },
-          { name: "inside-root", files: [worktreeFile(root, "gone")] },
-        ),
-      )
-      .mockReturnValueOnce(ok())
-      .mockReturnValueOnce(ok("0.0.0.0:32768\n"));
-
-    main([], root);
-
-    expect(git).toHaveBeenCalledWith(
-      "git",
-      ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-      expect.objectContaining({ cwd: root, encoding: "utf8" }),
-    );
-    expect(downs()).toEqual(["docker compose -p t71 down --volumes"]);
-  });
-
-  test.each([
-    ["git fails", { status: 128, stdout: "/stray/.git\n", stderr: "fatal: not a git repository" }],
-    ["git prints nothing", ok("\n")],
-  ])("sweeps the root's own folder when %s", (_, result) => {
-    git.mockReset();
-    git.mockReturnValue(result);
-    docker
-      .mockReturnValueOnce(listing({ name: "t71", files: [worktreeFile(root, "gone")] }))
-      .mockReturnValueOnce(ok())
-      .mockReturnValueOnce(ok("0.0.0.0:32768\n"));
-
-    main([], root);
-
-    expect(downs()).toEqual(["docker compose -p t71 down --volumes"]);
-  });
-
-  test("leaves projects whose config file exists or is outside the worktrees folder", () => {
-    docker
-      .mockReturnValueOnce(
-        listing(
-          { name: "live", files: [worktreeFile(root, "live")] },
-          { name: "elsewhere", files: [join(root, "other", "compose.yaml")] },
-        ),
+        listing({ name: "smonndb-live", files: [live] }, { name: "elsewhere", files: [gone] }),
       )
       .mockReturnValueOnce(ok("0.0.0.0:32768\n"));
 
@@ -114,13 +74,13 @@ describe("main's orphaned projects", () => {
   test("warns about a project it can't take down and goes on", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     docker
-      .mockReturnValueOnce(listing({ name: "t71", files: [worktreeFile(root, "gone")] }))
+      .mockReturnValueOnce(listing({ name: "smonndb-t3-1a2b", files: [gone] }))
       .mockReturnValueOnce(fail("in use\n"))
       .mockReturnValueOnce(ok("0.0.0.0:32768\n"));
 
     main([], root);
 
-    expect(console.warn).toHaveBeenCalledWith("Could not remove t71:\nin use");
+    expect(console.warn).toHaveBeenCalledWith("Could not remove smonndb-t3-1a2b:\nin use");
     expect(readFileSync(join(root, ".env.test"), "utf8")).toContain("localhost:32768/");
   });
 });
