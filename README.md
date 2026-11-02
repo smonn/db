@@ -25,8 +25,13 @@ import { defineDatabase, defineTable } from "@smonn/db";
 export default defineDatabase({
   public: {
     users: defineTable((c) => ({
-      id: c.text().notNull(),
+      id: c.text().primaryKey(),
       email: c.text(),
+    })),
+    posts: defineTable((c) => ({
+      id: c.text().notNull(),
+      authorId: c.text().notNull(),
+      title: c.text().notNull(),
     })),
   },
 });
@@ -219,7 +224,7 @@ Each call exists only where Postgres accepts it. `like` and `ilike` are offered 
 
 ### SQL fragments
 
-`` sql.expr<V>`...` `` writes one expression the builder lacks, such as a function call, for `where`, `select`, `returning`, `orderBy`, `values`, and `valuesMany`. A column ref in the template renders as its column, and any other value binds as a param. `V` is the expression's type, and defaults to `unknown` where nothing names it.
+`` sql.expr<V>`...` `` writes one expression the builder lacks, such as a function call, for `where`, `select`, `returning`, `orderBy`, `values`, `valuesMany`, and `set`. A column ref in the template renders as its column, and any other value binds as a param. `V` is the expression's type, and defaults to `unknown` where nothing names it.
 
 ```ts file=fragments.ts
 import postgres from "postgres";
@@ -250,6 +255,115 @@ DATABASE_URL=postgres://localhost/app_prod node fragments.ts
 ```
 
 `where`, `and`, `or`, and `not` take an `Expr<boolean | null>`, which a fragment in `where` becomes without a type argument. A comparison such as `u.id.eq("u1")` is an `Expr<boolean>`, so it also selects as a boolean or sorts in `orderBy`. A fragment in `orderBy` sorts ascending, or takes `asc()` and `desc()`, with `nulls` only when `V` includes `null`. A fragment runs no codec: its params bind as given and its value comes back as the driver reads it. A nested fragment or comparison inlines in parentheses, and a statement inside a fragment throws, so it can't hold a subquery.
+
+### Joining tables
+
+`innerJoin(table, on)` and `leftJoin(table, on)` add a table, and `on` is required. Each callback, in `on`, `where`, `select`, and `orderBy`, gets one parameter per table in join order, so a table joined to itself needs no alias: `from(users).innerJoin(users, (a, b) => ...)`.
+
+```ts file=joins.ts
+import postgres from "postgres";
+import { createClient, from, insert } from "@smonn/db";
+import { postgresJsConnection, postgresJsDriver, postgresJsTypes } from "@smonn/db/postgres-js";
+import db from "./db/definition.ts";
+
+const sql = postgres(process.env.DATABASE_URL ?? "", {
+  types: postgresJsTypes,
+  connection: postgresJsConnection,
+});
+const client = createClient(postgresJsDriver(sql));
+const { users, posts } = db.public;
+
+await client.run(
+  insert(posts).valuesMany([
+    { id: "p1", authorId: "u1", title: "Hello" },
+    { id: "p2", authorId: "u1", title: "Again" },
+  ]),
+);
+const titles = from(users)
+  .innerJoin(posts, (u, p) => p.authorId.eq(u.id))
+  .orderBy((_u, p) => p.title)
+  .select((u, p) => ({ email: u.email, title: p.title }));
+console.log(await client.all(titles));
+const silent = from(users)
+  .leftJoin(posts, (u, p) => p.authorId.eq(u.id))
+  .where((_u, p) => p.id.isNull())
+  .orderBy((u) => u.id)
+  .select((u, p) => ({ id: u.id, title: p.title }));
+console.log(await client.all(silent));
+
+await sql.end();
+```
+
+```sh
+DATABASE_URL=postgres://localhost/app_prod node joins.ts
+```
+
+```text
+[
+  { email: 'a@example.com', title: 'Again' },
+  { email: 'a@example.com', title: 'Hello' }
+]
+[ { id: 'u2', title: null }, { id: 'u3', title: null } ]
+```
+
+A joined builder is no query until `select` names its columns, since two tables can share a name such as `id`, so `client.all` refuses it, and a JavaScript caller that runs it gets an error that says so. `pick` isn't offered after a join. Joins come before `select`, whose result takes no more of them; `where`, `orderBy`, `limit`, and `offset` can come before or after it.
+
+After `leftJoin`, that table's columns read `V | null` in later callbacks and in the rows, since a row with no match there reads NULL, and they gain `isNull()`. Its `on` sees them as declared. A NULL runs no codec; each other value goes through its own table's codec.
+
+A comparison takes a value or another column, as `p.authorId.eq(u.id)` does. A column operand runs no codec, and it must share the column's SQL type class, nullable or not: Postgres compares `integer` with `bigint` but not `uuid` with `text`, so comparing those two is a type error. An enum, a domain over one, or an array compares only with the identical type, so building such a comparison throws, naming both columns.
+
+The SQL qualifies every column by its table's alias, the table's SQL name, so `titles` renders `select "users"."email", "posts"."title" from "public"."users" inner join "public"."posts" on "posts"."authorId" = "users"."id" order by "posts"."title"`. A repeated table takes `_2`, `_3`, and so on, skipping names in use and cut so the alias fits Postgres's 63 bytes. A column ref in `sql.expr` renders qualified too, and a query with no join keeps its bare column names. Right, full, and cross joins aren't offered; write them with `sql`.
+
+### Updating rows
+
+`update(table).set({...})` takes `where(...)` or `allRows()` and nothing else, as `deleteFrom` does. It is not a statement until you call one, so `client.run(update(db.public.users).set({ email: null }))` is a type error that names both calls, and a JavaScript caller that runs it gets an error that says the same. A forgotten `where` can't rewrite a table. Repeated `where` calls combine with `and`, and the predicates are the ones `from` takes.
+
+```ts file=update.ts
+import postgres from "postgres";
+import { createClient, sql, update } from "@smonn/db";
+import { postgresJsConnection, postgresJsDriver, postgresJsTypes } from "@smonn/db/postgres-js";
+import db from "./db/definition.ts";
+
+const pg = postgres(process.env.DATABASE_URL ?? "", {
+  types: postgresJsTypes,
+  connection: postgresJsConnection,
+});
+const client = createClient(postgresJsDriver(pg));
+const { users } = db.public;
+
+console.log(
+  await client.run(
+    update(users)
+      .set({ email: "a@example.org" })
+      .where((u) => u.id.eq("u1")),
+  ),
+);
+console.log(
+  await client.one(
+    update(users)
+      .set({ email: (u) => sql.expr<string | null>`upper(${u.email})` })
+      .where((u) => u.id.eq("u3"))
+      .returning((u) => ({ id: u.id, email: u.email })),
+  ),
+);
+
+await pg.end();
+```
+
+```sh
+DATABASE_URL=postgres://localhost/app_prod node update.ts
+```
+
+```text
+{ count: 1 }
+{ id: 'u3', email: 'C@EXAMPLE.COM' }
+```
+
+`set` takes the columns to change, each optional, with `null` only on a nullable column. A value is the column's type, a `sql.expr` fragment of that type, or a callback that gets the columns and returns one, so ``n: (u) => sql.expr<number>`${u.n} + 1` `` adds one. Each key takes one callback. A fragment runs no codec; any other value goes through the column's codec when the statement renders. A value that is `undefined` is skipped, and a `set` left with no column throws `update needs at least one column to set`.
+
+An `identity("always")` column can't be set: Postgres refuses a written value for it. Its type lists the column under the key `"id is generated always, so update can't set it"`, so `set({ id: 5 })` prints that reason. The key compiles, and throws at run time as an unknown column.
+
+Without `returning`, only `client.run` takes the statement, and it reports how many rows changed. `returning` takes the same column picks as `insert`, reads the updated rows, so it holds the new values, and makes a query for `client.all` and `client.one`. `client.one` on a primary-key `where` is the not-found check: it throws when no row matched. `allRows()` can change several rows, so `client.one` refuses what its `returning` makes. `UPDATE ... FROM` is not covered; write it with `sql`.
 
 ### Deleting rows
 
@@ -294,6 +408,75 @@ DATABASE_URL=postgres://localhost/app_prod node delete.ts
 ```
 
 Without `returning`, only `client.run` takes the statement, and it reports how many rows went. `returning` takes the same column picks as `insert`, reads the deleted rows, and makes a query for `client.all` and `client.one`. `client.one` on a primary-key `where` is the not-found check: it throws when no row matched. `allRows()` can delete several rows, so `client.one` refuses what its `returning` makes. `DELETE ... USING` is not covered; write it with `sql`.
+
+### Upserting rows
+
+`onConflict((u) => [...])` on an insert names the columns of a key the Definition declares: the primary key, a `unique()` column, a `unique` entry, or a unique index on plain columns, in any order. A list that matches no key is a type error, such as `(email) is not a key of the table`, and a JavaScript caller gets the same error when the statement is built. A key that only a partial unique index backs takes that index's `where`, so Postgres infers it; two partial indexes on the same columns are a type error. A constraint name or an expression target needs `sql`.
+
+```ts file=upsert.ts
+import postgres from "postgres";
+import { createClient, insert } from "@smonn/db";
+import { postgresJsConnection, postgresJsDriver, postgresJsTypes } from "@smonn/db/postgres-js";
+import db from "./db/definition.ts";
+
+const pg = postgres(process.env.DATABASE_URL ?? "", {
+  types: postgresJsTypes,
+  connection: postgresJsConnection,
+});
+const client = createClient(postgresJsDriver(pg));
+const { users } = db.public;
+const upsert = (email: string) =>
+  insert(users)
+    .values({ id: "u1", email })
+    .onConflict((u) => [u.id]);
+
+console.log(
+  await client.all(
+    upsert("a@example.com")
+      .doNothing()
+      .returning((u) => ({ id: u.id })),
+  ),
+);
+console.log(
+  await client.all(
+    upsert("b@example.com")
+      .doNothing()
+      .returning((u) => ({ id: u.id })),
+  ),
+);
+console.log(
+  await client.one(
+    upsert("c@example.com")
+      .doUpdate((_, excluded) => ({ email: excluded.email }))
+      .returning((u) => ({ id: u.id, email: u.email })),
+  ),
+);
+console.log(
+  await client.all(
+    upsert("d@example.com")
+      .doUpdate((_, excluded) => ({ email: excluded.email }))
+      .where((existing) => existing.email.isNull())
+      .returning((u) => ({ email: u.email })),
+  ),
+);
+
+await pg.end();
+```
+
+```sh
+DATABASE_URL=postgres://localhost/app_prod node upsert.ts
+```
+
+```text
+[ { id: 'u1' } ]
+[]
+{ id: 'u1', email: 'c@example.com' }
+[]
+```
+
+`onConflict` takes `doNothing()` or `doUpdate(...)` and nothing else; neither alone is a statement. `doUpdate((existing, excluded) => ({...}))` follows `set`'s rules: each column optional, `undefined` skipped, an empty object refused, and no `identity("always")` column. A value is the column's type, a column of the same type such as `excluded.email`, or a `sql.expr` fragment that may name both rows, such as ``n: sql.expr<number>`${existing.n} + ${excluded.n}` ``. `.where((existing, excluded) => ...)` updates only the rows it holds for, and repeated calls combine with `and`. An enum column takes no column of another enum, in either place: Postgres has no cast between two enums.
+
+`returning` reads the rows inserted or updated, so a skipped row returns nothing. `client.one` refuses what `doNothing()` and a `doUpdate` with `where` make, since either may return no row (`on conflict may skip the row; run it with client.all`); a bare `doUpdate` of one row returns it. Postgres finds no conflict on a NULL in a nullable key, unless the key is `nullsNotDistinct`, so that row inserts. A key repeated within one `valuesMany` fails under `doUpdate`, and `doNothing` keeps the first of those rows.
 
 ### Commands
 

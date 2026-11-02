@@ -15,6 +15,9 @@ export type Query<R> = Statement & {
 /** Marks a query that can change several rows, which `client.one` can't take. */
 export type Many = { readonly "~many": true };
 
+/** Marks a query that may skip a row it was given, so it can return none, which `client.one` can't take. */
+export type Maybe = { readonly "~maybe": "on conflict may skip the row; run it with client.all" };
+
 /**
  * What the builder and `sql` made, so `sql` can refuse one by identity rather than by shape: an
  * unfinished `deleteFrom` has a `toSql` that throws, and a Fragment one that isn't a statement.
@@ -22,7 +25,9 @@ export type Many = { readonly "~many": true };
 const made = new WeakMap<object, "a statement" | "an unfinished statement">();
 
 /** The type-only brands have no runtime value, so a statement is built from its parts and cast once. */
-export function brand<Q extends Statement>(parts: Omit<Q, "~returns" | "~row" | "~many">): Q {
+export function brand<Q extends Statement>(
+  parts: Omit<Q, "~returns" | "~row" | "~many" | "~maybe">,
+): Q {
   made.set(parts, "a statement");
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The brands exist only in types.
   return parts as Q;

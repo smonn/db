@@ -1,14 +1,7 @@
 import type { Row, SqlClass, Table } from "../definition/index.ts";
 import { fragment, identifier, type Fragment } from "../sql/index.ts";
-import {
-  and,
-  refsOf,
-  returning,
-  type Classes,
-  type Refs,
-  type Selected,
-  type Selection,
-} from "./refs.ts";
+import { returning } from "./clauses.ts";
+import { and, refsOf, type Classes, type Refs, type Selected, type Selection } from "./refs.ts";
 import type { Expr } from "./expr.ts";
 import {
   assertRegistered,
@@ -81,7 +74,7 @@ function filteredDelete<T, C extends Classes<T>>(
   return brand<FilteredDelete<T, C>>({
     ...deleteStatement<T>(table, predicate),
     where(pick) {
-      const next: Expr<boolean | null> | undefined = pick(refsOf<T>(table));
+      const next: Expr<boolean | null> | undefined = pick(refsOf<T, C>(table));
       return filteredDelete(table, next === undefined ? undefined : and(predicate, next));
     },
   });
@@ -92,7 +85,7 @@ function needsWhereOrAllRows<T, C extends Classes<T>>(
 ): DeleteNeedsWhereOrAllRows<T, C> {
   const parts: DeleteNeedsWhereOrAllRows<T, C> & Pick<Statement, "toSql"> = {
     where(pick) {
-      return filteredDelete(table, pick(refsOf<T>(table)));
+      return filteredDelete(table, pick(refsOf<T, C>(table)));
     },
     allRows() {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The marker exists only in types.
