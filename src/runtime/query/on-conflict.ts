@@ -68,7 +68,7 @@ export type OnConflict<T, C extends Classes<T>, A, Marker = unknown> = {
    * which may name both rows. `undefined` skips a column, and an empty set throws.
    */
   doUpdate<
-    S extends {
+    S extends object & {
       readonly [K in keyof S]: K extends A
         ? `${K & string} is generated always, so update can't set it`
         : K extends keyof T
@@ -194,7 +194,11 @@ export function onConflict<T, C extends Classes<T>, A>(
       ) as ConflictStatement<T, Maybe>;
     },
     doUpdate(set) {
-      return conflictUpdate(table, clause, rows, set(...rows));
+      const values: object | null | undefined = set(...rows);
+      if (values === null || values === undefined) {
+        throw new Error("doUpdate callback must return the columns to set");
+      }
+      return conflictUpdate(table, clause, rows, values);
     },
     // Hidden from the return type: a JavaScript caller that runs it reads why.
     toSql() {

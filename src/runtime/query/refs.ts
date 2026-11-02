@@ -184,8 +184,9 @@ function refOf(source: ColumnSource, definition: Column): AnyRef {
 }
 
 /**
- * Throws when Postgres can't compare the columns refs `left` and `right` read, nor so assign one
- * to the other; a value that is no ref passes.
+ * Throws when Postgres can't compare the columns refs `left` and `right` read; a value that is no
+ * ref passes. `doUpdate` holds an assignment to this too, which is stricter than Postgres: it
+ * assigns some pairs it won't compare, such as `text[]` and `varchar[]`.
  */
 export function assertComparableRefs(left: unknown, right: unknown): void {
   const [first, second] = [entryOf(left), entryOf(right)];

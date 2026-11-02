@@ -75,6 +75,12 @@ const misuses = () => {
   void conflict.doUpdate((_, excluded) => ({ token: excluded.note }));
   // @ts-expect-error an Expr of another type
   void conflict.doUpdate(() => ({ sku: sql.expr<number>`1` }));
+  // @ts-expect-error a callback that returns nothing
+  void conflict.doUpdate(() => {});
+  // @ts-expect-error a callback that returns null
+  void conflict.doUpdate(() => null);
+  // @ts-expect-error a callback that returns no object
+  void conflict.doUpdate(() => 5);
   const either = insert(unknownMode)
     .values({ n: 1 })
     .onConflict((u) => [u.id]);

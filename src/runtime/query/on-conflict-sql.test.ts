@@ -252,6 +252,31 @@ describe("onConflict refuses", () => {
     ).toThrow(message);
   });
 
+  it("a doUpdate callback that returns nothing", () => {
+    const conflict = insert(items)
+      .values(row)
+      .onConflict((u) => [u.sku]);
+    const message = "doUpdate callback must return the columns to set";
+    expect(() => conflict.doUpdate(() => loose(undefined))).toThrow(message);
+    expect(() => conflict.doUpdate(() => loose(null))).toThrow(message);
+  });
+
+  it("a where comparing enums Postgres won't compare, first or chained", () => {
+    const updating = insert(items)
+      .values(row)
+      .onConflict((u) => [u.sku])
+      .doUpdate((_, excluded) => ({ version: excluded.version }));
+    const message = `Can't compare "items"."mood" with "excluded"."tone"`;
+    expect(() =>
+      updating.where((existing, excluded) => existing.mood.eq(loose(excluded.tone))),
+    ).toThrow(message);
+    expect(() =>
+      updating
+        .where((existing) => existing.version.lt(5))
+        .where((existing, excluded) => existing.mood.eq(loose(excluded.tone))),
+    ).toThrow(message);
+  });
+
   it("to render before doNothing or doUpdate", () => {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- A plain-JS caller passes it; TypeScript rejects it.
     const conflict = insert(items)
