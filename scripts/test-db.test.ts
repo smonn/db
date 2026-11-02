@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { main, parsePort, projectName } from "./test-db.ts";
-import { docker, fail, git, ok } from "./test-db.test-helper.ts";
+import { docker, fail, ok } from "./test-db.test-helper.ts";
 
 vi.mock("node:child_process", async (importOriginal) =>
   (await import("./test-db.test-helper.ts")).routeSpawn(
@@ -85,8 +85,6 @@ describe("main", () => {
     root = realpathSync(mkdtempSync(join(tmpdir(), "test-db-")));
     name = projectName(root);
     docker.mockReset();
-    git.mockReset();
-    git.mockImplementation(() => ok(`${join(root, ".git")}\n`));
     vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
