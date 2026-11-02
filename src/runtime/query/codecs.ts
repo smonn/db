@@ -36,22 +36,34 @@ function mapElements(value: unknown, step: (element: unknown) => unknown): unkno
   return value.map((item: unknown) => (item === null || item === undefined ? item : step(item)));
 }
 
-function encode(table: Table, column: string, value: unknown): unknown {
-  const definition = table.columns[column];
-  if (definition === undefined) return value;
-  const codec = definition["~codec"];
-  if (codec === undefined) return value;
-  const run = (base: unknown): unknown => {
+/** Runs the column's codec on one value, or on one element of an array column. */
+function elementEncoder(table: Table, column: string): (base: unknown) => unknown {
+  const codec = table.columns[column]?.["~codec"];
+  if (codec === undefined) return (base) => base;
+  return (base) => {
     try {
       return codec.encode(base);
     } catch (error) {
       throw failure(table, column, "encoding a value", error);
     }
   };
+}
+
+function encode(table: Table, column: string, value: unknown): unknown {
+  const definition = table.columns[column];
+  if (definition === undefined) return value;
+  const run = elementEncoder(table, column);
   return definition.state.array ? mapElements(value, run) : run(value);
 }
 
 const jsonTypes = new Set(["json", "jsonb"]);
+
+function arrayWriteFailure(table: Table, column: string, cause: unknown): Error {
+  const where = `${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)}`;
+  return new Error(`Can't write the array in column ${quoteIdentifier(column)} of ${where}`, {
+    cause,
+  });
+}
 
 // Array text leaves no array for a driver to type by its first element, and Postgres types the
 // param from the column it meets, as ADR-0023 asks.
@@ -67,10 +79,7 @@ function arrayText(
   try {
     return formatArrayLiteral(value, formatElement);
   } catch (error) {
-    const where = `${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)}`;
-    throw new Error(`Can't write the array in column ${quoteIdentifier(column)} of ${where}`, {
-      cause: error,
-    });
+    throw arrayWriteFailure(table, column, error);
   }
 }
 
@@ -171,4 +180,32 @@ export function decoderFor(
     }
     return next;
   };
+}
+
+/** The value of `includes`: one element of an array column, through the codec that runs on each. */
+export function encodeElement(table: Table, column: string, value: unknown): unknown {
+  return elementEncoder(table, column)(value);
+}
+
+/**
+ * The list `in` and `notIn` match: each value through the column's codec, written as array text so
+ * Postgres types the param from the column, even for an enum created after the connection opened.
+ */
+export function encodeList(
+  table: Table,
+  column: string,
+  definition: Column,
+  values: readonly unknown[],
+): string {
+  const encoded = values.map(elementEncoder(table, column));
+  if (!jsonTypes.has(elementSqlType(definition))) {
+    return arrayText(table, column, definition, encoded);
+  }
+  try {
+    return formatArrayLiteral(
+      encoded.map((value) => (value === null ? null : JSON.stringify(value))),
+    );
+  } catch (error) {
+    throw arrayWriteFailure(table, column, error);
+  }
 }

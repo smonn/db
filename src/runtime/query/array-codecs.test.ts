@@ -146,7 +146,7 @@ describe("element codecs on array columns", () => {
   });
 
   it("round-trips an empty array and a NULL column", async () => {
-    await client.run(insert(db.public.t).values([{ id: 1, days: [] }, { id: 2 }]));
+    await client.run(insert(db.public.t).valuesMany([{ id: 1, days: [] }, { id: 2 }]));
 
     const rows = await client.all(from(db.public.t));
 

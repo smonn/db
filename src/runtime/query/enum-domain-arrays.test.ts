@@ -126,7 +126,7 @@ beforeEach(async () => {
 
 describe("enum and domain arrays through the query builder", () => {
   it("round-trips every base kind, quoted labels, NULL elements, and empty arrays", async () => {
-    await client.run(insert(db.public.t).values([filled, empty]));
+    await client.run(insert(db.public.t).valuesMany([filled, empty]));
 
     const rows = await client.all(from(db.public.t));
 
@@ -169,7 +169,7 @@ describe("enum and domain arrays through the query builder", () => {
   });
 
   it("matches an enum or domain array in a predicate", async () => {
-    await client.run(insert(db.public.t).values([filled, empty]));
+    await client.run(insert(db.public.t).valuesMany([filled, empty]));
 
     const rows = await client.all(
       from(db.public.t)

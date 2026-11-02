@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { defineDatabase, defineDomain, defineTable } from "../definition/index.ts";
-import { createClient, from, insert } from "./index.ts";
+import { createClient, from, insert, update } from "./index.ts";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 
 const testDatabase = useTestDatabase();
@@ -10,7 +10,7 @@ const domains = {
   domjsonb: defineDomain((c) => c.jsonb()),
 };
 const t = defineTable((c) => ({
-  id: c.integer().notNull(),
+  id: c.integer().primaryKey(),
   b: c.domain(domains.domjsonb),
 }));
 const db = defineDatabase({ public: { ...domains, t } });
@@ -19,7 +19,7 @@ const setup = [
   "drop table if exists public.t",
   "drop domain if exists public.domjsonb",
   "create domain public.domjsonb as jsonb",
-  "create table public.t (id integer not null, b public.domjsonb)",
+  "create table public.t (id integer primary key, b public.domjsonb)",
 ].join("; ");
 
 beforeAll(async () => {
@@ -30,6 +30,10 @@ beforeAll(async () => {
 beforeEach(async () => {
   await testDatabase.driver.execute("truncate public.t");
 });
+
+/** Raw SQL, so a test of an update fails on the update rather than on the row it needs. */
+const seedRow = () =>
+  testDatabase.driver.execute(`insert into public.t (id, b) values (1, '{"old": true}')`);
 
 const values: [string, unknown][] = [
   ["an object", { a: 1, nested: [true, null, "x"] }],
@@ -50,7 +54,7 @@ describe("domains over jsonb", () => {
 
   it("inserts several rows at once, and a NULL", async () => {
     await client.run(
-      insert(db.public.t).values([
+      insert(db.public.t).valuesMany([
         { id: 1, b: { a: 1 } },
         { id: 2, b: "two" },
         { id: 3, b: null },
@@ -68,7 +72,7 @@ describe("domains over jsonb", () => {
 
   it("matches a jsonb domain column with eq", async () => {
     await client.run(
-      insert(db.public.t).values([
+      insert(db.public.t).valuesMany([
         { id: 1, b: { a: 1 } },
         { id: 2, b: { a: 2 } },
       ]),
@@ -91,5 +95,48 @@ describe("domains over jsonb", () => {
     );
 
     expect(rows).toStrictEqual([{ b: { a: 1 } }]);
+  });
+
+  it.each(values)("writes %s through update's set", async (_name, value) => {
+    await seedRow();
+
+    await client.run(
+      update(db.public.t)
+        .set({ b: value })
+        .where((r) => r.id.eq(1)),
+    );
+
+    expect(await client.all(from(db.public.t))).toStrictEqual([{ id: 1, b: value }]);
+  });
+
+  it.each(values)("writes %s through upsert's doUpdate", async (_name, value) => {
+    await seedRow();
+
+    // The inserted row leaves `b` out, so only doUpdate's assignment carries the value.
+    await client.run(
+      insert(db.public.t)
+        .values({ id: 1 })
+        .onConflict((r) => [r.id])
+        .doUpdate(() => ({ b: value })),
+    );
+
+    expect(await client.all(from(db.public.t))).toStrictEqual([{ id: 1, b: value }]);
+  });
+
+  it("sets NULL through update's set, not a JSON null", async () => {
+    await seedRow();
+
+    await client.run(
+      update(db.public.t)
+        .set({ b: null })
+        .where((r) => r.id.eq(1)),
+    );
+
+    const rows = await client.all(
+      from(db.public.t)
+        .pick("id")
+        .where((r) => r.b.isNull()),
+    );
+    expect(rows).toStrictEqual([{ id: 1 }]);
   });
 });

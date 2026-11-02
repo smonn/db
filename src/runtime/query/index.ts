@@ -1,18 +1,28 @@
 export { createClient } from "./client.ts";
 export type { Client } from "./client.ts";
 export { from } from "./from.ts";
-export type { SelectQuery } from "./from.ts";
+export type { FromQuery, SelectQuery } from "./from.ts";
+export type { JoinedQuery, JoinNeedsSelect } from "./join.ts";
 export { and, not, or } from "./refs.ts";
-export type {
-  ColumnRef,
-  Orderable,
-  Ordering,
-  Predicate,
-  Refs,
-  Selected,
-  Selection,
-} from "./refs.ts";
+export type { ColumnRef, Orderable, Predicate, Refs, Selected, Selection } from "./refs.ts";
+export type { Expr, Ordering } from "./expr.ts";
 export type { Query, Statement } from "./statement.ts";
+export { deleteFrom } from "./delete.ts";
+export type { DeleteNeedsWhereOrAllRows, DeleteStatement, FilteredDelete } from "./delete.ts";
 export { insert } from "./insert.ts";
 export type { InsertStatement, NewRow } from "./insert.ts";
+export type { ConflictRef, ConflictRefs } from "./conflict-target.ts";
+export type {
+  ConflictStatement,
+  ConflictUpdate,
+  FilteredConflictUpdate,
+  OnConflict,
+} from "./on-conflict.ts";
+export { update } from "./update.ts";
+export type {
+  FilteredUpdate,
+  UpdateNeedsSet,
+  UpdateNeedsWhereOrAllRows,
+  UpdateStatement,
+} from "./update.ts";
 export { sql } from "./sql.ts";

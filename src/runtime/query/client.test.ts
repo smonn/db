@@ -140,7 +140,10 @@ describe("client.run", () => {
       "create table public.accounts (id text not null, email text default 'none')",
     );
     const result = await client.run(
-      insert(accounts.public.accounts).values([{ id: "a1", email: "a@example.com" }, { id: "a2" }]),
+      insert(accounts.public.accounts).valuesMany([
+        { id: "a1", email: "a@example.com" },
+        { id: "a2" },
+      ]),
     );
     expect(result).toStrictEqual({ count: 2 });
     expect(await client.all(from(accounts.public.accounts))).toStrictEqual([
@@ -213,7 +216,7 @@ describe("client.run", () => {
       // @ts-expect-error sql without a row type is not known to return one row
       void client.one(sql`select 1`);
       const several = insert(accounts.public.accounts)
-        .values([{ id: "a5" }])
+        .valuesMany([{ id: "a5" }])
         .returning((a) => ({ id: a.id }));
       // @ts-expect-error one cannot take a multi-row insert, which commits every row first
       void client.one(several);
