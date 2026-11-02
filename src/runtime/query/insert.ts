@@ -1,17 +1,8 @@
 import type { Row, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
-import {
-  brand,
-  columnIdentifier,
-  refsOf,
-  renderOutput,
-  type Query,
-  type Refs,
-  type Selected,
-  type Selection,
-  type Statement,
-} from "./from.ts";
-import { decoderFor, encodeValue, withDecoder } from "./codecs.ts";
+import { encodeValue } from "./codecs.ts";
+import { columnIdentifier, returning, type Refs, type Selected, type Selection } from "./refs.ts";
+import { assertRegistered, brand, type Many, type Query, type Statement } from "./statement.ts";
 
 /** A column the database can fill: nullable, or with a default or an identity. */
 type OptionalKeys<T extends Table> = {
@@ -22,18 +13,20 @@ type OptionalKeys<T extends Table> = {
       : never;
 }[keyof Row<T>];
 
+type RequiredKeys<T extends Table> = Exclude<keyof Row<T>, OptionalKeys<T>>;
+
 /** A NOT NULL column with neither a default nor an identity is required; the rest may be left out. */
 export type NewRow<T extends Table> = {
-  [K in Exclude<keyof Row<T>, OptionalKeys<T>>]: Row<T>[K];
+  [K in RequiredKeys<T>]: Row<T>[K];
 } & {
   [K in OptionalKeys<T>]?: Row<T>[K];
 };
 
-/** Marks a query that can change several rows, which `client.one` can't take. */
-type Many = { readonly "~many": true };
-
-/** `Marker` is `Many` for a multi-row insert, carried over to what `returning` makes. */
-export type InsertStatement<T extends Table, Marker = unknown> = Statement & {
+/**
+ * Typed over the table's row `T`, not its Table, so an error prints the row's keys. `Marker` is
+ * `Many` for a multi-row insert, carried over to what `returning` makes.
+ */
+export type InsertStatement<T, Marker = unknown> = Statement & {
   /** Type-only: a plain insert reports a count, so only `client.run` takes it. */
   readonly "~returns": "count";
   /** The keys of the returned object name the output columns. */
@@ -63,24 +56,13 @@ function insertInto(table: Table, rows: readonly Record<string, unknown>[]): Fra
   return fragment`${target} (${columns}) values ${join(tuples, fragment`, `)}`;
 }
 
-function insertStatement<T extends Table>(
-  table: T,
+function insertStatement<T>(
+  table: Table,
   rows: readonly Record<string, unknown>[],
 ): InsertStatement<T> {
   return brand<InsertStatement<T>>({
     returning(pick) {
-      const picked = Object.entries(pick(refsOf(table)));
-      if (picked.length === 0) throw new Error("returning needs at least one column");
-      const named = picked.map(([alias, ref]): [string, string] => [alias, ref.name]);
-      const outputs = named.map((output) => renderOutput(table, output));
-      return withDecoder(
-        brand({
-          toSql() {
-            return fragment`${insertInto(table, rows)} returning ${join(outputs, fragment`, `)}`.toSql();
-          },
-        }),
-        decoderFor(table, named),
-      );
+      return returning(table, pick, () => insertInto(table, rows));
     },
     toSql() {
       return insertInto(table, rows).toSql();
@@ -101,18 +83,30 @@ function check(table: Table, rows: readonly Record<string, unknown>[]): void {
   }
 }
 
-export function insert<T extends Table>(
-  table: T,
-): {
-  values(row: NewRow<T>): InsertStatement<T>;
-  values(rows: readonly NewRow<T>[]): InsertStatement<T, Many>;
-} {
+/** An insert with no rows yet, which is no Statement: call `values`. `N` is the row it takes. */
+export type InsertNeedsValues<T, N> = {
+  values(row: N): InsertStatement<T>;
+  values(rows: readonly N[]): InsertStatement<T, Many>;
+};
+
+function needsValues<T, N extends Record<string, unknown>>(table: Table): InsertNeedsValues<T, N> {
   return {
-    values(rows: NewRow<T> | readonly NewRow<T>[]): InsertStatement<T, Many> {
+    values(rows: N | readonly N[]): InsertStatement<T, Many> {
       const list: readonly Record<string, unknown>[] = Array.isArray(rows) ? rows : [rows];
       check(table, list);
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The marker exists only in types; the overloads decide it.
       return insertStatement(table, list) as InsertStatement<T, Many>;
     },
   };
+}
+
+/** The row types are written out, not named `Row<T>` and `NewRow<T>`, so tsc prints their keys instead of the Table. */
+export function insert<T extends Table>(
+  table: T,
+): InsertNeedsValues<
+  { [K in keyof Row<T>]: Row<T>[K] },
+  { [K in RequiredKeys<T>]: Row<T>[K] } & { [K in OptionalKeys<T>]?: Row<T>[K] }
+> {
+  assertRegistered(table);
+  return needsValues(table);
 }
