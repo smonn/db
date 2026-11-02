@@ -125,6 +125,7 @@ describe("README getting started", () => {
       "file=update.ts",
       "file=delete.ts",
       "file=db/enums.ts",
+      "file=by-email.ts",
     ]);
     expect(steps.map((s) => s.command.split(" ").at(-1))).toStrictEqual([
       "generate",
