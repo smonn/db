@@ -3,7 +3,15 @@ export type { Client } from "./client.ts";
 export { from } from "./from.ts";
 export type { SelectQuery } from "./from.ts";
 export { and, not, or } from "./refs.ts";
-export type { ColumnRef, Predicate, Refs, Selected, Selection } from "./refs.ts";
+export type {
+  ColumnRef,
+  Orderable,
+  Ordering,
+  Predicate,
+  Refs,
+  Selected,
+  Selection,
+} from "./refs.ts";
 export type { Query, Statement } from "./statement.ts";
 export { insert } from "./insert.ts";
 export type { InsertStatement, NewRow } from "./insert.ts";
