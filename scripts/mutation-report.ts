@@ -27,15 +27,15 @@ export type Survivor = {
   expected?: number;
 };
 
-const REPORT = "reports/mutation/mutation.json";
+export const REPORT = "reports/mutation/mutation.json";
 const LABEL = "mutation-report";
 const TITLE = "Mutants survive the weekly Stryker run";
 // GitHub caps an issue body at 65,536 characters; this leaves room for the footer.
 const MAX_LENGTH = 60_000;
 
-type Mutant = { mutatorName: string; status: string; line: number };
+export type Mutant = { mutatorName: string; status: string; line: number };
 
-const readMutant: Reader<Mutant> = (value, path) => {
+export const readMutant: Reader<Mutant> = (value, path) => {
   const mutant = record(value, path);
   const start = record(
     record(mutant["location"], `${path}.location`)["start"],
@@ -59,11 +59,11 @@ const isSurvivor = (status: string): status is Survivor["status"] =>
 const byLocation = (a: { file: string; line: number }, b: { file: string; line: number }): number =>
   a.file.localeCompare(b.file) || a.line - b.line;
 
-const hides = (disable: Disable, mutant: Mutant): boolean =>
+export const hides = (disable: Disable, mutant: Mutant): boolean =>
   mutant.line === disable.line + 1 &&
   disable.mutators.some((mutator) => mutator.toLowerCase() === mutant.mutatorName.toLowerCase());
 
-const survivorCount = (mutants: Mutant[]): number =>
+export const survivorCount = (mutants: Mutant[]): number =>
   mutants.filter(({ status }) => isSurvivor(status)).length;
 
 // A timeout alone is inconclusive: an equivalent mutant can still time out on a loaded runner.
@@ -71,7 +71,7 @@ const survivorCount = (mutants: Mutant[]): number =>
 // equivalent mutant times out in the run where a killable twin survives, the twin stays hidden
 // until the next run (#647). Counting timeouts there would list a marked line's survivors every
 // week whenever a mutant on it is killed by timeout.
-const timedOut = (mutants: Mutant[]): number =>
+export const timedOut = (mutants: Mutant[]): number =>
   mutants.filter(({ status }) => status === "Timeout").length;
 
 const plural = (count: number): string => `${count} survivor${count === 1 ? "" : "s"}`;
