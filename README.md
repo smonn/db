@@ -312,7 +312,7 @@ After `leftJoin`, that table's columns read `V | null` in later callbacks and in
 
 A comparison takes a value or another column, as `p.authorId.eq(u.id)` does. A column operand runs no codec, and it must share the column's SQL type class, nullable or not: Postgres compares `integer` with `bigint` but not `uuid` with `text`, so comparing those two is a type error. An enum, a domain over one, or an array compares only with the identical type, so building such a comparison throws, naming both columns.
 
-The SQL qualifies every column by its table's alias, the table's SQL name, so `titles` renders `select "users"."email", "posts"."title" from "public"."users" inner join "public"."posts" on "posts"."authorId" = "users"."id" order by "posts"."title"`. A repeated table takes `_2`, `_3`, and so on, skipping names in use and cut so the alias fits Postgres's 63 bytes. A column ref in `sql.expr` renders qualified too, and a query with no join keeps its bare column names. Right, full, and cross joins aren't offered; write them with `sql`.
+The SQL qualifies every column by its table's alias, the table's SQL name, so `titles` renders `select "users"."email", "posts"."title" from "public"."users" inner join "public"."posts" on "posts"."authorId" = "users"."id" order by "posts"."title"`. A repeated table takes `_2`, `_3`, and so on, skipping names in use and cut so the alias fits Postgres's 63 bytes. A column ref in `sql.expr` renders qualified too, and a query with no join keeps its bare column names, apart from the refs in an `orderBy` term, which stay qualified so an output alias of the same name can't capture them. Right, full, and cross joins aren't offered; write them with `sql`.
 
 ### Updating rows
 
