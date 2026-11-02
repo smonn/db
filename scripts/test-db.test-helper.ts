@@ -1,5 +1,4 @@
 import type { SpawnSyncOptionsWithStringEncoding } from "node:child_process";
-import { join } from "node:path";
 import { type Mock, vi } from "vitest";
 
 export type Result = { status: number | null; stdout: string; stderr: string };
@@ -9,15 +8,11 @@ export type Spawn = (
   options: SpawnSyncOptionsWithStringEncoding,
 ) => Result;
 
-// What `test-db.ts` runs: `git` and `docker` each get their own mock.
+// What `test-db.ts` runs: `docker`.
 export const docker: Mock<Spawn> = vi.fn<Spawn>();
-export const git: Mock<Spawn> = vi.fn<Spawn>();
 
 export function routeSpawn<T extends { spawnSync: unknown }>(actual: T): T {
-  return {
-    ...actual,
-    spawnSync: (...args: Parameters<Spawn>) => (args[0] === "git" ? git : docker)(...args),
-  };
+  return { ...actual, spawnSync: docker };
 }
 
 export function ok(stdout = ""): Result {
@@ -39,8 +34,4 @@ export function listing(...projects: { name: string; files: string[] }[]): Resul
       })),
     ),
   );
-}
-
-export function worktreeFile(root: string, worktree: string): string {
-  return join(root, ".claude", "worktrees", worktree, "compose.yaml");
 }

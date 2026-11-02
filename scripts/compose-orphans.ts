@@ -1,15 +1,7 @@
-import { dirname, join, sep } from "node:path";
-
 type Project = { name: string; configFiles: string[] };
 
-/**
- * The main checkout's `.claude/worktrees/` folder. `gitCommonDir` is the absolute
- * `git rev-parse --git-common-dir` of `root`, which every worktree of a repo shares wherever the
- * worktree lives; without it (git failed) the folder is `root`'s own.
- */
-export function worktreesFolder(root: string, gitCommonDir: string | undefined): string {
-  return join(gitCommonDir === undefined ? root : dirname(gitCommonDir), ".claude", "worktrees");
-}
+/** The name prefix of every compose project `test-db.ts` creates. */
+export const projectPrefix = "smonndb-";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   // Stryker disable next-line ConditionalExpression: 1 survivor: JSON.parse yields no undefined, and destructuring any other primitive gives undefined fields that toProject drops
@@ -40,18 +32,16 @@ function entries(listing: string): unknown[] {
 }
 
 /**
- * Names the projects in `docker compose ls --format json` output whose config files all sat
- * under `worktrees` and are gone: a worktree removed without `stop` leaves its container
- * running. A project outside that folder, or with a config file that still exists, is not one.
+ * Names the projects in `docker compose ls --format json` output that `test-db.ts` created
+ * (their name has the `projectPrefix`) and whose config files are all gone: a worktree removed
+ * without `stop` leaves its container running, wherever the worktree lived. A project with a
+ * config file that still exists, or without the prefix, is not one.
  */
-export function orphanedProjects(
-  listing: string,
-  worktrees: string,
-  exists: (file: string) => boolean,
-): string[] {
+export function orphanedProjects(listing: string, exists: (file: string) => boolean): string[] {
   return parseListing(listing)
-    .filter(({ configFiles }) =>
-      configFiles.every((file) => file.startsWith(`${worktrees}${sep}`) && !exists(file)),
+    .filter(
+      ({ name, configFiles }) =>
+        name.startsWith(projectPrefix) && configFiles.every((file) => file !== "" && !exists(file)),
     )
     .map(({ name }) => name);
 }

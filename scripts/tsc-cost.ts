@@ -12,7 +12,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { onProcessInterrupt } from "../src/dev/cli/signals.ts";
+import { onProcessInterrupt } from "../src/dev/cli/index.ts";
 import type { OnInterrupt } from "../src/dev/shadow/index.ts";
 import { formatTable, medianSample, parseDiagnostics, type Sample } from "./tsc-cost-stats.ts";
 

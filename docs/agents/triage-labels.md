@@ -32,7 +32,7 @@ Every triaged issue also carries exactly one category label.
 | `bug`         | `bug`                | Something is broken        |
 | `enhancement` | `enhancement`        | New feature or improvement |
 
-`pnpm check:labels` runs on each `labeled` and `unlabeled` event for a ready, priority, or category label. When an open, human-opened `ready-for-agent` or `ready-for-human` issue does not have exactly one `priority:*` label and exactly one category label, it posts one comment naming the gap, and a marker stops it from posting a second.
+`pnpm check:labels` runs on each `labeled` and `unlabeled` event for a ready, priority, or category label. When an open, human-opened `ready-for-agent` or `ready-for-human` issue does not have exactly one `priority:*` label and exactly one category label, it posts one comment naming the gap, and a marker stops it from posting a second. When the issue complies, or no longer carries a ready label, the check deletes its marker comments, so a later break gets a new comment.
 
 ## Area labels
 
