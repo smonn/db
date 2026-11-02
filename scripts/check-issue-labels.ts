@@ -3,7 +3,8 @@
  * `docs/agents/triage-labels.md`: exactly one `priority:*` label and exactly one category label
  * (`bug` or `enhancement`) on every `ready-for-agent` or `ready-for-human` issue. When an open,
  * human-opened ready issue lacks either, it gets one comment naming the gap. The comment carries
- * a marker, and an issue that already has one gets no second comment.
+ * a marker, and an issue that already has one gets no second comment. Once the issue complies, or
+ * stops being ready, the check deletes its marker comments, so a later break is warned afresh.
  *
  * Run with `GITHUB_EVENT_PATH` set to an `issues` event payload and `gh` authenticated, as
  * `pnpm check:labels`; the Issue milestone workflow runs it on `labeled` and `unlabeled` for the
@@ -15,6 +16,7 @@ import {
   array,
   field,
   number,
+  optionalField,
   parseJson,
   readEventPayload,
   record,
@@ -37,6 +39,7 @@ export type LabelledIssue = {
 
 export type LabelsEvent = {
   action: string;
+  label?: { name: string } | undefined;
   issue: LabelledIssue;
   repository: { full_name: string };
 };
@@ -65,6 +68,7 @@ const readEvent: Reader<LabelsEvent> = (value, path) => {
   const repository = field(event, "repository", record, path);
   return {
     action: field(event, "action", string, path),
+    label: optionalField(event, "label", readName, path),
     issue: field(event, "issue", readIssue, path),
     repository: {
       full_name: field(repository, "full_name", string, `${path}.repository`),
@@ -72,9 +76,21 @@ const readEvent: Reader<LabelsEvent> = (value, path) => {
   };
 };
 
-const readComment: Reader<{ body: string }> = (value, path) => ({
-  body: field(record(value, path), "body", string, path),
-});
+type Comment = { body: string; id: number; user: { type: string } };
+
+const readComment: Reader<Comment> = (value, path) => {
+  const fields = record(value, path);
+  return {
+    body: field(fields, "body", string, path),
+    id: field(fields, "id", number, path),
+    user: field(
+      fields,
+      "user",
+      (user, p) => ({ type: field(record(user, p), "type", string, p) }),
+      path,
+    ),
+  };
+};
 
 /** Runs `gh` with `args` and returns its standard output. */
 type Gh = (args: string[]) => string;
@@ -85,18 +101,30 @@ function names(issue: LabelledIssue): string[] {
   return issue.labels.map((label) => label.name);
 }
 
-/** Whether the issue is open, human-opened, and carries a ready label. */
+/** Whether the issue is open and human-opened, the only kind the check warns or cleans up. */
+function eligible(issue: LabelledIssue): boolean {
+  return issue.state === "open" && issue.user.type !== "Bot";
+}
+
+/** Whether the issue is eligible and carries a ready label. */
 function qualifies(issue: LabelledIssue): boolean {
+  return eligible(issue) && names(issue).some((n) => READY_LABELS.has(n));
+}
+
+/** Whether the event took a ready label off the issue, which leaves the issue not ready. */
+function removedReadyLabel(event: LabelsEvent): boolean {
   return (
-    issue.state === "open" &&
-    issue.user.type !== "Bot" &&
-    names(issue).some((n) => READY_LABELS.has(n))
+    event.action === "unlabeled" && event.label !== undefined && READY_LABELS.has(event.label.name)
   );
 }
 
-/** A cheap pre-filter on the event; `main` re-checks the issue it fetches. */
+/**
+ * A cheap pre-filter on the event; `main` re-checks the issue it fetches. An event that removed
+ * the ready label passes too, since its issue no longer qualifies but may carry a stale comment.
+ */
 export function needsLabelCheck(event: LabelsEvent): boolean {
-  return CHECKED_ACTIONS.has(event.action) && qualifies(event.issue);
+  if (!CHECKED_ACTIONS.has(event.action)) return false;
+  return qualifies(event.issue) || (eligible(event.issue) && removedReadyLabel(event));
 }
 
 function gap(noun: string, found: string[]): string | undefined {
@@ -120,7 +148,8 @@ export function labelGaps(issue: LabelledIssue): string[] {
   ].filter((phrase) => phrase !== undefined);
 }
 
-function alreadyCommented(issuePath: string, gh: Gh): boolean {
+/** The comments the bot left under the marker; a human quoting the marker is not one. */
+function markerComments(issuePath: string, gh: Gh): Comment[] {
   const commentsPath = `${issuePath}/comments?per_page=100`;
   const pages = parseJson(
     gh(["api", "--paginate", "--slurp", commentsPath]),
@@ -128,7 +157,7 @@ function alreadyCommented(issuePath: string, gh: Gh): boolean {
   );
   return array(array(readComment))(pages, "$")
     .flat()
-    .some((comment) => comment.body.includes(MARKER));
+    .filter((comment) => comment.user.type === "Bot" && comment.body.includes(MARKER));
 }
 
 function readyGaps(issue: LabelledIssue): string[] {
@@ -143,6 +172,10 @@ function readEnvEvent(env: NodeJS.ProcessEnv): LabelsEvent | undefined {
   return needsLabelCheck(event) ? event : undefined;
 }
 
+function deleteComments(repo: string, comments: Comment[], gh: Gh): void {
+  for (const { id } of comments) gh(["api", "-X", "DELETE", `repos/${repo}/issues/comments/${id}`]);
+}
+
 export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void {
   const event = readEnvEvent(env);
   if (event === undefined) return;
@@ -150,7 +183,12 @@ export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void
   const issuePath = `repos/${repository.full_name}/issues/${event.issue.number}`;
   const current = readIssue(parseJson(gh(["api", issuePath]), `gh api ${issuePath}`), "$");
   const gaps = readyGaps(current);
-  if (gaps.length === 0 || alreadyCommented(issuePath, gh)) return;
+  const markers = markerComments(issuePath, gh);
+  if (gaps.length === 0) {
+    deleteComments(repository.full_name, markers, gh);
+    return;
+  }
+  if (markers.length > 0) return;
   const body = `${MARKER}\nThis ready issue breaks the label rule in \`docs/agents/triage-labels.md\`: ${gaps.join(" and ")}. Give it exactly one \`priority:*\` label and exactly one of \`bug\` or \`enhancement\`.`;
   gh(["issue", "comment", String(current.number), "--repo", repository.full_name, "--body", body]);
 }
