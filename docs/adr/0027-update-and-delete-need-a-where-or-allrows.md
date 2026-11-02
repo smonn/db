@@ -23,4 +23,4 @@ status: accepted
 - An undefined value is skipped at run time, and a `set` left empty throws `update needs at least one column to set`. Values pass the column's codec when the statement renders.
 - A `set` value may also be `(u) => Expr<V>`, one callback per key, so `n = n + 1` works through `sql.expr` (ADR-0004's amendment).
 - `Statement`, `Query`, `Many`, and `brand` move out of the select builder into `statement.ts`, and the refs, predicates, `columnIdentifier`, `renderOutput`, and a shared `returning` builder into `refs.ts`, so each new statement imports shared plumbing instead of the select builder.
-- An update or delete that can't run yet still prints a `Table<...>` error wall and never says to call `where`. The fix spans the whole builder, so it is tracked apart from this decision.
+- An update or delete that can't run yet still prints a `Table<...>` error wall and never says to call `where`. The fix spans the whole builder, so it is tracked apart from this decision. Amended 2026-11-02: this consequence is replaced. #673 typed the builders over their row, so an update or delete that can't run yet names the missing call and prints no `Table<...>`.

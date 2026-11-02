@@ -114,7 +114,7 @@ DATABASE_URL=postgres://localhost/app_prod node query.ts
 
 ### Selecting columns
 
-`pick` selects the columns you name, each under its own key, in the order you name them. `select` takes a callback for the cases `pick` can't express, such as renaming a column. Either replaces an earlier one, and `where`, `orderBy`, `limit`, and `offset` can come before or after it. A name that is no column is a type error that lists the table's columns.
+`pick` selects the columns you name, each under its own key, in the order you name them; a repeated name selects once. `select` takes a callback for the cases `pick` can't express, such as renaming a column. Either replaces an earlier one, and `where`, `orderBy`, `limit`, and `offset` can come before or after it. A name that is no column is a type error that lists the table's columns.
 
 ```ts file=select.ts
 import postgres from "postgres";
@@ -254,7 +254,7 @@ DATABASE_URL=postgres://localhost/app_prod node fragments.ts
 [ { id: 'u3', domain: 'example.com' } ]
 ```
 
-`where`, `and`, `or`, and `not` take an `Expr<boolean | null>`, which a fragment in `where` becomes without a type argument. A comparison such as `u.id.eq("u1")` is an `Expr<boolean>`, so it also selects as a boolean or sorts in `orderBy`. A fragment in `orderBy` sorts ascending, or takes `asc()` and `desc()`, with `nulls` only when `V` includes `null`. A fragment runs no codec: its params bind as given and its value comes back as the driver reads it. A nested fragment or comparison inlines in parentheses, and a statement inside a fragment throws, so it can't hold a subquery.
+`where`, `and`, `or`, and `not` take an `Expr<boolean | null>`, which a fragment in `where` becomes without a type argument. A comparison such as `u.id.eq("u1")` is an `Expr<boolean>`, so it also selects as a boolean or sorts in `orderBy`. A fragment in `orderBy` sorts ascending, or takes `asc()` and `desc()`, with `nulls` only when `V` includes `null`. A fragment holding a comma sorts as one row, which is never NULL, so `nulls` doesn't place the NULLs inside it. A fragment runs no codec: its params bind as given and its value comes back as the driver reads it. A nested fragment or comparison inlines in parentheses, and a statement inside a fragment throws, so it can't hold a subquery.
 
 ### Joining tables
 

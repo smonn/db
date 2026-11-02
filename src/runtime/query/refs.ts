@@ -86,7 +86,8 @@ export type Selected<S extends Selection> = {
 
 /**
  * The column a ref reads: key `key` of `table`, which a joined query qualifies by `alias`, and an
- * upsert's existing row by `schema` too, so a table named `excluded` can't pass for that row.
+ * upsert's existing row by `schema` too. On a table named `excluded`, Postgres calls an `excluded`
+ * ref ambiguous, so such a table takes no `excluded` refs.
  */
 export type ColumnSource = {
   readonly table: Table;
