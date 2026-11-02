@@ -172,3 +172,13 @@ describe("insert", () => {
     expectTypeOf(insert(db.public.users).values({ id: "u1" })).not.toExtend<Query<unknown>>();
   });
 });
+
+describe("insert on an unregistered table", () => {
+  it("throws when called, before values, naming defineDatabase", () => {
+    const bare: unknown = defineTable((c) => ({ id: c.text().notNull() }));
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Plain-JS callers reach this; TypeScript rejects it.
+    const call = () => insert(bare as typeof db.public.users);
+    expect(call).toThrow(Error);
+    expect(call).toThrow(/lacks SQL names.*defineDatabase/u);
+  });
+});
