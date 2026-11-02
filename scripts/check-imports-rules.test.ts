@@ -153,6 +153,33 @@ describe("checkImports rules", () => {
     ).toEqual(["no-test-imports", "no-test-imports"]);
   });
 
+  test("a script imports a src/ module only through its index.ts", async () => {
+    expect(
+      await rulesBroken({
+        "src/dev/cli/index.ts": 'export { onInterrupt } from "./signals.ts";',
+        "src/dev/cli/signals.ts": "export const onInterrupt = 1;",
+        "scripts/inner.ts":
+          'import { onInterrupt } from "../src/dev/cli/signals.ts";\nexport { onInterrupt };',
+        "scripts/through-index.ts":
+          'import { onInterrupt } from "../src/dev/cli/index.ts";\nexport { onInterrupt };',
+      }),
+    ).toEqual(["scripts-import-src-through-index"]);
+  });
+
+  test("a script test may also import a src/ test helper", async () => {
+    expect(
+      await rulesBroken({
+        "src/dev/cli/index.ts": "export const main = 1;",
+        "src/dev/cli/git-env.test-helper.ts": "export const isolateGitEnv = 1;",
+        "src/dev/cli/signals.ts": "export const onInterrupt = 1;",
+        "scripts/tool.test.ts":
+          'import { isolateGitEnv } from "../src/dev/cli/git-env.test-helper.ts";\nimport { onInterrupt } from "../src/dev/cli/signals.ts";\nexport { isolateGitEnv, onInterrupt };',
+        "scripts/tool.ts":
+          'import { isolateGitEnv } from "../src/dev/cli/git-env.test-helper.ts";\nexport { isolateGitEnv };',
+      }),
+    ).toEqual(["no-test-imports", "scripts-import-src-through-index"]);
+  });
+
   test("only tests and test helpers import vitest", async () => {
     expect(
       await rulesBroken({

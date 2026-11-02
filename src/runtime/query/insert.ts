@@ -1,6 +1,6 @@
 import type { Row, Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
-import { encodeValue } from "./codecs.ts";
+import { encodeAssigned } from "./codecs.ts";
 import { columnIdentifier, returning, type Refs, type Selected, type Selection } from "./refs.ts";
 import { assertRegistered, brand, type Many, type Query, type Statement } from "./statement.ts";
 
@@ -45,7 +45,7 @@ function insertInto(table: Table, rows: readonly Record<string, unknown>[]): Fra
   const names = given.length > 0 ? given : Object.keys(table.columns).slice(0, 1);
   const tuples = rows.map((row) => {
     const cells = names.map((name) =>
-      has(row, name) ? fragment`${encodeValue(table, name, row[name])}` : fragment`default`,
+      has(row, name) ? fragment`${encodeAssigned(table, name, row[name])}` : fragment`default`,
     );
     return fragment`(${join(cells, fragment`, `)})`;
   });
