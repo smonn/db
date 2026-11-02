@@ -108,7 +108,7 @@ const GROUP_INDEXES = {
   "src/dev/cli/index.ts": 'export { main } from "./main.ts";',
 };
 
-function runMain(files: Record<string, string>): string[][] {
+function runMain(files: Record<string, string>): unknown[][] {
   const errors = vi.spyOn(console, "error").mockImplementation(() => {});
   const dir = repo(files);
   main(dir);
