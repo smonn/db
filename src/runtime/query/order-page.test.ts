@@ -3,7 +3,8 @@ import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-h
 import { defineDatabase, defineTable, type Row } from "../definition/index.ts";
 import { createClient } from "./client.ts";
 import { from } from "./from.ts";
-import type { Ordering, Refs } from "./refs.ts";
+import type { Ordering } from "./expr.ts";
+import type { Refs } from "./refs.ts";
 
 const testDatabase = useTestDatabase();
 const client = createClient(testDatabase.driver);
@@ -20,7 +21,10 @@ const db = defineDatabase({
 const scores = from(db.public.scores);
 const ALL = '"id", "points", "note"';
 
-type NullsOptions = { readonly nulls?: "first" | "last" };
+type NullsOptions = {
+  readonly nulls?: "first" | "last";
+  readonly "nulls needs a nullable column"?: never;
+};
 type NotNullableOptions = { readonly "nulls needs a nullable column"?: never };
 
 const ids = async (query: typeof scores) => (await client.all(query)).map((row) => row.id);
