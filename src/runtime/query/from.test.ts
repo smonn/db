@@ -144,7 +144,7 @@ describe("pick", () => {
       .where((u) => u.id.gt("a"))
       .pick("id");
     expect(query.toSql()).toStrictEqual({
-      text: 'select "id" from "public"."users" where "id" > $1 order by "email" desc limit $2 offset $3',
+      text: 'select "id" from "public"."users" where "id" > $1 order by "users"."email" desc limit $2 offset $3',
       params: ["a", 2, 4],
     });
   });
@@ -156,7 +156,7 @@ describe("pick", () => {
       .orderBy((u) => u.id)
       .limit(1);
     expect(query.toSql().text).toBe(
-      'select "id" from "public"."users" where "email" is null order by "id" limit $1',
+      'select "id" from "public"."users" where "email" is null order by "users"."id" limit $1',
     );
   });
 

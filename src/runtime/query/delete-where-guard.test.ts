@@ -34,4 +34,14 @@ describe("deleteFrom with a missing where return", () => {
       { id: 2 },
     ]);
   });
+
+  it("refuses a chained where whose callback returns nothing", () => {
+    const filtered = deleteFrom(db.public.users).where((u) => u.id.gt(0));
+    expect(() =>
+      // @ts-expect-error a JavaScript callback can forget to return its predicate
+      filtered.where((u) => {
+        void u.id.eq(1);
+      }),
+    ).toThrow("deleteFrom.where callback must return a predicate");
+  });
 });

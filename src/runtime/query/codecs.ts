@@ -58,6 +58,13 @@ function encode(table: Table, column: string, value: unknown): unknown {
 
 const jsonTypes = new Set(["json", "jsonb"]);
 
+function arrayWriteFailure(table: Table, column: string, cause: unknown): Error {
+  const where = `${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)}`;
+  return new Error(`Can't write the array in column ${quoteIdentifier(column)} of ${where}`, {
+    cause,
+  });
+}
+
 // Array text leaves no array for a driver to type by its first element, and Postgres types the
 // param from the column it meets, as ADR-0023 asks.
 function arrayText(
@@ -72,17 +79,14 @@ function arrayText(
   try {
     return formatArrayLiteral(value, formatElement);
   } catch (error) {
-    const where = `${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)}`;
-    throw new Error(`Can't write the array in column ${quoteIdentifier(column)} of ${where}`, {
-      cause: error,
-    });
+    throw arrayWriteFailure(table, column, error);
   }
 }
 
 /**
  * Runs the column's codec on a value headed for the driver, on each element of an array column,
- * then writes an array column's value
- * as array text; NULL passes through.
+ * then writes an array column's value as array text; NULL passes through. Use it for a
+ * comparison operand; a value written to a column goes through `encodeAssigned`.
  */
 export function encodeValue(table: Table, column: string, value: unknown): unknown {
   if (value === null || value === undefined) return value;
@@ -91,6 +95,27 @@ export function encodeValue(table: Table, column: string, value: unknown): unkno
   return definition?.state.array === true && Array.isArray(encoded)
     ? arrayText(table, column, definition, encoded)
     : encoded;
+}
+
+function isJsonDomain(definition: Column): boolean {
+  return (
+    !definition.state.array &&
+    definition.state.domainType !== undefined &&
+    jsonTypes.has(elementSqlType(definition))
+  );
+}
+
+/**
+ * `encodeValue` for a value an insert assigns. A param assigned to a domain column keeps the
+ * domain's OID, which the driver has no serializer for, so a json or jsonb domain's value is
+ * written as JSON here. A comparison's param takes the base type, which the driver serializes.
+ * Use it for every value written to a column: insert values, update `set`, upsert `doUpdate`.
+ */
+export function encodeAssigned(table: Table, column: string, value: unknown): unknown {
+  const encoded = encodeValue(table, column, value);
+  const definition = table.columns[column];
+  if (encoded === null || encoded === undefined || definition === undefined) return encoded;
+  return isJsonDomain(definition) ? JSON.stringify(encoded) : encoded;
 }
 
 function readArray(table: Table, column: string, definition: Column, value: unknown): unknown {
@@ -172,5 +197,15 @@ export function encodeList(
   definition: Column,
   values: readonly unknown[],
 ): string {
-  return arrayText(table, column, definition, values.map(elementEncoder(table, column)));
+  const encoded = values.map(elementEncoder(table, column));
+  if (!jsonTypes.has(elementSqlType(definition))) {
+    return arrayText(table, column, definition, encoded);
+  }
+  try {
+    return formatArrayLiteral(
+      encoded.map((value) => (value === null ? null : JSON.stringify(value))),
+    );
+  } catch (error) {
+    throw arrayWriteFailure(table, column, error);
+  }
 }

@@ -139,19 +139,10 @@ describe("README getting started", () => {
       "update.ts",
       "delete.ts",
     ]);
-    expect(steps.map((s) => s.command.includes("smonndb"))).toStrictEqual([
-      true,
-      true,
-      true,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-    ]);
+    // The three CLI steps come first; every example after them runs with node.
+    expect(steps.map((s) => s.command.includes("smonndb"))).toStrictEqual(
+      steps.map((_, index) => index < 3),
+    );
     expect(outputs).toStrictEqual(steps.map((s) => s.expected));
 
     // The config loads db/definition.ts, so a config of its own runs the enums block too.
@@ -186,6 +177,10 @@ describe("README getting started", () => {
         await expect(
           database.driver.query("insert into entries (id, score, lately) values ('b', 0, '{}')"),
         ).rejects.toThrow(/posint_positive/u);
+        await expect(database.driver.query("select 'sad'::upbeat")).rejects.toThrow(
+          /upbeat_not_sad/u,
+        );
+        await expect(database.driver.query("select 'ok'::upbeat")).resolves.toBeDefined();
       }),
     );
   }, 120_000);
