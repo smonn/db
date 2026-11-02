@@ -25,6 +25,8 @@ export function repo(files: Record<string, string>): string {
     "node_modules/vitest/package.json": JSON.stringify({ name: "vitest", main: "index.js" }),
     // An unresolvable import inside a package shows whether the cruise follows into node_modules.
     "node_modules/vitest/index.js": 'import "not-installed";\nexport const test = 1;',
+    // dependency-cruiser fails on a missing root, so every repo has a scripts/ folder.
+    "scripts/.keep": "",
     ...files,
   };
   for (const [path, text] of Object.entries(all)) {
