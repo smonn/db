@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Upserts name a declared key

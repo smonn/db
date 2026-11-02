@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Ordering and set comparisons read like the SQL they render

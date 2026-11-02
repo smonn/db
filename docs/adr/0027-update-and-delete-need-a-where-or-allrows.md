@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Update and delete need a where or `allRows()`
