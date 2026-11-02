@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { defineDatabase, defineDomain, defineTable } from "../definition/index.ts";
-import { createClient, from, insert } from "./index.ts";
+import { createClient, from, insert, update } from "./index.ts";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 
 const testDatabase = useTestDatabase();
@@ -30,6 +30,10 @@ beforeAll(async () => {
 beforeEach(async () => {
   await testDatabase.driver.execute("truncate public.t");
 });
+
+/** Raw SQL, so a test of an update fails on the update rather than on the row it needs. */
+const seedRow = () =>
+  testDatabase.driver.execute(`insert into public.t (id, b) values (1, '{"old": true}')`);
 
 const values: [string, unknown][] = [
   ["an object", { a: 1, nested: [true, null, "x"] }],
@@ -91,5 +95,34 @@ describe("domains over jsonb", () => {
     );
 
     expect(rows).toStrictEqual([{ b: { a: 1 } }]);
+  });
+
+  it.each(values)("writes %s through update's set", async (_name, value) => {
+    await seedRow();
+
+    await client.run(
+      update(db.public.t)
+        .set({ b: value })
+        .where((r) => r.id.eq(1)),
+    );
+
+    expect(await client.all(from(db.public.t))).toStrictEqual([{ id: 1, b: value }]);
+  });
+
+  it("sets NULL through update's set, not a JSON null", async () => {
+    await seedRow();
+
+    await client.run(
+      update(db.public.t)
+        .set({ b: null })
+        .where((r) => r.id.eq(1)),
+    );
+
+    const rows = await client.all(
+      from(db.public.t)
+        .pick("id")
+        .where((r) => r.b.isNull()),
+    );
+    expect(rows).toStrictEqual([{ id: 1 }]);
   });
 });
