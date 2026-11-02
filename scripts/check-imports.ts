@@ -1,6 +1,7 @@
 /**
- * Enforces the import rules between `src/` modules with dependency-cruiser and exits 1 on any
- * violation. Also exits 1 when it scans no modules, so a broken parser or path can't pass silently.
+ * Enforces the import rules between `src/` modules, and from `scripts/` into `src/`, with
+ * dependency-cruiser and exits 1 on any violation. Also exits 1 when it scans no `src/` modules, so
+ * a broken parser or path can't pass silently.
  *
  * Run from the repo root with `pnpm check:imports`; CI runs it in the Lint job.
  */
@@ -95,6 +96,17 @@ export const importRules: IForbiddenRuleType[] = [
     },
   },
   {
+    name: "scripts-import-src-through-index",
+    comment:
+      "A scripts/ file imports a src/ module only through its index.ts, plus a test helper that no-test-imports keeps to tests.",
+    severity: "error",
+    from: { path: "^scripts/" },
+    to: {
+      path: "^src/",
+      pathNot: ["^src/[^/]+/[^/]+/index\\.ts$", String.raw`\.test-helper\.ts$`],
+    },
+  },
+  {
     name: "no-group-index-imports",
     comment:
       "A group index such as src/runtime/index.ts is a package entry point, so no src/ file imports it and pulls in the whole group.",
@@ -141,17 +153,23 @@ export const importRules: IForbiddenRuleType[] = [
 ];
 
 export async function checkImports(baseDir: string): Promise<Problem[]> {
-  const { output } = await cruise(["src"], {
+  const { output } = await cruise(["src", "scripts"], {
     // Through a symlinked baseDir, such as macOS's /var, resolved paths leave src/ and match no rule.
     baseDir: realpathSync(baseDir),
     parser: "swc",
     // Rules judge only src/'s own imports, so the cruise stops at a package's entry.
     doNotFollow: { path: "node_modules" },
+    // Without the exports field, a package that has no main file, such as tsdown, does not resolve.
+    // With it, the conditions must be Node's, or vitest's `import` entry is missed.
+    enhancedResolveOptions: {
+      exportsFields: ["exports"],
+      conditionNames: ["import", "node", "default"],
+    },
     validate: true,
     ruleSet: { forbidden: importRules },
   });
   if (typeof output === "string") throw new Error("dependency-cruiser returned a formatted report");
-  if (output.summary.totalCruised === 0) {
+  if (!output.modules.some(({ source }) => source.startsWith("src/"))) {
     return [{ from: "src", to: "src", rule: "scanned 0 modules" }];
   }
   return output.summary.violations.map(({ from, to, rule }) => ({ from, to, rule: rule.name }));

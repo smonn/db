@@ -117,6 +117,8 @@ describe("README getting started", () => {
       "file=db/definition.ts",
       "file=smonndb.config.ts",
       "file=query.ts",
+      "file=select.ts",
+      "file=paging.ts",
       "file=db/enums.ts",
     ]);
     expect(steps.map((s) => s.command.split(" ").at(-1))).toStrictEqual([
@@ -124,11 +126,15 @@ describe("README getting started", () => {
       "create-users",
       "migrate",
       "query.ts",
+      "select.ts",
+      "paging.ts",
     ]);
     expect(steps.map((s) => s.command.includes("smonndb"))).toStrictEqual([
       true,
       true,
       true,
+      false,
+      false,
       false,
     ]);
     expect(outputs).toStrictEqual(steps.map((s) => s.expected));
@@ -165,6 +171,10 @@ describe("README getting started", () => {
         await expect(
           database.driver.query("insert into entries (id, score, lately) values ('b', 0, '{}')"),
         ).rejects.toThrow(/posint_positive/u);
+        await expect(database.driver.query("select 'sad'::upbeat")).rejects.toThrow(
+          /upbeat_not_sad/u,
+        );
+        await expect(database.driver.query("select 'ok'::upbeat")).resolves.toBeDefined();
       }),
     );
   }, 120_000);
