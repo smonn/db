@@ -1,6 +1,6 @@
 import type { Queryable } from "../ports/index.ts";
 import { decoderOf } from "./codecs.ts";
-import type { Query, Statement } from "./from.ts";
+import type { Query, Statement } from "./statement.ts";
 
 export type Client = {
   all<R>(query: Query<R>): Promise<R[]>;
