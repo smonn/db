@@ -17,7 +17,7 @@ const choose = (useColumn: boolean) => (u: Refs<{ email: string | null }>) => ({
 describe("a selection choosing a column or an Expr", () => {
   it.each([
     { useColumn: true, text: 'select "email" as "value" from "public"."users"' },
-    { useColumn: false, text: 'select 1 as "value" from "public"."users"' },
+    { useColumn: false, text: 'select (1) as "value" from "public"."users"' },
   ])("keeps both value types and nullability ($useColumn)", ({ useColumn, text }) => {
     const selected = from(db.public.users).select(choose(useColumn));
     const inserted = insert(db.public.users).values({ id: 1 }).returning(choose(useColumn));

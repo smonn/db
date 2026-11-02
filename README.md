@@ -224,7 +224,7 @@ Each call exists only where Postgres accepts it. `like` and `ilike` are offered 
 
 ### SQL fragments
 
-`` sql.expr<V>`...` `` writes one expression the builder lacks, such as a function call, for `where`, `select`, `returning`, `orderBy`, `values`, `valuesMany`, and `set`. A column ref in the template renders as its column, and any other value binds as a param. `V` is the expression's type, and defaults to `unknown` where nothing names it.
+`` sql.expr<V>`...` `` writes one expression the builder lacks, such as a function call, for `where`, `select`, `returning`, `orderBy`, `values`, `valuesMany`, and `set`. A column ref in the template renders as its column, and any other value binds as a param. `V` is the expression's type, and defaults to `unknown` where nothing names it. A fragment renders in parentheses as one term in `select`, `returning`, `orderBy`, `values`, `valuesMany`, `set`, and `doUpdate`, so a comma or an operator in it can't change the statement around it; a ref or a comparison gains none. A fragment in `where` is the whole predicate and stays bare.
 
 ```ts file=fragments.ts
 import postgres from "postgres";

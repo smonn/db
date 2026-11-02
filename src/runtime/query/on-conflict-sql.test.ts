@@ -136,7 +136,7 @@ describe("onConflict renders", () => {
         }))
         .toSql(),
     ).toStrictEqual({
-      text: `${INSERT} on conflict ("sku") do update set "a" = $3, "tag" = "excluded"."tag", "version" = "public"."items"."version" + "excluded"."version"`,
+      text: `${INSERT} on conflict ("sku") do update set "a" = $3, "tag" = "excluded"."tag", "version" = ("public"."items"."version" + "excluded"."version")`,
       params: ["s", 1, "x"],
     });
   });

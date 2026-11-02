@@ -56,7 +56,7 @@ describe("orderBy with a colliding output alias", () => {
       .orderBy((s) => sql.expr`${s.id}`.asc());
 
     expect(query.toSql().text).toBe(
-      'select "id", "points" * 2 as "doubled" from "public"."scores" where "id" = 1 order by "scores"."id" asc',
+      'select "id", ("points" * 2) as "doubled" from "public"."scores" where "id" = 1 order by ("scores"."id") asc',
     );
   });
 });
