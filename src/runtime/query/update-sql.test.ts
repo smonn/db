@@ -80,7 +80,7 @@ describe("update renders", () => {
       .set({ n: sql.expr<number>`1 + 1`, born: sql.expr<string | null>`7` })
       .allRows();
     expect(statement.toSql()).toStrictEqual({
-      text: 'update "public"."users" set "n" = 1 + 1, "born" = 7',
+      text: 'update "public"."users" set "n" = (1 + 1), "born" = (7)',
       params: [],
     });
   });
@@ -90,7 +90,7 @@ describe("update renders", () => {
       .set({ n: (u) => sql.expr<number>`${u.n} + ${1}` })
       .allRows();
     expect(statement.toSql()).toStrictEqual({
-      text: 'update "public"."users" set "n" = "n" + $1',
+      text: 'update "public"."users" set "n" = ("n" + $1)',
       params: [1],
     });
   });

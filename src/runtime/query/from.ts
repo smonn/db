@@ -3,7 +3,7 @@ import { quoteIdentifier } from "../internal/index.ts";
 import { fragment, identifier, join, type Fragment, type RenderedSql } from "../sql/index.ts";
 import { aliasFor } from "./alias.ts";
 import { withDecoder } from "./codecs.ts";
-import { isExpr, type Expr } from "./expr.ts";
+import { isExpr, termOf, type Expr } from "./expr.ts";
 import type { Joins } from "./join.ts";
 import { decodeOutputs, outputsOf, renderOutput, sortKeyOf, type Output } from "./clauses.ts";
 import {
@@ -116,7 +116,7 @@ function sourceSql({ table, alias }: Source): Fragment {
 
 /**
  * A joined query qualifies every column by its table's alias; a single table's SQL names them bare,
- * apart from its `order by` columns, which an output alias would otherwise capture.
+ * apart from its `order by` terms, whose refs an output alias would otherwise capture.
  */
 function sqlOf(state: State): RenderedSql {
   return renderQualified(state.joins.length > 0, () => {
@@ -125,13 +125,12 @@ function sqlOf(state: State): RenderedSql {
       fragment`, `,
     );
     const joins = state.joins.map(
-      ({ keyword, on, ...source }) =>
-        fragment` ${keyword} ${sourceSql(source)} on ${on["~expr"]()}`,
+      ({ keyword, on, ...source }) => fragment` ${keyword} ${sourceSql(source)} on ${termOf(on)}`,
     );
     const filter = state.predicate ? fragment` where ${state.predicate["~expr"]()}` : fragment``;
     const order = state.orderings
       ? fragment` order by ${join(
-          state.orderings.map((sortKey) => sortKey()),
+          state.orderings.map((sortKey) => renderQualified(true, sortKey)),
           fragment`, `,
         )}`
       : fragment``;
