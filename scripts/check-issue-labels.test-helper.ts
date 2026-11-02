@@ -26,8 +26,9 @@ export function fetched(overrides: Partial<LabelledIssue> = {}): LabelledIssue {
   };
 }
 
-export function event(current: LabelledIssue, action = "labeled"): LabelsEvent {
-  return { action, issue: current, repository: { full_name: "smonn/db" } };
+export function event(current: LabelledIssue, action = "labeled", label?: string): LabelsEvent {
+  const removed = label === undefined ? {} : { label: { name: label } };
+  return { action, ...removed, issue: current, repository: { full_name: "smonn/db" } };
 }
 
 /** Answers each call from `routes`, keyed by its last argument; a list route holds its pages. */
@@ -43,15 +44,26 @@ export function writeEvent(payload: unknown, name = "event.json"): string {
   return path;
 }
 
-/** Fires `payload` with the live issue and comment pages GitHub would return. */
+/** A comment body, or one a human wrote, as `run` takes it. */
+export type Remark = string | { body: string; human: true };
+
+/** Fires `payload` with the live issue and comment pages GitHub would return; ids count from 101. */
 export function run(
   payload: LabelsEvent,
   live: LabelledIssue = payload.issue,
-  pages: string[][] = [[]],
+  pages: Remark[][] = [[]],
 ): Gh {
+  let id = 100;
   const gh = fakeGh({
     [issueRoute]: live,
-    [commentsRoute]: pages.map((page) => page.map((body) => ({ body }))),
+    [commentsRoute]: pages.map((page) =>
+      page.map((remark) => {
+        id += 1;
+        const { body, human } =
+          typeof remark === "string" ? { body: remark, human: false } : remark;
+        return { id, body, user: { type: human ? "User" : "Bot" } };
+      }),
+    ),
   });
   main({ GITHUB_EVENT_PATH: writeEvent(payload) }, gh);
   return gh;
@@ -59,6 +71,14 @@ export function run(
 
 export function posted(gh: Gh): string[][] {
   return gh.mock.calls.map(([args]) => args).filter((args) => args[0] === "issue");
+}
+
+export function deleted(gh: Gh): string[][] {
+  return gh.mock.calls.map(([args]) => args).filter((args) => args.includes("DELETE"));
+}
+
+export function deletion(id: number): string[] {
+  return ["api", "-X", "DELETE", `repos/smonn/db/issues/comments/${id}`];
 }
 
 export function comment(gap: string): string[] {

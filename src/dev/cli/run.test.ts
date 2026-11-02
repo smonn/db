@@ -5,8 +5,18 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { writeMigration } from "../../runtime/internal/index.ts";
+import { withShadowDatabases } from "../shadow/index.ts";
 import type { Project } from "./project.ts";
 import { run } from "./run.ts";
+
+// Every other test here runs the real function; the sweep test swaps it once.
+vi.mock("../shadow/index.ts", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../shadow/index.ts")>();
+  return {
+    ...original,
+    withShadowDatabases: vi.fn<typeof withShadowDatabases>(original.withShadowDatabases),
+  };
+});
 
 const db = useTestDatabase();
 const dev = useTestDatabase();
@@ -104,12 +114,18 @@ it("writes a commit's file and prints its path relative to the working directory
 });
 
 it("prints each line the Shadow sweep logs to stderr", async () => {
-  const stale = "smonn_db_shadow_1_0badc0de";
-  await dev.driver.execute(`create database ${stale} template template0`);
+  // Stubbed, since every Shadow start in any file sweeps the shared cluster and could drop a
+  // planted database first.
+  vi.mocked(withShadowDatabases).mockImplementationOnce((_driver, _connect, _fn, options) => {
+    options?.log?.('dropped stale database "smonn_db_shadow_1_0badc0de"');
+    return Promise.reject(new Error("stop after the sweep"));
+  });
 
-  await run({ name: "generate", config: "c" }, projectWith({ url: dev.url }));
+  await expect(
+    run({ name: "generate", config: "c" }, projectWith({ url: dev.url })),
+  ).rejects.toThrow("stop after the sweep");
 
-  expect(stderr).toBe(`dropped stale database "${stale}"\n`);
+  expect(stderr).toBe('dropped stale database "smonn_db_shadow_1_0badc0de"\n');
 });
 
 it("keeps the Shadow replay's server notices out of the output", async () => {
