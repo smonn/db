@@ -49,6 +49,8 @@ export type {
   ColumnRef,
   InsertStatement,
   NewRow,
+  Orderable,
+  Ordering,
   Predicate,
   Query,
   Refs,

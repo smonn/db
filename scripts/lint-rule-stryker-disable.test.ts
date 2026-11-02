@@ -64,6 +64,10 @@ tester.run("stryker-disable", plugin.rules["stryker-disable"], {
       errors: [{ message: /alone on its line, directly above the code/u }],
     },
     {
+      code: `try {\n  ${directive}\n} catch {\n  recover();\n}`,
+      errors: [{ message: /alone on its line, directly above the code/u }],
+    },
+    {
       code: `f("x");\n${directive}`,
       errors: [{ message: /alone on its line, directly above the code/u }],
     },

@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineDatabase, defineTable } from "../definition/index.ts";
-import { from, type Query, type Statement } from "./from.ts";
+import { from } from "./from.ts";
+import type { Query, Statement } from "./statement.ts";
 import { sql } from "./sql.ts";
 
 describe("sql", () => {
