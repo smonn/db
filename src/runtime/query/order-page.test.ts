@@ -39,24 +39,24 @@ const orderByOptions = (options: unknown) => () =>
 describe("orderBy", () => {
   it("renders an ordering, a bare column, and a list in order", () => {
     expect(scores.orderBy((s) => s.id.asc()).toSql()).toStrictEqual({
-      text: `select ${ALL} from "public"."scores" order by "id" asc`,
+      text: `select ${ALL} from "public"."scores" order by "scores"."id" asc`,
       params: [],
     });
     expect(scores.orderBy((s) => s.points.desc()).toSql().text).toBe(
-      `select ${ALL} from "public"."scores" order by "points" desc`,
+      `select ${ALL} from "public"."scores" order by "scores"."points" desc`,
     );
     expect(scores.orderBy((s) => s.points).toSql().text).toBe(
-      `select ${ALL} from "public"."scores" order by "points"`,
+      `select ${ALL} from "public"."scores" order by "scores"."points"`,
     );
     expect(scores.orderBy((s) => [s.points.desc(), s.id, s.note.asc()]).toSql().text).toBe(
-      `select ${ALL} from "public"."scores" order by "points" desc, "id", "note" asc`,
+      `select ${ALL} from "public"."scores" order by "scores"."points" desc, "scores"."id", "scores"."note" asc`,
     );
   });
 
   it("appends on a repeated call", () => {
     const query = scores.orderBy((s) => s.points.desc()).orderBy((s) => [s.id, s.note.desc()]);
     expect(query.toSql().text).toBe(
-      `select ${ALL} from "public"."scores" order by "points" desc, "id", "note" desc`,
+      `select ${ALL} from "public"."scores" order by "scores"."points" desc, "scores"."id", "scores"."note" desc`,
     );
   });
 
@@ -64,13 +64,13 @@ describe("orderBy", () => {
     const first = scores.orderBy((s) => s.note.asc({ nulls: "first" }));
     const last = scores.orderBy((s) => s.note.desc({ nulls: "last" }));
     expect(first.toSql().text).toBe(
-      `select ${ALL} from "public"."scores" order by "note" asc nulls first`,
+      `select ${ALL} from "public"."scores" order by "scores"."note" asc nulls first`,
     );
     expect(last.toSql().text).toBe(
-      `select ${ALL} from "public"."scores" order by "note" desc nulls last`,
+      `select ${ALL} from "public"."scores" order by "scores"."note" desc nulls last`,
     );
     expect(scores.orderBy((s) => s.note.asc({})).toSql().text).toBe(
-      `select ${ALL} from "public"."scores" order by "note" asc`,
+      `select ${ALL} from "public"."scores" order by "scores"."note" asc`,
     );
   });
 
@@ -83,7 +83,7 @@ describe("orderBy", () => {
         .orderBy((o) => [o.rank.desc(), o.rank])
         .toSql().text,
     ).toBe(
-      'select "Odd Rank" as "rank" from "public"."Odd Table" order by "Odd Rank" desc, "Odd Rank"',
+      'select "Odd Rank" as "rank" from "public"."Odd Table" order by "Odd Table"."Odd Rank" desc, "Odd Table"."Odd Rank"',
     );
   });
 
@@ -94,14 +94,16 @@ describe("orderBy", () => {
       .orderBy((s) => s.id.desc())
       .where((s) => s.points.gt(1));
     expect(query.toSql()).toStrictEqual({
-      text: `select ${ALL} from "public"."scores" where "points" > $1 order by "id" desc limit $2 offset $3`,
+      text: `select ${ALL} from "public"."scores" where "points" > $1 order by "scores"."id" desc limit $2 offset $3`,
       params: [1, 2, 4],
     });
   });
 
   it("keeps the select", () => {
     const query = scores.select((s) => ({ p: s.points })).orderBy((s) => s.id);
-    expect(query.toSql().text).toBe('select "points" as "p" from "public"."scores" order by "id"');
+    expect(query.toSql().text).toBe(
+      'select "points" as "p" from "public"."scores" order by "scores"."id"',
+    );
   });
 
   it("refuses an empty list, an unknown option, and a bad nulls value", () => {

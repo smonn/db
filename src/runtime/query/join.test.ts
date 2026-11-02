@@ -73,7 +73,7 @@ describe("innerJoin", () => {
       .where((u) => sql.expr<boolean>`${u.email} <> ''`)
       .orderBy((u) => u.id.desc());
     expect(base.toSql().text).toBe(
-      `select "id", "email", "handle", "mood", "token" from "public"."users" where "email" <> '' order by "id" desc`,
+      `select "id", "email", "handle", "mood", "token" from "public"."users" where "email" <> '' order by "users"."id" desc`,
     );
     const joined = base
       .innerJoin(posts, (u, p) => p.authorId.eq(u.id))

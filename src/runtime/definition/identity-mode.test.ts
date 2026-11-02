@@ -17,6 +17,18 @@ describe("a column's identity mode", () => {
     expect(t.columns.implied.state.identity).toBe("by default");
   });
 
+  it("includes the default when the supplied mode can be undefined", () => {
+    const t = defineTable((c) => {
+      const identity = (mode: "always" | undefined) => c.integer().identity(mode);
+      return { id: identity(undefined) };
+    });
+
+    expectTypeOf<(typeof t.columns.id)["~types"]["identityMode"]>().toEqualTypeOf<
+      "always" | "by default"
+    >();
+    expect(t.columns.id.state.identity).toBe("by default");
+  });
+
   it("is none for a column without an identity", () => {
     const t = defineTable((c) => ({
       id: c.integer().primaryKey(),

@@ -1,4 +1,5 @@
 import type { Row, SqlClass, Table } from "../definition/index.ts";
+import { quoteIdentifier } from "../internal/index.ts";
 import { fragment, identifier, join, type Fragment, type RenderedSql } from "../sql/index.ts";
 import { aliasFor } from "./alias.ts";
 import { withDecoder } from "./codecs.ts";
@@ -96,7 +97,9 @@ function pickedOutputs(table: Table, names: readonly string[]): Output[] {
   if (names.length === 0) throw new Error("pick needs at least one column");
   for (const name of names) {
     if (!Object.hasOwn(table.columns, name)) {
-      throw new Error(`pick: "${name}" is not a column of "${table.schema}"."${table.name}"`);
+      throw new Error(
+        `pick: ${quoteIdentifier(name)} is not a column of ${quoteIdentifier(table.schema)}.${quoteIdentifier(table.name)}`,
+      );
     }
   }
   return outputsOfTable(table, names);
@@ -111,7 +114,10 @@ function sourceSql({ table, alias }: Source): Fragment {
   return alias === table.name ? name : fragment`${name} as ${identifier(alias)}`;
 }
 
-/** A joined query qualifies every column by its table's alias; a single table's SQL names them bare. */
+/**
+ * A joined query qualifies every column by its table's alias; a single table's SQL names them bare,
+ * apart from its `order by` columns, which an output alias would otherwise capture.
+ */
 function sqlOf(state: State): RenderedSql {
   return renderQualified(state.joins.length > 0, () => {
     const columns = join(

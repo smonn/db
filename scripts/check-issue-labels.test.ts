@@ -81,7 +81,7 @@ describe("main", () => {
     expect(posted(run(event(stale), fetched()))).toEqual([]);
   });
 
-  test("skips an issue that closed or lost its ready label since the event", () => {
+  test("does not warn on an issue that closed or lost its ready label since the event", () => {
     const stale = fetched({ labels: labelled("ready-for-agent") });
     expect(posted(run(event(stale), { ...stale, state: "closed" }))).toEqual([]);
     expect(posted(run(event(stale), { ...stale, labels: labelled("needs-triage") }))).toEqual([]);
@@ -123,5 +123,33 @@ describe("needsLabelCheck", () => {
     expect(needsLabelCheck(event(fetched({ state: "closed" })))).toBe(false);
     expect(needsLabelCheck(event(fetched({ user: { type: "Bot" } })))).toBe(false);
     expect(needsLabelCheck(event(fetched({ labels: labelled("needs-triage") })))).toBe(false);
+  });
+
+  test("accepts an event that removed a ready label", () => {
+    const unready = fetched({ labels: labelled("priority:low", "bug") });
+    for (const ready of ["ready-for-agent", "ready-for-human"]) {
+      expect(needsLabelCheck(event(unready, "unlabeled", ready))).toBe(true);
+    }
+  });
+
+  test("skips a removal of another label, and a ready label added to an unready issue", () => {
+    const unready = fetched({ labels: labelled("priority:low", "bug") });
+    expect(needsLabelCheck(event(unready, "unlabeled", "bug"))).toBe(false);
+    expect(needsLabelCheck(event(unready, "labeled", "ready-for-agent"))).toBe(false);
+  });
+
+  test("skips an unlabeled event that names no label", () => {
+    const unready = fetched({ labels: labelled("priority:low", "bug") });
+    expect(needsLabelCheck(event(unready, "unlabeled"))).toBe(false);
+  });
+
+  test("skips a closed or bot-opened issue whose ready label was removed", () => {
+    const unready = fetched({ labels: labelled("priority:low", "bug") });
+    expect(
+      needsLabelCheck(event({ ...unready, state: "closed" }, "unlabeled", "ready-for-agent")),
+    ).toBe(false);
+    expect(
+      needsLabelCheck(event({ ...unready, user: { type: "Bot" } }, "unlabeled", "ready-for-agent")),
+    ).toBe(false);
   });
 });

@@ -1,10 +1,11 @@
 import type { Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import { isTextArray } from "./array-text.ts";
-import { decoderFor, encodeValue, withDecoder, type Decode } from "./codecs.ts";
+import { decoderFor, encodeAssigned, withDecoder, type Decode } from "./codecs.ts";
 import { isExpr, isOrdering, type Expr } from "./expr.ts";
 import {
   columnSql,
+  qualifiedColumn,
   refsOf,
   sourceOf,
   type ColumnSource,
@@ -27,7 +28,7 @@ export function has(row: Record<string, unknown>, name: string): boolean {
 
 /** An Expr inlines and runs no codec; any other value binds through the column's codec. */
 export function cellOf(table: Table, name: string, value: unknown): Fragment {
-  return isExpr(value) ? value["~expr"]() : fragment`${encodeValue(table, name, value)}`;
+  return isExpr(value) ? value["~expr"]() : fragment`${encodeAssigned(table, name, value)}`;
 }
 
 /** Throws for a key that is no column of `table`. */
@@ -47,7 +48,7 @@ export function sortKeyOf(term: Orderable, index: number): () => Fragment {
   if (source === undefined) {
     throw new Error(`orderBy: term ${index + 1} is no column, Expr, or ordering`);
   }
-  return () => columnSql(source);
+  return () => qualifiedColumn(source);
 }
 
 /** The outputs of a `select` or `returning` callback's result, in its key order. */
