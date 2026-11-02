@@ -2,7 +2,7 @@ import type { Table } from "../definition/index.ts";
 import { fragment, identifier, join, type Fragment } from "../sql/index.ts";
 import { isTextArray } from "./array-text.ts";
 import { decoderFor, encodeAssigned, withDecoder, type Decode } from "./codecs.ts";
-import { isExpr, isOrdering, type Expr } from "./expr.ts";
+import { isExpr, isOrdering, termOf, type Expr } from "./expr.ts";
 import {
   columnSql,
   qualifiedColumn,
@@ -28,7 +28,7 @@ export function has(row: Record<string, unknown>, name: string): boolean {
 
 /** An Expr inlines and runs no codec; any other value binds through the column's codec. */
 export function cellOf(table: Table, name: string, value: unknown): Fragment {
-  return isExpr(value) ? value["~expr"]() : fragment`${encodeAssigned(table, name, value)}`;
+  return isExpr(value) ? termOf(value) : fragment`${encodeAssigned(table, name, value)}`;
 }
 
 /** Throws for a key that is no column of `table`. */
@@ -81,7 +81,7 @@ export function decodeOutputs(outputs: readonly Output[]): Decode | undefined {
  * the driver can't be relied on to parse it (ADR-0023). An Expr always takes its alias.
  */
 export function renderOutput([alias, source]: Output): Fragment {
-  if (isExpr(source)) return fragment`${source["~expr"]()} as ${identifier(alias)}`;
+  if (isExpr(source)) return fragment`${termOf(source)} as ${identifier(alias)}`;
   const { table, key } = source;
   const name = table.columnNames[key] ?? key;
   const column = table.columns[key];
