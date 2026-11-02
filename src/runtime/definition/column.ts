@@ -191,11 +191,19 @@ export type Column<V, F extends ColumnFlags = FreshFlags> = {
       } & (F["int"] extends true
         ? {
             /** Generates the value from a sequence. */
-            identity<Mode extends Identity = "by default">(
-              generated?: Mode,
+            identity<Mode extends Identity | undefined = undefined>(
+              ...args: [] | [generated: Mode]
             ): Column<
               V,
-              WithFlags<F, { notNull: true; generated: true; identityMode: Mode; fresh: false }>
+              WithFlags<
+                F,
+                {
+                  notNull: true;
+                  generated: true;
+                  identityMode: Mode extends undefined ? "by default" : Mode;
+                  fresh: false;
+                }
+              >
             >;
           }
         : unknown));
