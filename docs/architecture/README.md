@@ -144,7 +144,9 @@ The layer map is design intent: when code breaks it, fix the code, and change th
 
 Each folder under a group is a module: its `index.ts` is its only entry point, and any other module imports it through that file. To add a module, create the folder with an `index.ts` of named re-exports, then run `pnpm check`. The rules match folders by pattern, so a new module needs no config change.
 
-CI enforces the boundaries. `scripts/check-imports.ts` holds the dependency-cruiser rules, each with a comment saying what it guards; `.oxlintrc.json` bans the Node globals; and `scripts/check-index-exports.ts` keeps each `index.ts` to named re-exports and checks what the group indexes export.
+A file in `scripts/` follows the same rule: it imports a `src/` module only through that module's `index.ts`. A script test may also import a `*.test-helper.ts` file from `src/`.
+
+CI enforces the boundaries. `scripts/check-imports.ts` holds the dependency-cruiser rules for `src/` and `scripts/`, each with a comment saying what it guards; `.oxlintrc.json` bans the Node globals; and `scripts/check-index-exports.ts` keeps each `index.ts` to named re-exports and checks what the group indexes export.
 
 ## Package entry points
 
