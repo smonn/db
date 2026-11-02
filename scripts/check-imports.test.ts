@@ -13,6 +13,31 @@ describe("checkImports", () => {
     expect(await rulesBroken({ "src/.keep": "" })).toEqual(["scanned 0 modules"]);
   });
 
+  test("resolves a package that has only an exports field", async () => {
+    expect(
+      await rulesBroken({
+        "src/dev/diff/index.ts": "export type E = 1;",
+        "node_modules/exports-only/package.json": JSON.stringify({
+          name: "exports-only",
+          exports: {
+            ".": {
+              import: { types: "./dist/index.d.ts", default: "./dist/index.js" },
+              require: { default: "./index.cjs" },
+            },
+          },
+        }),
+        "node_modules/exports-only/dist/index.js": "export default 1;",
+        "scripts/tool.ts": 'import value from "exports-only";\nexport { value };',
+      }),
+    ).toEqual([]);
+  });
+
+  test("fails when only scripts hold modules", async () => {
+    expect(
+      await rulesBroken({ "src/.keep": "", "scripts/tool.ts": "export const t = 1;" }),
+    ).toEqual(["scanned 0 modules"]);
+  });
+
   test("passes a layout that follows every rule", async () => {
     expect(
       await rulesBroken({
