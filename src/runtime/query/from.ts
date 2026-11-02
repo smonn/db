@@ -3,7 +3,7 @@ import { quoteIdentifier } from "../internal/index.ts";
 import { fragment, identifier, join, type Fragment, type RenderedSql } from "../sql/index.ts";
 import { aliasFor } from "./alias.ts";
 import { withDecoder } from "./codecs.ts";
-import { isExpr, type Expr } from "./expr.ts";
+import { isExpr, termOf, type Expr } from "./expr.ts";
 import type { Joins } from "./join.ts";
 import { decodeOutputs, outputsOf, renderOutput, sortKeyOf, type Output } from "./clauses.ts";
 import {
@@ -125,8 +125,7 @@ function sqlOf(state: State): RenderedSql {
       fragment`, `,
     );
     const joins = state.joins.map(
-      ({ keyword, on, ...source }) =>
-        fragment` ${keyword} ${sourceSql(source)} on ${on["~expr"]()}`,
+      ({ keyword, on, ...source }) => fragment` ${keyword} ${sourceSql(source)} on ${termOf(on)}`,
     );
     const filter = state.predicate ? fragment` where ${state.predicate["~expr"]()}` : fragment``;
     const order = state.orderings

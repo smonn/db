@@ -43,7 +43,7 @@ export function assertColumns(table: Table, keys: readonly string[]): void {
 /** What renders one `orderBy` term; throws for a term that is no column, Expr, or ordering. */
 export function sortKeyOf(term: Orderable, index: number): () => Fragment {
   if (isOrdering(term)) return () => term["~ordering"]();
-  if (isExpr(term)) return () => termOf(term);
+  if (isExpr(term)) return () => term["~expr"]();
   const source = sourceOf(term);
   if (source === undefined) {
     throw new Error(`orderBy: term ${index + 1} is no column, Expr, or ordering`);

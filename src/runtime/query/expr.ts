@@ -65,7 +65,7 @@ export type Expr<V = unknown> = Sortable<V> & {
 
 const exprs = new WeakSet<object>();
 
-/** A hand-written fragment may hold any operator, so a term of `and` or `or` wraps it in parentheses. */
+/** A hand-written fragment may hold any operator, so what follows or surrounds it wraps it in parentheses. */
 const handWritten = new WeakSet<object>();
 
 export function expr<V>(render: () => Fragment): Expr<V> {
@@ -88,7 +88,7 @@ export function isExpr(value: unknown): value is Expr {
   return typeof value === "object" && value !== null && exprs.has(value);
 }
 
-/** `term` as one operand: an `and` or `or` term, a sort key, or a cell of a select or an assignment. */
+/** `term` as one operand: an `and` or `or` term, a join's `on`, or a cell of a select or an assignment. */
 export function termOf(term: Expr): Fragment {
   return handWritten.has(term) ? fragment`(${term["~expr"]()})` : term["~expr"]();
 }

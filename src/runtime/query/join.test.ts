@@ -92,7 +92,7 @@ describe("innerJoin", () => {
       .limit(5)
       .offset(10);
     expect(query.toSql()).toStrictEqual({
-      text: 'select "posts"."title", (1) as "n" from "public"."users" inner join "public"."posts" on "posts"."author_id" = "users"."id" where "users"."id" > $1 order by "posts"."id" asc, (2) limit $2 offset $3',
+      text: 'select "posts"."title", (1) as "n" from "public"."users" inner join "public"."posts" on "posts"."author_id" = "users"."id" where "users"."id" > $1 order by "posts"."id" asc, 2 limit $2 offset $3',
       params: [1, 5, 10],
     });
   });

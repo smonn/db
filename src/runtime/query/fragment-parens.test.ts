@@ -48,17 +48,37 @@ describe("a sql.expr fragment renders as one parenthesised term", () => {
     expect(await client.all(query)).toStrictEqual([{ pair: "(1,20)" }]);
   });
 
-  it("wraps a fragment in an ordering without nulls placement too", () => {
+  it("wraps a fragment that asc adds to", () => {
     const query = from(pairs)
       .pick("id")
-      .orderBy((p) => [
-        sql.expr`${p.id} is null or ${p.other} = 1`,
-        sql.expr`${p.id} + 1`.asc({ nulls: "first" }),
-      ]);
+      .orderBy((p) => sql.expr`${p.id} + 1`.asc({ nulls: "first" }));
 
     expect(query.toSql().text).toBe(
-      'select "id" from "public"."pairs" order by ("pairs"."id" is null or "pairs"."other" = 1), ("pairs"."id" + 1) asc nulls first',
+      'select "id" from "public"."pairs" order by ("pairs"."id" + 1) asc nulls first',
     );
+  });
+
+  it("leaves a bare orderBy term alone, which may name its own direction", async () => {
+    const query = from(pairs)
+      .pick("id")
+      .orderBy((p) => [sql.expr`${p.other} using >`, sql.expr`${p.id} desc`]);
+
+    expect(query.toSql().text).toBe(
+      'select "id" from "public"."pairs" order by "pairs"."other" using >, "pairs"."id" desc',
+    );
+    expect(await client.all(query)).toStrictEqual([{ id: 3 }, { id: 1 }, { id: 2 }]);
+  });
+
+  it("wraps a fragment in a join's on, so a comma can't add a table", async () => {
+    const joined = from(pairs)
+      .innerJoin(pairs, (a, b) => sql.expr`${a.id} = ${b.id}`)
+      .select((a) => ({ id: a.id }));
+    const extraTable = from(pairs)
+      .innerJoin(pairs, (a, b) => sql.expr`${a.id} = ${b.id}, public.pairs as extra`)
+      .select((a) => ({ id: a.id }));
+
+    expect(joined.toSql().text).toContain('on ("pairs"."id" = "pairs_2"."id")');
+    await expect(client.all(extraTable)).rejects.toThrow(/syntax error/u);
   });
 
   it("wraps a fragment in returning", () => {
@@ -115,10 +135,10 @@ describe("a sql.expr fragment renders as one parenthesised term", () => {
   it("leaves a ref and a comparison unwrapped", () => {
     const query = from(pairs)
       .select((p) => ({ id: p.id, same: p.id.eq(p.other) }))
-      .orderBy((p) => [p.id.eq(1), p.other.desc()]);
+      .orderBy((p) => [p.id.eq(1), p.id.eq(2).desc(), p.other.desc()]);
 
     expect(query.toSql().text).toBe(
-      'select "id", "id" = "other" as "same" from "public"."pairs" order by "pairs"."id" = $1, "pairs"."other" desc',
+      'select "id", "id" = "other" as "same" from "public"."pairs" order by "pairs"."id" = $1, "pairs"."id" = $2 desc, "pairs"."other" desc',
     );
   });
 });
