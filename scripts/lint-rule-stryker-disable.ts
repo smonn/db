@@ -16,7 +16,9 @@ const PLACEMENT_MESSAGE =
 function placementProblem(comment: Comment, text: string): string | undefined {
   const before = text.slice(text.lastIndexOf("\n", comment.start) + 1, comment.start).trim();
   const next = (text.slice(comment.end).split("\n", 2)[1] ?? "").trim();
-  if (before !== "" || next === "" || next.startsWith("//")) return PLACEMENT_MESSAGE;
+  if (before !== "" || next === "" || next.startsWith("//") || next.startsWith("}")) {
+    return PLACEMENT_MESSAGE;
+  }
   return undefined;
 }
 
