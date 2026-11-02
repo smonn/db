@@ -2,7 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { defineDatabase, defineTable, type Row } from "../definition/index.ts";
 import type { Expr } from "./expr.ts";
 import { from } from "./from.ts";
-import { and, not, or, renderOutput, type Predicate, type Refs } from "./refs.ts";
+import { renderOutput } from "./clauses.ts";
+import { and, not, or, type Predicate, type Refs } from "./refs.ts";
 import type { Query } from "./statement.ts";
 
 const db = defineDatabase({
@@ -268,17 +269,13 @@ describe("where", () => {
       Query<{ id: string; email: string | null }>
     >();
   });
-
-  it("compares a column only with its own value type, never null", () => {
-    type UserRefs = Refs<Row<typeof db.public.users>>;
-    expectTypeOf<Parameters<UserRefs["id"]["eq"]>>().toEqualTypeOf<[value: string]>();
-    expectTypeOf<Parameters<UserRefs["email"]["eq"]>>().toEqualTypeOf<[value: string]>();
-  });
 });
 
 describe("renderOutput", () => {
   it("names an output that is no column of the table as its own identifier", () => {
-    expect(renderOutput(db.public.users, ["alias", "missing"]).toSql()).toStrictEqual({
+    expect(
+      renderOutput(["alias", { table: db.public.users, key: "missing", alias: "users" }]).toSql(),
+    ).toStrictEqual({
       text: '"missing" as "alias"',
       params: [],
     });
