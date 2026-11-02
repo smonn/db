@@ -1,3 +1,4 @@
+import type { ScalarClass } from "./sql-class.ts";
 import type { Enum } from "./enum.ts";
 
 /** What a domain is over: a factory type or an enum, never an array or another domain. */
@@ -9,10 +10,14 @@ export type DomainBase = {
 
 /**
  * A domain without its name or schema, which sits in a schema's object beside its tables and takes
- * its name from the key. `V` is its base's TypeScript value, and `N` is true when it is NOT NULL,
- * which makes each column of it non-null in `Row`.
+ * its name from the key. `V` is its base's TypeScript value, `N` is true when it is NOT NULL,
+ * which makes each column of it non-null in `Row`, and `S` is its base's SQL type class.
  */
-export type Domain<V = unknown, N extends boolean = boolean> = {
+export type Domain<
+  V = unknown,
+  N extends boolean = boolean,
+  S extends ScalarClass = ScalarClass,
+> = {
   readonly kind: "domain";
   readonly base: DomainBase;
   readonly notNull: boolean;
@@ -24,8 +29,8 @@ export type Domain<V = unknown, N extends boolean = boolean> = {
   readonly checks: Readonly<Record<string, string>>;
   /** The SQL name the domain had before a rename, for generate to turn into a `RENAME`. */
   readonly renamedFrom: string | undefined;
-  /** Type-only: the value a column of the domain holds, and whether the domain is NOT NULL. */
-  readonly "~types": { readonly value: V; readonly notNull: N };
+  /** Type-only: the value a column of the domain holds, whether it is NOT NULL, and its SQL type class. */
+  readonly "~types": { readonly value: V; readonly notNull: N; readonly sqlClass: S };
 };
 
 export function isDomain(value: unknown): value is Domain {

@@ -119,6 +119,14 @@ describe("codec through the query layer", () => {
     expectTypeOf(picked).toEqualTypeOf<{ at: Day; id: number }[]>();
   });
 
+  it("decodes the columns pick names, each under its own key", async () => {
+    await client.run(insert(db.public.events).values({ id: 1, happened: { iso: "2024-05-06" } }));
+
+    const picked = await client.all(from(db.public.events).pick("happened", "due"));
+    expect(picked).toStrictEqual([{ happened: { iso: "2024-05-06" }, due: null }]);
+    expectTypeOf(picked).toEqualTypeOf<{ happened: Day; due: Day | null }[]>();
+  });
+
   it("encodes a predicate value compared against a codec'd column", async () => {
     await client.run(
       insert(db.public.events).values([
