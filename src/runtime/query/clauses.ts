@@ -16,8 +16,6 @@ import {
 } from "./refs.ts";
 import { brand, type Query } from "./statement.ts";
 
-/** The parts of a statement that `from`, `insert`, `update`, and `deleteFrom` share. */
-
 /** An output reads a column or an Expr. */
 export type Output = readonly [alias: string, source: ColumnSource | Expr];
 
