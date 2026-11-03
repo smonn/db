@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.3.0](https://github.com/smonn/db/compare/v0.2.0...v0.3.0) (2026-11-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* **queries:** `values` takes one row. Pass an array to `valuesMany`.
+* **definition:** `Column` takes one flags object after `V`, not eight positional booleans, and the flags type isn't exported, so replace a spelled-out `Column<string, true>` with an inferred type. `defineDomain`'s second type parameter is now the SQL class, not `Int`.
+* **queries:** Write `Refs<Row<typeof t>>` for `Refs<typeof t>`, and likewise for `SelectQuery` and `InsertStatement`.
+
+### Features
+
+* **definition:** carry a SQL type class on every column ([#731](https://github.com/smonn/db/issues/731)) ([9fa9593](https://github.com/smonn/db/commit/9fa959379ae7845c06d237f2f41468d0a70c7da4))
+* **definition:** carry the identity mode on every column ([#734](https://github.com/smonn/db/issues/734)) ([9fa9593](https://github.com/smonn/db/commit/9fa959379ae7845c06d237f2f41468d0a70c7da4))
+* **queries:** add update with set, where, and allRows ([#742](https://github.com/smonn/db/issues/742)) ([183834d](https://github.com/smonn/db/commit/183834d0e01b5398c4d035a9e4d525060bb89edf))
+* **queries:** delete rows with where or allRows ([#740](https://github.com/smonn/db/issues/740)) ([183834d](https://github.com/smonn/db/commit/183834d0e01b5398c4d035a9e4d525060bb89edf))
+* **queries:** join tables with innerJoin and leftJoin over positional refs ([#743](https://github.com/smonn/db/issues/743)) ([183834d](https://github.com/smonn/db/commit/183834d0e01b5398c4d035a9e4d525060bb89edf))
+* **queries:** match sets, patterns, and array elements in a where ([#739](https://github.com/smonn/db/issues/739)) ([183834d](https://github.com/smonn/db/commit/183834d0e01b5398c4d035a9e4d525060bb89edf))
+* **queries:** order and page a select ([#736](https://github.com/smonn/db/issues/736)) ([9fa9593](https://github.com/smonn/db/commit/9fa959379ae7845c06d237f2f41468d0a70c7da4))
+* **queries:** put sql.expr fragments in where, select, orderBy, and values ([#741](https://github.com/smonn/db/issues/741)) ([183834d](https://github.com/smonn/db/commit/183834d0e01b5398c4d035a9e4d525060bb89edf))
+* **queries:** resolve an insert's unique key conflict with onConflict ([#744](https://github.com/smonn/db/issues/744)) ([183834d](https://github.com/smonn/db/commit/183834d0e01b5398c4d035a9e4d525060bb89edf))
+* **queries:** select plain columns by name with pick ([#737](https://github.com/smonn/db/issues/737)) ([9fa9593](https://github.com/smonn/db/commit/9fa959379ae7845c06d237f2f41468d0a70c7da4))
+* **queries:** split insert values into values and valuesMany ([#738](https://github.com/smonn/db/issues/738)) ([183834d](https://github.com/smonn/db/commit/183834d0e01b5398c4d035a9e4d525060bb89edf))
+* **queries:** type the select and insert builders over their row ([#727](https://github.com/smonn/db/issues/727)) ([9fa9593](https://github.com/smonn/db/commit/9fa959379ae7845c06d237f2f41468d0a70c7da4))
+
+
+### Bug Fixes
+
+* **queries:** let an insert skip a NOT NULL column with a default or identity ([#688](https://github.com/smonn/db/issues/688)) ([0c4bb22](https://github.com/smonn/db/commit/0c4bb22679511694183ef5e7745aedf377fd9dc5))
+* **queries:** refuse a table defineDatabase never named ([#730](https://github.com/smonn/db/issues/730)) ([9fa9593](https://github.com/smonn/db/commit/9fa959379ae7845c06d237f2f41468d0a70c7da4))
+* **queries:** write a json domain column's inserted value as JSON ([#721](https://github.com/smonn/db/issues/721)) ([eb8eddc](https://github.com/smonn/db/commit/eb8eddc64143f25eef205beb20a490cd22553f31))
+
+
+### Code Refactoring
+
+* **definition:** take Column's flags as one named object ([#725](https://github.com/smonn/db/issues/725)) ([9fa9593](https://github.com/smonn/db/commit/9fa959379ae7845c06d237f2f41468d0a70c7da4))
+
 ## [0.2.0](https://github.com/smonn/db/compare/v0.1.0...v0.2.0) (2026-10-28)
 
 
