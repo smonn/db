@@ -8,6 +8,7 @@
  * on `main` or in an open PR, and nothing else catches a clash before the second merge).
  *
  * A closing keyword in `PR_BODY` must not name an issue outside `smonn/db` (`check-closing-keywords.ts`).
+ * A title that adds a release note must fit what the PR changes (`check-release-note.ts`).
  *
  * Run with `PR_TITLE` and `PR_BRANCH` set, as `pnpm check:pr`; CI runs it in the Metadata job (`.github/workflows/pr.yml`).
  * Set `PR_DIFF_BASE` to a git revision (CI uses `HEAD^1`, the base side of the merge commit) to
@@ -21,6 +22,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkClosingKeywords } from "./check-closing-keywords.ts";
 import { checkAdrClash, readOpenPrAdds, type OpenPrAdd } from "./check-adr-clash.ts";
+import { checkReleaseNote, readChangedFiles, wantsChangedFiles } from "./check-release-note.ts";
 
 const titlePattern =
   /^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9-]+\))?!?: \S/u;
@@ -121,15 +123,32 @@ function report(problems: readonly string[]): void {
   if (problems.length > 0) process.exitCode = 1;
 }
 
+type Readers = {
+  readAdrs: (base: string) => ChangedAdr[];
+  readOpenAdds: (exclude: string) => OpenPrAdd[];
+  readFiles: (base: string) => string[];
+};
+
+function releaseNoteProblems(
+  title: string,
+  base: string | undefined,
+  readFiles: (base: string) => string[],
+): string[] {
+  const files = base !== undefined && wantsChangedFiles(title) ? readFiles(base) : undefined;
+  return checkReleaseNote(title, files);
+}
+
 function allProblems(
   env: NodeJS.ProcessEnv,
   { title, branch }: { title: string; branch: string },
-  readAdrs: (base: string) => ChangedAdr[],
-  readOpenAdds: (exclude: string) => OpenPrAdd[],
+  { readAdrs, readOpenAdds, readFiles }: Readers,
 ): string[] {
   const { PR_DIFF_BASE: base, PR_NUMBER: number, PR_BODY: body } = env;
   const adrs = base === undefined ? undefined : readAdrs(base);
-  const problems = checkPr(title, branch, adrs);
+  const problems = [
+    ...checkPr(title, branch, adrs),
+    ...releaseNoteProblems(title, base, readFiles),
+  ];
   if (body !== undefined) problems.push(...checkClosingKeywords(body));
   if (adrs !== undefined && number !== undefined) {
     problems.push(...clashProblems(adrs, number, readOpenAdds));
@@ -137,18 +156,24 @@ function allProblems(
   return problems;
 }
 
+function readIdentity(env: NodeJS.ProcessEnv): { title: string; branch: string } | undefined {
+  const { PR_TITLE: title, PR_BRANCH: branch } = env;
+  return title === undefined || branch === undefined ? undefined : { title, branch };
+}
+
 export function main(
   env: NodeJS.ProcessEnv = process.env,
   readAdrs: (base: string) => ChangedAdr[] = readChangedAdrs,
   readOpenAdds: (exclude: string) => OpenPrAdd[] = readOpenPrAdds,
+  readFiles: (base: string) => string[] = readChangedFiles,
 ): void {
-  const { PR_TITLE: title, PR_BRANCH: branch } = env;
-  if (title === undefined || branch === undefined) {
+  const identity = readIdentity(env);
+  if (identity === undefined) {
     console.error("Set PR_TITLE and PR_BRANCH");
     process.exitCode = 1;
     return;
   }
-  report(allProblems(env, { title, branch }, readAdrs, readOpenAdds));
+  report(allProblems(env, identity, { readAdrs, readOpenAdds, readFiles }));
 }
 
 if (import.meta.main) main();

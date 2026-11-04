@@ -173,6 +173,41 @@ describe("main", () => {
     expect(process.exitCode).toBe(1);
   });
 
+  test("checks a release note against the files changed since PR_DIFF_BASE", () => {
+    const readFiles = vi.fn<(base: string) => string[]>(() => ["scripts/a.ts"]);
+    main(
+      { PR_TITLE: "feat(lint): x", PR_BRANCH: "chore/x", PR_DIFF_BASE: "HEAD^1" },
+      () => [],
+      () => [],
+      readFiles,
+    );
+    expect(readFiles).toHaveBeenCalledWith("HEAD^1");
+    expect(console.error).toHaveBeenCalledWith(
+      'PR title "feat(lint): x" adds a release note, but the PR changes no shipped file: use chore, docs, test, or ci',
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  test("reads no diff for a title that adds no note", () => {
+    const readFiles = vi.fn<(base: string) => string[]>(() => []);
+    main(
+      { PR_TITLE: "chore(deps): x", PR_BRANCH: "chore/x", PR_DIFF_BASE: "HEAD^1" },
+      () => [],
+      () => [],
+      readFiles,
+    );
+    expect(readFiles).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  test("refuses feat(tooling) with no PR_DIFF_BASE", () => {
+    main({ PR_TITLE: "feat(tooling): x", PR_BRANCH: "chore/x" });
+    expect(console.error).toHaveBeenCalledWith(
+      'PR title "feat(tooling): x" adds a release note for tooling: use chore(tooling)',
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
   test("checks the ADRs changed since PR_DIFF_BASE", () => {
     const readAdrs = vi.fn<(base: string) => ChangedAdr[]>(() => [
       { file: "docs/adr/0021-x.md", status: "accepted", added: true },

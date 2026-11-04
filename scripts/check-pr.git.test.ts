@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isolateGitEnv } from "../src/dev/cli/git-env.test-helper.ts";
 import { readChangedAdrs } from "./check-pr.ts";
+import { readChangedFiles } from "./check-release-note.ts";
 
 // Real git against a temp repo; any other command (such as gh) is refused.
 vi.mock("node:child_process", async (importOriginal) => {
@@ -68,6 +69,25 @@ describe("readChangedAdrs against a real git repository", () => {
     expect(readChangedAdrs(base, dir)).toEqual([
       { file: "docs/adr/0001-first.md", status: "accepted", added: false, baseStatus: "proposed" },
       { file: "docs/adr/0002-second.md", status: "proposed", added: true },
+    ]);
+  });
+
+  test("readChangedFiles lists added, deleted, and both sides of a renamed file", () => {
+    writeFileSync(join(dir, "gone.ts"), "export const gone = 1;\n");
+    writeFileSync(join(dir, "moved.ts"), "export const moved = 1;\n");
+    const base = commit("base");
+    expect(readChangedFiles(base, dir)).toEqual([]);
+
+    rmSync(join(dir, "gone.ts"));
+    renameSync(join(dir, "moved.ts"), join(dir, "renamed.ts"));
+    writeFileSync(join(dir, "added.ts"), "export const added = 1;\n");
+    commit("change");
+
+    expect(readChangedFiles(base, dir).toSorted()).toEqual([
+      "added.ts",
+      "gone.ts",
+      "moved.ts",
+      "renamed.ts",
     ]);
   });
 });
