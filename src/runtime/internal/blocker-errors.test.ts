@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { explainBlockerError, type BlockerSource } from "./blocker-errors.ts";
+import {
+  explainBlockerError,
+  UnmodeledBlockerError,
+  type BlockerSource,
+} from "./blocker-errors.ts";
 
 function postgresError(code: string, message: string, detail?: string): Error {
   return Object.assign(new Error(message), { code, detail });
@@ -26,6 +30,7 @@ describe("explainBlockerError", () => {
       "cannot drop table t:\n  view v depends on table t\n  rule r depends on table t\nGenerate never uses CASCADE, so another object that depends on what it changes blocks it. Hand edit the Current migration to drop or change that object.",
     );
     expect(mapped).toHaveProperty("cause", error);
+    expect(mapped).toBeInstanceOf(UnmodeledBlockerError);
   });
 
   it("words the hint for a hand edit", () => {

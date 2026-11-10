@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hazardRefusal } from "./hazard-refusal.ts";
+import { HazardNotAcceptedError, hazardRefusal, hazardRefusalError } from "./hazard-refusal.ts";
 
 const sql = [
   'create table "public"."a" (id int);',
@@ -105,5 +105,37 @@ describe("hazardRefusal", () => {
     expect(
       hazardRefusal("-- hazards: none here\ncreate table hazards (n int);\n", []),
     ).toBeUndefined();
+  });
+});
+
+describe("hazardRefusalError", () => {
+  it("is undefined when every kind is named", () => {
+    expect(
+      hazardRefusalError(sql, ["rewrite", "data_loss", "access_exclusive_lock"]),
+    ).toBeUndefined();
+  });
+
+  it("names each missing kind once, in order, with the refusal as its message", () => {
+    const error = hazardRefusalError(sql, ["rewrite"]);
+
+    expect(error).toBeInstanceOf(HazardNotAcceptedError);
+    expect(error).toHaveProperty("kinds", ["data_loss", "access_exclusive_lock"]);
+    expect(error?.message).toBe(hazardRefusal(sql, ["rewrite"]));
+  });
+
+  it("is a plain error when only a typo'd kind remains, which --accept can't fix", () => {
+    const error = hazardRefusalError('-- hazard: dataloss\ndrop table "public"."d";\n', [
+      "data_loss",
+    ]);
+
+    expect(error).not.toBeInstanceOf(HazardNotAcceptedError);
+    expect(error?.message).toMatch(/^unknown Hazard kind "dataloss"/u);
+  });
+
+  it("is a plain error when only a stray Hazard-looking comment remains", () => {
+    const error = hazardRefusalError("create table a (n int);\n-- hazard: data_loss\n", []);
+
+    expect(error).not.toBeInstanceOf(HazardNotAcceptedError);
+    expect(error?.message).toMatch(/looks like a Hazard comment/u);
   });
 });
