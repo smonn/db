@@ -43,9 +43,10 @@ const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
  * Freezes `current.sql` into the next Committed migration, chained onto the tip (ADR-0008), then
  * records it and clears the tracking schema's `current` table in one Dev database transaction and
  * deletes `current.sql`. Holds the Dev lock, and the migrator's lock from before its check on, so a
- * runtime `migrate` waits for it. A `--! no-transaction` header on its first line carries into the Committed
- * file (ADR-0020). Refuses while `current.sql` has a Hazard kind outside `accept`, and unless
- * the Dev database holds `current.sql` as it reads now and every Committed migration before it.
+ * runtime `migrate` waits for it. A `--! no-transaction` header on its first line carries into the
+ * Committed file (ADR-0020). Refuses while `current.sql` has a Hazard kind outside `accept`, and
+ * unless the Dev database holds `current.sql` as it reads now and every Committed migration before
+ * it.
  */
 export function commit(options: CommitOptions): Promise<CommitResult> {
   return withDevLock(options.driver, "commit", (driver) => commitLocked({ ...options, driver }));
