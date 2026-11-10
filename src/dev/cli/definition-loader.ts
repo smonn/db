@@ -13,7 +13,7 @@ export type LoadedDefinition = {
 /**
  * Loads the Definition file at `file` in a fresh Worker, since the ESM cache keeps the first import
  * of a file for good (ADR-0014), and returns once the Worker has ended. Nothing carries between
- * calls.
+ * calls. A failed load rejects with an error whose `files` holds the module graph resolved so far.
  */
 export function loadDefinitionInWorker(file: string): Promise<LoadedDefinition> {
   const worker = new Worker(new URL("./definition-worker.ts", import.meta.url), {

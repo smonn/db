@@ -138,6 +138,19 @@ describe("loadDefinitionInWorker", () => {
     );
   });
 
+  it("keeps the module graph it resolved when the load fails", async () => {
+    await mkdir(join(dir, "new"));
+    await write("new/table.ts", "export const users = ;\n");
+    const file = await write(
+      "definition.ts",
+      `import { users } from "./new/table.ts";\nexport default { public: { users } };\n`,
+    );
+
+    await expect(loadDefinitionInWorker(file)).rejects.toMatchObject({
+      files: [file, join(dir, "new/table.ts")],
+    });
+  });
+
   it("refuses a default export that isn't a Definition", async () => {
     const file = await write("definition.ts", "export default null;\n");
 

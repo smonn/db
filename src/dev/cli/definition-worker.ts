@@ -23,12 +23,17 @@ async function load(file: string): Promise<LoadedDefinition> {
       return resolved;
     },
   });
-  const definition = definitionOf(file, await importNamingFile(file));
-  return {
-    catalog: definitionCatalog(definition),
-    schemas: definitionSchemas(definition),
-    files: [...files],
-  };
+  try {
+    const definition = definitionOf(file, await importNamingFile(file));
+    return {
+      catalog: definitionCatalog(definition),
+      schemas: definitionSchemas(definition),
+      files: [...files],
+    };
+  } catch (error) {
+    // Watch keeps watching a new import that broke, so a fix to it starts the next run.
+    throw error instanceof Error ? Object.assign(error, { files: [...files] }) : error;
+  }
 }
 
 async function importNamingFile(file: string): Promise<unknown> {
