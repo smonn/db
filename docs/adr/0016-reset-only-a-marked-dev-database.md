@@ -15,3 +15,4 @@ Generate and `reset` drop every non-system schema, so they run only in a Databas
 
 - `reset --erase` creates `smonn_db.current`, which marks an existing Database as a Dev database.
 - The runtime migrator (ADR-0007) refuses when `smonn_db.current` holds a row and Committed migrations are pending, because running them on top of an applied Current migration can fail or diverge. With nothing pending it does nothing, so app startup in dev keeps working.
+- Generate no longer drops schemas on a routine run. ADR-0030 catches the Dev database up and keeps its data, and a failed catch-up names `reset`.
