@@ -484,14 +484,14 @@ Run each as `smonndb <command>`, with `--config <path>` to pick a config file ot
 
 | Command                 | What it does                                                                                             |
 | ----------------------- | -------------------------------------------------------------------------------------------------------- |
-| `generate`              | Writes `current.sql` and replays it into the Dev database, resetting that database if behind             |
+| `generate`              | Writes `current.sql` and catches the Dev database up, replaying new files or else resetting it           |
 | `commit <slug>`         | Freezes `current.sql` into the next Committed migration                                                  |
 | `reset [--erase]`       | Rebuilds the Dev database from the migration files; `--erase` also wipes an unmarked, non-empty database |
 | `migrate`               | Applies the pending Committed migrations                                                                 |
 | `verify`                | Checks the Committed migrations' hash chain, with no database                                            |
 | `rebase [--onto <ref>]` | Moves the Committed migrations `<ref>` lacks onto its tip, with no database                              |
 
-Results go to stdout and errors to stderr, as plain text with no colors. `generate` prints the file it wrote, each Hazard with its statement, each rename hint, and whether it reset the Dev database. Exit codes: 0 on success, 1 on a refusal or failure (a missing folder, a held Dev lock, a bad hash chain), 2 on a usage error.
+Results go to stdout and errors to stderr, as plain text with no colors. `generate` prints the file it wrote, each Hazard with its statement, each rename hint, and a line when it replayed files into or reset the Dev database. Exit codes: 0 on success, 1 on a refusal or failure (a missing folder, a held Dev lock, a bad hash chain), 2 on a usage error.
 
 ### Enums and domains
 

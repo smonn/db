@@ -79,15 +79,53 @@ describe("whether generate resets the Dev database", () => {
     expect(result.devDatabase.kind).toBe("none");
   });
 
-  it("resets a Database whose last recorded migration isn't the Committed tip", async () => {
+  it("replays the Committed files after the last recorded one, rather than resetting", async () => {
     const fileSystem = memoryFileSystem();
     await generateInto(fileSystem, one);
     await commitAs(fileSystem, "one");
     await generateInto(fileSystem, two);
     await commitAs(fileSystem, "two");
-    await db.driver.execute("delete from smonn_db.migrations where sequence = 2");
+    await db.driver.execute(
+      "delete from smonn_db.migrations where sequence = 2; alter table public.users drop column b",
+    );
 
     const result = await generateInto(fileSystem, two);
+
+    expect(result.devDatabase).toStrictEqual({
+      kind: "replayed",
+      files: ["000002-two.sql"],
+      hazards: [],
+    });
+  });
+
+  it("resets a Database whose recorded hashes differ from the Committed files'", async () => {
+    const fileSystem = memoryFileSystem();
+    await generateInto(fileSystem, one);
+    await commitAs(fileSystem, "one");
+    await db.driver.execute("update smonn_db.migrations set hash = 'sha256:other'");
+
+    const result = await generateInto(fileSystem, two);
+
+    expect(result.devDatabase.kind).toBe("reset");
+  });
+
+  it("resets a Database whose last recorded migration never finished", async () => {
+    const fileSystem = memoryFileSystem();
+    await generateInto(fileSystem, one);
+    await commitAs(fileSystem, "one");
+    await db.driver.execute("update smonn_db.migrations set status = 'failed'");
+
+    const result = await generateInto(fileSystem, one);
+
+    expect(result.devDatabase.kind).toBe("reset");
+  });
+
+  it("resets a marked Database whose migrations table was dropped by hand", async () => {
+    const fileSystem = memoryFileSystem();
+    await generateInto(fileSystem, empty);
+    await db.driver.execute("drop table smonn_db.migrations");
+
+    const result = await generateInto(fileSystem, empty);
 
     expect(result.devDatabase.kind).toBe("reset");
   });

@@ -179,7 +179,8 @@ async function wipe(tx: Queryable, tracking: TrackingSchema): Promise<void> {
   await tracking.ensureMigrationsTable(tx);
 }
 
-async function replay(filename: string, run: () => Promise<void>): Promise<void> {
+/** Runs `run`, prefixing the message of an error it throws with `filename`. */
+export async function replay(filename: string, run: () => Promise<void>): Promise<void> {
   try {
     await run();
   } catch (error) {

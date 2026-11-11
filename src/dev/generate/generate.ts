@@ -69,11 +69,12 @@ export type GenerateResult = {
 
 /**
  * Diffs the Definition against the Committed migrations, verifies the result in the Shadow
- * database, writes it to `current.sql`, then resets the Dev database and replays the Committed
- * migrations and the Current migration when it has fallen behind them. A hand-edited `current.sql`
- * is verified in the Shadow instead (a leftover difference is a warning), replayed as written and
- * left alone. Holds the Dev lock, so a second run fails at once, and the migrator's lock from the
- * Dev database check on, so a runtime `migrate` waits instead of changing the Database under it.
+ * database, writes it to `current.sql`, then catches the Dev database up when it has fallen behind
+ * the files, replaying only the new ones where it can and resetting otherwise. A hand-edited
+ * `current.sql` is verified in the Shadow instead (a leftover difference is a warning), replayed as
+ * written and left alone. Holds the Dev lock, so a second run fails at once, and the migrator's lock
+ * from the Dev database check on, so a runtime `migrate` waits instead of changing the Database
+ * under it.
  */
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);

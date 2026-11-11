@@ -17,7 +17,7 @@ describe("generateReport", () => {
     ]);
   });
 
-  it("says when there was no diff and the Dev database stayed", () => {
+  it("says when there was no diff, and nothing of a Dev database that stayed", () => {
     expect(
       generateReport(
         {
@@ -29,7 +29,7 @@ describe("generateReport", () => {
         },
         "current.sql",
       ),
-    ).toStrictEqual(["no diff, removed current.sql", "left the Dev database as it was"]);
+    ).toStrictEqual(["no diff, removed current.sql"]);
   });
 
   it("says when a hand-edited file matches what generate would write", () => {
@@ -48,7 +48,33 @@ describe("generateReport", () => {
     ).toStrictEqual([
       "kept hand-edited c.sql, replayed as written; diff to what generate would write:",
       "matches what generate would write",
-      "left the Dev database as it was",
+    ]);
+  });
+});
+
+describe("generateReport replays", () => {
+  it("names the replayed files on one line, then each Hazard they applied", () => {
+    const drop = 'alter table "public"."a" drop column "b";';
+
+    expect(
+      generateReport(
+        {
+          path: "/p/current.sql",
+          sql: "select 1;",
+          devDatabase: {
+            kind: "replayed",
+            files: ["000002-drop-b.sql", "current.sql"],
+            hazards: [{ file: "000002-drop-b.sql", kind: "data_loss", statement: drop }],
+          },
+          hazards: [],
+          hints: [],
+        },
+        "c.sql",
+      ),
+    ).toStrictEqual([
+      "wrote c.sql",
+      "replayed 000002-drop-b.sql, current.sql into the Dev database",
+      `hazard data_loss in 000002-drop-b.sql: ${drop}`,
     ]);
   });
 });
@@ -68,7 +94,7 @@ describe("generateReport hints", () => {
         },
         "c.sql",
       ),
-    ).toStrictEqual(["wrote c.sql", `hint: ${hints[0]}`, "left the Dev database as it was"]);
+    ).toStrictEqual(["wrote c.sql", `hint: ${hints[0]}`]);
   });
 });
 
@@ -106,7 +132,6 @@ describe("generateReport warnings", () => {
     ).toStrictEqual([
       "kept hand-edited c.sql, replayed as written; diff to what generate would write:",
       "-select 1;\n+select 2;",
-      "left the Dev database as it was",
     ]);
   });
 });

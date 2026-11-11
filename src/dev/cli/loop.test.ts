@@ -126,7 +126,7 @@ describe("smonndb", () => {
     expect(await readFile(committed, "utf8")).toContain("-- hazard: data_loss\n");
   });
 
-  it("tells whether generate reset the Dev database, and prints plain text", async () => {
+  it("tells when generate reset the Dev database, and prints plain text", async () => {
     const devConfig = join(project, "dev.config.ts");
     const file = relative(process.cwd(), join(project, "db", "migrations", "current.sql"));
 
@@ -135,7 +135,7 @@ describe("smonndb", () => {
 
     written.mockClear();
     expect(await main(["generate", "--config", devConfig])).toBe(0);
-    expect(stdoutOf()).toBe(`wrote ${file}\nleft the Dev database as it was\n`);
+    expect(stdoutOf()).toBe(`wrote ${file}\n`);
     expect(stdoutOf()).not.toContain("\u001B");
   });
 
