@@ -69,3 +69,14 @@ describe("loadMigrationsFolder", () => {
     expect(await loadMigrationsFolder(file)).toBe(join(dir, "db", "migrations"));
   });
 });
+
+describe("loadProject strict and configPath", () => {
+  it("passes the strict key through and names the config file relative to the working directory", async () => {
+    const file = await writeConfig(", strict: true");
+
+    const project = await loadProject(file);
+
+    expect(project.strict).toBe(true);
+    expect(project.configPath).toBe(relative(process.cwd(), file));
+  });
+});

@@ -8,6 +8,8 @@ export type Config = {
   readonly url: string | undefined;
   /** The schema `migrate` tracks into. Defaults to `smonn_db`. */
   readonly trackingSchema?: string;
+  /** Makes `generate` refuse a hand edit that leaves a difference from the Definition (ADR-0031). Defaults to `false`. */
+  readonly strict?: boolean;
 };
 
 export type LoadedConfig = Config & { readonly url: string };
@@ -17,7 +19,7 @@ export function defineConfig(config: Config): Config {
   return config;
 }
 
-const KEYS = new Set(["definition", "migrations", "url", "trackingSchema"]);
+const KEYS = new Set(["definition", "migrations", "url", "trackingSchema", "strict"]);
 
 /** Checks a config file's default export, naming the file and what is wrong with it. */
 export function parseConfig(value: unknown, file: string): LoadedConfig {
@@ -46,11 +48,26 @@ function readFields(value: unknown, file: string): Omit<Config, "url"> & { reado
   const fields: Record<string, unknown> = { ...value };
   const definition = requiredString(file, fields, "definition");
   const migrations = requiredString(file, fields, "migrations");
-  const { url, trackingSchema } = fields;
-  if (trackingSchema === undefined) return { definition, migrations, url };
-  if (typeof trackingSchema !== "string")
-    throw new Error(`${file}: trackingSchema must be a string`);
-  return { definition, migrations, url, trackingSchema };
+  const { url, trackingSchema, strict } = fields;
+  return {
+    definition,
+    migrations,
+    url,
+    ...trackingSchemaField(file, trackingSchema),
+    ...strictField(file, strict),
+  };
+}
+
+function trackingSchemaField(file: string, value: unknown): Pick<Config, "trackingSchema"> {
+  if (value === undefined) return {};
+  if (typeof value !== "string") throw new Error(`${file}: trackingSchema must be a string`);
+  return { trackingSchema: value };
+}
+
+function strictField(file: string, value: unknown): Pick<Config, "strict"> {
+  if (value === undefined) return {};
+  if (typeof value !== "boolean") throw new Error(`${file}: strict must be true or false`);
+  return { strict: value };
 }
 
 function requiredString(file: string, fields: Record<string, unknown>, key: string): string {

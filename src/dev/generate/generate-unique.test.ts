@@ -56,7 +56,14 @@ function slots(entries: (t: Refs) => readonly Entry[] = () => []) {
 }
 
 const TABLE = "create table public.slots (a text, b text, c text);\n";
-const NOTHING = { path: CURRENT, sql: undefined, reset: true, hazards: [], hints: [] };
+const NOTHING = {
+  path: CURRENT,
+  sql: undefined,
+  file: "kept",
+  devDatabase: { kind: "reset" },
+  hazards: [],
+  hints: [],
+};
 
 describe("generating a multi-column unique constraint", () => {
   it("creates a table with it and verifies the Shadow database matches", async () => {

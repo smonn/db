@@ -51,10 +51,12 @@ export type TrackingSchema = {
   /** The hash `current` holds, or `undefined` when the table is missing or empty. */
   readCurrent(session: Queryable): Promise<string | undefined>;
   clearCurrent(tx: Queryable): Promise<void>;
+  /** Deletes every `migrations` row, so a Dev catch-up can record the Committed chain afresh. */
+  clearMigrations(tx: Queryable): Promise<void>;
   /** Whether the `current` table exists, which marks a Dev database even when it holds no row. */
   hasCurrentTable(session: Queryable): Promise<boolean>;
-  /** The hash of the last recorded migration, or `undefined` when none is recorded or the table is missing. */
-  readTip(session: Queryable): Promise<string | undefined>;
+  /** Whether the `migrations` table exists. */
+  hasMigrationsTable(session: Queryable): Promise<boolean>;
 };
 
 // A Dev database holds the tracking schema's current table, or nothing outside an empty public.
@@ -98,6 +100,7 @@ create table ${schema}.current (hash text not null, applied_at timestamptz not n
 export function trackingSchema(name: string): TrackingSchema {
   const schema = quoteTrackingSchema(name);
   const current = `${schema}.${quoteIdentifier("current")}`;
+  const migrations = `${schema}.${quoteIdentifier("migrations")}`;
 
   const readCurrent = (session: Queryable): Promise<string | undefined> =>
     readHash(session, current, `select hash from ${schema}.current`);
@@ -105,7 +108,7 @@ export function trackingSchema(name: string): TrackingSchema {
   return {
     name,
     currentTable: current,
-    migrationsTable: `${schema}.${quoteIdentifier("migrations")}`,
+    migrationsTable: migrations,
 
     readUnfinished: (session) => readUnfinished(session, schema),
 
@@ -130,14 +133,9 @@ export function trackingSchema(name: string): TrackingSchema {
 
     readCurrent,
     clearCurrent: (tx) => tx.execute(`delete from ${schema}.current`),
+    clearMigrations: (tx) => tx.execute(`delete from ${schema}.migrations`),
     hasCurrentTable: (session) => tableExists(session, current),
-
-    readTip: (session) =>
-      readHash(
-        session,
-        `${schema}.${quoteIdentifier("migrations")}`,
-        `select hash from ${schema}.migrations order by sequence desc limit 1`,
-      ),
+    hasMigrationsTable: (session) => tableExists(session, migrations),
   };
 }
 

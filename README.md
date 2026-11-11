@@ -484,14 +484,14 @@ Run each as `smonndb <command>`, with `--config <path>` to pick a config file ot
 
 | Command                 | What it does                                                                                             |
 | ----------------------- | -------------------------------------------------------------------------------------------------------- |
-| `generate`              | Writes `current.sql` and replays it into the Dev database, resetting that database if behind             |
+| `generate`              | Writes `current.sql` and catches the Dev database up, replaying new files or else diffing it             |
 | `commit <slug>`         | Freezes `current.sql` into the next Committed migration                                                  |
 | `reset [--erase]`       | Rebuilds the Dev database from the migration files; `--erase` also wipes an unmarked, non-empty database |
 | `migrate`               | Applies the pending Committed migrations                                                                 |
 | `verify`                | Checks the Committed migrations' hash chain, with no database                                            |
 | `rebase [--onto <ref>]` | Moves the Committed migrations `<ref>` lacks onto its tip, with no database                              |
 
-Results go to stdout and errors to stderr, as plain text with no colors. `generate` prints the file it wrote, each Hazard with its statement, each rename hint, and whether it reset the Dev database. Exit codes: 0 on success, 1 on a refusal or failure (a missing folder, a held Dev lock, a bad hash chain), 2 on a usage error.
+Results go to stdout and errors to stderr, as plain text with no colors. `generate` prints the file it wrote, each Hazard with its statement, each rename hint, and a line when it replayed files into, diffed, or reset the Dev database. Exit codes: 0 on success, 1 on a refusal or failure (a missing folder, a held Dev lock, a bad hash chain), 2 on a usage error.
 
 ### Enums and domains
 
@@ -648,7 +648,7 @@ Schemas don't rename and take no `name`, so no marker saves a schema whose key c
 
 ### Rebasing a Forked chain
 
-When two branches each commit a Migration on the same tip, `migrate` and `verify` refuse the pair as a Forked chain. Merge the base branch into yours, then run `smonndb rebase`: it renumbers and rehashes each Committed migration the base branch lacks onto the base branch's tip, and leaves every other file as it is. `--onto <ref>` names the base branch, which defaults to the remote's default branch (`origin/HEAD`). It needs no database, does nothing on a straight chain, and can run unattended in CI. `actions/checkout` clones at depth 1 without `origin/HEAD`, so a CI job must fetch the base branch and pass `--onto`. It needs git 2.30 or newer, and refuses while git shows a changed, untracked, or gitignored top-level `.sql` file other than `current.sql`, or a `.sql.tmp` file, so git always holds what it rewrites. Each file is written under a temporary name and then renamed into place. If a run fails or stops partway, run `smonndb rebase` again: it names the files to set aside with `git stash`, and the run after that finishes. A Dev database that applied a moved file no longer matches the files, so run `smonndb reset` afterward.
+When two branches each commit a Migration on the same tip, `migrate` and `verify` refuse the pair as a Forked chain. Merge the base branch into yours, then run `smonndb rebase`: it renumbers and rehashes each Committed migration the base branch lacks onto the base branch's tip, and leaves every other file as it is. `--onto <ref>` names the base branch, which defaults to the remote's default branch (`origin/HEAD`). It needs no database, does nothing on a straight chain, and can run unattended in CI. `actions/checkout` clones at depth 1 without `origin/HEAD`, so a CI job must fetch the base branch and pass `--onto`. It needs git 2.30 or newer, and refuses while git shows a changed, untracked, or gitignored top-level `.sql` file other than `current.sql`, or a `.sql.tmp` file, so git always holds what it rewrites. Each file is written under a temporary name and then renamed into place. If a run fails or stops partway, run `smonndb rebase` again: it names the files to set aside with `git stash`, and the run after that finishes. A Dev database that applied a moved file no longer matches the files, so the next `generate` diffs it to them.
 
 ## Goals
 

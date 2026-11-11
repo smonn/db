@@ -7,7 +7,14 @@ describe("generateReport", () => {
 
     expect(
       generateReport(
-        { path: "/p/current.sql", sql, reset: true, hazards: [], hints: [] },
+        {
+          path: "/p/current.sql",
+          sql,
+          file: "written",
+          devDatabase: { kind: "reset" },
+          hazards: [],
+          hints: [],
+        },
         "current.sql",
       ),
     ).toStrictEqual([
@@ -17,13 +24,52 @@ describe("generateReport", () => {
     ]);
   });
 
-  it("says when there was no diff and the Dev database stayed", () => {
+  it("says when there was no diff, and nothing of a Dev database that stayed", () => {
     expect(
       generateReport(
-        { path: "/p/current.sql", sql: undefined, reset: false, hazards: [], hints: [] },
+        {
+          path: "/p/current.sql",
+          sql: undefined,
+          file: "removed",
+          devDatabase: { kind: "none" },
+          hazards: [],
+          hints: [],
+        },
         "current.sql",
       ),
-    ).toStrictEqual(["no diff, removed current.sql", "left the Dev database as it was"]);
+    ).toStrictEqual(["no diff, removed current.sql"]);
+  });
+
+  it("prints nothing when the file and the Dev database stayed as they were", () => {
+    expect(
+      generateReport(
+        {
+          path: "/p/current.sql",
+          sql: "select 1;",
+          file: "kept",
+          devDatabase: { kind: "none" },
+          hazards: [],
+          hints: [],
+        },
+        "current.sql",
+      ),
+    ).toStrictEqual([]);
+  });
+
+  it("prints no Hazard or hint again for a generated file it kept as it was", () => {
+    expect(
+      generateReport(
+        {
+          path: "/p/current.sql",
+          sql: '-- hazard: data_loss\ndrop table "public"."a";\n',
+          file: "kept",
+          devDatabase: { kind: "none" },
+          hazards: [],
+          hints: ['table "a" may be a rename of "b"'],
+        },
+        "current.sql",
+      ),
+    ).toStrictEqual([]);
   });
 
   it("says when a hand-edited file matches what generate would write", () => {
@@ -32,8 +78,9 @@ describe("generateReport", () => {
         {
           path: "/p/current.sql",
           sql: "select 1;",
+          file: "kept",
           diff: "",
-          reset: false,
+          devDatabase: { kind: "none" },
           hazards: [],
           hints: [],
         },
@@ -42,7 +89,68 @@ describe("generateReport", () => {
     ).toStrictEqual([
       "kept hand-edited c.sql, replayed as written; diff to what generate would write:",
       "matches what generate would write",
-      "left the Dev database as it was",
+    ]);
+  });
+});
+
+describe("generateReport replays", () => {
+  it("names the replayed files on one line, then each Hazard they applied", () => {
+    const drop = 'alter table "public"."a" drop column "b";';
+
+    expect(
+      generateReport(
+        {
+          path: "/p/current.sql",
+          sql: "select 1;",
+          file: "written",
+          devDatabase: {
+            kind: "replayed",
+            files: ["000002-drop-b.sql", "current.sql"],
+            hazards: [{ file: "000002-drop-b.sql", kind: "data_loss", statement: drop }],
+          },
+          hazards: [],
+          hints: [],
+        },
+        "c.sql",
+      ),
+    ).toStrictEqual([
+      "wrote c.sql",
+      "replayed 000002-drop-b.sql, current.sql into the Dev database",
+      `hazard data_loss in 000002-drop-b.sql: ${drop}`,
+    ]);
+  });
+});
+
+describe("generateReport diffs", () => {
+  const drop = 'alter table "public"."a" drop column "b";';
+  const report = (skipped: readonly string[]): string[] =>
+    generateReport(
+      {
+        path: "/p/current.sql",
+        sql: undefined,
+        file: "kept",
+        devDatabase: {
+          kind: "diffed",
+          skipped,
+          hazards: [{ kind: "data_loss", statement: drop }],
+        },
+        hazards: [],
+        hints: [],
+      },
+      "c.sql",
+    );
+
+  it("names the files that skipped replay, then each Hazard the diff applied", () => {
+    expect(report(["000002-noop.sql", "current.sql"])).toStrictEqual([
+      "diffed the Dev database to the files, skipping replay of 000002-noop.sql, current.sql",
+      `hazard data_loss in the Dev database: ${drop}`,
+    ]);
+  });
+
+  it("names no file when every file it records had already run", () => {
+    expect(report([])).toStrictEqual([
+      "diffed the Dev database to the files",
+      `hazard data_loss in the Dev database: ${drop}`,
     ]);
   });
 });
@@ -53,10 +161,17 @@ describe("generateReport hints", () => {
 
     expect(
       generateReport(
-        { path: "/p/current.sql", sql: "select 1;", reset: false, hazards: [], hints },
+        {
+          path: "/p/current.sql",
+          sql: "select 1;",
+          file: "written",
+          devDatabase: { kind: "none" },
+          hazards: [],
+          hints,
+        },
         "c.sql",
       ),
-    ).toStrictEqual(["wrote c.sql", `hint: ${hints[0]}`, "left the Dev database as it was"]);
+    ).toStrictEqual(["wrote c.sql", `hint: ${hints[0]}`]);
   });
 });
 
@@ -67,9 +182,10 @@ describe("generateReport warnings", () => {
         {
           path: "/p/current.sql",
           sql: "select 1;",
+          file: "kept",
           diff: "-select 1;\n",
           leftover: "the edit leaves a difference",
-          reset: false,
+          devDatabase: { kind: "none" },
           hazards: [],
           hints: [],
         },
@@ -84,8 +200,9 @@ describe("generateReport warnings", () => {
         {
           path: "/p/current.sql",
           sql: "select 1;",
+          file: "kept",
           diff: "-select 1;\n+select 2;\n",
-          reset: false,
+          devDatabase: { kind: "none" },
           hazards: [],
           hints: [],
         },
@@ -94,7 +211,6 @@ describe("generateReport warnings", () => {
     ).toStrictEqual([
       "kept hand-edited c.sql, replayed as written; diff to what generate would write:",
       "-select 1;\n+select 2;",
-      "left the Dev database as it was",
     ]);
   });
 });
