@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Strict mode fails generate on a leftover

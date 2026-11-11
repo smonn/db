@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Generate catches up the Dev database and keeps its data

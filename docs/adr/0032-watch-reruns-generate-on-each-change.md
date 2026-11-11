@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Watch reruns generate on each change and logs append-only

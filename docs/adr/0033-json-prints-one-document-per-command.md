@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # `--json` prints one document per command
