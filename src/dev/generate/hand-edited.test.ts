@@ -60,7 +60,7 @@ describe("generate with a hand-edited current.sql", () => {
       sql: body,
       diff,
       leftover: LEFTOVER,
-      reset: true,
+      devDatabase: { kind: "reset" },
       hazards: [],
       hints: [],
     });

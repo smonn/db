@@ -49,7 +49,13 @@ describe("generate", () => {
 
     const body = `create table "public"."users" (\n  "id" text not null,\n  "email" text\n);\n`;
     const hash = `sha256:${await sha256(body)}`;
-    expect(result).toStrictEqual({ path: CURRENT, sql: body, reset: true, hazards: [], hints: [] });
+    expect(result).toStrictEqual({
+      path: CURRENT,
+      sql: body,
+      devDatabase: { kind: "reset" },
+      hazards: [],
+      hints: [],
+    });
     expect(fileSystem.files.get(CURRENT)).toBe(`--! Generated: ${hash}\n\n${body}`);
     expect(await tables()).toStrictEqual([
       { table_schema: "public", table_name: "users", column_name: "id" },
@@ -224,7 +230,7 @@ alter table "public"."users" add column "email" text;
     expect(result).toStrictEqual({
       path: CURRENT,
       sql: undefined,
-      reset: true,
+      devDatabase: { kind: "reset" },
       hazards: [],
       hints: [],
     });

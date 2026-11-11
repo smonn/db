@@ -7,7 +7,7 @@ describe("generateReport", () => {
 
     expect(
       generateReport(
-        { path: "/p/current.sql", sql, reset: true, hazards: [], hints: [] },
+        { path: "/p/current.sql", sql, devDatabase: { kind: "reset" }, hazards: [], hints: [] },
         "current.sql",
       ),
     ).toStrictEqual([
@@ -20,7 +20,13 @@ describe("generateReport", () => {
   it("says when there was no diff and the Dev database stayed", () => {
     expect(
       generateReport(
-        { path: "/p/current.sql", sql: undefined, reset: false, hazards: [], hints: [] },
+        {
+          path: "/p/current.sql",
+          sql: undefined,
+          devDatabase: { kind: "none" },
+          hazards: [],
+          hints: [],
+        },
         "current.sql",
       ),
     ).toStrictEqual(["no diff, removed current.sql", "left the Dev database as it was"]);
@@ -33,7 +39,7 @@ describe("generateReport", () => {
           path: "/p/current.sql",
           sql: "select 1;",
           diff: "",
-          reset: false,
+          devDatabase: { kind: "none" },
           hazards: [],
           hints: [],
         },
@@ -53,7 +59,13 @@ describe("generateReport hints", () => {
 
     expect(
       generateReport(
-        { path: "/p/current.sql", sql: "select 1;", reset: false, hazards: [], hints },
+        {
+          path: "/p/current.sql",
+          sql: "select 1;",
+          devDatabase: { kind: "none" },
+          hazards: [],
+          hints,
+        },
         "c.sql",
       ),
     ).toStrictEqual(["wrote c.sql", `hint: ${hints[0]}`, "left the Dev database as it was"]);
@@ -69,7 +81,7 @@ describe("generateReport warnings", () => {
           sql: "select 1;",
           diff: "-select 1;\n",
           leftover: "the edit leaves a difference",
-          reset: false,
+          devDatabase: { kind: "none" },
           hazards: [],
           hints: [],
         },
@@ -85,7 +97,7 @@ describe("generateReport warnings", () => {
           path: "/p/current.sql",
           sql: "select 1;",
           diff: "-select 1;\n+select 2;\n",
-          reset: false,
+          devDatabase: { kind: "none" },
           hazards: [],
           hints: [],
         },

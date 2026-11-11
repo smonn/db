@@ -32,7 +32,7 @@ async function generateInto(fileSystem: MemoryFileSystem, definition = users): P
     definition,
     migrations: MIGRATIONS,
   });
-  return result.reset;
+  return result.devDatabase.kind === "reset";
 }
 
 async function hasJunk(): Promise<boolean> {

@@ -22,7 +22,7 @@ const TABLE = "create table public.slots (a integer, b text, c integer);\n";
 const NOTHING = {
   path: "db/migrations/current.sql",
   sql: undefined,
-  reset: true,
+  devDatabase: { kind: "reset" },
   hazards: [],
   hints: [],
 };

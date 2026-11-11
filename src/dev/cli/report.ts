@@ -11,7 +11,10 @@ export function generateReport(result: GenerateResult, path: string): string[] {
     result.sql === undefined
       ? []
       : hazardsIn(result.sql).map(({ kind, statement }) => `hazard ${kind}: ${statement}`);
-  const reset = result.reset ? "reset the Dev database" : "left the Dev database as it was";
+  const reset =
+    result.devDatabase.kind === "reset"
+      ? "reset the Dev database"
+      : "left the Dev database as it was";
   const hints = result.hints.map((hint) => `hint: ${hint}`);
   return [...fileLines(result, path), ...hazards, ...hints, reset];
 }

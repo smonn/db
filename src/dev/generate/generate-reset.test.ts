@@ -49,7 +49,7 @@ describe("whether generate resets the Dev database", () => {
   it("marks a fresh Database, though there is nothing to generate", async () => {
     const result = await generateInto(memoryFileSystem(), empty);
 
-    expect(result.reset).toBe(true);
+    expect(result.devDatabase.kind).toBe("reset");
     expect(await marked()).toBe(true);
   });
 
@@ -60,7 +60,7 @@ describe("whether generate resets the Dev database", () => {
 
     const result = await generateInto(fileSystem, empty);
 
-    expect(result.reset).toBe(false);
+    expect(result.devDatabase.kind).toBe("none");
     expect(
       (await db.driver.query("select to_regclass('public.keep') as found")).rows,
     ).toStrictEqual([{ found: "keep" }]);
@@ -76,7 +76,7 @@ describe("whether generate resets the Dev database", () => {
 
     const result = await generateInto(fileSystem, two);
 
-    expect(result.reset).toBe(false);
+    expect(result.devDatabase.kind).toBe("none");
   });
 
   it("resets a Database whose last recorded migration isn't the Committed tip", async () => {
@@ -89,6 +89,6 @@ describe("whether generate resets the Dev database", () => {
 
     const result = await generateInto(fileSystem, two);
 
-    expect(result.reset).toBe(true);
+    expect(result.devDatabase.kind).toBe("reset");
   });
 });
