@@ -52,6 +52,7 @@ describe("generate", () => {
     expect(result).toStrictEqual({
       path: CURRENT,
       sql: body,
+      file: "written",
       devDatabase: { kind: "reset" },
       hazards: [],
       hints: [],
@@ -230,6 +231,7 @@ alter table "public"."users" add column "email" text;
     expect(result).toStrictEqual({
       path: CURRENT,
       sql: undefined,
+      file: "removed",
       devDatabase: { kind: "reset" },
       hazards: [],
       hints: [],

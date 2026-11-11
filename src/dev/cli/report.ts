@@ -38,8 +38,11 @@ function outcomeLines(outcome: GenerateResult["devDatabase"]): string[] {
   }
 }
 
-function fileLines({ diff, sql, leftover }: GenerateResult, path: string): string[] {
-  if (diff === undefined) return [sql === undefined ? `no diff, removed ${path}` : `wrote ${path}`];
+function fileLines({ diff, file, leftover }: GenerateResult, path: string): string[] {
+  if (diff === undefined) {
+    if (file === "kept") return [];
+    return [file === "removed" ? `no diff, removed ${path}` : `wrote ${path}`];
+  }
   return [
     `kept hand-edited ${path}, replayed as written; diff to what generate would write:`,
     (diff === "" ? "matches what generate would write" : diff).trimEnd(),

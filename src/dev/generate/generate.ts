@@ -42,6 +42,11 @@ export type GenerateResult = {
   /** The Current migration's body, or `undefined` when there was no diff and the file was deleted. */
   readonly sql: string | undefined;
   /**
+   * What generate did to `current.sql`: `kept` when the file already held what generate would
+   * write, or was hand-edited, so a run that changes nothing stays silent (ADR-0032).
+   */
+  readonly file: "written" | "removed" | "kept";
+  /**
    * Set when `current.sql` was hand-edited, so generate kept and replayed it as written (ADR-0003):
    * the lines that differ from what generate would have written, `-` for the file and `+` for the
    * generation. Empty when they match. `sql` is then the replayed body.
@@ -98,7 +103,8 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
   const tracking = trackingSchema(trackingName);
   await lockDevDatabase(driver, tracking);
   const path = `${migrations}/${CURRENT_FILENAME}`;
-  const edited = await readHandEdited(fileSystem, path);
+  const existing = await fileSystem.readFile(path);
+  const edited = await handEditedBody(existing);
   await fileSystem.mkdir(migrations);
   const committed = await readCommitted(fileSystem, migrations);
   const source: MigrationSource = { list: () => Promise.resolve(committed) };
@@ -115,24 +121,33 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
 
   const kept = { driver, source, tracking, committed, path };
   if (edited !== undefined) return replayEdited(kept, edited, shadowDiff);
-  return writeGenerated({ ...kept, fileSystem }, shadowDiff);
+  return writeGenerated({ ...kept, fileSystem, existing }, shadowDiff);
 }
 
-/** Writes the generation to `current.sql`, or deletes the file when there is no diff. */
+/**
+ * Writes the generation to `current.sql`, or deletes the file when there is no diff, and leaves a
+ * file that already holds it alone.
+ */
 async function writeGenerated(
-  { fileSystem, ...kept }: KeptEdit & { readonly fileSystem: FileSystem },
+  {
+    fileSystem,
+    existing,
+    ...kept
+  }: KeptEdit & { readonly fileSystem: FileSystem; readonly existing: string | undefined },
   { sql, hazards, hints }: ShadowDiff,
 ): Promise<GenerateResult> {
   const { path } = kept;
   if (sql === "") {
-    await fileSystem.remove(path);
+    if (existing !== undefined) await fileSystem.remove(path);
     const devDatabase = await catchUp(kept);
-    return { path, sql: undefined, devDatabase, hazards: [], hints };
+    const file = existing === undefined ? "kept" : "removed";
+    return { path, sql: undefined, file, devDatabase, hazards: [], hints };
   }
   const current = await writeCurrent(sql);
-  await fileSystem.writeFile(path, current.content);
+  const file = existing === current.content ? "kept" : "written";
+  if (file === "written") await fileSystem.writeFile(path, current.content);
   const devDatabase = await catchUp(kept, current);
-  return { path, sql: current.body, devDatabase, hazards, hints };
+  return { path, sql: current.body, file, devDatabase, hazards, hints };
 }
 
 type KeptEdit = {
@@ -155,6 +170,7 @@ async function replayEdited(
   return {
     path: kept.path,
     sql: edited,
+    file: "kept",
     diff,
     ...(leftover === undefined ? {} : { leftover }),
     devDatabase,
@@ -176,8 +192,7 @@ function requireModeledSchemas(definition: DefinitionTables, trackingName: strin
 }
 
 /** The body of a `current.sql` whose body no longer matches its `--! Generated:` header (ADR-0003). */
-async function readHandEdited(fileSystem: FileSystem, path: string): Promise<string | undefined> {
-  const content = await fileSystem.readFile(path);
+async function handEditedBody(content: string | undefined): Promise<string | undefined> {
   if (content === undefined) return undefined;
   const parsed = await parseCurrent(content);
   return parsed.edited ? parsed.body : undefined;

@@ -58,6 +58,7 @@ describe("generate with a hand-edited current.sql", () => {
     expect(result).toStrictEqual({
       path: CURRENT,
       sql: body,
+      file: "kept",
       diff,
       leftover: LEFTOVER,
       devDatabase: { kind: "reset" },

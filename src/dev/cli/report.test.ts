@@ -7,7 +7,14 @@ describe("generateReport", () => {
 
     expect(
       generateReport(
-        { path: "/p/current.sql", sql, devDatabase: { kind: "reset" }, hazards: [], hints: [] },
+        {
+          path: "/p/current.sql",
+          sql,
+          file: "written",
+          devDatabase: { kind: "reset" },
+          hazards: [],
+          hints: [],
+        },
         "current.sql",
       ),
     ).toStrictEqual([
@@ -23,6 +30,7 @@ describe("generateReport", () => {
         {
           path: "/p/current.sql",
           sql: undefined,
+          file: "removed",
           devDatabase: { kind: "none" },
           hazards: [],
           hints: [],
@@ -32,12 +40,29 @@ describe("generateReport", () => {
     ).toStrictEqual(["no diff, removed current.sql"]);
   });
 
+  it("prints nothing when the file and the Dev database stayed as they were", () => {
+    expect(
+      generateReport(
+        {
+          path: "/p/current.sql",
+          sql: "select 1;",
+          file: "kept",
+          devDatabase: { kind: "none" },
+          hazards: [],
+          hints: [],
+        },
+        "current.sql",
+      ),
+    ).toStrictEqual([]);
+  });
+
   it("says when a hand-edited file matches what generate would write", () => {
     expect(
       generateReport(
         {
           path: "/p/current.sql",
           sql: "select 1;",
+          file: "kept",
           diff: "",
           devDatabase: { kind: "none" },
           hazards: [],
@@ -61,6 +86,7 @@ describe("generateReport replays", () => {
         {
           path: "/p/current.sql",
           sql: "select 1;",
+          file: "written",
           devDatabase: {
             kind: "replayed",
             files: ["000002-drop-b.sql", "current.sql"],
@@ -88,6 +114,7 @@ describe("generateReport hints", () => {
         {
           path: "/p/current.sql",
           sql: "select 1;",
+          file: "written",
           devDatabase: { kind: "none" },
           hazards: [],
           hints,
@@ -105,6 +132,7 @@ describe("generateReport warnings", () => {
         {
           path: "/p/current.sql",
           sql: "select 1;",
+          file: "kept",
           diff: "-select 1;\n",
           leftover: "the edit leaves a difference",
           devDatabase: { kind: "none" },
@@ -122,6 +150,7 @@ describe("generateReport warnings", () => {
         {
           path: "/p/current.sql",
           sql: "select 1;",
+          file: "kept",
           diff: "-select 1;\n+select 2;\n",
           devDatabase: { kind: "none" },
           hazards: [],

@@ -72,6 +72,7 @@ create table public.memberships (
     expect(result).toStrictEqual({
       path: "db/migrations/current.sql",
       sql: undefined,
+      file: "kept",
       devDatabase: { kind: "reset" },
       hazards: [],
       hints: [],

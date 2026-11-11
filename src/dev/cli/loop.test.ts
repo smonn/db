@@ -133,10 +133,11 @@ describe("smonndb", () => {
     expect(await main(["generate", "--config", devConfig])).toBe(0);
     expect(stdoutOf()).toBe(`wrote ${file}\nreset the Dev database\n`);
 
+    expect(stdoutOf()).not.toContain("\u001B");
+
     written.mockClear();
     expect(await main(["generate", "--config", devConfig])).toBe(0);
-    expect(stdoutOf()).toBe(`wrote ${file}\n`);
-    expect(stdoutOf()).not.toContain("\u001B");
+    expect(stdoutOf()).toBe("");
   });
 
   it("prints each Hazard generate returns, with its statement", async () => {
