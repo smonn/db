@@ -1,4 +1,4 @@
-import type { TrackingSchema } from "../../runtime/internal/index.ts";
+import { UnmodeledBlockerError, type TrackingSchema } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type { Connect, Driver, MigrationSource } from "../../runtime/ports/index.ts";
 import {
@@ -67,7 +67,7 @@ export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
       const blockers = await withRenames(databases.shadow, renames, (tx) =>
         unmodeledBlockers(tx, result.scans),
       );
-      if (blockers !== undefined) throw new Error(blockers);
+      if (blockers !== undefined) throw new UnmodeledBlockerError(blockers);
       await verifyInShadow(databases.shadow, result.sql, target, tracking);
       return result;
     },

@@ -48,6 +48,9 @@ const REFUSALS = {
   reset: "reset needs --erase to wipe it",
 } as const;
 
+/** The Database isn't marked as a Dev database and isn't empty. */
+export class NotDevDatabaseError extends Error {}
+
 /** Refuses unless the Database is marked as a Dev database or holds nothing yet (ADR-0016). */
 export async function requireDevDatabase(
   driver: Queryable,
@@ -58,7 +61,7 @@ export async function requireDevDatabase(
   const {
     rows: [row],
   } = await driver.query("select current_database() as name");
-  throw new Error(
+  throw new NotDevDatabaseError(
     `${quoteIdentifier(String(row!["name"]))} isn't a Dev database: it has no ${tracking.currentTable} table and isn't empty, so ${REFUSALS[command]}`,
   );
 }

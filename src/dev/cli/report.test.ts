@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateReport, resetReport } from "./report.ts";
+import { documentLines, generateReport } from "./report.ts";
 
 describe("generateReport", () => {
   it("names the file, each Hazard with its statement, and the reset", () => {
@@ -99,14 +99,59 @@ describe("generateReport warnings", () => {
   });
 });
 
-describe("resetReport", () => {
+describe("documentLines", () => {
   it.each([
     [{ committed: 0, current: false }, "reset the Dev database from 0 Committed migrations"],
+    [{ committed: 1, current: false }, "reset the Dev database from 1 Committed migration"],
     [
       { committed: 1, current: true },
       "reset the Dev database from 1 Committed migration and current.sql",
     ],
-  ])("words %j", (result, line) => {
-    expect(resetReport(result)).toBe(line);
+  ])("words the reset %j", (result, line) => {
+    expect(documentLines({ command: "reset", ok: true, ...result })).toStrictEqual([line]);
+  });
+
+  it("names the file commit wrote", () => {
+    expect(
+      documentLines({ command: "commit", ok: true, file: { path: "db/000002-b.sql" } }),
+    ).toStrictEqual(["wrote db/000002-b.sql"]);
+  });
+
+  it.each([
+    [[], ["nothing to apply"]],
+    [
+      ["000001-a.sql", "000002-b.sql"],
+      ["applied 000001-a.sql", "applied 000002-b.sql"],
+    ],
+  ])("words what migrate applied: %j", (applied, lines) => {
+    expect(documentLines({ command: "migrate", ok: true, applied })).toStrictEqual(lines);
+  });
+
+  it.each([
+    [[], "verified 0 migrations"],
+    [["000001-a.sql"], "verified 1 migration"],
+    [["000001-a.sql", "000002-b.sql"], "verified 2 migrations"],
+  ])("counts what verify checked: %j", (verified, line) => {
+    expect(documentLines({ command: "verify", ok: true, verified })).toStrictEqual([line]);
+  });
+
+  it("says when rebase had nothing to move", () => {
+    expect(
+      documentLines({ command: "rebase", ok: true, onto: "origin/main", moved: [] }),
+    ).toStrictEqual(["nothing to rebase onto origin/main"]);
+  });
+
+  it("lists each rewritten file, then how to catch up a Dev database", () => {
+    expect(
+      documentLines({
+        command: "rebase",
+        ok: true,
+        onto: "origin/main",
+        moved: [{ from: "000002-b.sql", to: "000003-b.sql" }],
+      }),
+    ).toStrictEqual([
+      "rewrote 000002-b.sql as 000003-b.sql",
+      "a Dev database that applied the old files now fails migrate's prefix check; run smonndb reset",
+    ]);
   });
 });

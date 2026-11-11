@@ -6,7 +6,7 @@
 
 export const SHARDS: Record<string, string[]> = {
   diff: ["src/dev/diff/**/*.ts", "src/dev/generate/**/*.ts"],
-  dev: ["src/dev/*.ts", "src/dev/{catalog,cli,config,introspect,shadow}/**/*.ts"],
+  dev: ["src/dev/*.ts", "src/dev/{catalog,cli,config,introspect,output,shadow}/**/*.ts"],
   runtime: ["src/runtime/**/*.ts", "src/adapters/**/*.ts"],
   scripts: ["scripts/**/*.ts"],
 };
