@@ -1,4 +1,5 @@
 import {
+  acquireMigrationLock,
   CURRENT_FILENAME,
   currentHash,
   DEFAULT_TRACKING_SCHEMA,
@@ -41,9 +42,11 @@ const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 /**
  * Freezes `current.sql` into the next Committed migration, chained onto the tip (ADR-0008), then
  * records it and clears the tracking schema's `current` table in one Dev database transaction and
- * deletes `current.sql`. A `--! no-transaction` header on its first line carries into the Committed
- * file (ADR-0020). Refuses while `current.sql` has a Hazard kind outside `accept`, and unless
- * the Dev database holds `current.sql` as it reads now and every Committed migration before it.
+ * deletes `current.sql`. Holds the Dev lock, and the migrator's lock from before its check on, so a
+ * runtime `migrate` waits for it. A `--! no-transaction` header on its first line carries into the
+ * Committed file (ADR-0020). Refuses while `current.sql` has a Hazard kind outside `accept`, and
+ * unless the Dev database holds `current.sql` as it reads now and every Committed migration before
+ * it.
  */
 export function commit(options: CommitOptions): Promise<CommitResult> {
   return withDevLock(options.driver, "commit", (driver) => commitLocked({ ...options, driver }));
@@ -55,6 +58,9 @@ async function commitLocked(options: CommitOptions): Promise<CommitResult> {
   if (!KEBAB_CASE.test(slug)) {
     throw new Error(`slug ${JSON.stringify(slug)} must be kebab-case, such as create-users`);
   }
+  // The Dev lock's connection keeps the migrator's lock until the run ends, so a runtime `migrate`
+  // waits instead of changing the Database between the check and the transaction.
+  await driver.session((session) => acquireMigrationLock(session));
   const currentPath = `${migrations}/${CURRENT_FILENAME}`;
   const body = await readAcceptedBody(fileSystem, currentPath, options.accept);
 
