@@ -48,7 +48,7 @@ describe("generate and commit with a no-transaction hand edit (ADR-0020)", () =>
     const expected = await writeMigration("000002-index-id.sql", CREATE_USERS.hash, INDEX, {
       noTransaction: true,
     });
-    expect(result.reset).toBe(true);
+    expect(result.devDatabase.kind).toBe("reset");
     expect(fileSystem.files.get(path)).toBe(expected.content);
     expect(expected.content).toContain(`--! Hash: ${expected.hash}\n--! no-transaction\n\n`);
     expect(fileSystem.files.has(CURRENT)).toBe(false);

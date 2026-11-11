@@ -4,7 +4,7 @@ import {
   useTestDatabase,
   whileMigrationLockHeld,
 } from "../../adapters/postgres-js/test-database.test-helper.ts";
-import { writeMigration } from "../internal/index.ts";
+import { ChainBrokenError, writeMigration } from "../internal/index.ts";
 import type { MigrationFile, MigrationSource } from "../ports/index.ts";
 import { migrate } from "./migrate.ts";
 
@@ -187,9 +187,12 @@ describe("migrate", () => {
   it("refuses a recorded migration that has no file", async () => {
     await migrate({ driver: db.driver, source: source(CREATE_USERS, ADD_EMAIL) });
 
-    await expect(migrate({ driver: db.driver, source: source(CREATE_USERS) })).rejects.toThrow(
+    const refused = migrate({ driver: db.driver, source: source(CREATE_USERS) });
+
+    await expect(refused).rejects.toThrow(
       `000002-add-email.sql: recorded as ${HASH_2} but has no file`,
     );
+    await expect(refused).rejects.toBeInstanceOf(ChainBrokenError);
   });
 
   it("refuses a recorded file whose body changed and was rehashed", async () => {
@@ -200,12 +203,15 @@ describe("migrate", () => {
       "create table users (id integer primary key, name text);\n",
     );
 
-    await expect(migrate({ driver: db.driver, source: source(rehashed) })).rejects.toThrow(
+    const refused = migrate({ driver: db.driver, source: source(rehashed) });
+
+    await expect(refused).rejects.toThrow(
       new RegExp(
         `^000001-create-users\\.sql: recorded as ${HASH_1} but now hashes to sha256:\\w+$`,
         "u",
       ),
     );
+    await expect(refused).rejects.toBeInstanceOf(ChainBrokenError);
   });
 
   it("refuses a file inserted before a recorded one, without running it", async () => {
@@ -221,11 +227,11 @@ describe("migrate", () => {
       "alter table users add column email text;\n",
     );
 
-    await expect(
-      migrate({ driver: db.driver, source: source(CREATE_USERS, inserted, moved) }),
-    ).rejects.toThrow(
+    const refused = migrate({ driver: db.driver, source: source(CREATE_USERS, inserted, moved) });
+    await expect(refused).rejects.toThrow(
       `000002-add-phone.sql: stands where the recorded 000002-add-email.sql (${HASH_2}) was`,
     );
+    await expect(refused).rejects.toBeInstanceOf(ChainBrokenError);
     const { rows } = await db.driver.query(
       "select column_name from information_schema.columns where column_name = 'phone'",
     );

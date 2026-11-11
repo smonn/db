@@ -3,6 +3,11 @@ import type { Driver, Session } from "../../runtime/ports/index.ts";
 // "SMONNDBDEV" on a phone keypad. The migrator's key spells "SMONNDBMIGRATE", so the two differ.
 export const DEV_LOCK_KEY = "7666632338";
 
+/** Another generate, commit, or reset holds the Dev database's advisory lock. */
+export class DevDatabaseLockedError extends Error {
+  readonly lock = "dev";
+}
+
 /**
  * Runs `fn` while holding a session `pg_try_advisory_lock` on the Dev database, shared by
  * `generate`, `commit`, and `reset`. A second run fails at once instead of waiting, since a waiting
@@ -22,7 +27,7 @@ export function withDevLock<T>(
       rows: [row],
     } = await session.query(`select pg_try_advisory_lock(${DEV_LOCK_KEY}) as locked`);
     if (row!["locked"] !== true) {
-      throw new Error(
+      throw new DevDatabaseLockedError(
         `can't ${command}: another generate, commit, or reset holds advisory lock ${DEV_LOCK_KEY} on the Dev database`,
       );
     }

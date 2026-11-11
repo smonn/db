@@ -20,6 +20,12 @@ const three = defineDatabase({
   public: { users: defineTable((c) => ({ a: c.text(), b: c.text(), c: c.text() })) },
 });
 
+const four = defineDatabase({
+  public: {
+    users: defineTable((c) => ({ a: c.text(), b: c.text(), c: c.text(), d: c.text() })),
+  },
+});
+
 beforeEach(async () => {
   await db.driver.execute(
     "drop schema if exists smonn_db cascade; drop schema public cascade; create schema public;",
@@ -120,5 +126,32 @@ describe("a commit whose Dev database lost earlier rows", () => {
       `the Dev database's Committed migrations don't match the files in ${MIGRATIONS}; run generate first`,
     );
     expect(fileSystem.files).toStrictEqual(before);
+  });
+});
+
+describe("generate after earlier tracking rows were deleted by hand", () => {
+  // #643: generate saw only the tip, so it kept the Dev database and commit kept refusing.
+  it("resets the Dev database, so commit then succeeds", async () => {
+    const fileSystem = memoryFileSystem();
+    for (const [slug, definition] of [
+      ["one", one],
+      ["two", two],
+      ["three", three],
+    ] as const) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
+      await generateInto(fileSystem, definition);
+      // oxlint-disable-next-line eslint/no-await-in-loop -- each file builds on the one before it.
+      await commitAs(fileSystem, slug);
+    }
+    await generateInto(fileSystem, four);
+    await db.driver.execute(
+      "update smonn_db.migrations set previous_hash = null where sequence = 2; delete from smonn_db.migrations where sequence = 1",
+    );
+
+    await generateInto(fileSystem, four);
+
+    await commitAs(fileSystem, "four");
+
+    expect(fileSystem.files.has(`${MIGRATIONS}/000004-four.sql`)).toBe(true);
   });
 });
