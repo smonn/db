@@ -7,14 +7,16 @@ import {
 
 /**
  * The lines `generate` prints: the file, each Hazard with its statement, each rename hint, then
- * what it did to the Dev database, if anything.
+ * what it did to the Dev database, if anything. A generated file it kept as it was printed its
+ * Hazards and hints on the run that wrote it, so a run that changes nothing stays silent.
  */
 export function generateReport(result: GenerateResult, path: string): string[] {
+  const unchanged = result.file === "kept" && result.diff === undefined;
   const hazards =
-    result.sql === undefined
+    result.sql === undefined || unchanged
       ? []
       : hazardsIn(result.sql).map(({ kind, statement }) => `hazard ${kind}: ${statement}`);
-  const hints = result.hints.map((hint) => `hint: ${hint}`);
+  const hints = unchanged ? [] : result.hints.map((hint) => `hint: ${hint}`);
   return [...fileLines(result, path), ...hazards, ...hints, ...outcomeLines(result.devDatabase)];
 }
 
