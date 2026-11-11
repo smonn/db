@@ -171,6 +171,7 @@ describe("main --json with a usage error", () => {
     [["migrate", "--url", "x", "--json"], "migrate", "Unknown option '--url'"],
     [["commit", "a", "--accept", "drop", "--json"], "commit", 'unknown Hazard kind "drop"'],
     [["generate", "--json"], "generate", "generate doesn't take --json yet"],
+    [["verify", "--json=1"], "verify", "Option '--json' does not take an argument"],
   ])(
     "prints a usage failure for %j, exits 2, and leaves stderr empty",
     async (argv, command, text) => {

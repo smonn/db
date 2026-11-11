@@ -41,7 +41,9 @@ type Command = DatabaseCommand | OfflineCommand;
  * progress.
  */
 export async function main(argv: readonly string[]): Promise<number> {
-  const json = argv.slice(0, endOfFlags(argv)).includes("--json");
+  const json = argv
+    .slice(0, endOfFlags(argv))
+    .some((arg) => arg === "--json" || arg.startsWith("--json="));
   let name: CommandName | null = null;
   try {
     const command = parseCommand(argv);
