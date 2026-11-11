@@ -33,20 +33,24 @@ export async function loadMigrationsFolder(config: string): Promise<string> {
 }
 
 async function loadDefinition(file: string): Promise<DefinitionTables> {
-  const definition = await importDefault(file);
-  if (!isDefinition(definition)) {
+  return definitionOf(file, await importDefault(file));
+}
+
+/** Refuses `value`, the default export of the Definition file at `file`, unless it's a Definition. */
+export function definitionOf(file: string, value: unknown): DefinitionTables {
+  if (!isDefinition(value)) {
     throw new Error(
       `${relative(process.cwd(), file)} must export defineDatabase({ ... }) as its default export`,
     );
   }
-  return definition;
+  return value;
 }
 
 function isDefinition(value: unknown): value is DefinitionTables {
   return typeof value === "object" && value !== null;
 }
 
-function importDefault(file: string): Promise<unknown> {
+export function importDefault(file: string): Promise<unknown> {
   return import(pathToFileURL(file).href).then(
     (module: { readonly default?: unknown }) => module.default,
   );
