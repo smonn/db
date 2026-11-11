@@ -70,6 +70,7 @@ async function runGenerate({ driver, project, migrations, tracking }: Context): 
     definition: await project.loadDefinition(),
     migrations,
     ...tracking,
+    ...(project.strict === true ? { strict: { config: project.configPath } } : {}),
     log: (line) => {
       process.stderr.write(`${line}\n`);
     },

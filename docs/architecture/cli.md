@@ -12,6 +12,7 @@ export default defineConfig({
   migrations: "./db/migrations",
   url: process.env.DATABASE_URL,
   trackingSchema: "smonn_db", // optional, the default
+  strict: false, // optional, the default
 });
 ```
 
@@ -52,7 +53,7 @@ Generate writes `<migrations>/current.sql`, or deletes it when there is no diff,
 
 ### Hand edits
 
-Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body that no longer matches counts as hand-edited, and generate stops overwriting it (ADR-0003): it keeps the file, replays it as written, and prints the lines that differ from what it would have generated. It runs the edit in the Shadow instead of the generated body, so a SQL error fails the run before the Dev database is touched, and a leftover difference from the Definition prints as a warning (ADR-0013). Deleting `current.sql` resumes generation.
+Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body that no longer matches counts as hand-edited, and generate stops overwriting it (ADR-0003): it keeps the file, replays it as written, and prints the lines that differ from what it would have generated. It runs the edit in the Shadow instead of the generated body, so a SQL error fails the run before the Dev database is touched, and a leftover difference from the Definition prints as a warning (ADR-0013), or under `strict: true` fails the run first (ADR-0031). Deleting `current.sql` resumes generation.
 
 ### Dev database catch-up
 

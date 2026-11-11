@@ -33,6 +33,11 @@ export type GenerateOptions = ShadowOptions & {
   readonly migrations: string;
   /** The schema `migrate` tracks into. Defaults to `smonn_db`. */
   readonly trackingSchema?: string;
+  /**
+   * Set to refuse a hand edit that leaves a difference from the Definition, before the Dev database
+   * changes (ADR-0031). `config` names the config file in the refusal.
+   */
+  readonly strict?: { readonly config: string };
 };
 
 export type GenerateResult = {
@@ -75,8 +80,8 @@ export type GenerateResult = {
  * database, writes it to `current.sql`, then catches the Dev database up when it has fallen behind
  * the files, replaying only the new ones where it can and diffing it against the Shadow otherwise,
  * so it keeps its data. A hand-edited
- * `current.sql` is verified in the Shadow instead (a leftover difference is a warning), replayed as
- * written and left alone. Holds the Dev lock, so a second run fails at once, and the migrator's lock
+ * `current.sql` is verified in the Shadow instead (a leftover difference is a warning, or a refusal
+ * in strict mode), replayed as written and left alone. Holds the Dev lock, so a second run fails at once, and the migrator's lock
  * from the Dev database check on, so a runtime `migrate` waits instead of changing the Database
  * under it.
  */
@@ -97,6 +102,7 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     definition,
     migrations,
     trackingSchema: trackingName = DEFAULT_TRACKING_SCHEMA,
+    strict,
     ...shadowOptions
   } = options;
   const tracking = trackingSchema(trackingName);
@@ -117,6 +123,10 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     shadowOptions,
     edited,
   });
+
+  if (strict !== undefined && shadowDiff.leftover !== undefined) {
+    throw new Error(strictRefusal(shadowDiff.leftover, path, strict.config));
+  }
 
   const declared = declaredRenames(definition);
   const kept = { driver, source, tracking, committed, path, shadow: shadowDiff.shadow, declared };
@@ -171,6 +181,14 @@ async function replayEdited(
     hazards,
     hints,
   };
+}
+
+function strictRefusal(leftover: string, path: string, config: string): string {
+  return [
+    `error: current.sql leaves a difference from the Definition (strict mode, ${config}):`,
+    leftover,
+    `fix the hand edit in ${path}, or set strict: false in ${config}`,
+  ].join("\n");
 }
 
 /** Refuses a schema `introspect` skips, whose tables would otherwise vanish from `current.sql`. */
