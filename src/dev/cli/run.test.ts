@@ -3,12 +3,11 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
-  backendPid,
-  untilMigrationLockAttempted,
+  afterMigrationLockPolled,
   useTestDatabase,
 } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
-import { acquireMigrationLock, writeMigration } from "../../runtime/internal/index.ts";
+import { writeMigration } from "../../runtime/internal/index.ts";
 import { withShadowDatabases } from "../shadow/index.ts";
 import type { Project } from "./project.ts";
 import { run } from "./run.ts";
@@ -132,7 +131,7 @@ it("prints each line the Shadow sweep logs to stderr", async () => {
   expect(stderr).toBe('dropped stale database "smonn_db_shadow_1_0badc0de"\n');
 });
 
-/** Runs `command` while another session holds the migrator's lock, which it lets go once polled. */
+/** Runs `command` while another session holds the migrator's lock, which it lets go after a few polls. */
 async function runWhileMigratorHoldsLock(command: Parameters<typeof run>[0]): Promise<void> {
   const definition = defineDatabase({
     public: { run_waits: defineTable((c) => ({ id: c.text().notNull() })) },
@@ -140,14 +139,7 @@ async function runWhileMigratorHoldsLock(command: Parameters<typeof run>[0]): Pr
   const project = projectWith({ url: dev.url, loadDefinition: () => Promise.resolve(definition) });
   await run({ name: "generate", config: "c" }, project);
   stderr = "";
-  await dev.driver.session(async (holder) => {
-    await acquireMigrationLock(holder);
-    const holderPid = await backendPid(holder);
-    const running = run(command, project);
-    await untilMigrationLockAttempted(dev.driver, { holderPid });
-    await holder.query("select pg_advisory_unlock_all()");
-    await running;
-  });
+  await afterMigrationLockPolled(dev.driver, () => run(command, project));
 }
 
 it.each([
