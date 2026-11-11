@@ -14,7 +14,7 @@ Generate used to reset the Dev database whenever the Current migration or the Co
 ## Consequences
 
 - A catch-up step that loses data applies anyway and prints its Hazards, because a Definition edit that drops a column should drop it in the Dev database too.
-- The steps, the marker writes in `smonn_db`, and a check that the Dev database now matches the Shadow run in one transaction. A failure rolls all of it back, so the Dev database stays as it was, as #245 requires of a failed replay.
+- The steps, the marker writes in `smonn_db`, and a zero-diff check run in one transaction. A nonzero diff or a failure rolls all of it back, so the Dev database stays as it was, as #245 requires of a failed replay. What the check compares against, and whether the Shadow holds the Current migration when generate diffs, is settled in #777.
 - Matching markers mean no work. Commit's full-chain predicate picks the path and covers #643's `needsReset` check.
 - Generate prints one outcome line (`none`, `replayed`, or `diffed`, with the files and any applied Hazards) and nothing on a run that changes nothing. Watch prints `ok no change` itself (ADR-0032).
 - `reset` is now the only way to rebuild the Dev database, and ADR-0016's marker rule still applies to it.
