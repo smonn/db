@@ -1,4 +1,5 @@
 import {
+  ChainBrokenError,
   migrationHash,
   parseMigration,
   type ParsedMigration,
@@ -32,15 +33,15 @@ export function checkRecorded(
   recorded.forEach((row, index) => {
     const migration = migrations[index];
     if (migration === undefined) {
-      throw new Error(`${row.filename}: recorded as ${row.hash} but has no file`);
+      throw new ChainBrokenError(`${row.filename}: recorded as ${row.hash} but has no file`);
     }
     if (migration.hash === row.hash) return;
     if (migration.filename === row.filename) {
-      throw new Error(
+      throw new ChainBrokenError(
         `${row.filename}: recorded as ${row.hash} but now hashes to ${migration.hash}`,
       );
     }
-    throw new Error(
+    throw new ChainBrokenError(
       `${migration.filename}: stands where the recorded ${row.filename} (${row.hash}) was`,
     );
   });
@@ -52,7 +53,7 @@ export async function loadVerifiedMigrations(source: MigrationSource): Promise<P
     .toSorted((a, b) => a.sequence - b.sequence);
 
   const [fork] = findForks(migrations);
-  if (fork !== undefined) throw new Error(describeFork(fork));
+  if (fork !== undefined) throw new ChainBrokenError(describeFork(fork));
 
   const actualHashes = await Promise.all(
     migrations.map((migration) => migrationHash(migration.previous, migration.body, migration)),
@@ -67,16 +68,16 @@ export async function loadVerifiedMigrations(source: MigrationSource): Promise<P
 
 function checkSequence(migration: ParsedMigration, expected: number): void {
   if (migration.sequence > expected) {
-    throw new Error(`${migration.filename}: sequence ${expected} is missing before it`);
+    throw new ChainBrokenError(`${migration.filename}: sequence ${expected} is missing before it`);
   }
   if (migration.sequence < expected) {
-    throw new Error(`${migration.filename}: repeats sequence ${migration.sequence}`);
+    throw new ChainBrokenError(`${migration.filename}: repeats sequence ${migration.sequence}`);
   }
 }
 
 function checkChained(migration: ParsedMigration, previous: string | undefined): void {
   if (migration.previous !== previous) {
-    throw new Error(
+    throw new ChainBrokenError(
       `${migration.filename}: --! Previous should be ${shown(previous)}, not ${shown(migration.previous)}`,
     );
   }
@@ -88,7 +89,7 @@ function shown(hash: string | undefined): string {
 
 function checkHash(migration: ParsedMigration, actual: string | undefined): void {
   if (actual !== migration.hash) {
-    throw new Error(
+    throw new ChainBrokenError(
       `${migration.filename}: --! Hash says ${migration.hash} but the body hashes to ${actual}`,
     );
   }
