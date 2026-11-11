@@ -121,6 +121,40 @@ describe("generateReport replays", () => {
   });
 });
 
+describe("generateReport diffs", () => {
+  const drop = 'alter table "public"."a" drop column "b";';
+  const report = (skipped: readonly string[]): string[] =>
+    generateReport(
+      {
+        path: "/p/current.sql",
+        sql: undefined,
+        file: "kept",
+        devDatabase: {
+          kind: "diffed",
+          skipped,
+          hazards: [{ kind: "data_loss", statement: drop }],
+        },
+        hazards: [],
+        hints: [],
+      },
+      "c.sql",
+    );
+
+  it("names the files that skipped replay, then each Hazard the diff applied", () => {
+    expect(report(["000002-noop.sql", "current.sql"])).toStrictEqual([
+      "diffed the Dev database to the files, skipping replay of 000002-noop.sql, current.sql",
+      `hazard data_loss in the Dev database: ${drop}`,
+    ]);
+  });
+
+  it("names no file when every file it records had already run", () => {
+    expect(report([])).toStrictEqual([
+      "diffed the Dev database to the files",
+      `hazard data_loss in the Dev database: ${drop}`,
+    ]);
+  });
+});
+
 describe("generateReport hints", () => {
   it("prints each hint after the Hazards and before the reset", () => {
     const hints = ['table "a" may be a rename of "b"'];

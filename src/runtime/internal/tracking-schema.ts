@@ -51,6 +51,8 @@ export type TrackingSchema = {
   /** The hash `current` holds, or `undefined` when the table is missing or empty. */
   readCurrent(session: Queryable): Promise<string | undefined>;
   clearCurrent(tx: Queryable): Promise<void>;
+  /** Deletes every `migrations` row, so a Dev catch-up can record the Committed chain afresh. */
+  clearMigrations(tx: Queryable): Promise<void>;
   /** Whether the `current` table exists, which marks a Dev database even when it holds no row. */
   hasCurrentTable(session: Queryable): Promise<boolean>;
   /** Whether the `migrations` table exists. */
@@ -131,6 +133,7 @@ export function trackingSchema(name: string): TrackingSchema {
 
     readCurrent,
     clearCurrent: (tx) => tx.execute(`delete from ${schema}.current`),
+    clearMigrations: (tx) => tx.execute(`delete from ${schema}.migrations`),
     hasCurrentTable: (session) => tableExists(session, current),
     hasMigrationsTable: (session) => tableExists(session, migrations),
   };

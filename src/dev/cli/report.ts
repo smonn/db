@@ -52,6 +52,15 @@ function outcomeLines(outcome: GenerateResult["devDatabase"]): string[] {
           ({ file, kind, statement }) => `hazard ${kind} in ${file}: ${statement}`,
         ),
       ];
+    case "diffed":
+      return [
+        outcome.skipped.length === 0
+          ? "diffed the Dev database to the files"
+          : `diffed the Dev database to the files, skipping replay of ${outcome.skipped.join(", ")}`,
+        ...outcome.hazards.map(
+          ({ kind, statement }) => `hazard ${kind} in the Dev database: ${statement}`,
+        ),
+      ];
     // Stryker disable next-line ConditionalExpression: 1 survivor: unreachable, since the type forbids any other kind.
     default:
       return outcome satisfies never;

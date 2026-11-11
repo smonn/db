@@ -22,14 +22,19 @@ const db = useTestDatabase();
 const dev = useTestDatabase();
 
 let folder: string;
+let stdout: string;
 let stderr: string;
 
 beforeEach(async () => {
   previousHash = undefined;
   folder = await mkdtemp(join(tmpdir(), "smonn-db-run-"));
   await mkdir(join(folder, "migrations"));
+  stdout = "";
   stderr = "";
-  vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+  vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    stdout += String(chunk);
+    return true;
+  });
   vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
     stderr += String(chunk);
     return true;
@@ -48,6 +53,7 @@ function projectWith(overrides: Partial<Project> = {}): Project {
     url: db.url,
     migrationsFolder: join(folder, "migrations"),
     trackingSchema: "smonn_db",
+    configPath: "smonndb.config.ts",
     loadDefinition: () => Promise.resolve(defineDatabase({ public: {} })),
     ...overrides,
   };
@@ -115,6 +121,32 @@ it("writes a commit's file and prints its path relative to the working directory
     ok: true,
     file: { path: `${relative(process.cwd(), join(folder, "migrations"))}/000001-first.sql` },
   });
+});
+
+it("refuses a hand edit's leftover under the config's strict key, and migrate ignores the key", async () => {
+  const definition = defineDatabase({
+    public: { run_strict: defineTable((c) => ({ id: c.text().notNull() })) },
+  });
+  const strict = projectWith({
+    url: dev.url,
+    strict: true,
+    configPath: "app/smonndb.config.ts",
+    loadDefinition: () => Promise.resolve(definition),
+  });
+  await writeFile(join(folder, "migrations", "current.sql"), "select 1;\n");
+
+  await expect(run({ name: "generate", config: "c" }, strict)).rejects.toThrow(
+    "error: current.sql leaves a difference from the Definition (strict mode, app/smonndb.config.ts):",
+  );
+  await writeMigrationFile("000001-strict.sql", "select 1;\n");
+  const migrated = await run(
+    { name: "migrate", config: "c" },
+    { ...strict, url: db.url, trackingSchema: "run_strict_tracking" },
+  );
+  expect(migrated).toStrictEqual({ command: "migrate", ok: true, applied: ["000001-strict.sql"] });
+
+  await run({ name: "generate", config: "c" }, { ...strict, strict: false });
+  expect(stdout).toContain("warning:");
 });
 
 it("prints each line the Shadow sweep logs to stderr", async () => {

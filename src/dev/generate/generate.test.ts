@@ -3,6 +3,7 @@ import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-h
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { sha256, writeMigration } from "../../runtime/internal/index.ts";
 import { generate } from "./generate.ts";
+import { reset } from "./reset.ts";
 import { filesIn, memoryFileSystem } from "./memory-file-system.test-helper.ts";
 
 const db = useTestDatabase();
@@ -176,7 +177,7 @@ alter table "public"."users" add column "email" text;
     ).rejects.toThrow(`"${db.name}" isn't a Dev database`);
   });
 
-  it("resets a Dev database where an extension owns a schema", async () => {
+  it("reset drops an extension that owns a schema", async () => {
     await db.driver.execute(`
       create schema smonn_db;
       create table smonn_db.current (hash text not null);
@@ -184,14 +185,11 @@ alter table "public"."users" add column "email" text;
       create schema ext;
       alter extension hstore add schema ext;
     `);
-
-    await generate({
-      driver: db.driver,
-      connect: db.connect,
-      fileSystem: memoryFileSystem(),
-      definition: defineDatabase({ public: { users: defineTable((c) => ({ id: c.text() })) } }),
-      migrations: "db/migrations",
+    const fileSystem = memoryFileSystem({
+      [CURRENT]: 'create table "public"."users" (\n  "id" text\n);\n',
     });
+
+    await reset({ driver: db.driver, fileSystem, migrations: "db/migrations" });
 
     expect(await tables()).toStrictEqual([
       { table_schema: "public", table_name: "users", column_name: "id" },
@@ -243,7 +241,7 @@ alter table "public"."users" add column "email" text;
     expect(await currentHashes()).toStrictEqual([]);
   });
 
-  it("resets a marked Dev database, dropping what the migrations don't create", async () => {
+  it("diffs a marked Dev database, dropping what the migrations don't create", async () => {
     await db.driver.execute(`
       create schema smonn_db;
       create table smonn_db.current (hash text not null);
