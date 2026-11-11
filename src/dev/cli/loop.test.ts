@@ -57,6 +57,9 @@ function stdoutOf(): string {
 let written: { mock: { calls: unknown[][] }; mockClear: () => unknown };
 
 beforeEach(async () => {
+  await dev.driver.execute(
+    "drop schema if exists smonn_db cascade; drop schema public cascade; create schema public;",
+  );
   project = await mkdtemp(join(tmpdir(), "smonn-db-cli-"));
   await mkdir(join(project, "db"));
   await writeFile(join(project, "db", "definition.ts"), DEFINITION);

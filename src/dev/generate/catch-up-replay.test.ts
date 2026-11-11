@@ -171,19 +171,27 @@ describe("replaying new files into a Dev database with no Current migration reco
     expect(rows).toStrictEqual([{ id: "kept" }]);
   });
 
-  it("resets when a pulled file can't run in a transaction", async () => {
+  it("diffs, naming the file, when a pulled file can't run in a transaction", async () => {
     const fileSystem = await committedUsers();
     await pull(fileSystem, "000002-noop.sql", "select 1;\n", { noTransaction: true });
 
-    expect((await generateWith(fileSystem, users)).devDatabase).toStrictEqual({ kind: "reset" });
+    expect((await generateWith(fileSystem, users)).devDatabase).toStrictEqual({
+      kind: "diffed",
+      skipped: ["000002-noop.sql"],
+      hazards: [{ kind: "data_loss", statement: 'drop table "public"."junk";' }],
+    });
     expect(await hasJunk()).toBe(false);
+    expect(await recordedFilenames()).toStrictEqual(["000001-create-users.sql", "000002-noop.sql"]);
   });
 
-  it("resets when the Current migration can't run in a transaction", async () => {
+  it("diffs, naming current.sql, when the Current migration can't run in a transaction", async () => {
     const fileSystem = await committedUsers();
     fileSystem.files.set(CURRENT, "--! no-transaction\nselect 1;\n");
 
-    expect((await generateWith(fileSystem, users)).devDatabase).toStrictEqual({ kind: "reset" });
-    expect(await hasJunk()).toBe(false);
+    expect((await generateWith(fileSystem, users)).devDatabase).toMatchObject({
+      kind: "diffed",
+      skipped: ["current.sql"],
+    });
+    expect(await recordedCurrent()).toHaveLength(1);
   });
 });

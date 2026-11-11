@@ -14,8 +14,10 @@ import type {
   MigrationSource,
   Queryable,
 } from "../../runtime/ports/index.ts";
+import type { Hazard } from "../diff/index.ts";
+import { applyDevDiff, type DevDiffTarget } from "./dev-diff.ts";
 import { hazardsIn, type HazardLine } from "./hazards.ts";
-import { compareRecorded } from "./recorded-chain.ts";
+import { compareRecorded, type RecordedChain } from "./recorded-chain.ts";
 import { replay, requireDevDatabase, resetDevDatabase } from "./reset.ts";
 
 /** A Hazard in a Committed file that the catch-up applied. */
@@ -30,9 +32,15 @@ export type DevDatabaseOutcome =
       /** The Committed files it applied, in order, then `current.sql` when it applied that too. */
       readonly files: readonly string[];
       readonly hazards: readonly AppliedHazard[];
+    }
+  | {
+      readonly kind: "diffed";
+      /** The files the markers now record whose statements never ran in the Dev database. */
+      readonly skipped: readonly string[];
+      readonly hazards: readonly Hazard[];
     };
 
-export type CatchUpTarget = {
+export type CatchUpTarget = Omit<DevDiffTarget, "tracking"> & {
   /** The Dev database, on the Dev lock's connection. */
   readonly driver: Driver;
   readonly source: MigrationSource;
@@ -46,6 +54,8 @@ type CatchUpMarkers = {
   readonly migrations: readonly ParsedMigration[];
   /** The Current migration the Dev database now holds, if any. */
   readonly current: CurrentMigration | undefined;
+  /** Whether `migrations` replaces every recorded row rather than following them. */
+  readonly replace?: boolean;
 };
 
 /**
@@ -61,10 +71,11 @@ export async function lockDevDatabase(driver: Driver, tracking: TrackingSchema):
 }
 
 /**
- * Brings the Dev database up to the Committed files and `current`. Matching markers do nothing.
+ * Brings the Dev database up to the Committed files and `current`. Matching markers do nothing,
+ * and an empty Database with no tracking tables yet resets, which builds it from the files.
  * With no Current migration recorded and recorded rows that are a prefix of the Committed chain,
  * it applies the new Committed files and `current` as written, then the markers, in one
- * transaction. Anything else resets.
+ * transaction. Otherwise it diffs the Dev database against the Shadow (#768).
  */
 export async function catchUp(
   target: CatchUpTarget,
@@ -81,6 +92,8 @@ export async function catchUp(
       return path;
     case "replay":
       return replayNew(driver, tracking, { migrations: path.pending, current });
+    case "diff":
+      return diffDev(target, { migrations: chain, current, replace: true }, path.skipped);
     // Stryker disable next-line ConditionalExpression: 1 survivor: unreachable, since the type forbids any other kind.
     default:
       return path satisfies never;
@@ -90,7 +103,8 @@ export async function catchUp(
 type CatchUpPath =
   | { readonly kind: "none" }
   | { readonly kind: "reset" }
-  | { readonly kind: "replay"; readonly pending: readonly ParsedMigration[] };
+  | { readonly kind: "replay"; readonly pending: readonly ParsedMigration[] }
+  | { readonly kind: "diff"; readonly skipped: readonly string[] };
 
 async function choosePath(
   driver: Driver,
@@ -98,29 +112,24 @@ async function choosePath(
   chain: readonly ParsedMigration[],
   current: CurrentMigration | undefined,
 ): Promise<CatchUpPath> {
-  const tracked = await readTracked(driver, tracking);
-  return tracked === undefined ? { kind: "reset" } : pathFrom(tracked, chain, current);
+  // `lockDevDatabase` let an unmarked Database through only when it holds nothing to keep.
+  if (!(await tracking.hasCurrentTable(driver))) return { kind: "reset" };
+  return pathFrom(await readTracked(driver, tracking), chain, current);
 }
 
 type Tracked = {
   readonly recorded: readonly RecordedMigration[];
+  /** False when the migrations table is missing or its last row was left `started` or `failed`. */
+  readonly intact: boolean;
   readonly current: string | undefined;
 };
 
-/**
- * The recorded rows and `current` hash, or `undefined` when a tracking table is missing or the
- * last row was left `started` or `failed`.
- */
-async function readTracked(driver: Driver, tracking: TrackingSchema): Promise<Tracked | undefined> {
-  const tracked =
-    (await tracking.hasCurrentTable(driver)) &&
-    (await tracking.hasMigrationsTable(driver)) &&
-    (await tracking.readUnfinished(driver)) === undefined;
-  if (!tracked) return undefined;
-  return {
-    recorded: await tracking.readRecorded(driver),
-    current: await tracking.readCurrent(driver),
-  };
+async function readTracked(driver: Driver, tracking: TrackingSchema): Promise<Tracked> {
+  const current = await tracking.readCurrent(driver);
+  if (!(await tracking.hasMigrationsTable(driver))) return { recorded: [], intact: false, current };
+  const recorded = await tracking.readRecorded(driver);
+  const unfinished = (await tracking.readUnfinished(driver)) !== undefined;
+  return { recorded: unfinished ? recorded.slice(0, -1) : recorded, intact: !unfinished, current };
 }
 
 function pathFrom(
@@ -128,21 +137,44 @@ function pathFrom(
   chain: readonly ParsedMigration[],
   current: CurrentMigration | undefined,
 ): CatchUpPath {
-  const state = compareRecorded(tracked.recorded, chain);
+  const state = tracked.intact ? compareRecorded(tracked.recorded, chain) : "diverged";
   if (state === "match" && tracked.current === current?.hash) return { kind: "none" };
-  if (state === "diverged" || tracked.current !== undefined) return { kind: "reset" };
-  return replayPath(chain.slice(tracked.recorded.length), current);
+  const pending = chain.slice(tracked.recorded.length);
+  if (canReplay(state, tracked.current, pending, current)) return { kind: "replay", pending };
+  return { kind: "diff", skipped: skippedFiles(tracked.recorded, chain, current) };
 }
 
-/** Replays `pending` and `current`, unless one can't share a transaction (ADR-0020). */
-function replayPath(
+/**
+ * Whether the Dev database holds a prefix of the chain and no Current migration, and every file to
+ * replay can share one transaction (ADR-0020).
+ */
+function canReplay(
+  state: RecordedChain,
+  recordedCurrent: string | undefined,
   pending: readonly ParsedMigration[],
   current: CurrentMigration | undefined,
-): CatchUpPath {
-  const noTransaction =
-    pending.some((migration) => migration.noTransaction) ||
-    (current !== undefined && splitCurrentHeader(current.body).noTransaction);
-  return noTransaction ? { kind: "reset" } : { kind: "replay", pending };
+): boolean {
+  return (
+    state !== "diverged" &&
+    recordedCurrent === undefined &&
+    pending.every((migration) => !migration.noTransaction) &&
+    (current === undefined || !splitCurrentHeader(current.body).noTransaction)
+  );
+}
+
+/**
+ * The files the diff path records without running: the Committed files after the recorded rows
+ * that match the chain hash by hash, then `current.sql` when there is one.
+ */
+function skippedFiles(
+  recorded: readonly RecordedMigration[],
+  chain: readonly ParsedMigration[],
+  current: CurrentMigration | undefined,
+): string[] {
+  const differs = recorded.findIndex((row, index) => row.hash !== chain[index]?.hash);
+  const kept = differs === -1 ? recorded.length : differs;
+  const skipped = chain.slice(kept).map(({ filename }) => filename);
+  return current === undefined ? skipped : [...skipped, CURRENT_FILENAME];
 }
 
 async function replayNew(
@@ -175,25 +207,50 @@ async function replayNew(
 }
 
 /**
+ * Diffs the Dev database against the Shadow and applies the result with the markers. A diff with
+ * no steps and no skipped file only rewrote the markers, so it reports no change.
+ */
+async function diffDev(
+  target: CatchUpTarget,
+  markers: CatchUpMarkers,
+  skipped: readonly string[],
+): Promise<DevDatabaseOutcome> {
+  const { driver, tracking } = target;
+  const { sql, hazards } = await applyWithMarkers(
+    driver,
+    tracking,
+    (tx) => applyDevDiff(tx, target),
+    markers,
+  );
+  if (sql === "" && skipped.length === 0) return { kind: "none" };
+  return { kind: "diffed", skipped, hazards };
+}
+
+/**
  * Runs `apply`, then writes `markers`, in one Dev database transaction. A failure rolls all of it
  * back, so the Dev database stays as it was (#245), and the error names `reset`. Generate never
  * resets on a failure: a visible one beats a silent wipe (#768).
  */
-async function applyWithMarkers(
+async function applyWithMarkers<T>(
   driver: Driver,
   tracking: TrackingSchema,
-  apply: (tx: Queryable) => Promise<void>,
+  apply: (tx: Queryable) => Promise<T>,
   markers: CatchUpMarkers,
-): Promise<void> {
+): Promise<T> {
   try {
-    await driver.transaction(async (tx) => {
-      await apply(tx);
+    return await driver.transaction(async (tx) => {
+      const applied = await apply(tx);
+      if (markers.replace === true) {
+        await tracking.ensureMigrationsTable(tx);
+        await tracking.clearMigrations(tx);
+      }
       for (const migration of markers.migrations) {
         // oxlint-disable-next-line eslint/no-await-in-loop -- each row references the one before it.
         await tracking.recordMigration(tx, migration);
       }
       await tracking.clearCurrent(tx);
       if (markers.current !== undefined) await tracking.recordCurrent(tx, markers.current.hash);
+      return applied;
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -61,17 +61,17 @@ describe("Dev database catch-up", () => {
     expect(await hasJunk()).toBe(true);
   });
 
-  it("resets when the Current migration's hash differs from smonn_db.current", async () => {
+  it("diffs when the Current migration's hash differs from smonn_db.current, dropping what the files lack", async () => {
     const fileSystem = memoryFileSystem();
     await generateInto(fileSystem);
     await db.driver.execute("create table public.junk (id int)");
 
-    expect(await generateInto(fileSystem, withEmail)).toBe(true);
+    expect(await generateInto(fileSystem, withEmail)).toBe(false);
 
     expect(await hasJunk()).toBe(false);
   });
 
-  it("resets when a pulled Committed migration moves the tip but leaves the Current migration as it was", async () => {
+  it("diffs when a pulled Committed migration moves the tip but leaves the Current migration as it was", async () => {
     const fileSystem = memoryFileSystem();
     await generateInto(fileSystem);
     await commit({

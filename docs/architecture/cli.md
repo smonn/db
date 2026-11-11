@@ -45,10 +45,10 @@ sequenceDiagram
   Gen->>DB: scan the Shadow's pg_depend from those, stop on any Unmodeled blocker
   Gen->>DB: apply it to the Shadow, introspect, require no diff
   Gen->>FS: write Current migration
-  Gen->>DB: if behind, replay the new files, or reset and replay all
+  Gen->>DB: if behind, replay the new files, or diff it against the Shadow
 ```
 
-Generate writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database. It prints the file it wrote and each Hazard with its statement, then one line when it replayed files into or reset the Dev database, and each Hazard it replayed.
+Generate writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database. It prints the file it wrote and each Hazard with its statement, then one line when it replayed files into, diffed, or reset the Dev database, and each Hazard it applied.
 
 ### Hand edits
 
@@ -56,7 +56,7 @@ Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body 
 
 ### Dev database catch-up
 
-Generate compares every hash in `smonn_db.migrations` with the Committed chain, the check `commit` makes, and `smonn_db.current` with the Current migration. Matching markers mean no work. With no Current migration recorded and recorded rows that prefix the Committed chain, it replays the new Committed files and `current.sql` as written, then the markers, in one transaction. A failure rolls it all back and names `reset`. Anything else, including a no-transaction file, resets the Dev database, as [`reset`](#reset) does and only in a marked or empty Database (ADR-0016). Keeping that data is a v0.4 dev loop question.
+Generate compares every hash in `smonn_db.migrations` with the Committed chain, the check `commit` makes, and `smonn_db.current` with the Current migration. Matching markers mean no work, and an empty, unmarked Database resets (ADR-0016). With no Current migration recorded and recorded rows that prefix the Committed chain, it replays the new Committed files and `current.sql` as written. Otherwise it diffs the Dev database against the Shadow holding the Current migration, keeping data, and names files that skipped replay. Steps, markers, and the diff's zero-diff check share one transaction, which a failure rolls back, naming `reset`.
 
 ## commit
 
