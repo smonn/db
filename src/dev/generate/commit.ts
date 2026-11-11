@@ -30,6 +30,8 @@ export type CommitOptions = {
   readonly trackingSchema?: string;
   /** The Hazard kinds the caller accepts (ADR-0015); `commit` refuses any other kind in the file. */
   readonly accept: readonly HazardKind[];
+  /** Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`). */
+  readonly signal?: AbortSignal;
 };
 
 export type CommitResult = {
@@ -53,14 +55,14 @@ export function commit(options: CommitOptions): Promise<CommitResult> {
 }
 
 async function commitLocked(options: CommitOptions): Promise<CommitResult> {
-  const { driver, fileSystem, migrations, slug } = options;
+  const { driver, fileSystem, migrations, slug, signal } = options;
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
   if (!KEBAB_CASE.test(slug)) {
     throw new Error(`slug ${JSON.stringify(slug)} must be kebab-case, such as create-users`);
   }
   // The Dev lock's connection keeps the migrator's lock until the run ends, so a runtime `migrate`
   // waits instead of changing the Database between the check and the transaction.
-  await driver.session((session) => acquireMigrationLock(session));
+  await driver.session((session) => acquireMigrationLock(session, { signal }));
   const currentPath = `${migrations}/${CURRENT_FILENAME}`;
   const body = await readAcceptedBody(fileSystem, currentPath, options.accept);
 

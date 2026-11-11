@@ -37,6 +37,8 @@ export type GenerateOptions = ShadowOptions & {
   readonly migrations: string;
   /** The schema `migrate` tracks into. Defaults to `smonn_db`. */
   readonly trackingSchema?: string;
+  /** Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`). */
+  readonly signal?: AbortSignal;
 };
 
 export type GenerateResult = {
@@ -94,13 +96,14 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     definition,
     migrations,
     trackingSchema: trackingName = DEFAULT_TRACKING_SCHEMA,
+    signal,
     ...shadowOptions
   } = options;
   const tracking = trackingSchema(trackingName);
   // The Dev lock's connection keeps the migrator's lock until the run ends, so every read and the
   // reset below see the Database as the check did.
   await driver.session(async (session) => {
-    await acquireMigrationLock(session);
+    await acquireMigrationLock(session, { signal });
     await requireDevDatabase(session, tracking);
   });
   const path = `${migrations}/${CURRENT_FILENAME}`;

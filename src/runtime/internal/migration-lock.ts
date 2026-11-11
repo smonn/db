@@ -5,30 +5,56 @@ export const MIGRATION_LOCK_KEY = "76666326447283";
 
 const POLL_INTERVAL_MS = 100;
 
-function sleep(ms: number): Promise<void> {
+/** Resolves after `ms`, or as soon as `signal` aborts. */
+function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve, ms);
+    if (signal?.aborted === true) {
+      resolve();
+      return;
+    }
+    const done = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
   });
+}
+
+function throwIfStopped(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) {
+    throw new Error("stopped waiting for the migrator's lock", { cause: signal.reason });
+  }
+}
+
+async function tryLock(session: Queryable): Promise<boolean> {
+  const { rows } = await session.query(
+    `select pg_try_advisory_lock(${MIGRATION_LOCK_KEY}) as locked`,
+  );
+  return rows[0]?.["locked"] === true;
 }
 
 /**
  * Takes the migration session advisory lock by polling `pg_try_advisory_lock`, which the session's
  * reset releases. Blocking in `pg_advisory_lock` would deadlock with a `CONCURRENTLY` statement in
  * the holder, which waits on the snapshot of a waiter (ADR-0020).
+ *
+ * Aborting `signal` ends the wait with an error whose `cause` is the signal's reason. A poll already
+ * sent still finishes, and a lock it takes stays with the session until the session ends.
  */
 export async function acquireMigrationLock(
   session: Queryable,
-  { intervalMs = POLL_INTERVAL_MS }: { readonly intervalMs?: number } = {},
+  {
+    intervalMs = POLL_INTERVAL_MS,
+    signal,
+  }: { readonly intervalMs?: number; readonly signal?: AbortSignal | undefined } = {},
 ): Promise<void> {
   for (;;) {
+    throwIfStopped(signal);
     // oxlint-disable-next-line eslint/no-await-in-loop -- each poll waits on the one before it.
-    const { rows } = await session.query(
-      `select pg_try_advisory_lock(${MIGRATION_LOCK_KEY}) as locked`,
-    );
-    if (rows[0]?.["locked"] === true) {
-      return;
-    }
+    if (await tryLock(session)) return;
     // oxlint-disable-next-line eslint/no-await-in-loop -- see above.
-    await sleep(intervalMs);
+    await sleep(intervalMs, signal);
   }
 }
