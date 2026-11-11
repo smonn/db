@@ -16,7 +16,8 @@ import { verify } from "../../runtime/migrator/index.ts";
 import type { Driver, FileSystem, Queryable } from "../../runtime/ports/index.ts";
 import type { HazardKind } from "../diff/index.ts";
 import { withDevLock } from "./dev-lock.ts";
-import { hazardRefusal } from "./hazard-refusal.ts";
+import { hazardRefusalError } from "./hazard-refusal.ts";
+import { compareRecorded } from "./recorded-chain.ts";
 
 export type CommitOptions = {
   /** The Dev database, which `generate` last replayed `current.sql` into. */
@@ -78,7 +79,7 @@ async function commitLocked(options: CommitOptions): Promise<CommitResult> {
   let wrote = false;
   try {
     await driver.transaction(async (tx) => {
-      await checkDevReplayed(tx, tracking, { body, currentPath, chain, tip, migrations });
+      await checkDevReplayed(tx, tracking, { body, currentPath, chain, migrations });
       await fileSystem.writeFile(path, migration.content);
       wrote = true;
       await tracking.recordMigration(tx, parseMigration(migration));
@@ -100,8 +101,8 @@ async function readAcceptedBody(
   const content = await fileSystem.readFile(currentPath);
   if (content === undefined) throw new Error(`${currentPath} doesn't exist; run generate first`);
   const { body } = await parseCurrent(content);
-  const refusal = hazardRefusal(body, accept);
-  if (refusal !== undefined) throw new Error(refusal);
+  const refusal = hazardRefusalError(body, accept);
+  if (refusal !== undefined) throw refusal;
   return body;
 }
 
@@ -113,18 +114,16 @@ async function checkDevReplayed(
     readonly body: string;
     readonly currentPath: string;
     readonly chain: readonly ParsedMigration[];
-    readonly tip: ParsedMigration | undefined;
     readonly migrations: string;
   },
 ): Promise<void> {
-  const { body, currentPath, chain, tip, migrations } = expected;
+  const { body, currentPath, chain, migrations } = expected;
   if ((await tracking.readCurrent(tx)) !== (await currentHash(body))) {
     throw new Error(
       `the Dev database hasn't replayed ${currentPath} as it reads now; run generate first`,
     );
   }
-  const recorded = await tracking.readRecorded(tx);
-  if (recorded.length !== chain.length || recorded.at(-1)?.hash !== tip?.hash) {
+  if (compareRecorded(await tracking.readRecorded(tx), chain) !== "match") {
     throw new Error(
       `the Dev database's Committed migrations don't match the files in ${migrations}; run generate first`,
     );

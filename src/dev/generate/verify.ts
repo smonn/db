@@ -7,27 +7,33 @@ import { explainShadowError } from "./shadow-errors.ts";
 /**
  * Applies the Current migration to the Shadow database and refuses, naming each remaining
  * difference, unless the Shadow then matches the Definition database's catalog (ADR-0013).
+ * Returns the Shadow's catalog with the Current migration applied.
  */
 export async function verifyInShadow(
   shadow: Driver,
   sql: string,
   definition: Catalog,
   tracking: TrackingSchema,
-): Promise<void> {
-  const leftover = await leftoverAfter(shadow, sql, definition, { tracking });
-  if (leftover !== undefined) throw new Error(leftover);
+): Promise<Catalog> {
+  const after = await leftoverAfter(shadow, sql, definition, { tracking });
+  if (after.leftover !== undefined) throw new Error(after.leftover);
+  return after.shadow;
 }
 
-/**
- * Applies the Current migration to the Shadow database, throwing on a SQL error, and returns the
- * message naming each remaining difference from the Definition, or `undefined` when none is left.
- */
+export type ShadowAfter = {
+  /** The Shadow's catalog with the Current migration applied. */
+  readonly shadow: Catalog;
+  /** The message naming each remaining difference from the Definition, if any is left. */
+  readonly leftover: string | undefined;
+};
+
+/** Applies the Current migration to the Shadow database, throwing on a SQL error. */
 export async function leftoverAfter(
   shadow: Driver,
   sql: string,
   definition: Catalog,
   context: { readonly tracking: TrackingSchema; readonly handEdited?: boolean },
-): Promise<string | undefined> {
+): Promise<ShadowAfter> {
   const { noTransaction } = splitCurrentHeader(sql);
   try {
     // Outside a transaction only for a no-transaction hand edit, so a statement that needs that
@@ -36,11 +42,13 @@ export async function leftoverAfter(
   } catch (error) {
     throw explainShadowError(error, { handEdited: context.handEdited, noTransaction });
   }
-  const remaining = differences(await introspect(shadow, context.tracking), definition);
-  if (remaining.length === 0) return undefined;
-  return `the Current migration leaves the Shadow database unlike the Definition database:\n${remaining
+  const after = await introspect(shadow, context.tracking);
+  const remaining = differences(after, definition);
+  if (remaining.length === 0) return { shadow: after, leftover: undefined };
+  const leftover = `the Current migration leaves the Shadow database unlike the Definition database:\n${remaining
     .map((line) => `  ${line}`)
     .join("\n")}`;
+  return { shadow: after, leftover };
 }
 
 function differences(shadow: Catalog, definition: Catalog): string[] {

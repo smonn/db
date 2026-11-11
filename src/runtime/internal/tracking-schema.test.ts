@@ -20,25 +20,14 @@ function sessionAnswering(...answers: DriverRow[][]): Queryable & { readonly ask
 
 const tracking = trackingSchema("app");
 
-describe("readTip", () => {
-  it("reads the newest recorded hash from the quoted migrations table", async () => {
-    const session = sessionAnswering([{ present: true }], [{ hash: "sha256:tip" }]);
+describe("hasMigrationsTable", () => {
+  it("asks for the quoted migrations table", async () => {
+    const session = sessionAnswering([{ present: true }]);
 
-    expect(await tracking.readTip(session)).toBe("sha256:tip");
+    expect(await tracking.hasMigrationsTable(session)).toBe(true);
     expect(session.asked).toStrictEqual([
       { text: "select to_regclass($1) is not null as present", params: ['"app"."migrations"'] },
-      {
-        text: 'select hash from "app".migrations order by sequence desc limit 1',
-        params: undefined,
-      },
     ]);
-  });
-
-  it("reads nothing, without asking for a row, when the table is missing", async () => {
-    const session = sessionAnswering([{ present: false }]);
-
-    expect(await tracking.readTip(session)).toBeUndefined();
-    expect(session.asked).toHaveLength(1);
   });
 });
 

@@ -98,7 +98,7 @@ describe("generate and the migrator's lock", () => {
     events.push("generate");
     await migrating;
 
-    expect(result.reset).toBe(true);
+    expect(result.devDatabase.kind).toBe("reset");
     expect(finishedEarly).toBe(false);
     expect(events).toStrictEqual(["generate", "migrate"]);
   });

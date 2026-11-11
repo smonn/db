@@ -53,6 +53,7 @@ function projectWith(overrides: Partial<Project> = {}): Project {
     url: db.url,
     migrationsFolder: join(folder, "migrations"),
     trackingSchema: "smonn_db",
+    configPath: "smonndb.config.ts",
     loadDefinition: () => Promise.resolve(defineDatabase({ public: {} })),
     ...overrides,
   };
@@ -62,9 +63,16 @@ it("migrates into the config's trackingSchema, naming each file it applied", asy
   await writeMigrationFile("000001-first.sql", "select 1;\n");
   await writeMigrationFile("000002-second.sql", "select 2;\n");
 
-  await run({ name: "migrate", config: "c" }, projectWith({ trackingSchema: "run_tracking" }));
+  const outcome = await run(
+    { name: "migrate", config: "c" },
+    projectWith({ trackingSchema: "run_tracking" }),
+  );
 
-  expect(stdout).toBe("applied 000001-first.sql\napplied 000002-second.sql\n");
+  expect(outcome).toStrictEqual({
+    command: "migrate",
+    ok: true,
+    applied: ["000001-first.sql", "000002-second.sql"],
+  });
   const { rows } = await db.driver.query(
     "select to_regclass('run_tracking.migrations') is not null as present",
   );
@@ -75,11 +83,12 @@ it("says there is nothing to apply when every file is recorded", async () => {
   await writeMigrationFile("000001-first.sql", "select 1;\n");
   const project = projectWith({ trackingSchema: "run_tracking_again" });
   await run({ name: "migrate", config: "c" }, project);
-  stdout = "";
 
-  await run({ name: "migrate", config: "c" }, project);
-
-  expect(stdout).toBe("nothing to apply\n");
+  expect(await run({ name: "migrate", config: "c" }, project)).toStrictEqual({
+    command: "migrate",
+    ok: true,
+    applied: [],
+  });
 });
 
 it("closes its connections once the command settles", async () => {
@@ -104,13 +113,40 @@ it("writes a commit's file and prints its path relative to the working directory
   });
   const project = projectWith({ url: dev.url, loadDefinition: () => Promise.resolve(definition) });
   await run({ name: "generate", config: "c" }, project);
-  stdout = "";
 
-  await run({ name: "commit", config: "c", slug: "first", accept: [] }, project);
+  const outcome = await run({ name: "commit", config: "c", slug: "first", accept: [] }, project);
 
-  expect(stdout).toBe(
-    `wrote ${relative(process.cwd(), join(folder, "migrations"))}/000001-first.sql\n`,
+  expect(outcome).toStrictEqual({
+    command: "commit",
+    ok: true,
+    file: { path: `${relative(process.cwd(), join(folder, "migrations"))}/000001-first.sql` },
+  });
+});
+
+it("refuses a hand edit's leftover under the config's strict key, and migrate ignores the key", async () => {
+  const definition = defineDatabase({
+    public: { run_strict: defineTable((c) => ({ id: c.text().notNull() })) },
+  });
+  const strict = projectWith({
+    url: dev.url,
+    strict: true,
+    configPath: "app/smonndb.config.ts",
+    loadDefinition: () => Promise.resolve(definition),
+  });
+  await writeFile(join(folder, "migrations", "current.sql"), "select 1;\n");
+
+  await expect(run({ name: "generate", config: "c" }, strict)).rejects.toThrow(
+    "error: current.sql leaves a difference from the Definition (strict mode, app/smonndb.config.ts):",
   );
+  await writeMigrationFile("000001-strict.sql", "select 1;\n");
+  const migrated = await run(
+    { name: "migrate", config: "c" },
+    { ...strict, url: db.url, trackingSchema: "run_strict_tracking" },
+  );
+  expect(migrated).toStrictEqual({ command: "migrate", ok: true, applied: ["000001-strict.sql"] });
+
+  await run({ name: "generate", config: "c" }, { ...strict, strict: false });
+  expect(stdout).toContain("warning:");
 });
 
 it("prints each line the Shadow sweep logs to stderr", async () => {

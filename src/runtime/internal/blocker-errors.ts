@@ -1,3 +1,6 @@
+/** Another object, outside what generate models, blocks a drop or retype. */
+export class UnmodeledBlockerError extends Error {}
+
 /** Where the SQL that Postgres refused came from, which decides who can fix it and how. */
 export type BlockerSource =
   | { readonly kind: "generated" }
@@ -23,7 +26,9 @@ export function explainBlockerError(
     code === "2BP01" || (code === "0A000" && error.message.startsWith(RETYPE_BLOCKED));
   if (!blocked) return error;
   const blockers = typeof detail === "string" ? `:\n  ${detail.split("\n").join("\n  ")}` : "";
-  return new Error(`${error.message}${blockers}\n${hint(options.source)}`, { cause: error });
+  return new UnmodeledBlockerError(`${error.message}${blockers}\n${hint(options.source)}`, {
+    cause: error,
+  });
 }
 
 const WHY: Readonly<Record<"generated" | "hand-edited", string>> = {

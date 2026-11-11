@@ -74,3 +74,26 @@ describe("parseConfig", () => {
     );
   });
 });
+
+describe("strict", () => {
+  it("passes both parsers, off unless set", () => {
+    const url = "postgres://localhost/app";
+
+    expect(parseConfig({ ...base, url, strict: true }, FILE)).toStrictEqual({
+      ...base,
+      url,
+      strict: true,
+    });
+    expect(parseOfflineConfig({ ...base, url, strict: false }, FILE)).toStrictEqual({
+      ...base,
+      strict: false,
+    });
+    expect(parseConfig({ ...base, url }, FILE)).not.toHaveProperty("strict");
+  });
+
+  it("refuses a value that isn't a boolean", () => {
+    expect(() => parseConfig({ ...base, url: "postgres://", strict: "yes" }, FILE)).toThrow(
+      `${FILE}: strict must be true or false`,
+    );
+  });
+});

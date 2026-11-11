@@ -1,4 +1,4 @@
-import type { TrackingSchema } from "../../runtime/internal/index.ts";
+import { UnmodeledBlockerError, type TrackingSchema } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type { Connect, Driver, MigrationSource } from "../../runtime/ports/index.ts";
 import {
@@ -30,6 +30,11 @@ export type ShadowDiffOptions = {
 export type ShadowDiff = Diff & {
   /** With `edited`, the differences from the Definition that the edit leaves, as a message. */
   readonly leftover?: string | undefined;
+  /**
+   * The Shadow's catalog with the Committed migrations and the Current migration applied: what
+   * the files describe, which the Dev database's catch-up diffs against (#777).
+   */
+  readonly shadow: Catalog;
 };
 
 /**
@@ -37,6 +42,7 @@ export type ShadowDiff = Diff & {
  * Definition database, and diffs the two. A non-empty diff is scanned for Unmodeled blockers, which
  * throw before verification (ADR-0025), then verified in the Shadow (ADR-0013).
  * With a hand edit, the edit runs instead: a SQL error throws, and a leftover difference returns.
+ * Either way the Shadow ends holding the Current migration.
  */
 export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
   const { driver, connect, source, definition, tracking } = options;
@@ -56,20 +62,20 @@ export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
       );
       const result = diff(catalog, target, renames);
       if (options.edited !== undefined) {
-        const leftover = await leftoverAfter(databases.shadow, options.edited, target, {
+        const after = await leftoverAfter(databases.shadow, options.edited, target, {
           tracking,
           handEdited: true,
         });
-        return { ...result, leftover };
+        return { ...result, ...after };
       }
       refuseTypeChanges({ from: catalog, to: target });
       // The scan names objects as the diff does, so it reads the Shadow with the renames run.
       const blockers = await withRenames(databases.shadow, renames, (tx) =>
         unmodeledBlockers(tx, result.scans),
       );
-      if (blockers !== undefined) throw new Error(blockers);
-      await verifyInShadow(databases.shadow, result.sql, target, tracking);
-      return result;
+      if (blockers !== undefined) throw new UnmodeledBlockerError(blockers);
+      const shadow = await verifyInShadow(databases.shadow, result.sql, target, tracking);
+      return { ...result, shadow };
     },
     options.shadowOptions,
   );
