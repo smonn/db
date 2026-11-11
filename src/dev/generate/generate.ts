@@ -22,7 +22,7 @@ import { definitionSchemas, type DefinitionTables } from "../catalog/index.ts";
 import type { Hazard } from "../diff/index.ts";
 import { skippedSchemaReason } from "../introspect/index.ts";
 import type { ShadowOptions } from "../shadow/index.ts";
-import { withDevLock } from "./dev-lock.ts";
+import { lockWaitNotice, withDevLock } from "./dev-lock.ts";
 import { lineDiff } from "./line-diff.ts";
 import { requireDevDatabase, resetDevDatabase } from "./reset.ts";
 import { diffInShadow, type ShadowDiff } from "./shadow-diff.ts";
@@ -99,11 +99,12 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     signal,
     ...shadowOptions
   } = options;
+  const { log } = shadowOptions;
   const tracking = trackingSchema(trackingName);
   // The Dev lock's connection keeps the migrator's lock until the run ends, so every read and the
   // reset below see the Database as the check did.
   await driver.session(async (session) => {
-    await acquireMigrationLock(session, { signal });
+    await acquireMigrationLock(session, { signal, onWait: lockWaitNotice(log) });
     await requireDevDatabase(session, tracking);
   });
   const path = `${migrations}/${CURRENT_FILENAME}`;

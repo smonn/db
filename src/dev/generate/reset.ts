@@ -21,7 +21,7 @@ import type {
   Session,
 } from "../../runtime/ports/index.ts";
 import { requireSupportedServer } from "../introspect/index.ts";
-import { withDevLock } from "./dev-lock.ts";
+import { lockWaitNotice, withDevLock } from "./dev-lock.ts";
 
 // Extensions go first: one can own a schema, which then refuses a plain drop or vanishes with it.
 const EXTENSIONS = `
@@ -69,6 +69,8 @@ type ResetSteps = {
   readonly afterLock?: ((session: Queryable) => Promise<void>) | undefined;
   /** Stops the wait for the migrator's lock. */
   readonly signal?: AbortSignal | undefined;
+  /** Receives the line printed when the migrator's lock is held. */
+  readonly log?: ((line: string) => void) | undefined;
 };
 
 /**
@@ -90,12 +92,12 @@ export async function resetDevDatabase(
   driver: Driver,
   committed: MigrationSource,
   tracking: TrackingSchema,
-  { current, afterLock, signal }: ResetSteps = {},
+  { current, afterLock, signal, log }: ResetSteps = {},
 ): Promise<void> {
   // A broken chain would otherwise fail the replay after the wipe.
   const migrations = await loadVerifiedMigrations(committed);
   await driver.session(async (session) => {
-    await acquireMigrationLock(session, { signal });
+    await acquireMigrationLock(session, { signal, onWait: lockWaitNotice(log) });
     await afterLock?.(session);
     let rest = await session.transaction(async (tx) => {
       await wipe(tx, tracking);
@@ -202,6 +204,8 @@ export type ResetOptions = {
   readonly erase?: boolean;
   /** Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`). */
   readonly signal?: AbortSignal;
+  /** Receives one line when the migrator's lock is held and the reset has to wait. */
+  readonly log?: (line: string) => void;
 };
 
 export type ResetResult = {
@@ -222,7 +226,7 @@ export async function reset(options: ResetOptions): Promise<ResetResult> {
 }
 
 async function resetLocked(options: ResetOptions): Promise<ResetResult> {
-  const { driver, fileSystem, migrations, erase = false, signal } = options;
+  const { driver, fileSystem, migrations, erase = false, signal, log } = options;
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
   const committed = await readCommitted(fileSystem, migrations);
   const source: MigrationSource = { list: () => Promise.resolve(committed) };
@@ -235,6 +239,7 @@ async function resetLocked(options: ResetOptions): Promise<ResetResult> {
   await resetDevDatabase(driver, source, tracking, {
     current,
     signal,
+    log,
     afterLock: erase ? undefined : (session) => requireDevDatabase(session, tracking, "reset"),
   });
   return { committed: committed.length, current: current !== undefined };

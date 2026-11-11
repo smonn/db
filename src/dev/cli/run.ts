@@ -70,9 +70,7 @@ async function runGenerate({ driver, project, migrations, tracking }: Context): 
     definition: await project.loadDefinition(),
     migrations,
     ...tracking,
-    log: (line) => {
-      process.stderr.write(`${line}\n`);
-    },
+    log: logToStderr,
     onInterrupt: onProcessInterrupt(),
   });
   for (const line of generateReport(result, relative(process.cwd(), result.path))) print(line);
@@ -84,13 +82,25 @@ async function runCommit(
   accept: CommitOptions["accept"],
 ): Promise<void> {
   const fileSystem = nodeFileSystem();
-  const result = await commit({ driver, fileSystem, migrations, slug, accept, ...tracking });
+  const result = await commit({
+    driver,
+    fileSystem,
+    migrations,
+    slug,
+    accept,
+    log: logToStderr,
+    ...tracking,
+  });
   print(`wrote ${relative(process.cwd(), result.path)}`);
 }
 
 async function runReset({ driver, migrations, tracking }: Context, erase: boolean): Promise<void> {
   const fileSystem = nodeFileSystem();
-  print(resetReport(await reset({ driver, fileSystem, migrations, erase, ...tracking })));
+  print(
+    resetReport(
+      await reset({ driver, fileSystem, migrations, erase, log: logToStderr, ...tracking }),
+    ),
+  );
 }
 
 async function runMigrate({ driver, migrations, tracking }: Context): Promise<void> {
@@ -101,6 +111,10 @@ async function runMigrate({ driver, migrations, tracking }: Context): Promise<vo
 
 export function print(line: string): void {
   process.stdout.write(`${line}\n`);
+}
+
+function logToStderr(line: string): void {
+  process.stderr.write(`${line}\n`);
 }
 
 function ignoreNotice(): void {}

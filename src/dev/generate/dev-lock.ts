@@ -38,3 +38,15 @@ function sessionDriver(session: Session): Driver {
     session: (fn) => fn(session),
   };
 }
+
+/** The `onWait` for `acquireMigrationLock` that tells the user a runtime `migrate` holds it. */
+export function lockWaitNotice(
+  log: ((line: string) => void) | undefined,
+): (() => void) | undefined {
+  return (
+    log &&
+    (() => {
+      log("waiting for the migrator's lock");
+    })
+  );
+}
