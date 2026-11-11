@@ -12,6 +12,7 @@ export default defineConfig({
   migrations: "./db/migrations",
   url: process.env.DATABASE_URL,
   trackingSchema: "smonn_db", // optional, the default
+  strict: false, // optional, the default
 });
 ```
 
@@ -19,7 +20,9 @@ Every command takes `--config`, and `util.parseArgs` parses the arguments. There
 
 ## Output
 
-Plain text: results to stdout, errors to stderr, with no colors when stdout isn't a TTY. Exit codes are 0 on success, 1 on any refusal or failure, and 2 on a usage error. `--json` waits until after v0.1.
+Plain text: results to stdout, errors to stderr, with no colors when stdout isn't a TTY. Exit codes are 0 on success, 1 on any refusal or failure, and 2 on a usage error.
+
+`--json` prints one document on stdout, success or failure, holding `command`, `ok`, and a failure's `error` (`code`, `message`, per-code fields). Exit codes and stderr's progress lines stay; a usage error prints a document. Codes: `usage`, `locked`, `hazard_not_accepted`, `unmodeled_blocker`, `chain_broken`, `not_dev_database`, else `failed`. `@smonn/db/dev` exports the types.
 
 ## generate
 
@@ -45,18 +48,18 @@ sequenceDiagram
   Gen->>DB: scan the Shadow's pg_depend from those, stop on any Unmodeled blocker
   Gen->>DB: apply it to the Shadow, introspect, require no diff
   Gen->>FS: write Current migration
-  Gen->>DB: if its hash or the Committed tip changed, reset the Dev database and replay all migrations
+  Gen->>DB: if behind, replay the new files, or diff it against the Shadow
 ```
 
-Generate writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database. It prints the file it wrote, each Hazard with its statement, and whether it reset the Dev database.
+Generate writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database. It prints the file it wrote and each Hazard with its statement, then one line when it replayed files into, diffed, or reset the Dev database, and each Hazard it applied.
 
 ### Hand edits
 
-Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body that no longer matches counts as hand-edited, and generate stops overwriting it (ADR-0003): it keeps the file, replays it as written, and prints the lines that differ from what it would have generated. It runs the edit in the Shadow instead of the generated body, so a SQL error fails the run before the Dev database is touched, and a leftover difference from the Definition prints as a warning (ADR-0013). Deleting `current.sql` resumes generation.
+Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body that no longer matches counts as hand-edited, and generate stops overwriting it (ADR-0003): it keeps the file, replays it as written, and prints the lines that differ from what it would have generated. It runs the edit in the Shadow instead of the generated body, so a SQL error fails the run before the Dev database is touched, and a leftover difference from the Definition prints as a warning (ADR-0013), or under `strict: true` fails the run first (ADR-0031). Deleting `current.sql` resumes generation.
 
 ### Dev database catch-up
 
-Generate resets the Dev database, as [`reset`](#reset) does and only in a marked or empty Database (ADR-0016), whenever the Current migration's hash differs from `smonn_db.current`, or the last hash in `smonn_db.migrations` differs from the tip of the Committed migration files. The tip check covers a pulled Committed migration that leaves the regenerated Current migration byte-identical. Resetting is exact after hand edits and branch switches, at the cost of dev data. Keeping that data is a v0.4 dev loop question.
+Generate compares every hash in `smonn_db.migrations` with the Committed chain, the check `commit` makes, and `smonn_db.current` with the Current migration. Matching markers mean no work, and an empty, unmarked Database resets (ADR-0016). With no Current migration recorded and recorded rows that prefix the Committed chain, it replays the new Committed files and `current.sql` as written. Otherwise it diffs the Dev database against the Shadow holding the Current migration, keeping data, and names files that skipped replay. Steps, markers, and the diff's zero-diff check share one transaction, which a failure rolls back, naming `reset`.
 
 ## commit
 
@@ -164,4 +167,4 @@ A hand edit can open `current.sql` with `--! no-transaction` (ADR-0020) so it ho
 
 ## Concurrency
 
-`generate`, `commit`, and `reset` share a `pg_try_advisory_lock` on the Dev database under a key distinct from the migrator's, and a second run exits at once with an error naming the lock. A waiting run would only redo the first run's reset, and failing at once gives quick feedback when several agent sessions share one Dev database. Every reset also takes the migrator's own lock, polled for, so a runtime `migrate` on the Dev database waits for the reset instead of racing its wipe. `generate` holds the migrator's lock from its Dev database check until the run ends, Shadow work included.
+`generate`, `commit`, and `reset` share a `pg_try_advisory_lock` on the Dev database under a key distinct from the migrator's, and a second run exits at once with an error naming the lock. A waiting run would only redo the first run's reset, and failing at once gives quick feedback when several agent sessions share one Dev database. Every reset also takes the migrator's own lock, polled for, so a runtime `migrate` on the Dev database waits for the reset instead of racing its wipe. `generate` holds the migrator's lock from its Dev database check until the run ends, Shadow work included, and `commit` holds it from before its check until the run ends.

@@ -7,6 +7,8 @@ import { parseConfig, parseOfflineConfig, type LoadedConfig } from "../config/in
 export type Project = LoadedConfig & {
   /** The config's `trackingSchema`, or the default one. */
   readonly trackingSchema: string;
+  /** The config file, relative to the working directory, as errors name it. */
+  readonly configPath: string;
   /** `migrations`, resolved against the config file's folder. */
   readonly migrationsFolder: string;
   /** Imports the Definition file, resolved against the config file's folder. */
@@ -16,9 +18,11 @@ export type Project = LoadedConfig & {
 /** Imports the config file at `config`, resolved against the working directory. */
 export async function loadProject(config: string): Promise<Project> {
   const file = resolve(config);
-  const loaded = parseConfig(await importDefault(file), relative(process.cwd(), file));
+  const configPath = relative(process.cwd(), file);
+  const loaded = parseConfig(await importDefault(file), configPath);
   return {
     ...loaded,
+    configPath,
     trackingSchema: loaded.trackingSchema ?? DEFAULT_TRACKING_SCHEMA,
     migrationsFolder: resolve(dirname(file), loaded.migrations),
     loadDefinition: () => loadDefinition(resolve(dirname(file), loaded.definition)),
@@ -33,20 +37,24 @@ export async function loadMigrationsFolder(config: string): Promise<string> {
 }
 
 async function loadDefinition(file: string): Promise<DefinitionTables> {
-  const definition = await importDefault(file);
-  if (!isDefinition(definition)) {
+  return definitionOf(file, await importDefault(file));
+}
+
+/** Refuses `value`, the default export of the Definition file at `file`, unless it's a Definition. */
+export function definitionOf(file: string, value: unknown): DefinitionTables {
+  if (!isDefinition(value)) {
     throw new Error(
       `${relative(process.cwd(), file)} must export defineDatabase({ ... }) as its default export`,
     );
   }
-  return definition;
+  return value;
 }
 
 function isDefinition(value: unknown): value is DefinitionTables {
   return typeof value === "object" && value !== null;
 }
 
-function importDefault(file: string): Promise<unknown> {
+export function importDefault(file: string): Promise<unknown> {
   return import(pathToFileURL(file).href).then(
     (module: { readonly default?: unknown }) => module.default,
   );

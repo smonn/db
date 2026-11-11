@@ -1,4 +1,5 @@
 import {
+  acquireMigrationLock,
   CURRENT_FILENAME,
   currentHash,
   DEFAULT_TRACKING_SCHEMA,
@@ -14,8 +15,9 @@ import {
 import { verify } from "../../runtime/migrator/index.ts";
 import type { Driver, FileSystem, Queryable } from "../../runtime/ports/index.ts";
 import type { HazardKind } from "../diff/index.ts";
-import { withDevLock } from "./dev-lock.ts";
-import { hazardRefusal } from "./hazard-refusal.ts";
+import { lockWaitNotice, withDevLock } from "./dev-lock.ts";
+import { hazardRefusalError } from "./hazard-refusal.ts";
+import { compareRecorded } from "./recorded-chain.ts";
 
 export type CommitOptions = {
   /** The Dev database, which `generate` last replayed `current.sql` into. */
@@ -29,6 +31,10 @@ export type CommitOptions = {
   readonly trackingSchema?: string;
   /** The Hazard kinds the caller accepts (ADR-0015); `commit` refuses any other kind in the file. */
   readonly accept: readonly HazardKind[];
+  /** Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`). */
+  readonly signal?: AbortSignal;
+  /** Receives one line when the migrator's lock is held and the commit has to wait. */
+  readonly log?: (line: string) => void;
 };
 
 export type CommitResult = {
@@ -41,20 +47,27 @@ const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 /**
  * Freezes `current.sql` into the next Committed migration, chained onto the tip (ADR-0008), then
  * records it and clears the tracking schema's `current` table in one Dev database transaction and
- * deletes `current.sql`. A `--! no-transaction` header on its first line carries into the Committed
- * file (ADR-0020). Refuses while `current.sql` has a Hazard kind outside `accept`, and unless
- * the Dev database holds `current.sql` as it reads now and every Committed migration before it.
+ * deletes `current.sql`. Holds the Dev lock, and the migrator's lock from before its check on, so a
+ * runtime `migrate` waits for it. A `--! no-transaction` header on its first line carries into the
+ * Committed file (ADR-0020). Refuses while `current.sql` has a Hazard kind outside `accept`, and
+ * unless the Dev database holds `current.sql` as it reads now and every Committed migration before
+ * it.
  */
 export function commit(options: CommitOptions): Promise<CommitResult> {
   return withDevLock(options.driver, "commit", (driver) => commitLocked({ ...options, driver }));
 }
 
 async function commitLocked(options: CommitOptions): Promise<CommitResult> {
-  const { driver, fileSystem, migrations, slug } = options;
+  const { driver, fileSystem, migrations, slug, signal, log } = options;
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
   if (!KEBAB_CASE.test(slug)) {
     throw new Error(`slug ${JSON.stringify(slug)} must be kebab-case, such as create-users`);
   }
+  // The Dev lock's connection keeps the migrator's lock until the run ends, so a runtime `migrate`
+  // waits instead of changing the Database between the check and the transaction.
+  await driver.session((session) =>
+    acquireMigrationLock(session, { signal, onWait: lockWaitNotice(log) }),
+  );
   const currentPath = `${migrations}/${CURRENT_FILENAME}`;
   const body = await readAcceptedBody(fileSystem, currentPath, options.accept);
 
@@ -70,7 +83,7 @@ async function commitLocked(options: CommitOptions): Promise<CommitResult> {
   let wrote = false;
   try {
     await driver.transaction(async (tx) => {
-      await checkDevReplayed(tx, tracking, { body, currentPath, chain, tip, migrations });
+      await checkDevReplayed(tx, tracking, { body, currentPath, chain, migrations });
       await fileSystem.writeFile(path, migration.content);
       wrote = true;
       await tracking.recordMigration(tx, parseMigration(migration));
@@ -92,8 +105,8 @@ async function readAcceptedBody(
   const content = await fileSystem.readFile(currentPath);
   if (content === undefined) throw new Error(`${currentPath} doesn't exist; run generate first`);
   const { body } = await parseCurrent(content);
-  const refusal = hazardRefusal(body, accept);
-  if (refusal !== undefined) throw new Error(refusal);
+  const refusal = hazardRefusalError(body, accept);
+  if (refusal !== undefined) throw refusal;
   return body;
 }
 
@@ -105,18 +118,16 @@ async function checkDevReplayed(
     readonly body: string;
     readonly currentPath: string;
     readonly chain: readonly ParsedMigration[];
-    readonly tip: ParsedMigration | undefined;
     readonly migrations: string;
   },
 ): Promise<void> {
-  const { body, currentPath, chain, tip, migrations } = expected;
+  const { body, currentPath, chain, migrations } = expected;
   if ((await tracking.readCurrent(tx)) !== (await currentHash(body))) {
     throw new Error(
       `the Dev database hasn't replayed ${currentPath} as it reads now; run generate first`,
     );
   }
-  const recorded = await tracking.readRecorded(tx);
-  if (recorded.length !== chain.length || recorded.at(-1)?.hash !== tip?.hash) {
+  if (compareRecorded(await tracking.readRecorded(tx), chain) !== "match") {
     throw new Error(
       `the Dev database's Committed migrations don't match the files in ${migrations}; run generate first`,
     );

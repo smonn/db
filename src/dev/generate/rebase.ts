@@ -1,4 +1,5 @@
 import {
+  ChainBrokenError,
   CURRENT_FILENAME,
   committedFilenames,
   migrationHash,
@@ -148,9 +149,10 @@ async function verifiedBase(source: MigrationSource, onto: string): Promise<Pars
   try {
     await verify({ list: () => Promise.resolve(files) });
   } catch (error) {
-    throw new Error(`${onto}: ${error instanceof Error ? error.message : String(error)}`, {
-      cause: error,
-    });
+    const message = `${onto}: ${error instanceof Error ? error.message : String(error)}`;
+    throw error instanceof ChainBrokenError
+      ? new ChainBrokenError(message, { cause: error })
+      : new Error(message, { cause: error });
   }
   return files.map((file) => parseMigration(file)).toSorted((a, b) => a.sequence - b.sequence);
 }
@@ -182,7 +184,7 @@ async function checkMovingChain(
 ): Promise<void> {
   const [first] = moving;
   if (first?.previous !== undefined && !baseHashes.has(first.previous)) {
-    throw new Error(`${first.filename}: follows ${first.previous}, which ${onto} lacks`);
+    throw new ChainBrokenError(`${first.filename}: follows ${first.previous}, which ${onto} lacks`);
   }
   const actualHashes = await Promise.all(
     moving.map((migration) => migrationHash(migration.previous, migration.body, migration)),
@@ -190,13 +192,13 @@ async function checkMovingChain(
   moving.forEach((migration, index) => {
     const previous = moving[index - 1];
     if (previous !== undefined && migration.previous !== previous.hash) {
-      throw new Error(
+      throw new ChainBrokenError(
         `${migration.filename}: --! Previous should be ${previous.hash}, not ${migration.previous ?? "-"}`,
       );
     }
     const actual = actualHashes[index];
     if (actual !== migration.hash) {
-      throw new Error(
+      throw new ChainBrokenError(
         `${migration.filename}: --! Hash says ${migration.hash} but the body hashes to ${actual}`,
       );
     }

@@ -4,7 +4,12 @@ export {
   parseArrayLiteral,
   type ArrayValue,
 } from "./array-literal.ts";
-export { explainBlockerError, type BlockerSource } from "./blocker-errors.ts";
+export {
+  explainBlockerError,
+  UnmodeledBlockerError,
+  type BlockerSource,
+} from "./blocker-errors.ts";
+export { ChainBrokenError } from "./chain-broken-error.ts";
 export {
   committedFilenames,
   CURRENT_FILENAME,

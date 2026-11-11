@@ -81,7 +81,8 @@ create table public.memberships (
     expect(result).toStrictEqual({
       path: CURRENT,
       sql: undefined,
-      reset: true,
+      file: "kept",
+      devDatabase: { kind: "reset" },
       hazards: [],
       hints: [],
     });
@@ -130,7 +131,8 @@ describe("identity by default", () => {
     expect(result).toStrictEqual({
       path: CURRENT,
       sql: undefined,
-      reset: true,
+      file: "kept",
+      devDatabase: { kind: "reset" },
       hazards: [],
       hints: [],
     });

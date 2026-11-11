@@ -14,7 +14,10 @@ export type ShadowDatabases = {
 export type OnInterrupt = (cleanup: () => Promise<void>) => () => void;
 
 export type ShadowOptions = {
-  /** Receives one line per stale database the start-of-run sweep drops. */
+  /**
+   * Receives progress lines: one per stale database the start-of-run sweep drops, and, from
+   * `generate`, one when it has to wait for the migrator's lock.
+   */
   readonly log?: (line: string) => void;
   readonly onInterrupt?: OnInterrupt;
 };

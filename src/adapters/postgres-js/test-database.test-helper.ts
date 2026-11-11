@@ -244,6 +244,25 @@ async function queuedAdvisoryLocks(driver: Driver): Promise<number> {
 }
 
 /**
+ * Holds the migration lock in a session of its own, starts `contender`, lets it poll a few times
+ * (every 100 ms), then releases the lock and returns what the contender resolves to.
+ */
+export async function afterMigrationLockPolled<T>(
+  driver: Driver,
+  contender: () => Promise<T>,
+): Promise<T> {
+  const running: Promise<T>[] = [];
+  await driver.session(async (holder) => {
+    await acquireMigrationLock(holder);
+    const holderPid = await backendPid(holder);
+    running.push(contender());
+    await untilMigrationLockAttempted(driver, { holderPid });
+    await setTimeout(350);
+  });
+  return running[0]!;
+}
+
+/**
  * Holds the migration lock in a session of its own, starts `contender`, and waits until it tries
  * for the lock. Reports whether it finished and how many lock requests queued while the lock was
  * held, then releases the lock and awaits the contender's result.

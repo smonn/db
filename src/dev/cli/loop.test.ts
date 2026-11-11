@@ -57,6 +57,9 @@ function stdoutOf(): string {
 let written: { mock: { calls: unknown[][] }; mockClear: () => unknown };
 
 beforeEach(async () => {
+  await dev.driver.execute(
+    "drop schema if exists smonn_db cascade; drop schema public cascade; create schema public;",
+  );
   project = await mkdtemp(join(tmpdir(), "smonn-db-cli-"));
   await mkdir(join(project, "db"));
   await writeFile(join(project, "db", "definition.ts"), DEFINITION);
@@ -126,17 +129,18 @@ describe("smonndb", () => {
     expect(await readFile(committed, "utf8")).toContain("-- hazard: data_loss\n");
   });
 
-  it("tells whether generate reset the Dev database, and prints plain text", async () => {
+  it("tells when generate reset the Dev database, and prints plain text", async () => {
     const devConfig = join(project, "dev.config.ts");
     const file = relative(process.cwd(), join(project, "db", "migrations", "current.sql"));
 
     expect(await main(["generate", "--config", devConfig])).toBe(0);
     expect(stdoutOf()).toBe(`wrote ${file}\nreset the Dev database\n`);
 
+    expect(stdoutOf()).not.toContain("\u001B");
+
     written.mockClear();
     expect(await main(["generate", "--config", devConfig])).toBe(0);
-    expect(stdoutOf()).toBe(`wrote ${file}\nleft the Dev database as it was\n`);
-    expect(stdoutOf()).not.toContain("\u001B");
+    expect(stdoutOf()).toBe("");
   });
 
   it("prints each Hazard generate returns, with its statement", async () => {
