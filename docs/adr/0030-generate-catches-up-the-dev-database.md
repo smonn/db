@@ -14,8 +14,11 @@ Generate used to reset the Dev database whenever the Current migration or the Co
 ## Consequences
 
 - A catch-up step that loses data applies anyway and prints its Hazards, because a Definition edit that drops a column should drop it in the Dev database too.
-- The steps, the marker writes in `smonn_db`, and a zero-diff check run in one transaction. A nonzero diff or a failure rolls all of it back, so the Dev database stays as it was, as #245 requires of a failed replay. What the check compares against, and whether the Shadow holds the Current migration when generate diffs, is settled in #777.
+- The steps, the marker writes in `smonn_db`, and a zero-diff check run in one transaction. A nonzero diff or a failure rolls all of it back, so the Dev database stays as it was, as #245 requires of a failed replay.
+- The Shadow holds the Current migration, generated or hand-edited, when generate diffs, and the diff and the zero-diff check both compare against it rather than the Definition, because `smonn_db.current` records the file and commit trusts that record.
 - Matching markers mean no work. Commit's full-chain predicate picks the path and covers #643's `needsReset` check.
-- Generate prints one outcome line (`none`, `replayed`, or `diffed`, with the files and any applied Hazards) and nothing on a run that changes nothing. Watch prints `ok no change` itself (ADR-0032).
-- `reset` is now the only way to rebuild the Dev database, and ADR-0016's marker rule still applies to it.
+- A no-transaction file, a missing migrations table, and a last row left `started` or `failed` take the diff path. Only a Database with no tracking tables, which holds nothing to keep, resets on a first run.
+- The diff runs no statement from a skipped file, so a rename or backfill that a Committed or hand-edited file did by hand, and the Definition no longer declares, lands as a drop and an add with a `data_loss` Hazard.
+- Generate prints one outcome line (`none`, `reset`, `replayed`, or `diffed`, with the files and any applied Hazards) and nothing on a run that changes neither `current.sql` nor the Dev database. Watch prints `ok no change` itself (ADR-0032).
+- `reset` is the only way to rebuild a Dev database that holds data, and ADR-0016's marker rule still applies to it.
 - `--json` reports the outcome as `devDatabase` (ADR-0033).

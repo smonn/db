@@ -14,6 +14,6 @@ ADR-0013 lets generate print a hand edit's Leftover as a warning and succeed, an
 ## Consequences
 
 - The refusal reads `error: current.sql leaves a difference from the Definition (strict mode, <config path>):`, then the Leftover, then both fixes: fix the hand edit, or set `strict: false`.
-- It applies to generate only, not migrate. Generate fails before the Dev database changes, so commit's replay check refuses the same edit.
+- It applies to generate only, not migrate. Generate fails before the Dev database changes, so commit's replay check refuses an edit that generate never replayed. An edit that a lenient run already replayed still commits, since commit checks the recorded hash and runs no Shadow diff.
 - The v0.4 milestone called this a strict hazard mode. It refuses no Hazard, and the milestone now says strict mode.
 - Watch counts a strict refusal as a failed run (ADR-0032), and `--json` reports it as the `leftover` error code (ADR-0033).
