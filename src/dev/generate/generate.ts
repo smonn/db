@@ -19,7 +19,7 @@ import {
   type CatchUpTarget,
   type DevDatabaseOutcome,
 } from "./catch-up.ts";
-import { withDevLock } from "./dev-lock.ts";
+import { lockWaitNotice, withDevLock } from "./dev-lock.ts";
 import { lineDiff } from "./line-diff.ts";
 import { diffInShadow, type ShadowDiff } from "./shadow-diff.ts";
 
@@ -33,6 +33,8 @@ export type GenerateOptions = ShadowOptions & {
   readonly migrations: string;
   /** The schema `migrate` tracks into. Defaults to `smonn_db`. */
   readonly trackingSchema?: string;
+  /** Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`). */
+  readonly signal?: AbortSignal;
   /**
    * Set to refuse a hand edit that leaves a difference from the Definition, before the Dev database
    * changes (ADR-0031). `config` names the config file in the refusal.
@@ -102,11 +104,13 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     definition,
     migrations,
     trackingSchema: trackingName = DEFAULT_TRACKING_SCHEMA,
+    signal,
     strict,
     ...shadowOptions
   } = options;
+  const { log } = shadowOptions;
   const tracking = trackingSchema(trackingName);
-  await lockDevDatabase(driver, tracking);
+  await lockDevDatabase(driver, tracking, { signal, onWait: lockWaitNotice(log) });
   const path = `${migrations}/${CURRENT_FILENAME}`;
   const existing = await fileSystem.readFile(path);
   const edited = await handEditedBody(existing);

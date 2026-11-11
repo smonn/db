@@ -15,7 +15,7 @@ import {
 import { verify } from "../../runtime/migrator/index.ts";
 import type { Driver, FileSystem, Queryable } from "../../runtime/ports/index.ts";
 import type { HazardKind } from "../diff/index.ts";
-import { withDevLock } from "./dev-lock.ts";
+import { lockWaitNotice, withDevLock } from "./dev-lock.ts";
 import { hazardRefusalError } from "./hazard-refusal.ts";
 import { compareRecorded } from "./recorded-chain.ts";
 
@@ -31,6 +31,10 @@ export type CommitOptions = {
   readonly trackingSchema?: string;
   /** The Hazard kinds the caller accepts (ADR-0015); `commit` refuses any other kind in the file. */
   readonly accept: readonly HazardKind[];
+  /** Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`). */
+  readonly signal?: AbortSignal;
+  /** Receives one line when the migrator's lock is held and the commit has to wait. */
+  readonly log?: (line: string) => void;
 };
 
 export type CommitResult = {
@@ -54,14 +58,16 @@ export function commit(options: CommitOptions): Promise<CommitResult> {
 }
 
 async function commitLocked(options: CommitOptions): Promise<CommitResult> {
-  const { driver, fileSystem, migrations, slug } = options;
+  const { driver, fileSystem, migrations, slug, signal, log } = options;
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
   if (!KEBAB_CASE.test(slug)) {
     throw new Error(`slug ${JSON.stringify(slug)} must be kebab-case, such as create-users`);
   }
   // The Dev lock's connection keeps the migrator's lock until the run ends, so a runtime `migrate`
   // waits instead of changing the Database between the check and the transaction.
-  await driver.session((session) => acquireMigrationLock(session));
+  await driver.session((session) =>
+    acquireMigrationLock(session, { signal, onWait: lockWaitNotice(log) }),
+  );
   const currentPath = `${migrations}/${CURRENT_FILENAME}`;
   const body = await readAcceptedBody(fileSystem, currentPath, options.accept);
 

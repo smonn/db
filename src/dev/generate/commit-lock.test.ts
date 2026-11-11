@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   advisoryLocksHeld,
+  afterMigrationLockPolled,
   backendPid,
   migrationLockHolderPid,
   untilMigrationLockAttempted,
   useTestDatabase,
+  whileMigrationLockHeld,
 } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { acquireMigrationLock } from "../../runtime/internal/index.ts";
@@ -125,5 +127,40 @@ describe("commit and the migrator's lock", () => {
     await expect(commit(commitOptions(fileSystem))).rejects.toThrow("run generate first");
 
     expect(await advisoryLocksHeld(db.driver)).toBe(0);
+  });
+});
+
+describe("commit and a lock wait that stops", () => {
+  it("rejects when the signal aborts, and leaves the files and the Dev lock alone", async () => {
+    const fileSystem = await generated();
+    const controller = new AbortController();
+
+    await whileMigrationLockHeld(db.driver, async () => {
+      const committing = commit({ ...commitOptions(fileSystem), signal: controller.signal });
+      await untilMigrationLockAttempted(db.driver);
+      controller.abort();
+      await expect(committing).rejects.toThrow("stopped waiting for the migrator's lock");
+    });
+
+    expect([...fileSystem.files.keys()]).toStrictEqual(["db/migrations/current.sql"]);
+    expect(await advisoryLocksHeld(db.driver)).toBe(0);
+  });
+});
+
+describe("commit and a held migrator's lock", () => {
+  it("logs one line while it waits, however many polls the wait takes", async () => {
+    const fileSystem = await generated();
+    const lines: string[] = [];
+
+    await afterMigrationLockPolled(db.driver, () =>
+      commit({
+        ...commitOptions(fileSystem),
+        log: (line) => {
+          lines.push(line);
+        },
+      }),
+    );
+
+    expect(lines).toStrictEqual(["waiting for the migrator's lock"]);
   });
 });

@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   advisoryLocksHeld,
+  afterMigrationLockPolled,
   backendPid,
   untilMigrationLockAttempted,
   useTestDatabase,
+  whileMigrationLockHeld,
 } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { acquireMigrationLock, writeMigration } from "../../runtime/internal/index.ts";
@@ -132,3 +134,53 @@ async function devLockPid(): Promise<number> {
   );
   return Number(rows[0]?.["pid"]);
 }
+
+describe("generate and a lock wait that stops", () => {
+  it("rejects when the signal aborts, before it writes anything", async () => {
+    const fileSystem = memoryFileSystem();
+    const controller = new AbortController();
+
+    await whileMigrationLockHeld(db.driver, async () => {
+      const generating = generate({
+        ...generateOptions(db, fileSystem, WIDGETS),
+        signal: controller.signal,
+      });
+      await untilMigrationLockAttempted(db.driver);
+      controller.abort();
+      await expect(generating).rejects.toThrow("stopped waiting for the migrator's lock");
+    });
+
+    expect([...fileSystem.files.keys()]).toStrictEqual([]);
+    expect(await advisoryLocksHeld(db.driver)).toBe(0);
+  });
+});
+
+describe("generate and a held migrator's lock", () => {
+  it("logs one line while it waits, however many polls the wait takes", async () => {
+    const lines: string[] = [];
+
+    await afterMigrationLockPolled(db.driver, () =>
+      generate({
+        ...generateOptions(db, memoryFileSystem(), NOTHING),
+        log: (line) => {
+          lines.push(line);
+        },
+      }),
+    );
+
+    expect(lines).toStrictEqual(["waiting for the migrator's lock"]);
+  });
+
+  it("logs nothing when the lock is free", async () => {
+    const lines: string[] = [];
+
+    await generate({
+      ...generateOptions(db, memoryFileSystem(), NOTHING),
+      log: (line) => {
+        lines.push(line);
+      },
+    });
+
+    expect(lines).toStrictEqual([]);
+  });
+});
