@@ -56,6 +56,22 @@ describe("generateReport", () => {
     ).toStrictEqual([]);
   });
 
+  it("prints no Hazard or hint again for a generated file it kept as it was", () => {
+    expect(
+      generateReport(
+        {
+          path: "/p/current.sql",
+          sql: '-- hazard: data_loss\ndrop table "public"."a";\n',
+          file: "kept",
+          devDatabase: { kind: "none" },
+          hazards: [],
+          hints: ['table "a" may be a rename of "b"'],
+        },
+        "current.sql",
+      ),
+    ).toStrictEqual([]);
+  });
+
   it("says when a hand-edited file matches what generate would write", () => {
     expect(
       generateReport(
