@@ -71,9 +71,7 @@ async function runGenerate({ driver, project, migrations, tracking }: Context): 
     migrations,
     ...tracking,
     ...(project.strict === true ? { strict: { config: project.configPath } } : {}),
-    log: (line) => {
-      process.stderr.write(`${line}\n`);
-    },
+    log: logToStderr,
     onInterrupt: onProcessInterrupt(),
   });
   for (const line of generateReport(result, relative(process.cwd(), result.path))) print(line);
@@ -86,7 +84,15 @@ async function runCommit(
   accept: CommitOptions["accept"],
 ): Promise<Outcome> {
   const fileSystem = nodeFileSystem();
-  const result = await commit({ driver, fileSystem, migrations, slug, accept, ...tracking });
+  const result = await commit({
+    driver,
+    fileSystem,
+    migrations,
+    slug,
+    accept,
+    log: logToStderr,
+    ...tracking,
+  });
   return { command: "commit", ok: true, file: { path: relative(process.cwd(), result.path) } };
 }
 
@@ -100,6 +106,7 @@ async function runReset(
     fileSystem,
     migrations,
     erase,
+    log: logToStderr,
     ...tracking,
   });
   return { command: "reset", ok: true, committed, current };
@@ -113,6 +120,10 @@ async function runMigrate({ driver, migrations, tracking }: Context): Promise<Ou
 
 export function print(line: string): void {
   process.stdout.write(`${line}\n`);
+}
+
+function logToStderr(line: string): void {
+  process.stderr.write(`${line}\n`);
 }
 
 function ignoreNotice(): void {}

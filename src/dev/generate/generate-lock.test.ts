@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   advisoryLocksHeld,
+  afterMigrationLockPolled,
   backendPid,
   untilMigrationLockAttempted,
   useTestDatabase,
@@ -151,5 +152,35 @@ describe("generate and a lock wait that stops", () => {
 
     expect([...fileSystem.files.keys()]).toStrictEqual([]);
     expect(await advisoryLocksHeld(db.driver)).toBe(0);
+  });
+});
+
+describe("generate and a held migrator's lock", () => {
+  it("logs one line while it waits, however many polls the wait takes", async () => {
+    const lines: string[] = [];
+
+    await afterMigrationLockPolled(db.driver, () =>
+      generate({
+        ...generateOptions(db, memoryFileSystem(), NOTHING),
+        log: (line) => {
+          lines.push(line);
+        },
+      }),
+    );
+
+    expect(lines).toStrictEqual(["waiting for the migrator's lock"]);
+  });
+
+  it("logs nothing when the lock is free", async () => {
+    const lines: string[] = [];
+
+    await generate({
+      ...generateOptions(db, memoryFileSystem(), NOTHING),
+      log: (line) => {
+        lines.push(line);
+      },
+    });
+
+    expect(lines).toStrictEqual([]);
   });
 });

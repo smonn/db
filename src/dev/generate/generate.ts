@@ -19,7 +19,7 @@ import {
   type CatchUpTarget,
   type DevDatabaseOutcome,
 } from "./catch-up.ts";
-import { withDevLock } from "./dev-lock.ts";
+import { lockWaitNotice, withDevLock } from "./dev-lock.ts";
 import { lineDiff } from "./line-diff.ts";
 import { diffInShadow, type ShadowDiff } from "./shadow-diff.ts";
 
@@ -108,8 +108,9 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     strict,
     ...shadowOptions
   } = options;
+  const { log } = shadowOptions;
   const tracking = trackingSchema(trackingName);
-  await lockDevDatabase(driver, tracking, signal);
+  await lockDevDatabase(driver, tracking, { signal, onWait: lockWaitNotice(log) });
   const path = `${migrations}/${CURRENT_FILENAME}`;
   const existing = await fileSystem.readFile(path);
   const edited = await handEditedBody(existing);

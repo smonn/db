@@ -25,6 +25,38 @@ describe("acquireMigrationLock", () => {
     expect(query).toHaveBeenCalledTimes(3);
   });
 
+  it("calls onWait once, after the first poll finds the lock held", async () => {
+    const calls: number[] = [];
+    const query = vi
+      .fn<Queryable["query"]>()
+      .mockResolvedValueOnce({ rows: [{ locked: false }], count: 1 })
+      .mockResolvedValueOnce({ rows: [{ locked: false }], count: 1 })
+      .mockResolvedValueOnce({ rows: [{ locked: true }], count: 1 });
+
+    await acquireMigrationLock(
+      { query, execute: vi.fn<Queryable["execute"]>() },
+      {
+        intervalMs: 1,
+        onWait: () => {
+          calls.push(query.mock.calls.length);
+        },
+      },
+    );
+
+    expect(calls).toStrictEqual([1]);
+  });
+
+  it("doesn't call onWait when the first poll takes the lock", async () => {
+    const onWait = vi.fn<() => void>();
+    const query = vi
+      .fn<Queryable["query"]>()
+      .mockResolvedValue({ rows: [{ locked: true }], count: 1 });
+
+    await acquireMigrationLock({ query, execute: vi.fn<Queryable["execute"]>() }, { onWait });
+
+    expect(onWait).not.toHaveBeenCalled();
+  });
+
   it("waits the interval between polls", async () => {
     vi.useFakeTimers();
     try {

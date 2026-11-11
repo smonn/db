@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   advisoryLocksHeld,
+  afterMigrationLockPolled,
   backendPid,
   migrationLockHolderPid,
   untilMigrationLockAttempted,
@@ -143,5 +144,23 @@ describe("commit and a lock wait that stops", () => {
 
     expect([...fileSystem.files.keys()]).toStrictEqual(["db/migrations/current.sql"]);
     expect(await advisoryLocksHeld(db.driver)).toBe(0);
+  });
+});
+
+describe("commit and a held migrator's lock", () => {
+  it("logs one line while it waits, however many polls the wait takes", async () => {
+    const fileSystem = await generated();
+    const lines: string[] = [];
+
+    await afterMigrationLockPolled(db.driver, () =>
+      commit({
+        ...commitOptions(fileSystem),
+        log: (line) => {
+          lines.push(line);
+        },
+      }),
+    );
+
+    expect(lines).toStrictEqual(["waiting for the migrator's lock"]);
   });
 });

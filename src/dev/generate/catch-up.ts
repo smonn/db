@@ -61,15 +61,18 @@ type CatchUpMarkers = {
 /**
  * Takes the migrator's lock on the Dev lock's connection, which keeps it until the run ends, so
  * every read and the catch-up after it see the Database as this check did. Refuses a Database that
- * isn't a Dev database (ADR-0016). `signal` stops the wait for the lock.
+ * isn't a Dev database (ADR-0016). `lock` passes `signal` and `onWait` to `acquireMigrationLock`.
  */
 export async function lockDevDatabase(
   driver: Driver,
   tracking: TrackingSchema,
-  signal: AbortSignal | undefined,
+  lock: {
+    readonly signal: AbortSignal | undefined;
+    readonly onWait: (() => void) | undefined;
+  },
 ): Promise<void> {
   await driver.session(async (session) => {
-    await acquireMigrationLock(session, { signal });
+    await acquireMigrationLock(session, lock);
     await requireDevDatabase(session, tracking);
   });
 }

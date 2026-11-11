@@ -2,7 +2,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
+import {
+  afterMigrationLockPolled,
+  useTestDatabase,
+} from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { writeMigration } from "../../runtime/internal/index.ts";
 import { withShadowDatabases } from "../shadow/index.ts";
@@ -162,6 +165,27 @@ it("prints each line the Shadow sweep logs to stderr", async () => {
   ).rejects.toThrow("stop after the sweep");
 
   expect(stderr).toBe('dropped stale database "smonn_db_shadow_1_0badc0de"\n');
+});
+
+/** Runs `command` while another session holds the migrator's lock, which it lets go after a few polls. */
+async function runWhileMigratorHoldsLock(command: Parameters<typeof run>[0]): Promise<void> {
+  const definition = defineDatabase({
+    public: { run_waits: defineTable((c) => ({ id: c.text().notNull() })) },
+  });
+  const project = projectWith({ url: dev.url, loadDefinition: () => Promise.resolve(definition) });
+  await run({ name: "generate", config: "c" }, project);
+  stderr = "";
+  await afterMigrationLockPolled(dev.driver, () => run(command, project));
+}
+
+it.each([
+  ["generate", { name: "generate", config: "c" }],
+  ["commit", { name: "commit", config: "c", slug: "first", accept: [] }],
+  ["reset", { name: "reset", config: "c", erase: true }],
+] as const)("prints the migrator's lock line to stderr for %s", async (_name, command) => {
+  await runWhileMigratorHoldsLock(command);
+
+  expect(stderr).toBe("waiting for the migrator's lock\n");
 });
 
 it("keeps the Shadow replay's server notices out of the output", async () => {
