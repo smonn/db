@@ -85,6 +85,7 @@ export async function catchUp(
   const chain = committed.map((file) => parseMigration(file));
   const path = await choosePath(driver, tracking, chain, current);
   switch (path.kind) {
+    // Stryker disable next-line StringLiteral: 1 survivor: equivalent, since the default returns `path` too.
     case "none":
       return path;
     case "reset":
@@ -126,6 +127,7 @@ type Tracked = {
 
 async function readTracked(driver: Driver, tracking: TrackingSchema): Promise<Tracked> {
   const current = await tracking.readCurrent(driver);
+  // Stryker disable next-line ArrayDeclaration: 1 survivor: equivalent, since a row with no hash mismatches the chain at index 0 as an empty list does.
   if (!(await tracking.hasMigrationsTable(driver))) return { recorded: [], intact: false, current };
   const recorded = await tracking.readRecorded(driver);
   const unfinished = (await tracking.readUnfinished(driver)) !== undefined;

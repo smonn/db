@@ -24,6 +24,7 @@ export async function applyDevDiff(
   const { shadow, tracking } = target;
   const before = await introspectIn(tx, tracking);
   const renames = appliedRenames(target.declared, before);
+  // Stryker disable next-line ConditionalExpression: 1 survivor: equivalent, since an empty savepoint reads the same catalog; the check only saves an introspection.
   const from = renames.length === 0 ? before : await renamedCatalog(tx, renames, tracking);
   refuseTypeChanges({ from, to: shadow });
   const { sql, hazards } = diff(from, shadow, renames);

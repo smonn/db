@@ -18,8 +18,13 @@ const users = defineDatabase({ public: { users: defineTable((c) => ({ id: c.text
 const withEmail = defineDatabase({
   public: { users: defineTable((c) => ({ id: c.text(), email: c.text() })) },
 });
-const withMail = defineDatabase({
-  public: { users: defineTable((c) => ({ id: c.text(), mail: c.text().renamedFrom("email") })) },
+const renamed = defineDatabase({
+  public: {
+    users: defineTable((c) => ({
+      key: c.text().renamedFrom("id"),
+      mail: c.text().renamedFrom("email"),
+    })),
+  },
 });
 
 beforeEach(async () => {
@@ -88,23 +93,24 @@ describe("diffing the Dev database against the Shadow when replay can't catch it
     expect(await recordedFilenames()).toStrictEqual(["000001-create-users.sql"]);
   });
 
-  it("runs a declared rename in the Dev database rather than dropping the column", async () => {
+  it("runs declared renames in the Dev database rather than dropping the columns", async () => {
     const fileSystem = await withCurrent(withEmail, "('kept', 'a@b.c')");
 
-    const result = await generateWith(fileSystem, withMail);
+    const result = await generateWith(fileSystem, renamed);
 
     expect(result.devDatabase).toStrictEqual({
       kind: "diffed",
       skipped: ["current.sql"],
       hazards: [
+        { kind: "rename", statement: 'alter table "public"."users" rename column "id" to "key";' },
         {
           kind: "rename",
           statement: 'alter table "public"."users" rename column "email" to "mail";',
         },
       ],
     });
-    expect(await rows("select id, mail from public.users")).toStrictEqual([
-      { id: "kept", mail: "a@b.c" },
+    expect(await rows("select key, mail from public.users")).toStrictEqual([
+      { key: "kept", mail: "a@b.c" },
     ]);
   });
 
