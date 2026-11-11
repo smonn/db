@@ -35,14 +35,19 @@ async function writeProject(url: string): Promise<string> {
   return config;
 }
 
-/** Runs `main` and reads what it alone printed to stdout: one line of JSON, or nothing. */
-async function runJson(argv: readonly string[]): Promise<{ code: number; document: unknown }> {
-  const before = cli.stdout.length;
+/**
+ * Runs `main` and reads what it alone printed: one line of JSON on stdout, and its stderr, which
+ * leaves out a setup `generate`'s sweep of stale Shadows that other test files left behind.
+ */
+async function runJson(
+  argv: readonly string[],
+): Promise<{ code: number; document: unknown; stderr: string }> {
+  const before = { stdout: cli.stdout.length, stderr: cli.stderr.length };
   const code = await main(argv);
-  const printed = cli.stdout.slice(before);
+  const printed = cli.stdout.slice(before.stdout);
   expect(printed.endsWith("\n")).toBe(true);
   expect(printed.trimEnd()).not.toContain("\n");
-  return { code, document: JSON.parse(printed) };
+  return { code, document: JSON.parse(printed), stderr: cli.stderr.slice(before.stderr) };
 }
 
 async function writeCommitted(
@@ -67,7 +72,7 @@ describe("main commit --json", () => {
     const config = await writeProject(dev.url);
     expect(await main(["generate", "--config", config])).toBe(0);
 
-    const { code, document } = await runJson([
+    const { code, document, stderr } = await runJson([
       "commit",
       "create-users",
       "--json",
@@ -83,7 +88,7 @@ describe("main commit --json", () => {
         path: relative(process.cwd(), join(cli.dir, "migrations", "000001-create-users.sql")),
       },
     });
-    expect(cli.stderr).toBe("");
+    expect(stderr).toBe("");
   });
 
   it("prints a hazard_not_accepted failure naming the kinds --accept lacks", async () => {
@@ -95,7 +100,7 @@ describe("main commit --json", () => {
       `${await readFile(current, "utf8")}-- hazard: data_loss\ndrop table "public"."users";\n`,
     );
 
-    const { code, document } = await runJson([
+    const { code, document, stderr } = await runJson([
       "commit",
       "drop-users",
       "--json",
@@ -113,7 +118,7 @@ describe("main commit --json", () => {
         kinds: ["data_loss"],
       },
     });
-    expect(cli.stderr).toBe("");
+    expect(stderr).toBe("");
   });
 
   it("prints a locked failure naming the lock while another run holds it", async () => {
@@ -149,11 +154,11 @@ describe("main reset --json", () => {
     expect(await main(["generate", "--config", config])).toBe(0);
     await writeFile(join(cli.dir, "migrations", "current.sql"), "select 1;\n");
 
-    const { code, document } = await runJson(["reset", "--json", "--config", config]);
+    const { code, document, stderr } = await runJson(["reset", "--json", "--config", config]);
 
     expect(code).toBe(0);
     expect(document).toStrictEqual({ command: "reset", ok: true, committed: 1, current: true });
-    expect(cli.stderr).toBe("");
+    expect(stderr).toBe("");
   });
 
   it("prints a not_dev_database failure for an unmarked Database that isn't empty", async () => {
@@ -179,7 +184,7 @@ describe("main migrate --json", () => {
     const config = await writeProject(applying.url);
     await writeCommitted("create table json_a (n int);\n", "create table json_b (n int);\n");
 
-    const { code, document } = await runJson(["migrate", "--json", "--config", config]);
+    const { code, document, stderr } = await runJson(["migrate", "--json", "--config", config]);
 
     expect(code).toBe(0);
     expect(document).toStrictEqual({
@@ -187,7 +192,7 @@ describe("main migrate --json", () => {
       ok: true,
       applied: ["000001-step.sql", "000002-step.sql"],
     });
-    expect(cli.stderr).toBe("");
+    expect(stderr).toBe("");
   });
 
   it("prints an unmodeled_blocker failure when another object blocks a drop", async () => {
