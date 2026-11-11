@@ -493,6 +493,10 @@ Run each as `smonndb <command>`, with `--config <path>` to pick a config file ot
 
 Results go to stdout and errors to stderr, as plain text with no colors. `generate` prints the file it wrote, each Hazard with its statement, each rename hint, and a line when it replayed files into, diffed, or reset the Dev database. While a runtime `migrate` holds the migrator's lock, `generate`, `commit`, and `reset` print `waiting for the migrator's lock` to stderr and keep waiting. Exit codes: 0 on success, 1 on a refusal or failure (a missing folder, a held Dev lock, a bad hash chain), 2 on a usage error.
 
+### Changing types under a live pool
+
+The driver prepares each query and caches the statement per connection by its SQL text. After DDL retypes a column, or drops and recreates an enum or domain, a pool that was open before the change reuses the stale statement, and the same query fails, with `invalid input syntax for type integer` or `cache lookup failed for type`. Recreate the pool after `generate` or `migrate` changes such a type. A long-running dev server needs a restart, or a new pool, to see the change.
+
 ### Enums and domains
 
 `defineEnum` and `defineDomain` declare a Postgres type. Each sits in a schema's object beside the tables and takes its SQL name from its key. A column uses it through `c.enum(...)` or `c.domain(...)`, and the row type follows:

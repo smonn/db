@@ -33,6 +33,9 @@ _Avoid_: Applied migration
 The single in-progress Migration, regenerated from the Definition and reapplied to the Dev database while you iterate, until it is committed.
 _Avoid_: Draft, pending migration
 
+**Leftover**:
+The difference from the Definition that remains after a hand-edited Current migration is applied.
+
 **Forked chain**:
 Two or more Committed migrations that follow the same file, naming its Hash in `--! Previous:`, or that each start the chain with `--! Previous: -`. Two branches that each commit a Migration on the same tip leave one; `verify` names it, and `rebase` moves the branch's files onto the base branch's tip.
 
@@ -47,7 +50,7 @@ A throwaway Database built from the Definition alone, used as the "after" state 
 _Avoid_: Target database, template database, desired database
 
 **Dev database**:
-The Database a developer iterates against, which holds the Current migration and may be rebuilt at any time, losing its data.
+The Database a developer iterates against, which holds the Current migration.
 _Avoid_: Local database
 
 **Hazard**:
