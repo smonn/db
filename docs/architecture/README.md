@@ -100,6 +100,7 @@ flowchart TB
     introspect["<b>introspect</b><br/>[module]<br/>Reads a catalog from a live Database"]
     diff["<b>diff</b><br/>[module]<br/>Compares two catalogs and emits Migration SQL"]
     catalog["<b>catalog</b><br/>[module]<br/>The flat fact map both introspections produce"]
+    output["<b>output</b><br/>[module]<br/>The --json documents, and the error code each failure maps to"]
   end
 
   runtime["<b>runtime/</b><br/>[container]"]
@@ -107,6 +108,8 @@ flowchart TB
 
   cli -- "checks the config with" --> config
   cli -- "runs" --> generate
+  cli -- "prints failures as documents with" --> output
+  output -- "names the errors of" --> generate
   generate -- "builds Shadow and Definition databases with" --> shadow
   generate -- "reads both databases with" --> introspect
   generate -- "compares with" --> diff

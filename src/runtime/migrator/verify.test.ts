@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { writeMigration } from "../internal/index.ts";
+import { ChainBrokenError, writeMigration } from "../internal/index.ts";
 import type { MigrationFile, MigrationSource } from "../ports/index.ts";
 import { verify } from "./verify.ts";
 
@@ -142,6 +142,23 @@ describe("verify", () => {
     await expect(verify(source([chained]))).rejects.toThrow(
       `000001-a.sql: --! Previous should be -, not ${B.hash}`,
     );
+  });
+
+  it("throws a ChainBrokenError for a fork, a gap, a repeat, a wrong Previous, and a wrong Hash", async () => {
+    const other = await writeMigration("000002-other.sql", A.hash, "create table other (n int);\n");
+    const changed = { ...B, content: B.content.replace("table b", "table bb") };
+    const sources = [
+      [A, other, B],
+      [A, C],
+      [A, B, renamed(C, "000002-c.sql")],
+      [A, renamed(C, "000002-c.sql"), renamed(B, "000003-b.sql")],
+      [A, changed],
+    ];
+
+    for (const files of sources) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- each case is independent and cheap.
+      await expect(verify(source(files))).rejects.toBeInstanceOf(ChainBrokenError);
+    }
   });
 
   it("refuses reordered files, naming the first one out of place", async () => {

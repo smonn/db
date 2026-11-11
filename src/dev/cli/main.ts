@@ -3,9 +3,10 @@ import { nodeFileSystem, nodeMigrationSource } from "../../adapters/node/index.t
 import { verify } from "../../runtime/migrator/index.ts";
 import { HAZARD_KINDS, type HazardKind } from "../diff/index.ts";
 import { rebase } from "../generate/index.ts";
+import { failureDocument, UsageError, type CommandName } from "../output/index.ts";
 import { defaultBaseRef, gitMigrationSource, unheldPaths } from "./git.ts";
 import { loadMigrationsFolder, loadProject } from "./project.ts";
-import { rebaseReport } from "./report.ts";
+import { documentLines, type Outcome } from "./report.ts";
 import { print, run, type DatabaseCommand } from "./run.ts";
 
 const USAGE = `usage: smonndb <command> [--config <path>]
@@ -21,11 +22,11 @@ commands:
   verify          check the Committed migrations' hash chain, with no database
   rebase [--onto <ref>]
                   move the Committed migrations <ref> lacks onto its tip; <ref> defaults
-                  to the remote's default branch`;
+                  to the remote's default branch
+
+--json prints one JSON document on stdout instead of text. generate doesn't take it yet.`;
 
 const DEFAULT_CONFIG = "smonndb.config.ts";
-
-class UsageError extends Error {}
 
 type OfflineCommand = { readonly config: string } & (
   | { readonly name: "verify" }
@@ -34,39 +35,69 @@ type OfflineCommand = { readonly config: string } & (
 
 type Command = DatabaseCommand | OfflineCommand;
 
-/** Runs one `smonndb` command and resolves to its exit code: 0, 1 on failure, 2 on misuse. */
+/**
+ * Runs one `smonndb` command and resolves to its exit code: 0, 1 on failure, 2 on misuse. With
+ * `--json` it prints one document on stdout, success or failure, and nothing else on stderr but
+ * progress.
+ */
 export async function main(argv: readonly string[]): Promise<number> {
+  const json = argv
+    .slice(0, endOfFlags(argv))
+    .some((arg) => arg === "--json" || arg.startsWith("--json="));
+  let name: CommandName | null = null;
   try {
-    await execute(parseCommand(argv));
+    const command = parseCommand(argv);
+    name = command.name;
+    if (json && command.name === "generate") {
+      throw new UsageError("generate doesn't take --json yet");
+    }
+    emit(await execute(command), json);
     return 0;
   } catch (error) {
-    return reportFailure(error);
+    return reportFailure(error, { command: name ?? commandNameIn(argv), json });
   }
 }
 
-async function execute(command: Command): Promise<void> {
-  if (command.name === "verify" || command.name === "rebase") {
-    for (const line of await runOffline(command)) print(line);
+function endOfFlags(argv: readonly string[]): number {
+  const end = argv.indexOf("--");
+  return end === -1 ? argv.length : end;
+}
+
+async function execute(command: Command): Promise<Outcome> {
+  if (command.name === "verify" || command.name === "rebase") return runOffline(command);
+  return run(command, await loadProject(command.config));
+}
+
+function emit(outcome: Outcome, json: boolean): void {
+  if (outcome === undefined) return;
+  if (json) {
+    print(JSON.stringify(outcome));
     return;
   }
-  await run(command, await loadProject(command.config));
+  for (const line of documentLines(outcome)) print(line);
 }
 
-function reportFailure(error: unknown): number {
-  if (error instanceof UsageError) {
+function reportFailure(
+  error: unknown,
+  { command, json }: { readonly command: CommandName | null; readonly json: boolean },
+): number {
+  const usage = error instanceof UsageError;
+  if (json) {
+    print(JSON.stringify(failureDocument(command, error)));
+  } else if (usage) {
     process.stderr.write(`${error.message}\n\n${USAGE}\n`);
-    return 2;
+  } else {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   }
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  return 1;
+  return usage ? 2 : 1;
 }
 
-/** Runs a command that reads the migrations folder and no database, and returns its lines. */
-async function runOffline(command: OfflineCommand): Promise<string[]> {
+/** Runs a command that reads the migrations folder and no database. */
+async function runOffline(command: OfflineCommand): Promise<Outcome> {
   const migrations = await loadMigrationsFolder(command.config);
   if (command.name === "verify") {
     const { verified } = await verify(nodeMigrationSource(migrations));
-    return [`verified ${verified.length} ${verified.length === 1 ? "migration" : "migrations"}`];
+    return { command: "verify", ok: true, verified };
   }
   const fileSystem = nodeFileSystem();
   // Git can't run in a missing folder; listing it first fails the way verify does.
@@ -74,7 +105,8 @@ async function runOffline(command: OfflineCommand): Promise<string[]> {
   const onto = command.onto ?? (await defaultBaseRef(migrations));
   const unheld = await unheldPaths(migrations);
   const base = gitMigrationSource(migrations, onto);
-  return rebaseReport(await rebase({ fileSystem, migrations, base, onto, unheld }), onto);
+  const { moved } = await rebase({ fileSystem, migrations, base, onto, unheld });
+  return { command: "rebase", ok: true, onto, moved };
 }
 
 function parseAccept(value: string | undefined): HazardKind[] {
@@ -91,6 +123,23 @@ function parseAccept(value: string | undefined): HazardKind[] {
   return accepted;
 }
 
+const COMMAND_NAMES: readonly CommandName[] = [
+  "generate",
+  "commit",
+  "reset",
+  "migrate",
+  "verify",
+  "rebase",
+];
+
+/** The command the arguments name, read without validating anything else, or null. */
+function commandNameIn(argv: readonly string[]): CommandName | null {
+  const {
+    positionals: [name],
+  } = parseArgs({ args: [...argv], allowPositionals: true, strict: false, options: OPTIONS });
+  return COMMAND_NAMES.find((known) => known === name) ?? null;
+}
+
 /** Each flag that only one command takes, and that command. */
 const FLAG_COMMANDS = { accept: "commit", erase: "reset", onto: "rebase" } as const;
 
@@ -98,18 +147,17 @@ function checkNoArguments(name: string, args: readonly string[]): void {
   if (args.length > 0) throw new UsageError(`${name} takes no arguments: ${args.join(" ")}`);
 }
 
+const OPTIONS = {
+  accept: { type: "string" },
+  config: { type: "string" },
+  erase: { type: "boolean" },
+  json: { type: "boolean" },
+  onto: { type: "string" },
+} as const;
+
 function parseFlags(argv: readonly string[]) {
   try {
-    return parseArgs({
-      args: [...argv],
-      allowPositionals: true,
-      options: {
-        accept: { type: "string" },
-        config: { type: "string" },
-        erase: { type: "boolean" },
-        onto: { type: "string" },
-      },
-    });
+    return parseArgs({ args: [...argv], allowPositionals: true, options: OPTIONS });
   } catch (error) {
     throw new UsageError(error instanceof Error ? error.message : String(error));
   }

@@ -16,7 +16,7 @@ import { verify } from "../../runtime/migrator/index.ts";
 import type { Driver, FileSystem, Queryable } from "../../runtime/ports/index.ts";
 import type { HazardKind } from "../diff/index.ts";
 import { withDevLock } from "./dev-lock.ts";
-import { hazardRefusal } from "./hazard-refusal.ts";
+import { hazardRefusalError } from "./hazard-refusal.ts";
 import { compareRecorded } from "./recorded-chain.ts";
 
 export type CommitOptions = {
@@ -99,8 +99,8 @@ async function readAcceptedBody(
   const content = await fileSystem.readFile(currentPath);
   if (content === undefined) throw new Error(`${currentPath} doesn't exist; run generate first`);
   const { body } = await parseCurrent(content);
-  const refusal = hazardRefusal(body, accept);
-  if (refusal !== undefined) throw new Error(refusal);
+  const refusal = hazardRefusalError(body, accept);
+  if (refusal !== undefined) throw refusal;
   return body;
 }
 

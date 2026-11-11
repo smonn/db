@@ -1,8 +1,20 @@
 import { CURRENT_FILENAME } from "../../runtime/internal/index.ts";
-import { HAZARD_KINDS } from "../diff/index.ts";
+import { HAZARD_KINDS, type HazardKind } from "../diff/index.ts";
 import { hazardsIn, strayHazardComments } from "./hazards.ts";
 
-const KNOWN: readonly string[] = HAZARD_KINDS;
+/** `commit` found Hazard kinds in `current.sql` that `--accept` doesn't name. */
+export class HazardNotAcceptedError extends Error {
+  readonly kinds: readonly HazardKind[];
+
+  constructor(message: string, kinds: readonly HazardKind[]) {
+    super(message);
+    this.kinds = kinds;
+  }
+}
+
+function isKnown(kind: string): kind is HazardKind {
+  return HAZARD_KINDS.some((known) => known === kind);
+}
 
 /**
  * Why `commit` refuses (ADR-0015), or undefined when `accepted` names every Hazard kind in the
@@ -18,8 +30,20 @@ export function hazardRefusal(body: string, accepted: readonly string[]): string
   return refusalLines(missing, unknown, strays, accepted).join("\n");
 }
 
+/**
+ * The error `commit` throws for `hazardRefusal`'s message, or undefined without one. It is a
+ * `HazardNotAcceptedError` naming the missing kinds when any is missing, and a plain error when
+ * the refusal is only a typo'd kind or a stray comment, which `--accept` can't fix.
+ */
+export function hazardRefusalError(body: string, accepted: readonly string[]): Error | undefined {
+  const message = hazardRefusal(body, accepted);
+  if (message === undefined) return undefined;
+  const kinds = [...new Set([...groupHazards(body, accepted).missing.values()].flat())];
+  return kinds.length === 0 ? new Error(message) : new HazardNotAcceptedError(message, kinds);
+}
+
 function refusalLines(
-  missing: ReadonlyMap<string, string[]>,
+  missing: ReadonlyMap<string, HazardKind[]>,
   unknown: ReadonlySet<string>,
   strays: readonly { line: number; text: string }[],
   accepted: readonly string[],
@@ -43,7 +67,10 @@ function refusalLines(
   return lines;
 }
 
-function acceptHint(accepted: readonly string[], missing: ReadonlyMap<string, string[]>): string {
+function acceptHint(
+  accepted: readonly string[],
+  missing: ReadonlyMap<string, HazardKind[]>,
+): string {
   const flag = new Set([...accepted, ...[...missing.values()].flat()]);
   return `to commit anyway, pass --accept ${[...flag].join(",")}`;
 }
@@ -51,11 +78,11 @@ function acceptHint(accepted: readonly string[], missing: ReadonlyMap<string, st
 function groupHazards(
   body: string,
   accepted: readonly string[],
-): { missing: Map<string, string[]>; unknown: Set<string> } {
-  const missing = new Map<string, string[]>();
+): { missing: Map<string, HazardKind[]>; unknown: Set<string> } {
+  const missing = new Map<string, HazardKind[]>();
   const unknown = new Set<string>();
   for (const { kind, statement } of hazardsIn(body)) {
-    if (!KNOWN.includes(kind)) unknown.add(kind);
+    if (!isKnown(kind)) unknown.add(kind);
     else if (!accepted.includes(kind)) {
       const kinds = missing.get(statement);
       if (kinds === undefined) missing.set(statement, [kind]);
