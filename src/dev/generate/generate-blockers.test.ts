@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
-import { writeMigration } from "../../runtime/internal/index.ts";
+import { UnmodeledBlockerError, writeMigration } from "../../runtime/internal/index.ts";
 import { generate, type GenerateOptions, type GenerateResult } from "./generate.ts";
 import { generateOptions } from "./generate-options.test-helper.ts";
 import { filesIn, memoryFileSystem } from "./memory-file-system.test-helper.ts";
@@ -60,6 +60,21 @@ describe("the scan for Unmodeled blockers", () => {
     trigger audit on public.orders
 ${HINT}`),
     );
+  });
+
+  it("throws an UnmodeledBlockerError, so the CLI can name the refusal", async () => {
+    const committed = `
+      create table public.users (id integer not null, email text);
+      create view public.emails as select email from public.users;`;
+
+    await expect(
+      generateFrom(
+        committed,
+        defineDatabase({
+          public: { users: defineTable((c) => ({ id: c.integer().notNull() })) },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(UnmodeledBlockerError);
   });
 
   it("names a foreign key that introspect skips as Unmodeled", async () => {
