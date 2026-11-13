@@ -10,6 +10,7 @@
  * than it states goes in a Stale disables section, which alone keeps the issue open.
  *
  * Run with `GITHUB_REPOSITORY` set and `gh` authenticated, as `pnpm mutation:report [report...]`.
+ * With `RUN_URL` set, the body links the run, whose artifacts hold every survivor.
  * It reads `reports/mutation/mutation.json`, which `pnpm mutation` writes, unless given the
  * reports to merge; the Mutation workflow passes one per shard.
  */
@@ -155,12 +156,19 @@ export function survivorRow({ file, line, mutator, status, expected }: Survivor)
   return `| \`${file}\` | ${line} | ${mutator} | ${status}${note} |`;
 }
 
+function opening({ survivors, stale }: Findings, runUrl: string | undefined): string {
+  const run = runUrl === undefined ? "Stryker run" : `[Stryker run](${runUrl})`;
+  return `The weekly ${run} leaves ${survivors.length} mutants that no test kills, and ${stale.length} stale disables. Each run rewrites this issue, and closes it once neither is left.`;
+}
+
 export function reportBody(
-  { survivors: list, stale }: Findings,
+  found: Findings,
   maxLength: number = MAX_LENGTH,
+  runUrl?: string,
 ): string {
+  const { survivors: list, stale } = found;
   const lines = [
-    `The weekly Stryker run leaves ${list.length} mutants that no test kills, and ${stale.length} stale disables. Each run rewrites this issue, and closes it once neither is left.`,
+    opening(found, runUrl),
     ...staleSection(stale),
     ...(list.length === 0
       ? []
@@ -210,14 +218,19 @@ export function openReportIssue(repo: string, gh: Gh): number | undefined {
   return open[0];
 }
 
-function syncIssue(repo: string, issue: number | undefined, found: Findings, gh: Gh): void {
+function syncIssue(
+  { repo, runUrl }: { repo: string; runUrl: string | undefined },
+  issue: number | undefined,
+  found: Findings,
+  gh: Gh,
+): void {
   if (found.survivors.length === 0 && found.stale.length === 0) {
     if (issue === undefined) return;
     const comment = "No mutants survive the latest Stryker run.";
     gh(["issue", "close", String(issue), "--repo", repo, "--comment", comment]);
     return;
   }
-  const body = reportBody(found);
+  const body = reportBody(found, MAX_LENGTH, runUrl);
   if (issue === undefined) {
     gh(
       ["issue", "create", "--repo", repo, "--title", TITLE, "--label", LABEL, "--body-file", "-"],
@@ -233,7 +246,7 @@ export function main(
   env: NodeJS.ProcessEnv = process.env,
   gh: Gh = runGh,
 ): void {
-  const { GITHUB_REPOSITORY: repo } = env;
+  const { GITHUB_REPOSITORY: repo, RUN_URL: runUrl } = env;
   if (repo === undefined) {
     console.error("Set GITHUB_REPOSITORY");
     process.exitCode = 1;
@@ -244,7 +257,7 @@ export function main(
       findings(parseJson(readFileSync(path, "utf8"), path)),
     ),
   );
-  syncIssue(repo, openReportIssue(repo, gh), found, gh);
+  syncIssue({ repo, runUrl }, openReportIssue(repo, gh), found, gh);
 }
 
 if (import.meta.main) main(process.argv.slice(2));

@@ -51,6 +51,13 @@ test("sets a timeout", () => {
   expect(pr).toMatch(/^ {4}timeout-minutes: \d+$/mu);
 });
 
+test("the weekly Report step passes its run URL, which the issue body links", () => {
+  const report = weekly.slice(weekly.indexOf("  report:"), weekly.indexOf("  failure:"));
+  expect(report).toContain(
+    "RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+  );
+});
+
 test("the weekly header still says it never runs on pull requests", () => {
   expect(weekly).toContain("never runs on pull requests");
 });
