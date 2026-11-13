@@ -2,10 +2,10 @@ import { UnmodeledBlockerError, type TrackingSchema } from "../../runtime/intern
 import { migrate } from "../../runtime/migrator/index.ts";
 import type { Connect, Driver, MigrationSource } from "../../runtime/ports/index.ts";
 import {
-  declaredRenames,
   definitionCatalog,
   type Catalog,
   type DefinitionTables,
+  type Rename,
 } from "../catalog/index.ts";
 import { diff, refuseTypeChanges, type Diff } from "../diff/index.ts";
 import { introspect } from "../introspect/index.ts";
@@ -21,6 +21,8 @@ export type ShadowDiffOptions = {
   /** The Committed migrations, replayed into the Shadow database. */
   readonly source: MigrationSource;
   readonly definition: DefinitionTables;
+  /** The Definition's declared renames, which generate also hands to the Dev database's catch-up. */
+  readonly declared: readonly Rename[];
   readonly tracking: TrackingSchema;
   readonly shadowOptions: ShadowOptions;
   /** A hand-edited Current migration body: the Shadow runs it instead of the generated SQL. */
@@ -45,7 +47,7 @@ export type ShadowDiff = Diff & {
  * Either way the Shadow ends holding the Current migration.
  */
 export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
-  const { driver, connect, source, definition, tracking } = options;
+  const { driver, connect, source, definition, declared, tracking } = options;
   return withShadowDatabases(
     driver,
     connect,
@@ -55,11 +57,7 @@ export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
         await definitionSql(databases.definition, definitionCatalog(definition)),
       );
       const target = await introspect(databases.definition, tracking);
-      const { catalog, renames } = await renameInShadow(
-        databases.shadow,
-        declaredRenames(definition),
-        tracking,
-      );
+      const { catalog, renames } = await renameInShadow(databases.shadow, declared, tracking);
       const result = diff(catalog, target, renames);
       if (options.edited !== undefined) {
         const after = await leftoverAfter(databases.shadow, options.edited, target, {

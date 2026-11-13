@@ -1,5 +1,6 @@
 import {
   ChainBrokenError,
+  matchingPrefix,
   migrationHash,
   parseMigration,
   type ParsedMigration,
@@ -30,21 +31,21 @@ export function checkRecorded(
   migrations: readonly ParsedMigration[],
   recorded: readonly RecordedMigration[],
 ): void {
-  recorded.forEach((row, index) => {
-    const migration = migrations[index];
-    if (migration === undefined) {
-      throw new ChainBrokenError(`${row.filename}: recorded as ${row.hash} but has no file`);
-    }
-    if (migration.hash === row.hash) return;
-    if (migration.filename === row.filename) {
-      throw new ChainBrokenError(
-        `${row.filename}: recorded as ${row.hash} but now hashes to ${migration.hash}`,
-      );
-    }
+  const stop = matchingPrefix(recorded, migrations);
+  const row = recorded[stop];
+  if (row === undefined) return;
+  const migration = migrations[stop];
+  if (migration === undefined) {
+    throw new ChainBrokenError(`${row.filename}: recorded as ${row.hash} but has no file`);
+  }
+  if (migration.filename === row.filename) {
     throw new ChainBrokenError(
-      `${migration.filename}: stands where the recorded ${row.filename} (${row.hash}) was`,
+      `${row.filename}: recorded as ${row.hash} but now hashes to ${migration.hash}`,
     );
-  });
+  }
+  throw new ChainBrokenError(
+    `${migration.filename}: stands where the recorded ${row.filename} (${row.hash}) was`,
+  );
 }
 
 export async function loadVerifiedMigrations(source: MigrationSource): Promise<ParsedMigration[]> {

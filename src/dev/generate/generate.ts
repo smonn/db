@@ -138,11 +138,13 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
   const committed = await readCommitted(fileSystem, migrations);
   const source: MigrationSource = { list: () => Promise.resolve(committed) };
 
+  const declared = declaredRenames(definition);
   const shadowDiff = await diffInShadow({
     driver,
     connect,
     source,
     definition,
+    declared,
     tracking,
     shadowOptions,
     edited,
@@ -152,7 +154,6 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     throw new Error(strictRefusal(shadowDiff.leftover, path, strict.config));
   }
 
-  const declared = declaredRenames(definition);
   const kept = { driver, source, tracking, committed, path, shadow: shadowDiff.shadow, declared };
   if (edited !== undefined) return replayEdited(kept, edited, shadowDiff);
   return writeGenerated({ ...kept, fileSystem, existing }, shadowDiff);
