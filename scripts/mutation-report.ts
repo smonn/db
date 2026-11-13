@@ -85,7 +85,8 @@ function staleMutator(file: string, disable: Disable, mutator: string, hidden: M
   return [{ file, line: disable.line, mutator, found }];
 }
 
-function staleDisable(file: string, disable: Disable, hidden: Mutant[]): StaleDisable[] {
+/** What makes a marked disable stale: a mutator with no survivor, or fewer survivors in all than stated. */
+export function staleDisable(file: string, disable: Disable, hidden: Mutant[]): StaleDisable[] {
   const byMutator = disable.mutators.flatMap((mutator) =>
     staleMutator(file, disable, mutator, hidden),
   );
