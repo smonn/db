@@ -38,6 +38,15 @@ test("marks the disables, then reports", () => {
   );
 });
 
+test("uploads the JSON report after the run, even a failed one, for rows the summary caps", () => {
+  const upload = pr.indexOf("uses: actions/upload-artifact@");
+  expect(upload).toBeGreaterThan(pr.indexOf("run: pnpm mutation:pr"));
+  const step = pr.slice(upload);
+  expect(step).toMatch(/^ {8}if: \$\{\{ always\(\) \}\}$/mu);
+  expect(step).toContain("path: reports/mutation/mutation.json");
+  expect(step).toContain("if-no-files-found: ignore");
+});
+
 test("sets a timeout", () => {
   expect(pr).toMatch(/^ {4}timeout-minutes: \d+$/mu);
 });

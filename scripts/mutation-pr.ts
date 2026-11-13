@@ -89,21 +89,22 @@ function survivorTable(heading: string, list: Survivor[]): string[] {
   ];
 }
 
+export function header(files: string[]): string {
+  const noun = files.length === 1 ? "file" : "files";
+  const list = files.map((file) => `\`${file}\``).join(", ");
+  return `## Mutation on changed files\n\nMutated ${files.length} ${noun}: ${list}\n`;
+}
+
 export type SummaryInput = {
-  files: string[];
   onChanged: Survivor[];
   others: Survivor[];
   stale: StaleDisable[];
   ms: number;
 };
 
-export function summary({ files, onChanged, others, stale, ms }: SummaryInput): string {
+export function summary({ onChanged, others, stale, ms }: SummaryInput): string {
   const none = onChanged.length === 0 && others.length === 0 && stale.length === 0;
-  const noun = files.length === 1 ? "file" : "files";
   return [
-    "## Mutation on changed files",
-    "",
-    `Mutated ${files.length} ${noun}: ${files.map((file) => `\`${file}\``).join(", ")}`,
     ...survivorTable("Survivors on lines this PR changed", onChanged),
     ...survivorTable("Other survivors in the changed files", others),
     ...staleSection(stale),
@@ -150,12 +151,19 @@ export function main(env: NodeJS.ProcessEnv = process.env, deps: Deps = realDeps
     deps.write("No mutable files changed.\n");
     return;
   }
+  // Written first, so a run the job timeout kills still names what it was mutating.
+  deps.write(header(files));
   const start = deps.now();
-  deps.stryker(files);
+  try {
+    deps.stryker(files);
+  } catch (error) {
+    deps.write(`\nStryker failed after ${formatDuration(deps.now() - start)}.\n`);
+    throw error;
+  }
   const ms = deps.now() - start;
   const lines = changedLines(deps.git(["diff", "--unified=0", "--no-color", base, "HEAD"]));
   const { survivors, stale } = findings(deps.report());
-  deps.write(summary({ files, ...splitSurvivors(survivors, lines), stale, ms }));
+  deps.write(summary({ ...splitSurvivors(survivors, lines), stale, ms }));
 }
 
 if (import.meta.main) main();

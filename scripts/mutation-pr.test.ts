@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   changedLines,
   formatDuration,
+  header,
   mutableChanges,
   splitSurvivors,
   summary,
@@ -95,9 +96,20 @@ describe("formatDuration", () => {
   });
 });
 
+describe("header", () => {
+  test("names the mutated files, so a run that never finishes still shows them", () => {
+    expect(header(["src/a.ts", "src/b.ts"])).toBe(
+      "## Mutation on changed files\n\nMutated 2 files: `src/a.ts`, `src/b.ts`\n",
+    );
+  });
+
+  test("names one file in the singular", () => {
+    expect(header(["src/a.ts"])).toContain("Mutated 1 file:");
+  });
+});
+
 describe("summary", () => {
   const base = {
-    files: ["src/a.ts", "src/b.ts"],
     onChanged: [survivor("src/a.ts", 3)],
     others: [survivor("src/b.ts", 9, { status: "NoCoverage", expected: 1 })],
     stale: [{ file: "src/a.ts", line: 7, mutator: "StringLiteral", found: "No mutant" }],
@@ -107,8 +119,6 @@ describe("summary", () => {
   test("lists changed-line survivors, then the others, then stale disables, then the run time", () => {
     const text = summary(base);
     const order = [
-      "## Mutation on changed files",
-      "Mutated 2 files",
       "### Survivors on lines this PR changed (1)",
       "| `src/a.ts` | 3 | StringLiteral | Survived |",
       "### Other survivors in the changed files (1)",
@@ -122,11 +132,8 @@ describe("summary", () => {
   });
 
   test("lays out the whole summary", () => {
-    expect(summary({ ...base, files: ["src/a.ts"], others: [], stale: [] })).toBe(
+    expect(summary({ ...base, others: [], stale: [] })).toBe(
       [
-        "## Mutation on changed files",
-        "",
-        "Mutated 1 file: `src/a.ts`",
         "",
         "### Survivors on lines this PR changed (1)",
         "",
@@ -139,16 +146,7 @@ describe("summary", () => {
       ].join("\n"),
     );
     expect(summary({ ...base, onChanged: [], others: [], stale: [] })).toBe(
-      [
-        "## Mutation on changed files",
-        "",
-        "Mutated 2 files: `src/a.ts`, `src/b.ts`",
-        "",
-        "No mutant survives.",
-        "",
-        "Run time: 1m 1s",
-        "",
-      ].join("\n"),
+      ["", "No mutant survives.", "", "Run time: 1m 1s", ""].join("\n"),
     );
   });
 
@@ -161,10 +159,6 @@ describe("summary", () => {
       "",
       "1 more not shown.",
     ]);
-  });
-
-  test("names one file in the singular", () => {
-    expect(summary({ ...base, files: ["src/a.ts"] })).toContain("Mutated 1 file:");
   });
 
   test("leaves out an empty section and says nothing survives", () => {
