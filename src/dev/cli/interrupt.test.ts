@@ -51,11 +51,18 @@ export default defineConfig({
   return project;
 }
 
-function spawnGenerate(cwd: string): { child: ChildProcess; stderr: () => string } {
-  const child = spawn(process.execPath, [join(import.meta.dirname, "bin.ts"), "generate"], {
-    cwd,
-    stdio: ["ignore", "ignore", "pipe"],
-  });
+function spawnGenerate(
+  cwd: string,
+  flags: readonly string[],
+): { child: ChildProcess; stderr: () => string } {
+  const child = spawn(
+    process.execPath,
+    [join(import.meta.dirname, "bin.ts"), "generate", ...flags],
+    {
+      cwd,
+      stdio: ["ignore", "ignore", "pipe"],
+    },
+  );
   let stderr = "";
   child.stderr?.setEncoding("utf8");
   child.stderr?.on("data", (chunk: string) => {
@@ -74,9 +81,13 @@ async function killIfRunning(child: ChildProcess): Promise<void> {
 
 describe("smonndb generate, interrupted", () => {
   // Its own role, so the databases it owns are the Dev database and the ones generate creates.
-  it.each(["SIGINT", "SIGTERM"] as const)(
-    "drops its Shadow and Definition databases on %s, then dies of the signal",
-    async (signal) => {
+  it.each([
+    ["SIGINT", []],
+    ["SIGTERM", []],
+    ["SIGINT", ["--watch"]],
+  ] as const)(
+    "drops its Shadow and Definition databases on %s, then dies of the signal (%j)",
+    async (signal, flags) => {
       const suffix = crypto.randomUUID().replaceAll("-", "");
       const role = `smonn_db_interrupt_${suffix}`;
       const dev = `smonn_db_interrupt_dev_${suffix}`;
@@ -87,7 +98,7 @@ describe("smonndb generate, interrupted", () => {
       url.password = suffix;
       url.pathname = `/${dev}`;
       const project = await stallingProject(url.href);
-      const { child, stderr } = spawnGenerate(project);
+      const { child, stderr } = spawnGenerate(project, flags);
       try {
         const exited = once(child, "exit");
         await vi.waitFor(

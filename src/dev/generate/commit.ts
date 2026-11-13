@@ -31,8 +31,11 @@ export type CommitOptions = {
   readonly trackingSchema?: string;
   /** The Hazard kinds the caller accepts (ADR-0015); `commit` refuses any other kind in the file. */
   readonly accept: readonly HazardKind[];
-  /** Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`). */
-  readonly signal?: AbortSignal;
+  /**
+   * Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`).
+   * Only the wait: a run past it goes on to the end.
+   */
+  readonly signal?: AbortSignal | undefined;
   /** Receives one line when the migrator's lock is held and the commit has to wait. */
   readonly log?: (line: string) => void;
 };
