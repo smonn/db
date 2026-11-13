@@ -54,8 +54,9 @@ export type GenerateResult = {
   readonly file: "written" | "removed" | "kept";
   /**
    * Set when `current.sql` was hand-edited, so generate kept and replayed it as written (ADR-0003):
-   * the lines that differ from what generate would have written, `-` for the file and `+` for the
-   * generation. Empty when they match. `sql` is then the replayed body.
+   * a unified diff from the file to what generate would have written, `-` for the file and `+` for
+   * the generation: `@@ -a,b +c,d @@` hunks with 3 lines of context, and no file headers. Empty when
+   * they match. `sql` is then the replayed body.
    */
   readonly diff?: string;
   /**

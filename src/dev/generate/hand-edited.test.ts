@@ -34,13 +34,13 @@ describe("generate with a hand-edited current.sql", () => {
       "an edited body",
       async () => `${await generated("select 1;\n")}select 2;\n`,
       "select 1;\nselect 2;\n",
-      `-select 1;\n-select 2;\n${USERS_DIFF}`,
+      `@@ -1,2 +1,3 @@\n-select 1;\n-select 2;\n${USERS_DIFF}`,
     ],
     [
       "no Generated header",
       () => Promise.resolve("select 1;\n"),
       "select 1;\n",
-      `-select 1;\n${USERS_DIFF}`,
+      `@@ -1,1 +1,3 @@\n-select 1;\n${USERS_DIFF}`,
     ],
   ])("keeps and replays a current.sql with %s", async (_, build, body, diff) => {
     const content = await build();
