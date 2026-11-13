@@ -10,6 +10,7 @@
  * than it states goes in a Stale disables section, which alone keeps the issue open.
  *
  * Run with `GITHUB_REPOSITORY` set and `gh` authenticated, as `pnpm mutation:report [report...]`.
+ * With `RUN_URL` set, the body links the run, whose artifacts hold every survivor.
  * It reads `reports/mutation/mutation.json`, which `pnpm mutation` writes, unless given the
  * reports to merge; the Mutation workflow passes one per shard.
  */
@@ -161,12 +162,13 @@ function opening({ survivors, stale }: Findings, runUrl: string | undefined): st
 }
 
 export function reportBody(
-  { survivors: list, stale }: Findings,
+  found: Findings,
   maxLength: number = MAX_LENGTH,
   runUrl?: string,
 ): string {
+  const { survivors: list, stale } = found;
   const lines = [
-    opening({ survivors: list, stale }, runUrl),
+    opening(found, runUrl),
     ...staleSection(stale),
     ...(list.length === 0
       ? []
