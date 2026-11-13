@@ -10,9 +10,12 @@ const project = useWatchProject(db);
 
 describe("watch", () => {
   it("runs at start, then after a change to a module the Definition imports", async () => {
+    const started = performance.now();
     const watching = project.startWatch();
     await watching.untilRuns(1);
     expect(watching.runs[0]).toMatchObject({ ok: true, changes: [] });
+    expect(watching.runs[0]?.durationMs).toBeGreaterThan(0);
+    expect(watching.runs[0]?.durationMs).toBeLessThanOrEqual(performance.now() - started);
     expect(await project.columnsOfWidgets()).toStrictEqual(["id"]);
 
     const run = await watching.runAfter(() =>
@@ -30,15 +33,40 @@ describe("watch", () => {
       project.writeTable("id: c.integer(), name: c.text()"),
     );
     expect(run).toMatchObject({ ok: true, result: { file: "written" } });
-    const count = watching.runs.length;
-    await delay(QUIET_FOR_MS);
-    expect(watching.runs).toHaveLength(count);
+    expect(await watching.quiet()).toBe(watching.runs.indexOf(run) + 1);
 
     const current = join(project.migrations, "current.sql");
     const edited = await watching.runAfter(async () => {
       await writeFile(current, `${await readFile(current, "utf8")}-- note\n`);
     });
     expect(edited).toMatchObject({ ok: true, changes: [current] });
+  });
+
+  it("skips the event of its own removal of current.sql", async () => {
+    const watching = project.startWatch();
+
+    const run = await watching.runAfter(() =>
+      writeFile(
+        project.definition,
+        `import { defineDatabase } from ${RUNTIME};\nexport default defineDatabase({ public: {} });\n`,
+      ),
+    );
+    expect(run).toMatchObject({ ok: true, result: { file: "removed" } });
+
+    expect(await watching.quiet()).toBe(watching.runs.indexOf(run) + 1);
+  });
+
+  it("fails a run that strict mode refuses, and keeps the Dev database", async () => {
+    const watching = project.startWatch({ strict: { config: "smonndb.config.ts" } });
+    await watching.quiet();
+    const current = join(project.migrations, "current.sql");
+
+    const refused = await watching.runAfter(() =>
+      writeFile(current, "create table public.widgets (id integer, extra text);\n"),
+    );
+
+    expect(String(errorOf(refused))).toContain("strict mode, smonndb.config.ts");
+    expect(await project.columnsOfWidgets()).toStrictEqual(["id"]);
   });
 
   it("keeps the last good Dev database after a failed run, and the next good run recovers", async () => {
@@ -80,7 +108,27 @@ describe("watch", () => {
     await writeFile(join(project.dir, "tables/notes.md"), "notes\n");
     await delay(QUIET_FOR_MS);
 
-    expect(watching.runs).toHaveLength(count);
+    expect(await watching.quiet()).toBe(count);
+  });
+
+  it("ignores any file in the migrations folder's parent, even while the graph is unknown", async () => {
+    const migrations = join(project.dir, "db/migrations");
+    await mkdir(migrations, { recursive: true });
+    await writeFile(
+      project.definition,
+      `import { defineDatabase } from ${RUNTIME};
+import { widgets } from "./tables/gone.ts";
+export default defineDatabase({ public: { widgets } });
+`,
+    );
+    const watching = project.startWatch({ migrations });
+    const count = await watching.quiet();
+    expect(errorOf(watching.runs[0])).toBeDefined();
+
+    await writeFile(join(project.dir, "db/notes.md"), "notes\n");
+    await delay(QUIET_FOR_MS);
+
+    expect(await watching.quiet()).toBe(count);
   });
 
   it("runs when an import that failed to resolve appears", async () => {
