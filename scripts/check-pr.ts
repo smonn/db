@@ -9,6 +9,8 @@
  *
  * A closing keyword in `PR_BODY` must not name an issue outside `smonn/db` (`check-closing-keywords.ts`).
  * A title that adds a release note must fit what the PR changes (`check-release-note.ts`).
+ * A `fix` PR's `PR_BODY` needs a line `Regressed by: #<pr>` or `Regressed by: n/a`. CI always sets
+ * `PR_BODY` (empty for a PR with no body); a local run that leaves it unset skips both body checks.
  *
  * Run with `PR_TITLE` and `PR_BRANCH` set, as `pnpm check:pr`; CI runs it in the Metadata job (`.github/workflows/pr.yml`).
  * Set `PR_DIFF_BASE` to a git revision (CI uses `HEAD^1`, the base side of the merge commit) to
@@ -35,12 +37,15 @@ const statusPattern = /^status:\s*(\S+)\s*$/mu;
 const branchPattern = /^(feature|bugfix|hotfix|release|chore)\/[a-z0-9]+([.-][a-z0-9]+)*$/u;
 const botBranchPrefixes = ["renovate/", "release-please--"];
 
+function isBotBranch(branch: string): boolean {
+  return botBranchPrefixes.some((prefix) => branch.startsWith(prefix));
+}
+
 /** `baseStatus` is the status on the diff base, absent for an ADR the PR adds. */
 export type ChangedAdr = { file: string; status: string; added: boolean; baseStatus?: string };
 
 export function checkBranch(branch: string): string[] {
-  const isBot = botBranchPrefixes.some((prefix) => branch.startsWith(prefix));
-  if (isBot || branchPattern.test(branch)) return [];
+  if (isBotBranch(branch) || branchPattern.test(branch)) return [];
   return [
     `Branch "${branch}" is not a Conventional Branch: feature|bugfix|hotfix|release|chore/<lowercase-kebab>`,
   ];
@@ -62,6 +67,21 @@ export function checkAdrTitle(title: string, adrs: readonly ChangedAdr[]): strin
     problems.push('PR title says "accept" but no ADR became accepted');
   }
   return problems;
+}
+
+const fixTitlePattern = /^fix(\([a-z0-9-]+\))?!?: /u;
+const regressedByPattern = /^Regressed by: (#\d+|n\/a)\s*$/mu;
+
+/**
+ * A `fix` PR names the PR that introduced the defect, so a review of escaped defects has data.
+ * A bot PR is exempt: Renovate titles a runtime dependency bump `fix(deps): ...`.
+ */
+export function checkRegressedBy(title: string, body: string, branch: string): string[] {
+  if (isBotBranch(branch)) return [];
+  if (!fixTitlePattern.test(title) || regressedByPattern.test(body)) return [];
+  return [
+    "A fix PR needs a body line `Regressed by: #<pr>` (the PR that introduced the defect) or `Regressed by: n/a` (the defect predates every PR, or the code never worked)",
+  ];
 }
 
 /** `adrs` is absent when the diff base is unknown, which skips the ADR title check. */
@@ -149,7 +169,9 @@ function allProblems(
     ...checkPr(title, branch, adrs),
     ...releaseNoteProblems(title, base, readFiles),
   ];
-  if (body !== undefined) problems.push(...checkClosingKeywords(body));
+  if (body !== undefined) {
+    problems.push(...checkClosingKeywords(body), ...checkRegressedBy(title, body, branch));
+  }
   if (adrs !== undefined && number !== undefined) {
     problems.push(...clashProblems(adrs, number, readOpenAdds));
   }
