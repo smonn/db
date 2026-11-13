@@ -108,7 +108,27 @@ describe("watch", () => {
     await writeFile(join(project.dir, "tables/notes.md"), "notes\n");
     await delay(QUIET_FOR_MS);
 
-    expect(watching.runs).toHaveLength(count);
+    expect(await watching.quiet()).toBe(count);
+  });
+
+  it("ignores any file in the migrations folder's parent, even while the graph is unknown", async () => {
+    const migrations = join(project.dir, "db/migrations");
+    await mkdir(migrations, { recursive: true });
+    await writeFile(
+      project.definition,
+      `import { defineDatabase } from ${RUNTIME};
+import { widgets } from "./tables/gone.ts";
+export default defineDatabase({ public: { widgets } });
+`,
+    );
+    const watching = project.startWatch({ migrations });
+    const count = await watching.quiet();
+    expect(errorOf(watching.runs[0])).toBeDefined();
+
+    await writeFile(join(project.dir, "db/notes.md"), "notes\n");
+    await delay(QUIET_FOR_MS);
+
+    expect(await watching.quiet()).toBe(count);
   });
 
   it("runs when an import that failed to resolve appears", async () => {
