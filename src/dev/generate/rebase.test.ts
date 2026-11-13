@@ -19,6 +19,9 @@ import {
 
 const db = useTestDatabase();
 
+const RESTORE_HINT =
+  "Afterwards run git stash pop from the repository root to restore them; if pop stops at a file rebase wrote, git keeps the stash: move that file aside, pop again, and merge the two by hand";
+
 describe("rebase", () => {
   it("moves the branch's files onto the base tip, rewriting their sequence and headers", async () => {
     const fileSystem = folder(A, B, C, X, Y);
@@ -154,7 +157,7 @@ describe("rebase", () => {
     await expect(
       rebaseFolder(fileSystem, [A, B], ["000002-x.sql", "000003-y.sql"]),
     ).rejects.toThrow(
-      `${MIGRATIONS} has changes git doesn't hold: 000002-x.sql, 000003-y.sql; set them aside with git -C 'db/migrations' stash push --all -- . ':(exclude)current.sql', then rerun rebase`,
+      `${MIGRATIONS} has changes git doesn't hold: 000002-x.sql, 000003-y.sql; set them aside with git -C 'db/migrations' stash push --all -- . ':(exclude)current.sql', then rerun rebase. ${RESTORE_HINT}`,
     );
     expect(fileSystem.files).toStrictEqual(before);
   });
@@ -169,7 +172,7 @@ describe("rebase", () => {
         unheld: ["000002-x.sql"],
       }),
     ).rejects.toThrow(
-      "git -C 'my db/it'\\''s' stash push --all -- . ':(exclude)current.sql', then rerun rebase",
+      `git -C 'my db/it'\\''s' stash push --all -- . ':(exclude)current.sql', then rerun rebase. ${RESTORE_HINT}`,
     );
   });
 

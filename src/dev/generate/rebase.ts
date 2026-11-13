@@ -98,6 +98,11 @@ async function applyMoves(
   }
 }
 
+// From the repository root, since --all stashes a gitignored folder whole and `git -C <folder>` can't enter it.
+// A name the stash and rebase both hold makes pop refuse and keep the entry; moving rebase's file aside lets a second pop restore the stashed one.
+const RESTORE_HINT =
+  "Afterwards run git stash pop from the repository root to restore them; if pop stops at a file rebase wrote, git keeps the stash: move that file aside, pop again, and merge the two by hand";
+
 /** Only the top-level files rebase reads or writes count: Committed migrations and leftover `.sql.tmp` files. */
 function checkHeld(unheld: readonly string[], migrations: string): void {
   const topLevel = unheld.filter((path) => !path.includes("/"));
@@ -109,7 +114,7 @@ function checkHeld(unheld: readonly string[], migrations: string): void {
   // Naming the files fails once one is deleted in the index: git stashes, then rejects the pathspec.
   // --all, since --include-untracked skips the gitignored files this guard also reports.
   throw new Error(
-    `${migrations} has changes git doesn't hold: ${paths.join(", ")}; set them aside with git -C ${shellQuote(migrations)} stash push --all -- . ':(exclude)${CURRENT_FILENAME}', then rerun rebase`,
+    `${migrations} has changes git doesn't hold: ${paths.join(", ")}; set them aside with git -C ${shellQuote(migrations)} stash push --all -- . ':(exclude)${CURRENT_FILENAME}', then rerun rebase. ${RESTORE_HINT}`,
   );
 }
 

@@ -1,9 +1,9 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { writeMigration } from "../../runtime/internal/index.ts";
 import { main } from "./main.ts";
-import { runPrintedStep } from "./printed-step.test-helper.ts";
+import { RESTORE_HINT, runPrintedStep } from "./printed-step.test-helper.ts";
 import { A, B, useRebaseProject, X } from "./rebase-project.test-helper.ts";
 
 const project = useRebaseProject();
@@ -24,7 +24,7 @@ describe("main rebase, with files git doesn't hold", () => {
 
     expect(await main(["rebase", "--onto", "main", "--config", project.config])).toBe(1);
     expect(cli.stderr).toBe(
-      `${folder} has changes git doesn't hold: 000002-x.sql, 000003-y.sql; set them aside with git -C '${folder}' stash push --all -- . ':(exclude)current.sql', then rerun rebase\n`,
+      `${folder} has changes git doesn't hold: 000002-x.sql, 000003-y.sql; set them aside with git -C '${folder}' stash push --all -- . ':(exclude)current.sql', then rerun rebase. ${RESTORE_HINT}\n`,
     );
     expect(await folderContents()).toStrictEqual(before);
   });
@@ -74,13 +74,52 @@ describe("main rebase, with files git doesn't hold", () => {
 
     expect(await main(["rebase", "--onto", "main", "--config", project.config])).toBe(1);
     expect(cli.stderr).toBe(
-      `${folder} has changes git doesn't hold: 000003-x.sql; set them aside with git -C '${folder}' stash push --all -- . ':(exclude)current.sql', then rerun rebase\n`,
+      `${folder} has changes git doesn't hold: 000003-x.sql; set them aside with git -C '${folder}' stash push --all -- . ':(exclude)current.sql', then rerun rebase. ${RESTORE_HINT}\n`,
     );
     runPrintedStep(cli.stderr, cli.dir);
 
     expect(await main(["rebase", "--onto", "main", "--config", project.config])).toBe(0);
     expect(project.stdout).toBe(`rewrote 000002-x.sql as 000003-x.sql\n${RESET_HINT}\n`);
     expect(await migrationNames()).toStrictEqual(["000001-a.sql", "000002-b.sql", "000003-x.sql"]);
+  });
+
+  it("restores a stashed file whose name rebase then writes, after the named file moves aside", async () => {
+    await forkedRepo();
+    const folder = join(cli.dir, "migrations");
+    const X3 = await writeMigration("000003-x.sql", B.hash, "create table stashed (n int);");
+    await writeFile(join(folder, X3.filename), X3.content);
+    expect(await main(["rebase", "--onto", "main", "--config", project.config])).toBe(1);
+    expect(cli.stderr).toContain(RESTORE_HINT);
+    runPrintedStep(cli.stderr, cli.dir);
+    expect(await main(["rebase", "--onto", "main", "--config", project.config])).toBe(0);
+    const rebased = await readFile(join(folder, "000003-x.sql"), "utf8");
+
+    expect(() => git("stash", "pop")).toThrow(/already exists, no checkout/u);
+    expect(git("stash", "list")).not.toBe("");
+    await rename(join(folder, "000003-x.sql"), join(cli.dir, "rebased.sql"));
+    git("stash", "pop");
+
+    expect(await readFile(join(folder, "000003-x.sql"), "utf8")).toBe(X3.content);
+    expect(await readFile(join(cli.dir, "rebased.sql"), "utf8")).toBe(rebased);
+    expect(git("stash", "list")).toBe("");
+  });
+
+  it("restores a gitignored folder from the repository root, where git -C the folder can't enter it", async () => {
+    git("init", "-q", "-b", "main");
+    await writeFile(join(cli.dir, ".gitignore"), "migrations/*.sql\n");
+    git("add", ".gitignore");
+    git("commit", "-q", "-m", "ignore");
+    const folder = join(cli.dir, "migrations");
+    await writeFile(join(folder, X.filename), X.content);
+    expect(await main(["rebase", "--onto", "main", "--config", project.config])).toBe(1);
+    expect(cli.stderr).toContain(RESTORE_HINT);
+    runPrintedStep(cli.stderr, cli.dir);
+    await expect(readdir(folder)).rejects.toThrow(/ENOENT/u);
+
+    expect(() => git("-C", folder, "stash", "pop")).toThrow(/cannot change to/u);
+    git("stash", "pop");
+
+    expect(await readFile(join(folder, X.filename), "utf8")).toBe(X.content);
   });
 
   it("finishes on a rerun after the step it names when a migration is staged as deleted", async () => {
