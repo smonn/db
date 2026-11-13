@@ -25,13 +25,13 @@ export function good(
     ok: true,
     changes,
     startedAt,
-    durationMs: 148,
+    durationMs: 148.37,
     result: { ...files(), devDatabase: { kind: "none" }, ...result },
   };
 }
 
 export function bad(startedAt: Date, error: unknown): WatchRun {
-  return { ok: false, changes: [`${CWD}/src/users.ts`], startedAt, durationMs: 96, error };
+  return { ok: false, changes: [`${CWD}/src/users.ts`], startedAt, durationMs: 95.6, error };
 }
 
 /** Runs `session` against a fresh emitter and parses each line it printed, as a script would. */

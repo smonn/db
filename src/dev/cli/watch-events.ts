@@ -66,6 +66,6 @@ function runBase(line: RunLine): Pick<RunEvent, "event" | "at" | "trigger" | "du
     event: "run",
     at: line.at.toISOString(),
     trigger: line.trigger,
-    durationMs: line.durationMs,
+    durationMs: Math.round(line.durationMs),
   };
 }
