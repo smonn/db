@@ -180,3 +180,68 @@ describe("dev commands on a one-connection pool", () => {
     expect(rows).toStrictEqual([{ filename: "000001-create-users.sql" }]);
   });
 });
+
+describe("Dev database catch-up with nothing to write", () => {
+  const empty = defineDatabase({ public: {} });
+
+  function generateEmpty(fileSystem: MemoryFileSystem): ReturnType<typeof generate> {
+    return generate({
+      driver: db.driver,
+      connect: db.connect,
+      fileSystem,
+      definition: empty,
+      migrations: MIGRATIONS,
+    });
+  }
+
+  it("writes no file and reports the file kept when there is no diff and no file", async () => {
+    const fileSystem = memoryFileSystem();
+
+    const result = await generateEmpty(fileSystem);
+
+    expect(result).toStrictEqual({
+      path: CURRENT,
+      sql: undefined,
+      file: "kept",
+      devDatabase: { kind: "reset" },
+      hazards: [],
+      hints: [],
+    });
+    expect(fileSystem.files.size).toBe(0);
+    expect((await generateEmpty(fileSystem)).devDatabase).toStrictEqual({ kind: "none" });
+  });
+});
+
+describe("Dev database catch-up and an extension-owned schema", () => {
+  beforeEach(async () => {
+    await db.driver.execute("drop extension if exists hstore; drop schema if exists ext cascade;");
+  });
+
+  afterAll(async () => {
+    await db.driver.execute("drop extension if exists hstore; drop schema if exists ext cascade;");
+  });
+
+  it("diffs a marked Dev database without dropping the schema the extension owns", async () => {
+    await db.driver.execute(`
+      create schema smonn_db;
+      create table smonn_db.current (hash text not null);
+      create extension hstore;
+      create schema ext;
+      alter extension hstore add schema ext;
+    `);
+
+    const result = await generateInto(memoryFileSystem());
+
+    expect(result).toBe(false);
+    const { rows } = await db.driver.query(
+      "select nspname as name from pg_namespace where nspname = 'ext' union all select extname from pg_extension where extname = 'hstore' order by 1",
+    );
+    expect(rows).toStrictEqual([{ name: "ext" }, { name: "hstore" }]);
+    expect(await hasUsers()).toBe(true);
+  });
+});
+
+async function hasUsers(): Promise<boolean> {
+  const { rows } = await db.driver.query("select to_regclass('public.users') is not null as found");
+  return rows[0]?.["found"] === true;
+}
