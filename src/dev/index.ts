@@ -49,8 +49,13 @@ export type {
   MigrateDocument,
   RebaseDocument,
   ResetDocument,
+  RunEvent,
+  RunOutcome,
+  StartedEvent,
+  StoppedEvent,
   SuccessDocument,
   VerifyDocument,
+  WatchEvent,
 } from "./output/index.ts";
 export { withShadowDatabases } from "./shadow/index.ts";
 export type { OnInterrupt, ShadowDatabases, ShadowOptions } from "./shadow/index.ts";

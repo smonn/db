@@ -1,17 +1,15 @@
 import { relative } from "node:path";
 import { styleText } from "node:util";
 import { CatchUpFailedError } from "../generate/index.ts";
+import type { RunOutcome } from "../output/index.ts";
 import { generatedLines, generateReport } from "./report.ts";
 import type { WatchRun } from "./watch.ts";
 
-/** What a good run did, as its line says it. */
-type RunOutcome = "initial" | "changed" | "unchanged" | "fixed";
-
 /**
- * The facts one run's line shows, apart from how they print. `trigger` is the paths whose change
+ * The facts one run's line shows, apart from how they print; the `--json` events carry the same. `trigger` is the paths whose change
  * started the run, relative to the working directory, empty for the run at start.
  */
-type RunLine = {
+export type RunLine = {
   readonly at: Date;
   readonly trigger: readonly string[];
   readonly durationMs: number;
@@ -46,10 +44,13 @@ const INDENT = " ".repeat(9);
 type GoodRun = Extract<WatchRun, { readonly ok: true }>;
 type FailedRun = Extract<WatchRun, { readonly ok: false }>;
 
+type GoodLine = Extract<RunLine, { readonly ok: true }>;
+type FailedLine = Extract<RunLine, { readonly ok: false }>;
+
 export type RunTracker = {
   /** `unchanged` says the run had nothing to report. */
-  good(run: GoodRun, unchanged: boolean): RunLine;
-  failed(run: FailedRun): RunLine;
+  good(run: GoodRun, unchanged: boolean): GoodLine;
+  failed(run: FailedRun): FailedLine;
 };
 
 /** Turns each run into its `RunLine`, remembering the last good run and how the last run ended. */
