@@ -12,7 +12,9 @@ import { print, run, type DatabaseCommand } from "./run.ts";
 const USAGE = `usage: smonndb <command> [--config <path>]
 
 commands:
-  generate        write current.sql and replay it into the Dev database
+  generate [--watch]
+                  write current.sql and replay it into the Dev database; --watch runs it
+                  again on each change to the Definition or the migrations folder
   commit <slug> [--accept <kind,...>]
                   freeze current.sql into the next Committed migration; --accept names
                   the Hazard kinds to allow (data_loss, rewrite, access_exclusive_lock,
@@ -141,7 +143,12 @@ function commandNameIn(argv: readonly string[]): CommandName | null {
 }
 
 /** Each flag that only one command takes, and that command. */
-const FLAG_COMMANDS = { accept: "commit", erase: "reset", onto: "rebase" } as const;
+const FLAG_COMMANDS = {
+  accept: "commit",
+  erase: "reset",
+  onto: "rebase",
+  watch: "generate",
+} as const;
 
 function checkNoArguments(name: string, args: readonly string[]): void {
   if (args.length > 0) throw new UsageError(`${name} takes no arguments: ${args.join(" ")}`);
@@ -153,6 +160,7 @@ const OPTIONS = {
   erase: { type: "boolean" },
   json: { type: "boolean" },
   onto: { type: "string" },
+  watch: { type: "boolean" },
 } as const;
 
 function parseFlags(argv: readonly string[]) {
@@ -191,7 +199,11 @@ function parseCommand(argv: readonly string[]): Command {
   return commandNamed(name, args, config, parsed.values);
 }
 
-type CommandFlags = { readonly erase?: boolean; readonly onto?: string };
+type CommandFlags = {
+  readonly erase?: boolean;
+  readonly onto?: string;
+  readonly watch?: boolean;
+};
 
 /** The commands that take no arguments, each building itself from the flag it alone accepts. */
 const ARGUMENTLESS = {
@@ -201,7 +213,11 @@ const ARGUMENTLESS = {
     config,
   }),
   rebase: (config: string, { onto }: CommandFlags): Command => ({ name: "rebase", config, onto }),
-  generate: (config: string): Command => ({ name: "generate", config }),
+  generate: (config: string, { watch }: CommandFlags): Command => ({
+    name: "generate",
+    watch: watch === true,
+    config,
+  }),
   migrate: (config: string): Command => ({ name: "migrate", config }),
   verify: (config: string): Command => ({ name: "verify", config }),
 };
@@ -214,7 +230,7 @@ function commandNamed(
   name: string | undefined,
   args: readonly string[],
   config: string,
-  values: { readonly erase?: boolean; readonly onto?: string; readonly accept?: string },
+  values: CommandFlags & { readonly accept?: string },
 ): Command {
   if (name === undefined) throw new UsageError("name a command");
   if (name === "commit") return parseCommit(args, config, values.accept);

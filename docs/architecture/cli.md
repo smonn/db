@@ -16,7 +16,7 @@ export default defineConfig({
 });
 ```
 
-Every command takes `--config`, and `util.parseArgs` parses the arguments. There is no `--url` flag: point a command at another Database through the environment the config reads. Watch mode waits for v0.4.
+Every command takes `--config`, and `util.parseArgs` parses the arguments. There is no `--url` flag: point a command at another Database through the environment the config reads. Generate takes `--watch` (ADR-0032).
 
 ## Output
 

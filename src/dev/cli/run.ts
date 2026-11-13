@@ -8,15 +8,18 @@ import {
   postgresJsTypes,
 } from "../../adapters/postgres-js/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
-import type { Driver } from "../../runtime/ports/index.ts";
 import { commit, generate, reset, type CommitOptions } from "../generate/index.ts";
 import type { Project } from "./project.ts";
 import { generateReport, type Outcome } from "./report.ts";
 import { onProcessInterrupt } from "./signals.ts";
+import { watch, type WatchRun } from "./watch.ts";
+
+type Driver = ReturnType<typeof postgresJsDriver>;
 
 /** A command that runs against the Dev database. */
 export type DatabaseCommand = { readonly config: string } & (
-  | { readonly name: "generate" | "migrate" }
+  | { readonly name: "generate"; readonly watch: boolean }
+  | { readonly name: "migrate" }
   | { readonly name: "commit"; readonly slug: string; readonly accept: CommitOptions["accept"] }
   | { readonly name: "reset"; readonly erase: boolean }
 );
@@ -49,7 +52,7 @@ function runOn(driver: Driver, command: DatabaseCommand, project: Project): Prom
   const context = { driver, project, migrations, tracking };
   switch (command.name) {
     case "generate":
-      return runGenerate(context);
+      return command.watch ? runWatch(context) : runGenerate(context);
     case "migrate":
       return runMigrate(context);
     case "commit":
@@ -76,6 +79,52 @@ async function runGenerate({ driver, project, migrations, tracking }: Context): 
   });
   for (const line of generateReport(result, relative(process.cwd(), result.path))) print(line);
   return undefined;
+}
+
+/**
+ * Runs `generate --watch` until SIGINT or SIGTERM. The signal aborts a Definition load or lock
+ * wait; the process then dies of it, so Postgres rolls back the run's open transaction.
+ */
+async function runWatch({ driver, project, migrations, tracking }: Context): Promise<undefined> {
+  const controller = new AbortController();
+  // One handler for the watch and each run's Shadow cleanup, so the process dies only after all.
+  const onInterrupt = onProcessInterrupt();
+  const unregister = onInterrupt(() => {
+    controller.abort();
+    return Promise.resolve();
+  });
+  try {
+    await watch({
+      driver,
+      connect: postgresJsConnect(project.url, { onnotice: ignoreNotice }),
+      fileSystem: nodeFileSystem(),
+      definition: project.definitionFile,
+      migrations,
+      ...tracking,
+      strict: project.strict === true ? { config: project.configPath } : undefined,
+      log: logToStderr,
+      onInterrupt,
+      signal: controller.signal,
+      report: printWatchRun,
+    });
+  } finally {
+    unregister();
+  }
+  return undefined;
+}
+
+/** Prints a run's report as one-shot generate does, or its error. */
+function printWatchRun(watchRun: WatchRun): void {
+  if (watchRun.ok) {
+    for (const line of generateReport(
+      watchRun.result,
+      relative(process.cwd(), watchRun.result.path),
+    )) {
+      print(line);
+    }
+    return;
+  }
+  logToStderr(watchRun.error instanceof Error ? watchRun.error.message : String(watchRun.error));
 }
 
 async function runCommit(
