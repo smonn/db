@@ -172,8 +172,14 @@ describe("loadDefinitionInWorker", () => {
     const ticks = join(dir, "ticks");
     const file = await write("definition.ts", `${ticking(ticks)}await new Promise(() => {});\n`);
 
-    await expect(loadDefinitionInWorker(file, { timeoutMs: 100 })).rejects.toThrow(
-      `${relative(process.cwd(), file)} didn't load within 100 ms`,
+    const loading = loadDefinitionInWorker(file, { timeoutMs: 2000 });
+    // A slow runner can reach the timeout before the Worker ticks once, so wait for the first.
+    await vi.waitFor(async () => {
+      expect((await stat(ticks)).size).toBeGreaterThan(0);
+    });
+
+    await expect(loading).rejects.toThrow(
+      `${relative(process.cwd(), file)} didn't load within 2000 ms`,
     );
     const [now, later] = await ticksNowAndLater(ticks);
     expect(later).toBe(now);
