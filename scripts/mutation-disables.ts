@@ -19,6 +19,7 @@ import {
   type Mutant,
   readMutant,
   REPORT,
+  staleDisable,
   survivorCount,
   timedOut,
 } from "./mutation-report.ts";
@@ -45,12 +46,22 @@ function runStryker(root: string, files: string[], signal: AbortSignal): Promise
   });
 }
 
-function verdict(disable: Disable, hidden: Mutant[]): string {
+/** What the weekly report makes of the disable, which `staleDisable` and `hides` decide for both. */
+function verdict(file: string, disable: Disable, hidden: Mutant[]): string {
   const found = survivorCount(hidden);
   if (hidden.length === 0) return "no mutant on the next line, so the disable hides nothing";
-  if (found > disable.expected) return "more survivors than stated: the weekly run lists them all";
-  if (found + timedOut(hidden) < disable.expected) return "fewer survivors than stated: stale";
-  return "matches";
+  const problems = [];
+  if (found > disable.expected) {
+    problems.push("more survivors than stated: the weekly run lists them all");
+  }
+  if (staleDisable(file, disable, hidden).length > 0) {
+    problems.push(
+      found + timedOut(hidden) < disable.expected
+        ? "fewer survivors than stated: stale"
+        : "a mutator it names has none: stale",
+    );
+  }
+  return problems.length > 0 ? problems.join("; ") : "matches";
 }
 
 function describe(file: string, disable: Disable, mutants: Mutant[]): string {
@@ -61,7 +72,7 @@ function describe(file: string, disable: Disable, mutants: Mutant[]): string {
   });
   const states = `states ${disable.expected}`;
   const found = `survivors ${survivorCount(hidden)} (${perMutator.join(", ")})`;
-  return `${file}:${disable.line} ${states}, ${found}: ${verdict(disable, hidden)}`;
+  return `${file}:${disable.line} ${states}, ${found}: ${verdict(file, disable, hidden)}`;
 }
 
 /** One line per marked disable of the files in a Stryker JSON report, by file then line. */

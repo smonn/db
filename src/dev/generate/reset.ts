@@ -206,8 +206,11 @@ export type ResetOptions = {
   readonly trackingSchema?: string;
   /** Resets a Database that is neither marked as a Dev database nor empty (ADR-0016). */
   readonly erase?: boolean;
-  /** Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`). */
-  readonly signal?: AbortSignal;
+  /**
+   * Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`).
+   * Only the wait: a run past it goes on to the end.
+   */
+  readonly signal?: AbortSignal | undefined;
   /** Receives one line when the migrator's lock is held and the reset has to wait. */
   readonly log?: (line: string) => void;
 };

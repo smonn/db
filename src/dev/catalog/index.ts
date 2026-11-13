@@ -15,6 +15,8 @@ export { definitionCatalog, definitionSchemas } from "./definition-catalog.ts";
 export type { DefinitionTables } from "./definition-catalog.ts";
 export { arePayloadsEqual, qualified } from "./compare.ts";
 export { appliedRenames, declaredRenames } from "./renames.ts";
+export { readDefinition } from "./read-definition.ts";
+export type { CatalogDefinition } from "./read-definition.ts";
 export type {
   ColumnRename,
   DomainRename,

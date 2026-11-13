@@ -194,7 +194,7 @@ describe("Dev database catch-up with nothing to write", () => {
     });
   }
 
-  it("writes no file and reports the file kept when there is no diff and no file", async () => {
+  it("writes no file and reports the file absent when there is no diff and no file", async () => {
     const fileSystem = memoryFileSystem();
 
     const result = await generateEmpty(fileSystem);
@@ -202,7 +202,7 @@ describe("Dev database catch-up with nothing to write", () => {
     expect(result).toStrictEqual({
       path: CURRENT,
       sql: undefined,
-      file: "kept",
+      file: "absent",
       devDatabase: { kind: "reset" },
       hazards: [],
       hints: [],
