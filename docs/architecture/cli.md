@@ -61,6 +61,8 @@ Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body 
 
 Generate compares every hash in `smonn_db.migrations` with the Committed chain, the check `commit` makes, and `smonn_db.current` with the Current migration. Matching markers mean no work, and an empty, unmarked Database resets (ADR-0016). With no Current migration recorded and recorded rows that prefix the Committed chain, it replays the new Committed files and `current.sql` as written. Otherwise it diffs the Dev database against the Shadow holding the Current migration, keeping data, and names files that skipped replay. Steps, markers, and the diff's zero-diff check share one transaction, which a failure rolls back, naming `reset`.
 
+The diff runs no statement from a skipped file, so a rename or backfill that only such a file performed, and the Definition doesn't declare, lands as a drop and an add with a `data_loss` Hazard (ADR-0030).
+
 ## commit
 
 ADR-0003, ADR-0008, and ADR-0015.
