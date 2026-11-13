@@ -59,6 +59,7 @@
     "mutation:disables": "node scripts/mutation-disables.ts",
     "mutation:failure": "node scripts/mutation-failure.ts",
     "mutation:mark": "node scripts/mark-stryker-disables.ts",
+    "mutation:pr": "node scripts/mutation-pr.ts",
     "mutation:report": "node scripts/mutation-report.ts",
     "prepack": "pnpm run build",
     "prepare": "lefthook install --reset-hooks-path",
