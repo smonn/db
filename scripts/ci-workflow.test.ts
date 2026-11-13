@@ -25,9 +25,22 @@ test("no job name holds an expression, since GitHub doesn't evaluate one in a sk
 
 test("the code workflow keeps its job names, and the metadata workflow names its one job Metadata", () => {
   expect(jobNames(ci)).toEqual(
-    expect.arrayContaining(["Docs", "Mermaid", "Typecheck", "Lint", "Test", "Required"]),
+    expect.arrayContaining([
+      "Docs",
+      "Mermaid",
+      "Typecheck",
+      "Lint",
+      "Test",
+      "Test (Node 24)",
+      "Required",
+    ]),
   );
   expect(jobNames(metadata)).toEqual(["Metadata"]);
+});
+
+test("the Required job waits on the Node 24 tests, which pin the README's oldest Node major", () => {
+  expect(/needs: \[[^\]]*test-node-24[^\]]*\]/u.test(ci)).toBe(true);
+  expect(ci).toContain('node-version: "24.');
 });
 
 test("the Required job waits on the mutation dry run", () => {
