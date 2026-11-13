@@ -177,6 +177,8 @@ A hand edit can open `current.sql` with `--! no-transaction` (ADR-0020) so it ho
 
 ## Concurrency
 
-`generate`, `commit`, and `reset` share a `pg_try_advisory_lock` on the Dev database under a key distinct from the migrator's, and a second run exits at once with an error naming the lock. A waiting run would only redo the first run's reset, and failing at once gives quick feedback when several agent sessions share one Dev database. Every reset also takes the migrator's own lock, polled for, so a runtime `migrate` on the Dev database waits for the reset instead of racing its wipe. `generate` holds the migrator's lock from its Dev database check until the run ends, Shadow work included, and `commit` holds it from before its check until the run ends.
+`generate`, `commit`, and `reset` share a `pg_try_advisory_lock` on the Dev database under a key distinct from the migrator's, and a second run exits at once with an error naming the lock. A waiting run would only redo the first run's reset, and failing at once gives quick feedback when several agent sessions share one Dev database. Every reset also takes the migrator's own lock, polled for, so a runtime `migrate` on the Dev database waits for the reset instead of racing its wipe, and a reset prints `waiting for the migrator's lock` to stderr while it polls.
+
+`generate` holds the migrator's lock from its Dev database check until the run ends, Shadow work included, and `commit` holds it from before its check until the run ends.
 
 Under `--watch`, each run takes the Dev and migrator locks on its own session, and a third advisory key, `WATCH_LOCK_KEY`, held for the whole watch, refuses a second watcher.

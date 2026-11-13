@@ -17,3 +17,4 @@ Each Database gets its own `smonndb.config.ts`, whose default export `defineConf
 - Config and Definition files use erasable TypeScript only and write `.ts` extensions in relative imports. The docs point to Node's TypeScript guide and its `erasableSyntaxOnly` and `verbatimModuleSyntax` settings.
 - `url` comes from the environment through the config, so the CLI has no `--url` flag: `DATABASE_URL=... smonndb migrate`.
 - A watch mode in v0.4 has to bypass the ESM import cache to reload a changed Definition. Amended 2026-11-10: ADR-0032 loads the Definition in a fresh Worker on each run instead.
+- Amended 2026-11-13: ADR-0031 adds `strict?` to the signature, so it is `defineConfig({ definition, migrations, url, trackingSchema?, strict? })`.
