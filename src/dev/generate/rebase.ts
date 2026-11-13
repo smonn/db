@@ -98,10 +98,10 @@ async function applyMoves(
   }
 }
 
-// From the repository root, since --all stashes a gitignored folder whole and `git -C <folder>` can't enter it.
-// A name the stash and rebase both hold makes pop refuse and keep the entry; moving rebase's file aside lets a second pop restore the stashed one.
+// From the repository root, since git removes a folder the stash empties and `git -C <folder>` can't enter it.
+// A name the stash and rebase both hold makes pop skip that file, restore the rest, and keep the entry. Untracked and gitignored files live in the stash's third parent, so `stash@{0}^3`.
 const RESTORE_HINT =
-  "Afterwards run git stash pop from the repository root to restore them; if pop stops at a file rebase wrote, git keeps the stash: move that file aside, pop again, and merge the two by hand";
+  "Afterwards run git stash pop from the repository root to restore them; if pop says a file already exists, git restored the rest and kept the stash: move rebase's file aside, run git restore --source='stash@{0}^3' -- <that file>, merge the two by hand, then run git stash drop";
 
 /** Only the top-level files rebase reads or writes count: Committed migrations and leftover `.sql.tmp` files. */
 function checkHeld(unheld: readonly string[], migrations: string): void {

@@ -87,7 +87,9 @@ describe("main rebase, with files git doesn't hold", () => {
     await forkedRepo();
     const folder = join(cli.dir, "migrations");
     const X3 = await writeMigration("000003-x.sql", B.hash, "create table stashed (n int);");
+    const Z4 = await writeMigration("000004-z.sql", X3.hash, "create table other (n int);");
     await writeFile(join(folder, X3.filename), X3.content);
+    await writeFile(join(folder, Z4.filename), Z4.content);
     expect(await main(["rebase", "--onto", "main", "--config", project.config])).toBe(1);
     expect(cli.stderr).toContain(RESTORE_HINT);
     runPrintedStep(cli.stderr, cli.dir);
@@ -96,8 +98,10 @@ describe("main rebase, with files git doesn't hold", () => {
 
     expect(() => git("stash", "pop")).toThrow(/already exists, no checkout/u);
     expect(git("stash", "list")).not.toBe("");
+    expect(await readFile(join(folder, Z4.filename), "utf8")).toBe(Z4.content);
     await rename(join(folder, "000003-x.sql"), join(cli.dir, "rebased.sql"));
-    git("stash", "pop");
+    git("restore", "--source=stash@{0}^3", "--", "migrations/000003-x.sql");
+    git("stash", "drop");
 
     expect(await readFile(join(folder, "000003-x.sql"), "utf8")).toBe(X3.content);
     expect(await readFile(join(cli.dir, "rebased.sql"), "utf8")).toBe(rebased);

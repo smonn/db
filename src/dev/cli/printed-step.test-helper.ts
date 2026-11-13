@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 
 /** What a refusal's hint says about getting the stashed files back. */
 export const RESTORE_HINT =
-  "Afterwards run git stash pop from the repository root to restore them; if pop stops at a file rebase wrote, git keeps the stash: move that file aside, pop again, and merge the two by hand";
+  "Afterwards run git stash pop from the repository root to restore them; if pop says a file already exists, git restored the rest and kept the stash: move rebase's file aside, run git restore --source='stash@{0}^3' -- <that file>, merge the two by hand, then run git stash drop";
 
 /** Runs the step a refusal prints, the way a user pastes it: through a shell, in `cwd`. */
 export function runPrintedStep(stderr: string, cwd: string): void {

@@ -20,7 +20,7 @@ import {
 const db = useTestDatabase();
 
 const RESTORE_HINT =
-  "Afterwards run git stash pop from the repository root to restore them; if pop stops at a file rebase wrote, git keeps the stash: move that file aside, pop again, and merge the two by hand";
+  "Afterwards run git stash pop from the repository root to restore them; if pop says a file already exists, git restored the rest and kept the stash: move rebase's file aside, run git restore --source='stash@{0}^3' -- <that file>, merge the two by hand, then run git stash drop";
 
 describe("rebase", () => {
   it("moves the branch's files onto the base tip, rewriting their sequence and headers", async () => {
