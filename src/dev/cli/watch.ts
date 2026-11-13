@@ -80,11 +80,13 @@ async function watchLocked(options: WatchOptions): Promise<void> {
   };
   const watchers = directoryWatchers((directory, filename) => {
     const path = filename === null ? directory : join(directory, filename);
-    const { graph } = state;
-    if (directory === migrations || graph === undefined || graph.has(path)) loop.changed(path);
+    if (counts(state, migrations, directory, path)) loop.changed(path);
   });
+  // The migrations folder's parent too: a watcher follows the folder's inode on Linux, so only
+  // the parent sees the folder deleted and made again, as a checkout can.
   const directories = (): string[] => [
     migrations,
+    dirname(migrations),
     ...[...state.files].map((file) => dirname(file)),
   ];
   const run = async (changes: readonly string[]): Promise<void> => {
@@ -97,6 +99,17 @@ async function watchLocked(options: WatchOptions): Promise<void> {
   if (!signal.aborted) await once(signal, "abort");
   watchers.close();
   await loop.stop();
+}
+
+/**
+ * Whether an event at `path` in `directory` starts a run: any event in the migrations folder or
+ * on the folder itself, and in a module folder one on a file of the graph, or on any file while
+ * the graph is unknown.
+ */
+function counts(state: WatchState, migrations: string, directory: string, path: string): boolean {
+  if (directory === migrations || path === migrations) return true;
+  const moduleFolder = [...state.files].some((file) => dirname(file) === directory);
+  return moduleFolder && (state.graph === undefined || state.graph.has(path));
 }
 
 /** One run: loads the Definition, generates, and reports, unless `changes` are watch's own write. */
