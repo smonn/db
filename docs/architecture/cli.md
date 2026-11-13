@@ -22,7 +22,7 @@ Every command takes `--config`, and `util.parseArgs` parses the arguments. There
 
 Plain text: results to stdout, errors to stderr, with no colors when stdout isn't a TTY. Exit codes are 0 on success, 1 on any refusal or failure, and 2 on a usage error.
 
-`--json` prints one document on stdout, success or failure, holding `command`, `ok`, and a failure's `error` (`code`, `message`, per-code fields). Exit codes and stderr's progress lines stay; a usage error prints a document. Codes: `usage`, `locked`, `hazard_not_accepted`, `unmodeled_blocker`, `chain_broken`, `not_dev_database`, else `failed`. `@smonn/db/dev` exports the types.
+`--json` prints one document on stdout, success or failure, holding `command`, `ok`, and a failure's `error` (`code`, `message`, per-code fields). Exit codes and stderr's progress lines stay; a usage error prints a document. Codes: `usage`, `locked`, `hazard_not_accepted`, `leftover`, `unmodeled_blocker`, `chain_broken`, `not_dev_database`, else `failed`. `@smonn/db/dev` exports the types and the errors.
 
 ## generate
 
@@ -51,7 +51,7 @@ sequenceDiagram
   Gen->>DB: if behind, replay the new files, or diff it against the Shadow
 ```
 
-Generate writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database. It prints the file it wrote and each Hazard with its statement, then one line when it replayed files into, diffed, or reset the Dev database, and each Hazard it applied.
+Generate writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database. It prints the file it wrote and each Hazard, then one line for the Dev database and each Hazard it applied. `--json` prints `GenerateDocument`: `file`, `hazards`, `hints`, `devDatabase`.
 
 ### Hand edits
 
