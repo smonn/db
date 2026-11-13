@@ -1,3 +1,5 @@
+import { matchingPrefix } from "../../runtime/internal/index.ts";
+
 /** `behind` means the recorded rows are a shorter prefix of the Committed chain. */
 export type RecordedChain = "match" | "behind" | "diverged";
 
@@ -9,7 +11,6 @@ export function compareRecorded(
   recorded: readonly { readonly hash: string }[],
   chain: readonly { readonly hash: string }[],
 ): RecordedChain {
-  const prefix = recorded.every((row, index) => row.hash === chain[index]?.hash);
-  if (!prefix) return "diverged";
+  if (matchingPrefix(recorded, chain) < recorded.length) return "diverged";
   return recorded.length === chain.length ? "match" : "behind";
 }
