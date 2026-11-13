@@ -8,9 +8,15 @@ import {
   postgresJsTypes,
 } from "../../adapters/postgres-js/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
-import { commit, generate, reset, type CommitOptions } from "../generate/index.ts";
+import {
+  CatchUpFailedError,
+  commit,
+  generate,
+  reset,
+  type CommitOptions,
+} from "../generate/index.ts";
 import type { Project } from "./project.ts";
-import { generateReport, type Outcome } from "./report.ts";
+import { generatedLines, generateReport, type Outcome } from "./report.ts";
 import { onProcessInterrupt } from "./signals.ts";
 import { watch, type WatchRun } from "./watch.ts";
 
@@ -76,8 +82,14 @@ async function runGenerate({ driver, project, migrations, tracking }: Context): 
     ...(project.strict === true ? { strict: { config: project.configPath } } : {}),
     log: logToStderr,
     onInterrupt: onProcessInterrupt(),
+  }).catch((error: unknown) => {
+    // The file is settled and the next run keeps it, so this run is the only one to print its Hazards.
+    if (error instanceof CatchUpFailedError) {
+      printLines(generatedLines(error.generated, relativePath(error.generated.path)));
+    }
+    throw error;
   });
-  for (const line of generateReport(result, relative(process.cwd(), result.path))) print(line);
+  printLines(generateReport(result, relativePath(result.path)));
   return undefined;
 }
 
@@ -116,15 +128,18 @@ async function runWatch({ driver, project, migrations, tracking }: Context): Pro
 /** Prints a run's report as one-shot generate does, or its error. */
 function printWatchRun(watchRun: WatchRun): void {
   if (watchRun.ok) {
-    for (const line of generateReport(
-      watchRun.result,
-      relative(process.cwd(), watchRun.result.path),
-    )) {
-      print(line);
-    }
+    printLines(generateReport(watchRun.result, relativePath(watchRun.result.path)));
     return;
   }
   logToStderr(watchRun.error instanceof Error ? watchRun.error.message : String(watchRun.error));
+}
+
+function relativePath(path: string): string {
+  return relative(process.cwd(), path);
+}
+
+function printLines(lines: readonly string[]): void {
+  for (const line of lines) print(line);
 }
 
 async function runCommit(

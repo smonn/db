@@ -1,7 +1,9 @@
 export { commit, type CommitOptions, type CommitResult } from "./commit.ts";
 export {
+  CatchUpFailedError,
   generate,
   generateFromCatalog,
+  type GeneratedFiles,
   type GenerateFromCatalogOptions,
   type GenerateOptions,
   type GenerateResult,
