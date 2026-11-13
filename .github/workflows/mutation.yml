@@ -73,6 +73,7 @@ jobs:
           path: reports/mutation
       - env:
           GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: pnpm mutation:report reports/mutation/*/mutation.json
 
   # A failed shard skips Report, so say so on the report issue instead of leaving last week's list.

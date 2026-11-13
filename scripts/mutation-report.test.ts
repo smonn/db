@@ -102,6 +102,15 @@ describe("reportBody", () => {
     expect(short).toContain("\n\n1 more not shown;");
   });
 
+  test("links the run when it knows the run's URL", () => {
+    const found = { survivors: [survivor("a.ts", 1)], stale: [] };
+    const linked = reportBody(found, undefined, "https://example.test/runs/7");
+    expect(linked).toMatch(
+      /^The weekly \[Stryker run\]\(https:\/\/example\.test\/runs\/7\) leaves /u,
+    );
+    expect(reportBody(found)).toMatch(/^The weekly Stryker run leaves /u);
+  });
+
   test("lists each survivor as a table row", () => {
     const body = reportBody({
       survivors: [survivor("src/a.ts", 3), survivor("src/b.ts", 7, "BlockStatement")],
@@ -197,6 +206,18 @@ describe("main", () => {
       expect.stringContaining("`src/a.ts`"),
     );
     expect(gh).toHaveBeenCalledTimes(2);
+  });
+
+  test("links the run that wrote the body, so an old snapshot names its artifacts", () => {
+    const gh = ghWithOpen(41);
+    main(withSurvivor(), { ...env, RUN_URL: "https://github.com/smonn/db/actions/runs/7" }, gh);
+    expect(gh).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Array),
+      expect.stringMatching(
+        /^The weekly \[Stryker run\]\(https:\/\/github\.com\/smonn\/db\/actions\/runs\/7\) leaves /u,
+      ),
+    );
   });
 
   test("closes the open report issue when nothing survives", () => {
