@@ -1,4 +1,4 @@
-import { hazardsIn, type GenerateResult } from "../generate/index.ts";
+import { hazardsIn, type GeneratedFiles, type GenerateResult } from "../generate/index.ts";
 import type { SuccessDocument } from "../output/index.ts";
 
 /** What a command hands `main` to print. `generate` prints its own lines until it has a document, and hands over undefined. */
@@ -29,13 +29,18 @@ export function documentLines(document: SuccessDocument): string[] {
  * Hazards and hints on the run that wrote it, so a run that changes nothing stays silent.
  */
 export function generateReport(result: GenerateResult, path: string): string[] {
+  return [...generatedLines(result, path), ...outcomeLines(result.devDatabase)];
+}
+
+/** The lines for what `generate` settled in the files, which a failed catch-up still prints. */
+export function generatedLines(result: GeneratedFiles, path: string): string[] {
   const unchanged = result.file === "kept" && result.diff === undefined;
   const hazards =
     result.sql === undefined || unchanged
       ? []
       : hazardsIn(result.sql).map(({ kind, statement }) => `hazard ${kind}: ${statement}`);
   const hints = unchanged ? [] : result.hints.map((hint) => `hint: ${hint}`);
-  return [...fileLines(result, path), ...hazards, ...hints, ...outcomeLines(result.devDatabase)];
+  return [...fileLines(result, path), ...hazards, ...hints];
 }
 
 /** One line for what generate did to the Dev database, if anything, then each Hazard it replayed. */
@@ -67,7 +72,7 @@ function outcomeLines(outcome: GenerateResult["devDatabase"]): string[] {
   }
 }
 
-function fileLines({ diff, file, leftover }: GenerateResult, path: string): string[] {
+function fileLines({ diff, file, leftover }: GeneratedFiles, path: string): string[] {
   if (diff === undefined) {
     if (file === "kept") return [];
     return [file === "removed" ? `no diff, removed ${path}` : `wrote ${path}`];
