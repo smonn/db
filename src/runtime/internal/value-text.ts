@@ -28,7 +28,8 @@ export function parseTimestamp(text: string): Date {
     Number(day),
   );
   setClock(value, [hours, minutes, seconds, fraction], offset);
-  if (Number.isNaN(value.getTime())) throw new Error(`Can't read timestamp "${text}" as a Date`);
+  if (Number.isNaN(value.getTime()))
+    throw new TypeError(`Can't read timestamp "${text}" as a Date`);
   return value;
 }
 
