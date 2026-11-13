@@ -25,7 +25,7 @@ const NPM: DependencyType[] = [
   "npm-unknown",
 ];
 const TEST_ONLY = String.raw`\.test(-helper)?\.ts$`;
-const VITEST = "(^|/)node_modules/vitest/";
+const TEST_PACKAGES = "(^|/)node_modules/(vitest|fast-check)/";
 // Integration tests in every group need a real database. no-test-imports keeps it out of non-test code.
 const TEST_DATABASE = String.raw`^src/adapters/postgres-js/test-database\.test-helper\.ts$`;
 
@@ -42,7 +42,7 @@ export const importRules: IForbiddenRuleType[] = [
     comment: "runtime/ imports no npm packages.",
     severity: "error",
     from: { path: "^src/runtime/" },
-    to: { dependencyTypes: NPM, pathNot: VITEST },
+    to: { dependencyTypes: NPM, pathNot: TEST_PACKAGES },
   },
   {
     name: "adapter-imports-ports-or-internal",
@@ -60,14 +60,14 @@ export const importRules: IForbiddenRuleType[] = [
     comment: "adapters/postgres-js imports no npm package but postgres.",
     severity: "error",
     from: { path: "^src/adapters/postgres-js/" },
-    to: { dependencyTypes: NPM, pathNot: ["(^|/)node_modules/postgres/", VITEST] },
+    to: { dependencyTypes: NPM, pathNot: ["(^|/)node_modules/postgres/", TEST_PACKAGES] },
   },
   {
     name: "adapter-no-npm",
     comment: "Other adapters import no npm packages.",
     severity: "error",
     from: { path: "^src/adapters/", pathNot: "^src/adapters/postgres-js/" },
-    to: { dependencyTypes: NPM, pathNot: VITEST },
+    to: { dependencyTypes: NPM, pathNot: TEST_PACKAGES },
   },
   {
     name: "dev-no-adapters",
@@ -137,11 +137,12 @@ export const importRules: IForbiddenRuleType[] = [
     to: { path: TEST_ONLY },
   },
   {
-    name: "vitest-in-tests-only",
-    comment: "Only tests and test helpers import vitest, which the npm rules above let through.",
+    name: "test-packages-in-tests-only",
+    comment:
+      "Only tests and test helpers import vitest or fast-check, which the npm rules above let through.",
     severity: "error",
     from: { pathNot: TEST_ONLY },
-    to: { path: VITEST },
+    to: { path: TEST_PACKAGES },
   },
   {
     name: "no-unresolvable",

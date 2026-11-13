@@ -72,7 +72,7 @@ const TABLE = "create table public.slots (a integer, b text, c integer, tags tex
 const NOTHING = {
   path: CURRENT,
   sql: undefined,
-  file: "kept",
+  file: "absent",
   devDatabase: { kind: "reset" },
   hazards: [],
   hints: [],

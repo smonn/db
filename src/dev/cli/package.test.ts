@@ -107,10 +107,14 @@ describe("the packed package", () => {
     expect(outsideDist()).toEqual([]);
   });
 
-  it("declares only the bin as having side effects", () => {
-    // The bin runs main() at import; every other built module is declarations only.
+  it("declares only the bin and the Definition Worker as having side effects", () => {
+    // Each runs at import: the bin runs main(), and the Worker loads a Definition and posts it.
+    // Every other built module is declarations only.
     const bins = Object.values(stringRecord(field(packedManifest(), "bin"), "packed bin"));
-    expect(field(packedManifest(), "sideEffects")).toEqual(bins);
+    expect(field(packedManifest(), "sideEffects")).toEqual([
+      ...bins,
+      "./dist/definition-worker.mjs",
+    ]);
   });
 
   it("runs no code at import in a built module outside sideEffects", async () => {
