@@ -1,13 +1,12 @@
-import { relative } from "node:path";
 import { nodeFileSystem } from "../../adapters/node/index.ts";
 import { postgresJsConnect } from "../../adapters/postgres-js/index.ts";
 import type { Project } from "./project.ts";
-import { generateReport } from "./report.ts";
 import { ignoreNotice, logToStderr, print, withDriver, type Driver } from "./run.ts";
 import { onProcessInterrupt } from "./signals.ts";
-import { watch, type WatchRun } from "./watch.ts";
+import { watch } from "./watch.ts";
+import { watchLog } from "./watch-log.ts";
 
-/** `generate --watch`, which prints its own lines until it has events (ADR-0032). */
+/** `generate --watch`, which prints a log of its own until it has events (ADR-0032). */
 export type WatchCommand = {
   readonly name: "generate";
   readonly watch: true;
@@ -24,9 +23,16 @@ export function watchGenerate(project: Project): Promise<void> {
  */
 async function runWatch(driver: Driver, project: Project): Promise<void> {
   const controller = new AbortController();
+  const log = watchLog({
+    out: print,
+    err: logToStderr,
+    color: process.stdout.isTTY && process.stderr.isTTY && process.env["NO_COLOR"] === undefined,
+    cwd: process.cwd(),
+  });
   // One handler for the watch and each run's Shadow cleanup, so the process dies only after all.
   const onInterrupt = onProcessInterrupt();
   const unregister = onInterrupt(() => {
+    log.stopped(new Date());
     controller.abort();
     return Promise.resolve();
   });
@@ -42,23 +48,14 @@ async function runWatch(driver: Driver, project: Project): Promise<void> {
       log: logToStderr,
       onInterrupt,
       signal: controller.signal,
-      report: printWatchRun,
+      onWatching: () => {
+        log.watching(project.definitionFile, project.migrationsFolder);
+      },
+      report: (run) => {
+        log.report(run);
+      },
     });
   } finally {
     unregister();
   }
-}
-
-/** Prints a run's report as one-shot generate does, or its error. */
-function printWatchRun(watchRun: WatchRun): void {
-  if (watchRun.ok) {
-    for (const line of generateReport(
-      watchRun.result,
-      relative(process.cwd(), watchRun.result.path),
-    )) {
-      print(line);
-    }
-    return;
-  }
-  logToStderr(watchRun.error instanceof Error ? watchRun.error.message : String(watchRun.error));
 }

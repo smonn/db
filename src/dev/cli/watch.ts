@@ -38,6 +38,8 @@ export type WatchOptions = {
   readonly onInterrupt?: OnInterrupt | undefined;
   /** Stops watching. It ends a Definition load or a lock wait in progress; the rest of a run goes on. */
   readonly signal: AbortSignal;
+  /** Called once, when the watcher lock is held and the first run is about to start. */
+  readonly onWatching?: (() => void) | undefined;
   /** Receives every run once it ends, but a failure the signal caused. */
   readonly report: (run: WatchRun) => void;
   /** Loads the Definition, by default in a fresh Worker. */
@@ -97,6 +99,7 @@ async function watchLocked(options: WatchOptions): Promise<void> {
   };
 
   watchers.rebuild(directories());
+  options.onWatching?.();
   const loop = runLoop({ run, quietMs: QUIET_MS });
   if (!signal.aborted) await once(signal, "abort");
   watchers.close();

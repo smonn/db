@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { errorOf, QUIET_FOR_MS, RUNTIME, useWatchProject } from "./watch.test-helper.ts";
 
@@ -21,6 +21,28 @@ describe("watch", () => {
 
     expect(run).toMatchObject({ ok: true, changes: [join(project.dir, "tables/widgets.ts")] });
     expect(await project.columnsOfWidgets()).toStrictEqual(["id", "name"]);
+  });
+
+  it("calls onWatching once, before the first run reports", async () => {
+    const events: string[] = [];
+
+    project.startWatch({
+      onWatching: () => {
+        events.push("watching");
+      },
+      report: () => {
+        events.push("report");
+      },
+    });
+    await vi.waitFor(
+      () => {
+        expect(events).toContain("report");
+      },
+      { timeout: 20_000, interval: 20 },
+    );
+
+    expect(events.slice(0, 2)).toStrictEqual(["watching", "report"]);
+    expect(events.filter((event) => event === "watching")).toHaveLength(1);
   });
 
   it("skips the event of its own write to current.sql, and runs on someone else's", async () => {

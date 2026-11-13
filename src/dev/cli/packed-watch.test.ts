@@ -66,7 +66,12 @@ describe("the packed package's generate --watch", () => {
     await writeDefinition("id: c.integer()");
     const child = spawn(join(project, "node_modules/.bin/smonndb"), ["generate", "--watch"], {
       cwd: project,
-      stdio: ["ignore", "ignore", "pipe"],
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      stdout += chunk;
     });
     let stderr = "";
     child.stderr?.setEncoding("utf8");
@@ -79,11 +84,23 @@ describe("the packed package's generate --watch", () => {
 
       await writeDefinition("id: c.integer(), name: c.text()");
       await untilCurrentHolds('"name" text');
+      // The run writes the file before it reports, and Ctrl-C ends a run that hasn't.
+      await vi.waitFor(() => {
+        expect(stdout).toContain(" changed, ");
+      });
       child.kill("SIGINT");
 
       expect(await exited).toStrictEqual([null, "SIGINT"]);
+      expect(stdout).toMatch(
+        /^watching definition\.ts and what it imports, and migrations\/ \(Ctrl-C to stop\)\n/u,
+      );
+      expect(stdout).toMatch(/^\d\d:\d\d:\d\d ok initial run \(\d+ ms\)$/mu);
+      expect(stdout).toMatch(/^\d\d:\d\d:\d\d ok \S+( and \d+ more)? changed, \d+ ms$/mu);
+      expect(stdout).toMatch(/^\d\d:\d\d:\d\d stopped\n$/mu);
     } catch (error) {
-      throw new Error(`${String(error)}\nchild stderr:\n${stderr}`, { cause: error });
+      throw new Error(`${String(error)}\nchild stdout:\n${stdout}\nchild stderr:\n${stderr}`, {
+        cause: error,
+      });
     } finally {
       await killIfRunning(child);
     }
