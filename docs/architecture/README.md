@@ -153,13 +153,13 @@ CI enforces the boundaries. `scripts/check-imports.ts` holds the dependency-crui
 
 ## Package entry points
 
-| Entry                   | Source                              | Contents                                              |
-| ----------------------- | ----------------------------------- | ----------------------------------------------------- |
-| `@smonn/db`             | `src/runtime/index.ts`              | runtime: sql, definition, query, migrator, port types |
-| `@smonn/db/postgres-js` | `src/adapters/postgres-js/index.ts` | Driver adapter                                        |
-| `@smonn/db/node`        | `src/adapters/node/index.ts`        | Node MigrationSource and FileSystem adapters          |
-| `@smonn/db/dev`         | `src/dev/index.ts`                  | config, catalog, introspect, diff, shadow, generate   |
-| `smonndb` bin           | `src/dev/cli/bin.ts`                | the CLI, shipped as the package's `bin`               |
+| Entry                   | Source                              | Contents                                                    |
+| ----------------------- | ----------------------------------- | ----------------------------------------------------------- |
+| `@smonn/db`             | `src/runtime/index.ts`              | runtime: sql, definition, query, migrator, port types       |
+| `@smonn/db/postgres-js` | `src/adapters/postgres-js/index.ts` | Driver adapter                                              |
+| `@smonn/db/node`        | `src/adapters/node/index.ts`        | Node MigrationSource and FileSystem adapters                |
+| `@smonn/db/dev`         | `src/dev/index.ts`                  | config, catalog, introspect, diff, shadow, generate, output |
+| `smonndb` bin           | `src/dev/cli/bin.ts`                | the CLI, shipped as the package's `bin`                     |
 
 Each subpath maps to one future package, so a split renames imports one-to-one. `src/runtime/index.ts` and `src/dev/index.ts` list the package's public API by hand, picked from their group's module indexes, and no `src/` file imports them. A module index also serves imports between modules, so a name there is not public until a group index lists it.
 
