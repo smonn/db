@@ -36,6 +36,7 @@
     "check:index": "node scripts/check-index-exports.ts",
     "check:issue": "node scripts/check-issue-milestone.ts",
     "check:labels": "node scripts/check-issue-labels.ts",
+    "check:live": "node scripts/live-input-checks.ts",
     "check:mermaid": "node scripts/check-mermaid.ts",
     "check:node-version": "node scripts/check-node-version.ts",
     "check:oidc": "node scripts/check-oidc-jobs.ts",
@@ -78,7 +79,7 @@
     "fta-cli": "^3.1.0",
     "knip": "^6.42.1",
     "lefthook": "^2.2.2",
-    "oxfmt": "^0.75.0",
+    "oxfmt": "^0.78.0",
     "oxlint": "^1.89.0",
     "oxlint-tsgolint": "^7.0.2004",
     "postgres": "^3.4.9",
@@ -93,12 +94,12 @@
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
-      "version": "^12.16.1",
+      "version": "^12.18.0",
       "onFail": "download"
     },
     "runtime": {
       "name": "node",
-      "version": "^26.13.0",
+      "version": "^26.13.1",
       "onFail": "download"
     }
   }

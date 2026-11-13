@@ -4,9 +4,7 @@ import type { Driver } from "../../runtime/ports/index.ts";
 export const WATCH_LOCK_KEY = "766663292824";
 
 /** Another `generate --watch` holds the watcher's advisory lock on the Dev database. */
-export class WatcherLockedError extends Error {
-  readonly lock = "watch";
-}
+export class WatcherLockedError extends Error {}
 
 /**
  * Runs `fn` while holding the watcher's session `pg_try_advisory_lock`, so a second watcher on the
