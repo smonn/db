@@ -1,11 +1,8 @@
 import { parseArgs } from "node:util";
-import { nodeFileSystem, nodeMigrationSource } from "../../adapters/node/index.ts";
-import { verify } from "../../runtime/migrator/index.ts";
 import { HAZARD_KINDS, type HazardKind } from "../diff/index.ts";
-import { rebase } from "../generate/index.ts";
 import { failureDocument, UsageError, type CommandName } from "../output/index.ts";
-import { defaultBaseRef, gitMigrationSource, unheldPaths } from "./git.ts";
-import { loadMigrationsFolder, loadProject } from "./project.ts";
+import { runOffline, type OfflineCommand } from "./offline.ts";
+import { loadProject } from "./project.ts";
 import { documentLines, type Outcome } from "./report.ts";
 import { print, run, type DatabaseCommand } from "./run.ts";
 
@@ -29,11 +26,6 @@ commands:
 --json prints one JSON document on stdout instead of text. generate doesn't take it yet.`;
 
 const DEFAULT_CONFIG = "smonndb.config.ts";
-
-type OfflineCommand = { readonly config: string } & (
-  | { readonly name: "verify" }
-  | { readonly name: "rebase"; readonly onto: string | undefined }
-);
 
 type Command = DatabaseCommand | OfflineCommand;
 
@@ -92,23 +84,6 @@ function reportFailure(
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   }
   return usage ? 2 : 1;
-}
-
-/** Runs a command that reads the migrations folder and no database. */
-async function runOffline(command: OfflineCommand): Promise<Outcome> {
-  const migrations = await loadMigrationsFolder(command.config);
-  if (command.name === "verify") {
-    const { verified } = await verify(nodeMigrationSource(migrations));
-    return { command: "verify", ok: true, verified };
-  }
-  const fileSystem = nodeFileSystem();
-  // Git can't run in a missing folder; listing it first fails the way verify does.
-  await fileSystem.list(migrations);
-  const onto = command.onto ?? (await defaultBaseRef(migrations));
-  const unheld = await unheldPaths(migrations);
-  const base = gitMigrationSource(migrations, onto);
-  const { moved } = await rebase({ fileSystem, migrations, base, onto, unheld });
-  return { command: "rebase", ok: true, onto, moved };
 }
 
 function parseAccept(value: string | undefined): HazardKind[] {
