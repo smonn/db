@@ -3,7 +3,13 @@ import { statSync, watch as watchDirectory, type FSWatcher } from "node:fs";
 import { dirname, join } from "node:path";
 import { CURRENT_FILENAME, writeCurrent } from "../../runtime/internal/index.ts";
 import type { Connect, Driver, FileSystem } from "../../runtime/ports/index.ts";
-import { generateFromCatalog, withWatchLock, type GenerateResult } from "../generate/index.ts";
+import {
+  CatchUpFailedError,
+  generateFromCatalog,
+  withWatchLock,
+  type GeneratedFiles,
+  type GenerateResult,
+} from "../generate/index.ts";
 import type { OnInterrupt } from "../shadow/index.ts";
 import {
   loadDefinitionInWorker,
@@ -138,7 +144,9 @@ async function runOnce(
     state.written = await contentAfter(result, before);
     if (!options.signal.aborted) options.report({ ...timing(), ok: true, result });
   } catch (error) {
-    state.written = UNKNOWN;
+    // A failed catch-up still left `current.sql` as generate settled it.
+    state.written =
+      error instanceof CatchUpFailedError ? await contentAfter(error.generated, before) : UNKNOWN;
     if (!options.signal.aborted) options.report({ ...timing(), ok: false, error });
   }
 }
@@ -196,7 +204,7 @@ function filesOf(error: unknown): string[] {
 
 /** What `current.sql` holds after a run: what generate wrote, or what it left there. */
 async function contentAfter(
-  result: GenerateResult,
+  result: GeneratedFiles,
   before: string | undefined,
 ): Promise<string | undefined> {
   if (result.file === "removed") return undefined;

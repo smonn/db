@@ -4,6 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
 import { nodeFileSystem } from "../../adapters/node/index.ts";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
+import { CatchUpFailedError } from "../generate/index.ts";
 import { errorOf, QUIET_FOR_MS, RUNTIME, useWatchProject } from "./watch.test-helper.ts";
 
 const db = useTestDatabase();
@@ -82,6 +83,18 @@ describe("watch", () => {
       await writeFile(current, `${await readFile(current, "utf8")}-- note\n`);
     });
     expect(edited).toMatchObject({ ok: true, changes: [current] });
+  });
+
+  it("skips the event of its own write to current.sql when the Dev database fails to catch up", async () => {
+    const watching = project.startWatch();
+    await watching.runAfter(() => project.writeTable("id: c.integer(), name: c.text()"));
+    await db.driver.execute("create view public.names as select name from public.widgets");
+
+    const failed = await watching.runAfter(() => project.writeTable("id: c.integer()"));
+
+    expect(errorOf(failed)).toBeInstanceOf(CatchUpFailedError);
+    const count = watching.runs.length;
+    expect(await watching.quiet()).toBe(count);
   });
 
   it("keeps the last good Dev database after a failed run, and the next good run recovers", async () => {
