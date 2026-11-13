@@ -16,7 +16,7 @@ export function repo(files: Record<string, string>): string {
     "package.json": JSON.stringify({
       type: "module",
       dependencies: { postgres: "*", "left-pad": "*" },
-      devDependencies: { vitest: "*" },
+      devDependencies: { vitest: "*", "fast-check": "*" },
     }),
     "node_modules/postgres/package.json": JSON.stringify({ name: "postgres", main: "index.js" }),
     "node_modules/postgres/index.js": "export default 1;",
@@ -25,6 +25,11 @@ export function repo(files: Record<string, string>): string {
     "node_modules/vitest/package.json": JSON.stringify({ name: "vitest", main: "index.js" }),
     // An unresolvable import inside a package shows whether the cruise follows into node_modules.
     "node_modules/vitest/index.js": 'import "not-installed";\nexport const test = 1;',
+    "node_modules/fast-check/package.json": JSON.stringify({
+      name: "fast-check",
+      main: "index.js",
+    }),
+    "node_modules/fast-check/index.js": "export const assert = 1;",
     // dependency-cruiser fails on a missing root, so every repo has a scripts/ folder.
     "scripts/.keep": "",
     ...files,
