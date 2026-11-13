@@ -59,7 +59,7 @@ const TABLE = "create table public.slots (a text, b text, c text);\n";
 const NOTHING = {
   path: CURRENT,
   sql: undefined,
-  file: "kept",
+  file: "absent",
   devDatabase: { kind: "reset" },
   hazards: [],
   hints: [],
