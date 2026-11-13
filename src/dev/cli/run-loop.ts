@@ -13,7 +13,8 @@ export type RunLoopOptions = {
 
 /**
  * Runs `run` once at start, then again after each burst of changes, once `quietMs` pass without
- * another. Changes that settle during a run queue one rerun, which starts when the run ends.
+ * another. Changes that settle during a run queue one rerun, which starts when the run ends, or
+ * once the changes still arriving settle.
  */
 export function runLoop({ run, quietMs }: RunLoopOptions): RunLoop {
   const pending = new Set<string>();
@@ -25,14 +26,13 @@ export function runLoop({ run, quietMs }: RunLoopOptions): RunLoop {
   const start = (): void => {
     const changes = [...pending];
     pending.clear();
+    queued = false;
     running = run(changes)
       .catch(() => {})
       .finally(() => {
         running = undefined;
-        if (queued && !stopped) {
-          queued = false;
-          start();
-        }
+        // With a timer pending, the changes are still arriving: the timer starts the rerun.
+        if (queued && !stopped && timer === undefined) start();
       });
   };
   const quiet = (): void => {

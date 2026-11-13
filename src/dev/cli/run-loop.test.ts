@@ -96,6 +96,24 @@ describe("runLoop", () => {
     expect(runs.runs).toHaveLength(2);
   });
 
+  it("leaves a queued rerun to the quiet timer while changes are still arriving", async () => {
+    const runs = recorder();
+    const loop = runLoop({ run: runs.run, quietMs: 100 });
+    loop.changed("a.ts");
+    await vi.advanceTimersByTimeAsync(100);
+    loop.changed("b.ts");
+    await vi.advanceTimersByTimeAsync(50);
+
+    await runs.finish();
+    expect(runs.runs).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(runs.runs).toStrictEqual([[], ["a.ts", "b.ts"]]);
+    await runs.finish();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(runs.runs).toHaveLength(2);
+  });
+
   it("waits for quiet before a queued rerun that is still changing", async () => {
     const runs = recorder();
     const loop = runLoop({ run: runs.run, quietMs: 100 });
