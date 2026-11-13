@@ -16,6 +16,7 @@ export type { Config, LoadedConfig } from "./config/index.ts";
 export { diff, HAZARD_KINDS } from "./diff/index.ts";
 export type { Diff, Hazard, HazardKind } from "./diff/index.ts";
 export {
+  CatchUpFailedError,
   commit,
   DevDatabaseLockedError,
   generate,
@@ -28,6 +29,7 @@ export {
 export type {
   CommitOptions,
   CommitResult,
+  GeneratedFiles,
   GenerateOptions,
   GenerateResult,
   RebaseOptions,
