@@ -137,7 +137,10 @@ async function runOnce(
   }
 }
 
-/** Whether every change is to `current.sql`, which still holds what watch last left there. */
+/**
+ * Whether every change is to `current.sql`, which still holds what watch last left there. Only the
+ * run at start has no changes, and nothing is written before it.
+ */
 async function isOwnWrite(
   fileSystem: FileSystem,
   currentPath: string,
@@ -145,9 +148,7 @@ async function isOwnWrite(
   changes: readonly string[],
 ): Promise<boolean> {
   return (
-    changes.length > 0 &&
     changes.every((path) => path === currentPath) &&
-    written !== UNKNOWN &&
     (await fileSystem.readFile(currentPath)) === written
   );
 }
@@ -193,9 +194,8 @@ async function contentAfter(
   result: GenerateResult,
   before: string | undefined,
 ): Promise<string | undefined> {
-  if (result.file === "removed") return undefined;
-  if (result.file === "kept" || result.sql === undefined) return before;
-  return (await writeCurrent(result.sql)).content;
+  if (result.file === "written") return (await writeCurrent(result.sql ?? "")).content;
+  return result.file === "removed" ? undefined : before;
 }
 
 type DirectoryWatchers = {
