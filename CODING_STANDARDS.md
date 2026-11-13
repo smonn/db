@@ -5,6 +5,7 @@ Judgement rules that no check can enforce. Implementation agents follow them whi
 ## Design
 
 - **Code follows accepted ADRs.** When code and an accepted ADR disagree, change the code, or stop and flag the conflict to the maintainer. An ADR changes only through the process in `docs/adr/TEMPLATE.md`. (#106 rewrote ADR-0004 to match its code.)
+- **A refactor or test change keeps every guard.** A `refactor` or `test` commit changes no production behavior. Moving a refusal or a length check is fine; dropping one makes the change a `fix` or `feat` that the PR body announces. (#627, typed `test`, dropped `recorded.length !== chain.length` from `commit`; #637 restored it.)
 
 ## Types
 
