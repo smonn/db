@@ -6,6 +6,7 @@ import {
   HazardNotAcceptedError,
   NotDevDatabaseError,
   StrictLeftoverError,
+  WatcherLockedError,
 } from "../generate/index.ts";
 import { errorBody, failureDocument, UsageError } from "./failure.ts";
 
@@ -18,6 +19,10 @@ describe("errorBody", () => {
     [
       new DevDatabaseLockedError("can't commit: locked"),
       { code: "locked", message: "can't commit: locked", lock: "dev" },
+    ],
+    [
+      new WatcherLockedError("can't watch: locked"),
+      { code: "locked", message: "can't watch: locked", lock: "watch" },
     ],
     [
       new HazardNotAcceptedError("has Hazards", ["data_loss", "rewrite"]),

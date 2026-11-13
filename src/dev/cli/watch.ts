@@ -3,7 +3,13 @@ import { statSync, watch as watchDirectory, type FSWatcher } from "node:fs";
 import { dirname, join } from "node:path";
 import { CURRENT_FILENAME, writeCurrent } from "../../runtime/internal/index.ts";
 import type { Connect, Driver, FileSystem } from "../../runtime/ports/index.ts";
-import { generateFromCatalog, withWatchLock, type GenerateResult } from "../generate/index.ts";
+import {
+  CatchUpFailedError,
+  generateFromCatalog,
+  withWatchLock,
+  type GeneratedFiles,
+  type GenerateResult,
+} from "../generate/index.ts";
 import type { OnInterrupt } from "../shadow/index.ts";
 import {
   loadDefinitionInWorker,
@@ -38,7 +44,12 @@ export type WatchOptions = {
   readonly onInterrupt?: OnInterrupt | undefined;
   /** Stops watching. It ends a Definition load or a lock wait in progress; the rest of a run goes on. */
   readonly signal: AbortSignal;
-  /** Receives every run once it ends, but a failure the signal caused. */
+  /** Called once, when the watcher lock is held and the first run is about to start. */
+  readonly onWatching?: (() => void) | undefined;
+  /**
+   * Receives every run that ends before `signal` aborts, so nothing reports after the caller has
+   * announced it stopped. A run in flight at the abort still finishes, but reports nothing.
+   */
   readonly report: (run: WatchRun) => void;
   /** Loads the Definition, by default in a fresh Worker. */
   readonly load?: (file: string, options: LoadOptions) => Promise<LoadedDefinition>;
@@ -97,6 +108,7 @@ async function watchLocked(options: WatchOptions): Promise<void> {
   };
 
   watchers.rebuild(directories());
+  options.onWatching?.();
   const loop = runLoop({ run, quietMs: QUIET_MS });
   if (!signal.aborted) await once(signal, "abort");
   watchers.close();
@@ -130,9 +142,11 @@ async function runOnce(
     const loaded = await loadGraph(options, state);
     const result = await generateFromCatalog({ ...generateOptions(options), definition: loaded });
     state.written = await contentAfter(result, before);
-    options.report({ ...timing(), ok: true, result });
+    if (!options.signal.aborted) options.report({ ...timing(), ok: true, result });
   } catch (error) {
-    state.written = UNKNOWN;
+    // A failed catch-up still left `current.sql` as generate settled it.
+    state.written =
+      error instanceof CatchUpFailedError ? await contentAfter(error.generated, before) : UNKNOWN;
     if (!options.signal.aborted) options.report({ ...timing(), ok: false, error });
   }
 }
@@ -191,7 +205,7 @@ function filesOf(error: unknown): string[] {
 
 /** What `current.sql` holds after a run: what generate wrote, or what it left there. */
 async function contentAfter(
-  result: GenerateResult,
+  result: GeneratedFiles,
   before: string | undefined,
 ): Promise<string | undefined> {
   if (result.file === "written") return (await writeCurrent(result.sql ?? "")).content;

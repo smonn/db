@@ -5,6 +5,7 @@ import {
   HazardNotAcceptedError,
   NotDevDatabaseError,
   StrictLeftoverError,
+  WatcherLockedError,
 } from "../generate/index.ts";
 import type { CommandName, ErrorBody, FailureDocument } from "./document.ts";
 import { generatedPart } from "./generate-document.ts";
@@ -25,6 +26,8 @@ const RULES: readonly Rule[] = [
     error instanceof DevDatabaseLockedError
       ? { code: "locked", message, lock: error.lock }
       : undefined,
+  (error, message) =>
+    error instanceof WatcherLockedError ? { code: "locked", message, lock: error.lock } : undefined,
   (error, message) =>
     error instanceof HazardNotAcceptedError
       ? { code: "hazard_not_accepted", message, kinds: error.kinds }

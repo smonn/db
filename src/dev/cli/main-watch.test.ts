@@ -29,6 +29,6 @@ describe("main and --watch", () => {
   it("hands generate --watch to the watch command", async () => {
     expect(await main(["generate", "--watch"])).toBe(0);
 
-    expect(vi.mocked(watchGenerate)).toHaveBeenLastCalledWith("project");
+    expect(vi.mocked(watchGenerate)).toHaveBeenLastCalledWith("project", false);
   });
 });
