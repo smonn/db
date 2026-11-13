@@ -80,6 +80,8 @@ async function watchLocked(options: WatchOptions): Promise<void> {
   };
   const watchers = directoryWatchers((directory, filename) => {
     const path = filename === null ? directory : join(directory, filename);
+    // Linux can give a folder made again its old inode number, so the inode alone can't tell.
+    if (path === migrations) watchers.forget(migrations);
     if (counts(state, migrations, directory, path)) loop.changed(path);
   });
   // The migrations folder's parent too: a watcher follows the folder's inode on Linux, so only
@@ -202,6 +204,8 @@ type DirectoryWatchers = {
    * its watcher, so an event still in flight isn't lost, unless the directory was recreated.
    */
   rebuild(directories: readonly string[]): void;
+  /** Drops the watcher on `directory`, so the next rebuild watches it afresh. */
+  forget(directory: string): void;
   close(): void;
 };
 
@@ -237,6 +241,7 @@ function directoryWatchers(
       for (const directory of watched.keys()) if (!wanted.has(directory)) unwatch(directory);
       for (const directory of wanted) rewatch(directory);
     },
+    forget: unwatch,
     close() {
       for (const directory of watched.keys()) unwatch(directory);
     },
