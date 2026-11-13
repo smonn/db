@@ -134,7 +134,7 @@ export const mergeFindings = (all: Findings[]): Findings => ({
   stale: all.flatMap(({ stale }) => stale).toSorted(byLocation),
 });
 
-function staleSection(stale: StaleDisable[]): string[] {
+export function staleSection(stale: StaleDisable[]): string[] {
   if (stale.length === 0) return [];
   return [
     "",
@@ -150,7 +150,7 @@ function staleSection(stale: StaleDisable[]): string[] {
   ];
 }
 
-function survivorRow({ file, line, mutator, status, expected }: Survivor): string {
+export function survivorRow({ file, line, mutator, status, expected }: Survivor): string {
   const note = expected === undefined ? "" : `; the disable above expects ${expected}`;
   return `| \`${file}\` | ${line} | ${mutator} | ${status}${note} |`;
 }
