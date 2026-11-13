@@ -35,6 +35,12 @@
       "groupName": "Node.js runtime"
     },
     {
+      "description": "The Test (Node 24) job in ci.yml pins the oldest Node major the README claims, so it takes patch and minor bumps only. Raise the cap when the README drops Node 24.",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["node"],
+      "allowedVersions": "<25"
+    },
+    {
       "description": "@types/node stays on the runtime's major, which scripts/check-node-version.ts enforces. Raise the cap in the PR that moves the Node.js runtime to a new major.",
       "matchDepNames": ["@types/node"],
       "allowedVersions": "<27"
