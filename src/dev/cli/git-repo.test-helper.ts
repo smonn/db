@@ -53,7 +53,8 @@ export async function failure(promise: Promise<unknown>): Promise<Error> {
     () => {},
     (caught: unknown) => caught,
   );
-  if (!(error instanceof Error)) throw new Error("expected the promise to reject with an Error");
+  if (!(error instanceof Error))
+    throw new TypeError("expected the promise to reject with an Error");
   return error;
 }
 
