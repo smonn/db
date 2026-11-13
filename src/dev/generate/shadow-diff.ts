@@ -1,12 +1,7 @@
 import { UnmodeledBlockerError, type TrackingSchema } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type { Connect, Driver, MigrationSource } from "../../runtime/ports/index.ts";
-import {
-  declaredRenames,
-  definitionCatalog,
-  type Catalog,
-  type DefinitionTables,
-} from "../catalog/index.ts";
+import type { Catalog, CatalogDefinition } from "../catalog/index.ts";
 import { diff, refuseTypeChanges, type Diff } from "../diff/index.ts";
 import { introspect } from "../introspect/index.ts";
 import { withShadowDatabases, type ShadowOptions } from "../shadow/index.ts";
@@ -20,7 +15,7 @@ export type ShadowDiffOptions = {
   readonly connect: Connect;
   /** The Committed migrations, replayed into the Shadow database. */
   readonly source: MigrationSource;
-  readonly definition: DefinitionTables;
+  readonly definition: CatalogDefinition;
   readonly tracking: TrackingSchema;
   readonly shadowOptions: ShadowOptions;
   /** A hand-edited Current migration body: the Shadow runs it instead of the generated SQL. */
@@ -52,12 +47,12 @@ export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
     async (databases) => {
       await migrate({ driver: databases.shadow, source, trackingSchema: tracking.name });
       await databases.definition.execute(
-        await definitionSql(databases.definition, definitionCatalog(definition)),
+        await definitionSql(databases.definition, definition.catalog),
       );
       const target = await introspect(databases.definition, tracking);
       const { catalog, renames } = await renameInShadow(
         databases.shadow,
-        declaredRenames(definition),
+        definition.renames,
         tracking,
       );
       const result = diff(catalog, target, renames);
@@ -88,4 +83,28 @@ export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
 async function definitionSql(database: Driver, wanted: Catalog): Promise<string> {
   const existing = [...(await introspect(database))].filter(([path]) => wanted.has(path));
   return diff(new Map(existing), wanted).sql;
+}
+
+/** `strict: true` refused a hand edit that leaves a difference from the Definition (ADR-0031). */
+export class StrictLeftoverError extends Error {
+  /** The difference, as `GenerateResult.leftover` words it. */
+  readonly leftover: string;
+
+  constructor(message: string, leftover: string) {
+    super(message);
+    this.leftover = leftover;
+  }
+}
+
+export function strictLeftoverError(
+  leftover: string,
+  path: string,
+  config: string,
+): StrictLeftoverError {
+  const message = [
+    `error: current.sql leaves a difference from the Definition (strict mode, ${config}):`,
+    leftover,
+    `fix the hand edit in ${path}, or set strict: false in ${config}`,
+  ].join("\n");
+  return new StrictLeftoverError(message, leftover);
 }

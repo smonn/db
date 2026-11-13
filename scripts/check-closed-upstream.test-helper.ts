@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { SpawnSyncReturns, spawnSync } from "node:child_process";
-import type { MockedFunction } from "vitest";
+import { afterEach, beforeEach, vi, type MockedFunction } from "vitest";
 
 /** The text of a payload recorded from `gh api` on 2026-11-01, trimmed to the fields the check reads. */
 export function recorded(name: string): string {
@@ -53,4 +53,32 @@ export function recordedReplies(): Record<string, Reply> {
     [commentsPath(696)]: recorded("comments-696"),
     ...Object.fromEntries([1240, 1199, 1219, 1220].map((number) => upstream(number))),
   };
+}
+
+export const own = "https://github.com/smonn/db/issues";
+
+/** An open issue of this repository as the issue list returns it, trimmed to what the check reads. */
+export const synthetic = (overrides: object): Record<string, unknown> => ({
+  number: 3,
+  title: "Waiting",
+  html_url: `${own}/3`,
+  repository_url: "https://api.github.com/repos/smonn/db",
+  body: null,
+  comments: 0,
+  ...overrides,
+});
+
+/** Resets `spawn` and silences the console before each test, and restores both after it. */
+export function quietMain(spawn: MockedFunction<typeof spawnSync>): void {
+  beforeEach(() => {
+    spawn.mockReset();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    process.exitCode = undefined;
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    process.exitCode = undefined;
+  });
 }

@@ -57,6 +57,7 @@ function projectWith(overrides: Partial<Project> = {}): Project {
     migrationsFolder: join(folder, "migrations"),
     trackingSchema: "smonn_db",
     configPath: "smonndb.config.ts",
+    definitionFile: join(folder, "definition.ts"),
     loadDefinition: () => Promise.resolve(defineDatabase({ public: {} })),
     ...overrides,
   };
@@ -115,7 +116,7 @@ it("writes a commit's file and prints its path relative to the working directory
     public: { run_commits: defineTable((c) => ({ id: c.text().notNull() })) },
   });
   const project = projectWith({ url: dev.url, loadDefinition: () => Promise.resolve(definition) });
-  await run({ name: "generate", config: "c" }, project);
+  await run({ name: "generate", watch: false, config: "c" }, project);
 
   const outcome = await run({ name: "commit", config: "c", slug: "first", accept: [] }, project);
 
@@ -138,8 +139,15 @@ it("refuses a hand edit's leftover under the config's strict key, and migrate ig
   });
   await writeFile(join(folder, "migrations", "current.sql"), "select 1;\n");
 
-  await expect(run({ name: "generate", config: "c" }, strict)).rejects.toThrow(
-    "error: current.sql leaves a difference from the Definition (strict mode, app/smonndb.config.ts):",
+  const refusal = await run({ name: "generate", watch: false, config: "c" }, strict).catch(
+    (error: unknown) => error,
+  );
+  expect(refusal).toHaveProperty("leftover", expect.stringContaining("the Shadow database"));
+  expect(refusal).toHaveProperty(
+    "message",
+    expect.stringContaining(
+      "error: current.sql leaves a difference from the Definition (strict mode, app/smonndb.config.ts):",
+    ) as unknown,
   );
   await writeMigrationFile("000001-strict.sql", "select 1;\n");
   const migrated = await run(
@@ -148,8 +156,14 @@ it("refuses a hand edit's leftover under the config's strict key, and migrate ig
   );
   expect(migrated).toStrictEqual({ command: "migrate", ok: true, applied: ["000001-strict.sql"] });
 
-  await run({ name: "generate", config: "c" }, { ...strict, strict: false });
-  expect(stdout).toContain("warning:");
+  const warned = await run(
+    { name: "generate", watch: false, config: "c" },
+    { ...strict, strict: false },
+  );
+  expect(warned).toMatchObject({
+    command: "generate",
+    file: { handEdited: true, leftover: expect.stringContaining("the Shadow database") as unknown },
+  });
 });
 
 it("prints each line the Shadow sweep logs to stderr", async () => {
@@ -161,7 +175,7 @@ it("prints each line the Shadow sweep logs to stderr", async () => {
   });
 
   await expect(
-    run({ name: "generate", config: "c" }, projectWith({ url: dev.url })),
+    run({ name: "generate", watch: false, config: "c" }, projectWith({ url: dev.url })),
   ).rejects.toThrow("stop after the sweep");
 
   expect(stderr).toBe('dropped stale database "smonn_db_shadow_1_0badc0de"\n');
@@ -173,13 +187,13 @@ async function runWhileMigratorHoldsLock(command: Parameters<typeof run>[0]): Pr
     public: { run_waits: defineTable((c) => ({ id: c.text().notNull() })) },
   });
   const project = projectWith({ url: dev.url, loadDefinition: () => Promise.resolve(definition) });
-  await run({ name: "generate", config: "c" }, project);
+  await run({ name: "generate", watch: false, config: "c" }, project);
   stderr = "";
   await afterMigrationLockPolled(dev.driver, () => run(command, project));
 }
 
 it.each([
-  ["generate", { name: "generate", config: "c" }],
+  ["generate", { name: "generate", watch: false, config: "c" }],
   ["commit", { name: "commit", config: "c", slug: "first", accept: [] }],
   ["reset", { name: "reset", config: "c", erase: true }],
 ] as const)("prints the migrator's lock line to stderr for %s", async (_name, command) => {
@@ -195,7 +209,7 @@ it("keeps the Shadow replay's server notices out of the output", async () => {
   );
   const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
-  await run({ name: "generate", config: "c" }, projectWith({ url: dev.url }));
+  await run({ name: "generate", watch: false, config: "c" }, projectWith({ url: dev.url }));
 
   expect(log).not.toHaveBeenCalled();
 });

@@ -1,4 +1,6 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
+import { memoized, type Lookup } from "./check-closed-upstream.ts";
+import { upstreamProbes } from "./live-input-issues.ts";
 import { fakeSource, issue } from "./live-input-checks.test-helper.ts";
 import { CHECKS } from "./live-input-checks.ts";
 import { runProbe, type Check } from "./live-input-probe.ts";
@@ -136,10 +138,25 @@ test("check:upstream passes an issue that cites nothing", () => {
   );
 });
 
+test("check:upstream refuses an issue that cites a closed upstream, asking once for the whole run", () => {
+  const lookup = vi.fn<Lookup>(() => ({ state: "closed", html_url: "https://example.test/9" }));
+  const source = fakeSource({
+    issues: () => [
+      upstreamRaw({ body: "Waits on pnpm/pnpm#9" }),
+      upstreamRaw({ number: 10, body: "Also pnpm/pnpm#9" }),
+    ],
+  });
+  const found = upstreamProbes(source, memoized(lookup)).map((probe) => runProbe(probe));
+  expect(found.map((result) => result.outcome)).toEqual(["refused", "refused"]);
+  expect(found.map((result) => result.check)).toEqual(["check:upstream", "check:upstream"]);
+  expect(found[0]?.lines).toEqual([expect.stringContaining("cites pnpm/pnpm#9, closed")]);
+  expect(lookup).toHaveBeenCalledTimes(1);
+});
+
 test("check:upstream throws on an issue shaped unlike the API's", () => {
   const source = fakeSource({ issues: () => [issue(9)] });
   expect(results("check:upstream", source)[0]).toMatchObject({
     outcome: "threw",
-    lines: [expect.stringContaining("html_url")],
+    lines: [expect.stringContaining("$.html_url")],
   });
 });

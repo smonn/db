@@ -1,6 +1,7 @@
 import {
   acquireMigrationLock,
   CURRENT_FILENAME,
+  matchingPrefix,
   parseMigration,
   splitCurrentHeader,
   type CurrentMigration,
@@ -180,9 +181,7 @@ function skippedFiles(
   chain: readonly ParsedMigration[],
   current: CurrentMigration | undefined,
 ): string[] {
-  const differs = recorded.findIndex((row, index) => row.hash !== chain[index]?.hash);
-  const kept = differs === -1 ? recorded.length : differs;
-  const skipped = chain.slice(kept).map(({ filename }) => filename);
+  const skipped = chain.slice(matchingPrefix(recorded, chain)).map(({ filename }) => filename);
   return current === undefined ? skipped : [...skipped, CURRENT_FILENAME];
 }
 

@@ -14,7 +14,8 @@
   ],
   "type": "module",
   "sideEffects": [
-    "./dist/cli.mjs"
+    "./dist/cli.mjs",
+    "./dist/definition-worker.mjs"
   ],
   "exports": {
     ".": "./dist/index.mjs",

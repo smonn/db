@@ -6,7 +6,13 @@
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { closedCitations, readIssue } from "./check-closed-upstream.ts";
+import {
+  closedCitations,
+  lookupUpstream,
+  memoized,
+  readIssue,
+  type Lookup,
+} from "./check-closed-upstream.ts";
 import { main as checkLabels } from "./check-issue-labels.ts";
 import { main as checkMilestone } from "./check-issue-milestone.ts";
 import { main as checkParent } from "./check-issue-parent.ts";
@@ -36,11 +42,12 @@ function eventProbes(name: string, action: string, run: IssueMain): Check["probe
     }));
 }
 
-function upstreamProbes(source: Source): Probe[] {
+/** One lookup serves every issue, so an upstream cited by several is read once. */
+export function upstreamProbes(source: Source, lookup: Lookup = memoized(lookupUpstream)): Probe[] {
   return source.issues().map((issue) => ({
     check: "check:upstream",
     sample: issueSample(issue),
-    run: () => closedCitations([readIssue(issue.raw, "$")]).closed,
+    run: () => closedCitations([readIssue(issue.raw, "$")], lookup).closed,
   }));
 }
 

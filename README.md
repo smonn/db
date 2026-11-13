@@ -482,20 +482,20 @@ DATABASE_URL=postgres://localhost/app_prod node upsert.ts
 
 Run each as `smonndb <command>`, with `--config <path>` to pick a config file other than `smonndb.config.ts`.
 
-| Command                 | What it does                                                                                             |
-| ----------------------- | -------------------------------------------------------------------------------------------------------- |
-| `generate`              | Writes `current.sql` and catches the Dev database up, replaying new files or else diffing it             |
-| `commit <slug>`         | Freezes `current.sql` into the next Committed migration                                                  |
-| `reset [--erase]`       | Rebuilds the Dev database from the migration files; `--erase` also wipes an unmarked, non-empty database |
-| `migrate`               | Applies the pending Committed migrations                                                                 |
-| `verify`                | Checks the Committed migrations' hash chain, with no database                                            |
-| `rebase [--onto <ref>]` | Moves the Committed migrations `<ref>` lacks onto its tip, with no database                              |
+| Command                 | What it does                                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `generate [--watch]`    | Writes `current.sql` and catches the Dev database up, replaying new files or else diffing it; `--watch` runs it again on each change |
+| `commit <slug>`         | Freezes `current.sql` into the next Committed migration                                                                              |
+| `reset [--erase]`       | Rebuilds the Dev database from the migration files; `--erase` also wipes an unmarked, non-empty database                             |
+| `migrate`               | Applies the pending Committed migrations                                                                                             |
+| `verify`                | Checks the Committed migrations' hash chain, with no database                                                                        |
+| `rebase [--onto <ref>]` | Moves the Committed migrations `<ref>` lacks onto its tip, with no database                                                          |
 
 Results go to stdout and errors to stderr, as plain text with no colors. `generate` prints the file it wrote, each Hazard with its statement, each rename hint, and a line when it replayed files into, diffed, or reset the Dev database. While a runtime `migrate` holds the migrator's lock, `generate`, `commit`, and `reset` print `waiting for the migrator's lock` to stderr and keep waiting. Exit codes: 0 on success, 1 on a refusal or failure (a missing folder, a held Dev lock, a bad hash chain), 2 on a usage error.
 
 ### Changing types under a live pool
 
-The driver prepares each query and caches the statement per connection by its SQL text. After DDL retypes a column, or drops and recreates an enum or domain, a pool that was open before the change reuses the stale statement, and the same query fails, with `invalid input syntax for type integer` or `cache lookup failed for type`. Recreate the pool after `generate` or `migrate` changes such a type. A long-running dev server needs a restart, or a new pool, to see the change.
+The driver prepares each query and caches the statement per connection by its SQL text. After DDL retypes a column, or drops and recreates an enum or domain, a pool that was open before the change reuses the stale statement, and the same query fails, with `invalid input syntax for type integer` or `cache lookup failed for type`. Recreate the pool after `generate` or `migrate` changes such a type. A long-running dev server needs a restart, or a new pool, to see the change, and beside `generate --watch` that can be any save.
 
 ### Enums and domains
 
@@ -652,7 +652,7 @@ Schemas don't rename and take no `name`, so no marker saves a schema whose key c
 
 ### Rebasing a Forked chain
 
-When two branches each commit a Migration on the same tip, `migrate` and `verify` refuse the pair as a Forked chain. Merge the base branch into yours, then run `smonndb rebase`: it renumbers and rehashes each Committed migration the base branch lacks onto the base branch's tip, and leaves every other file as it is. `--onto <ref>` names the base branch, which defaults to the remote's default branch (`origin/HEAD`). It needs no database, does nothing on a straight chain, and can run unattended in CI. `actions/checkout` clones at depth 1 without `origin/HEAD`, so a CI job must fetch the base branch and pass `--onto`. It needs git 2.30 or newer, and refuses while git shows a changed, untracked, or gitignored top-level `.sql` file other than `current.sql`, or a `.sql.tmp` file, so git always holds what it rewrites. Each file is written under a temporary name and then renamed into place. If a run fails or stops partway, run `smonndb rebase` again: it names the files to set aside with `git stash`, and the run after that finishes. A Dev database that applied a moved file no longer matches the files, so the next `generate` diffs it to them.
+When two branches each commit a Migration on the same tip, `migrate` and `verify` refuse the pair as a Forked chain. Merge the base branch into yours, then run `smonndb rebase`: it renumbers and rehashes each Committed migration the base branch lacks onto the base branch's tip, and leaves every other file as it is. `--onto <ref>` names the base branch, which defaults to the remote's default branch (`origin/HEAD`). It needs no database, does nothing on a straight chain, and can run unattended in CI. `actions/checkout` clones at depth 1 without `origin/HEAD`, so a CI job must fetch the base branch and pass `--onto`. It needs git 2.30 or newer, and refuses while git shows a changed, untracked, or gitignored top-level `.sql` file other than `current.sql`, or a `.sql.tmp` file, so git always holds what it rewrites. Each file is written under a temporary name and then renamed into place. If a run fails or stops partway, run `smonndb rebase` again: it names the files to set aside with `git stash`, and the run after that finishes. Restore the stashed files with `git stash pop` from the repository root, since git removes a folder the stash empties. If pop says a file already exists, git restored the rest and kept the stash: move rebase's file aside, run `git restore --source='stash@{0}^3' -- <that file>`, merge the two by hand, then run `git stash drop`. A Dev database that applied a moved file no longer matches the files, so the next `generate` diffs it to them.
 
 ## Goals
 
