@@ -1,11 +1,17 @@
-import { hazardsIn, type GenerateResult } from "../generate/index.ts";
-import type { SuccessDocument } from "../output/index.ts";
-
-/** What a command hands `main` to print. `generate` prints its own lines until it has a document, and hands over undefined. */
-export type Outcome = SuccessDocument | undefined;
+import type { GenerateResult } from "../generate/index.ts";
+import {
+  generateDocument,
+  type GenerateDocument,
+  type RebaseDocument,
+  type SuccessDocument,
+} from "../output/index.ts";
 
 /** The lines a command prints without `--json`, for the document it prints with it. */
 export function documentLines(document: SuccessDocument): string[] {
+  return document.command === "generate" ? generateLines(document) : otherLines(document);
+}
+
+function otherLines(document: Exclude<SuccessDocument, GenerateDocument>): string[] {
   switch (document.command) {
     case "commit":
       return [`wrote ${document.file.path}`];
@@ -23,23 +29,29 @@ export function documentLines(document: SuccessDocument): string[] {
   }
 }
 
+/** The lines `generate --watch` prints for one run, as one-shot `generate` prints them. */
+export function generateReport(result: GenerateResult, path: string): string[] {
+  return generateLines(generateDocument(result, path));
+}
+
 /**
  * The lines `generate` prints: the file, each Hazard with its statement, each rename hint, then
  * what it did to the Dev database, if anything. A generated file it kept as it was printed its
- * Hazards and hints on the run that wrote it, so a run that changes nothing stays silent.
+ * Hazards and hints on the run that wrote it, so a run that changes nothing stays silent; the
+ * document keeps them.
  */
-export function generateReport(result: GenerateResult, path: string): string[] {
-  const unchanged = result.file === "kept" && result.diff === undefined;
-  const hazards =
-    result.sql === undefined || unchanged
-      ? []
-      : hazardsIn(result.sql).map(({ kind, statement }) => `hazard ${kind}: ${statement}`);
-  const hints = unchanged ? [] : result.hints.map((hint) => `hint: ${hint}`);
-  return [...fileLines(result, path), ...hazards, ...hints, ...outcomeLines(result.devDatabase)];
+function generateLines({ file, hazards, hints, devDatabase }: GenerateDocument): string[] {
+  const unchanged = !file.handEdited && (file.action === "kept" || file.action === "absent");
+  return [
+    ...fileLines(file),
+    ...(unchanged ? [] : hazards.map(({ kind, statement }) => `hazard ${kind}: ${statement}`)),
+    ...(unchanged ? [] : hints.map((hint) => `hint: ${hint}`)),
+    ...outcomeLines(devDatabase),
+  ];
 }
 
 /** One line for what generate did to the Dev database, if anything, then each Hazard it replayed. */
-function outcomeLines(outcome: GenerateResult["devDatabase"]): string[] {
+function outcomeLines(outcome: GenerateDocument["devDatabase"]): string[] {
   switch (outcome.kind) {
     case "none":
       return [];
@@ -67,11 +79,19 @@ function outcomeLines(outcome: GenerateResult["devDatabase"]): string[] {
   }
 }
 
-function fileLines({ diff, file, leftover }: GenerateResult, path: string): string[] {
-  if (diff === undefined) {
-    if (file === "kept") return [];
-    return [file === "removed" ? `no diff, removed ${path}` : `wrote ${path}`];
-  }
+function fileLines({ path, action, ...edit }: GenerateDocument["file"]): string[] {
+  return edit.handEdited ? handEditLines(path, edit) : generatedFileLines(path, action);
+}
+
+function generatedFileLines(path: string, action: GenerateDocument["file"]["action"]): string[] {
+  if (action === "kept" || action === "absent") return [];
+  return [action === "removed" ? `no diff, removed ${path}` : `wrote ${path}`];
+}
+
+function handEditLines(
+  path: string,
+  { diff, leftover }: { readonly diff: string; readonly leftover?: string },
+): string[] {
   return [
     `kept hand-edited ${path}, replayed as written; diff to what generate would write:`,
     (diff === "" ? "matches what generate would write" : diff).trimEnd(),
@@ -95,7 +115,7 @@ function resetReport({ committed, current }: { committed: number; current: boole
 }
 
 /** The lines `rebase` prints: each file it rewrote, and how to catch up a Dev database. */
-function rebaseReport({ moved, onto }: Extract<SuccessDocument, { command: "rebase" }>): string[] {
+function rebaseReport({ moved, onto }: RebaseDocument): string[] {
   if (moved.length === 0) return [`nothing to rebase onto ${onto}`];
   return [
     ...moved.map(({ from, to }) => `rewrote ${from} as ${to}`),

@@ -4,6 +4,7 @@ import {
   DevDatabaseLockedError,
   HazardNotAcceptedError,
   NotDevDatabaseError,
+  StrictLeftoverError,
 } from "../generate/index.ts";
 import { errorBody, failureDocument, UsageError } from "./failure.ts";
 
@@ -17,6 +18,10 @@ describe("errorBody", () => {
     [
       new HazardNotAcceptedError("has Hazards", ["data_loss", "rewrite"]),
       { code: "hazard_not_accepted", message: "has Hazards", kinds: ["data_loss", "rewrite"] },
+    ],
+    [
+      new StrictLeftoverError("refused", "table is missing"),
+      { code: "leftover", message: "refused", leftover: "table is missing" },
     ],
     [new UnmodeledBlockerError("blocked"), { code: "unmodeled_blocker", message: "blocked" }],
     [new ChainBrokenError("forked chain"), { code: "chain_broken", message: "forked chain" }],

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { commit } from "./commit.ts";
-import { generate } from "./generate.ts";
+import { generate, StrictLeftoverError } from "./generate.ts";
 import { memoryFileSystem } from "./memory-file-system.test-helper.ts";
 
 const db = useTestDatabase();
@@ -46,8 +46,11 @@ describe("generate in strict mode", () => {
   it("refuses a hand edit's leftover before it touches the Dev database", async () => {
     const fileSystem = memoryFileSystem({ [CURRENT]: LEFTOVER_EDIT });
 
-    await expect(run(fileSystem, { config: CONFIG })).rejects.toThrow(REFUSAL);
+    const refusal = await run(fileSystem, { config: CONFIG }).catch((error: unknown) => error);
 
+    expect(refusal).toBeInstanceOf(StrictLeftoverError);
+    expect(refusal).toHaveProperty("message", REFUSAL);
+    expect(refusal).toHaveProperty("leftover", REFUSAL.split("\n").slice(1, 4).join("\n"));
     expect(fileSystem.files.get(CURRENT)).toBe(LEFTOVER_EDIT);
     const { rows } = await db.driver.query(
       "select count(*)::int as n from pg_namespace where nspname = 'smonn_db'",

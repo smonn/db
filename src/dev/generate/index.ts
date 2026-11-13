@@ -2,6 +2,7 @@ export { commit, type CommitOptions, type CommitResult } from "./commit.ts";
 export {
   generate,
   generateFromCatalog,
+  StrictLeftoverError,
   type GenerateFromCatalogOptions,
   type GenerateOptions,
   type GenerateResult,

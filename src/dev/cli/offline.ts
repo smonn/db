@@ -1,9 +1,9 @@
 import { nodeFileSystem, nodeMigrationSource } from "../../adapters/node/index.ts";
 import { verify } from "../../runtime/migrator/index.ts";
 import { rebase } from "../generate/index.ts";
+import type { SuccessDocument } from "../output/index.ts";
 import { defaultBaseRef, gitMigrationSource, unheldPaths } from "./git.ts";
 import { loadMigrationsFolder } from "./project.ts";
-import type { Outcome } from "./report.ts";
 
 export type OfflineCommand = { readonly config: string } & (
   | { readonly name: "verify" }
@@ -11,7 +11,7 @@ export type OfflineCommand = { readonly config: string } & (
 );
 
 /** Runs a command that reads the migrations folder and no database. */
-export async function runOffline(command: OfflineCommand): Promise<Outcome> {
+export async function runOffline(command: OfflineCommand): Promise<SuccessDocument> {
   const migrations = await loadMigrationsFolder(command.config);
   if (command.name === "verify") {
     const { verified } = await verify(nodeMigrationSource(migrations));

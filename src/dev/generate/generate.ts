@@ -47,13 +47,14 @@ export type GenerateOptions = ShadowOptions & {
 
 export type GenerateResult = {
   readonly path: string;
-  /** The Current migration's body, or `undefined` when there was no diff and the file was deleted. */
+  /** The Current migration's body, or `undefined` when there was no diff and so no file (`removed` or `absent`). */
   readonly sql: string | undefined;
   /**
-   * What generate did to `current.sql`: `kept` when the file already held what generate would
-   * write, or was hand-edited, so a run that changes nothing stays silent (ADR-0032).
+   * What generate did to `current.sql`: `written` or `removed` it; `kept` a file that already held
+   * what generate would write, or was hand-edited, so a run that changes nothing stays silent
+   * (ADR-0032); or found it `absent` when there was no diff and no file to remove.
    */
-  readonly file: "written" | "removed" | "kept";
+  readonly file: "written" | "removed" | "kept" | "absent";
   /**
    * Set when `current.sql` was hand-edited, so generate kept and replayed it as written (ADR-0003):
    * the lines that differ from what generate would have written, `-` for the file and `+` for the
@@ -147,7 +148,7 @@ async function generateLocked(options: GenerateFromCatalogOptions): Promise<Gene
   });
 
   if (strict !== undefined && shadowDiff.leftover !== undefined) {
-    throw new Error(strictRefusal(shadowDiff.leftover, path, strict.config));
+    throw strictLeftoverError(shadowDiff.leftover, path, strict.config);
   }
 
   const kept = {
@@ -179,7 +180,7 @@ async function writeGenerated(
   if (sql === "") {
     if (existing !== undefined) await fileSystem.remove(path);
     const devDatabase = await catchUp(kept);
-    const file = existing === undefined ? "kept" : "removed";
+    const file = existing === undefined ? "absent" : "removed";
     return { path, sql: undefined, file, devDatabase, hazards: [], hints };
   }
   const current = await writeCurrent(sql);
@@ -212,12 +213,24 @@ async function replayEdited(
   };
 }
 
-function strictRefusal(leftover: string, path: string, config: string): string {
-  return [
+/** `strict: true` refused a hand edit that leaves a difference from the Definition (ADR-0031). */
+export class StrictLeftoverError extends Error {
+  /** The difference, as `GenerateResult.leftover` words it. */
+  readonly leftover: string;
+
+  constructor(message: string, leftover: string) {
+    super(message);
+    this.leftover = leftover;
+  }
+}
+
+function strictLeftoverError(leftover: string, path: string, config: string): StrictLeftoverError {
+  const message = [
     `error: current.sql leaves a difference from the Definition (strict mode, ${config}):`,
     leftover,
     `fix the hand edit in ${path}, or set strict: false in ${config}`,
   ].join("\n");
+  return new StrictLeftoverError(message, leftover);
 }
 
 /** Refuses a schema `introspect` skips, whose tables would otherwise vanish from `current.sql`. */

@@ -3,6 +3,7 @@ import {
   DevDatabaseLockedError,
   HazardNotAcceptedError,
   NotDevDatabaseError,
+  StrictLeftoverError,
 } from "../generate/index.ts";
 import type { CommandName, ErrorBody, FailureDocument } from "./document.ts";
 
@@ -20,6 +21,10 @@ const RULES: readonly Rule[] = [
   (error, message) =>
     error instanceof HazardNotAcceptedError
       ? { code: "hazard_not_accepted", message, kinds: error.kinds }
+      : undefined,
+  (error, message) =>
+    error instanceof StrictLeftoverError
+      ? { code: "leftover", message, leftover: error.leftover }
       : undefined,
   (error, message) =>
     error instanceof UnmodeledBlockerError ? { code: "unmodeled_blocker", message } : undefined,

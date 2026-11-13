@@ -139,8 +139,15 @@ it("refuses a hand edit's leftover under the config's strict key, and migrate ig
   });
   await writeFile(join(folder, "migrations", "current.sql"), "select 1;\n");
 
-  await expect(run({ name: "generate", watch: false, config: "c" }, strict)).rejects.toThrow(
-    "error: current.sql leaves a difference from the Definition (strict mode, app/smonndb.config.ts):",
+  const refusal = await run({ name: "generate", watch: false, config: "c" }, strict).catch(
+    (error: unknown) => error,
+  );
+  expect(refusal).toHaveProperty("leftover", expect.stringContaining("the Shadow database"));
+  expect(refusal).toHaveProperty(
+    "message",
+    expect.stringContaining(
+      "error: current.sql leaves a difference from the Definition (strict mode, app/smonndb.config.ts):",
+    ) as unknown,
   );
   await writeMigrationFile("000001-strict.sql", "select 1;\n");
   const migrated = await run(
@@ -149,8 +156,14 @@ it("refuses a hand edit's leftover under the config's strict key, and migrate ig
   );
   expect(migrated).toStrictEqual({ command: "migrate", ok: true, applied: ["000001-strict.sql"] });
 
-  await run({ name: "generate", watch: false, config: "c" }, { ...strict, strict: false });
-  expect(stdout).toContain("warning:");
+  const warned = await run(
+    { name: "generate", watch: false, config: "c" },
+    { ...strict, strict: false },
+  );
+  expect(warned).toMatchObject({
+    command: "generate",
+    file: { handEdited: true, leftover: expect.stringContaining("the Shadow database") as unknown },
+  });
 });
 
 it("prints each line the Shadow sweep logs to stderr", async () => {

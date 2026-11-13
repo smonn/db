@@ -170,7 +170,7 @@ describe("main --json with a usage error", () => {
     [["verify", "--onto", "main", "--json"], "verify", "--onto applies only to rebase"],
     [["migrate", "--url", "x", "--json"], "migrate", "Unknown option '--url'"],
     [["commit", "a", "--accept", "drop", "--json"], "commit", 'unknown Hazard kind "drop"'],
-    [["generate", "--json"], "generate", "generate doesn't take --json yet"],
+    [["generate", "--watch", "--json"], "generate", "generate --watch doesn't take --json yet"],
     [["verify", "--json=1"], "verify", "Option '--json' does not take an argument"],
   ])(
     "prints a usage failure for %j, exits 2, and leaves stderr empty",
