@@ -180,11 +180,21 @@ describe("checkImports rules", () => {
     ).toEqual(["no-test-imports", "scripts-import-src-through-index"]);
   });
 
-  test("only tests and test helpers import vitest", async () => {
+  test("only tests and test helpers import vitest or fast-check", async () => {
     expect(
       await rulesBroken({
         "src/dev/diff/index.ts": 'import { test } from "vitest";\nexport { test };',
+        "src/dev/shadow/index.ts": 'import { assert } from "fast-check";\nexport { assert };',
       }),
-    ).toEqual(["vitest-in-tests-only"]);
+    ).toEqual(["test-packages-in-tests-only", "test-packages-in-tests-only"]);
+  });
+
+  test("a postgres-js test imports fast-check", async () => {
+    expect(
+      await rulesBroken({
+        "src/adapters/postgres-js/round-trip.test.ts":
+          'import { assert } from "fast-check";\nexport { assert };',
+      }),
+    ).toEqual([]);
   });
 });
