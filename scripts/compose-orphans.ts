@@ -1,3 +1,5 @@
+import { dirname, isAbsolute } from "node:path";
+
 type Project = { name: string; configFiles: string[] };
 
 /** The name prefix of every compose project `test-db.ts` creates. */
@@ -33,15 +35,21 @@ function entries(listing: string): unknown[] {
 
 /**
  * Names the projects in `docker compose ls --format json` output that `test-db.ts` created
- * (their name has the `projectPrefix`) and whose config files are all gone: a worktree removed
- * without `stop` leaves its container running, wherever the worktree lived. A project with a
- * config file that still exists, or without the prefix, is not one.
+ * (their name has the `projectPrefix`) and whose worktree is gone: a worktree removed without
+ * `stop` leaves its container running, wherever the worktree lived.
+ *
+ * `exists` is asked about the directory of each config file, not the file: a live worktree on a
+ * branch without `compose.yaml`, or one whose compose file moved, keeps its database. The listing
+ * joins the files with commas and does not escape a comma in a path, so a project counts as gone
+ * only when every fragment is an absolute path; a fragment of a split path is usually relative.
+ * A project without the prefix, with a live directory, or with a relative fragment is not one.
  */
-export function orphanedProjects(listing: string, exists: (file: string) => boolean): string[] {
+export function orphanedProjects(listing: string, exists: (dir: string) => boolean): string[] {
   return parseListing(listing)
     .filter(
       ({ name, configFiles }) =>
-        name.startsWith(projectPrefix) && configFiles.every((file) => file !== "" && !exists(file)),
+        name.startsWith(projectPrefix) &&
+        configFiles.every((file) => isAbsolute(file) && !exists(dirname(file))),
     )
     .map(({ name }) => name);
 }

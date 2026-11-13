@@ -95,6 +95,39 @@ jobs:
           cache: true
       - run: pnpm coverage
 
+  # The README claims Node 24, but devEngines.runtime makes pnpm run everything on Node 26. This job
+  # runs vitest on the oldest claimed major. Renovate bumps the pin within the major (renovate.json).
+  test-node-24:
+    name: Test (Node 24)
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres"
+          --health-interval 1s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.22.1"
+      # A local install links pnpm's Node 26 as node_modules/.bin/node, and every bin shim puts that directory first on PATH.
+      - run: rm -f node_modules/.bin/node
+      - run: node -p process.version
+      - run: node_modules/.bin/vitest run
+
   # Catches a change that breaks the weekly Mutation run (mutation.yml), which no PR otherwise exercises.
   mutation-dry-run:
     name: Mutation dry run
@@ -125,7 +158,7 @@ jobs:
   required:
     name: Required
     if: ${{ always() }}
-    needs: [docs, mermaid, typecheck, lint, test, mutation-dry-run]
+    needs: [docs, mermaid, typecheck, lint, test, test-node-24, mutation-dry-run]
     runs-on: ubuntu-24.04
     steps:
       - env:
