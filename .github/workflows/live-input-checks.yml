@@ -1,0 +1,59 @@
+name: Live input checks
+
+# Runs the PR's version of each repo check it changes over live issues, merged PRs, branches, and
+# workflow files, so a check that breaks on real input fails the PR (#807). Not a required check, and
+# Required (ci.yml) doesn't wait on it. It is report-only: the token reads, and the runner hands the
+# issue checks a `gh` that records their writes instead of sending them. A sample a check refuses is
+# listed in the job summary; the job fails only when a check throws.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/live-input-checks.yml"
+      - "scripts/check-adr-clash.ts"
+      - "scripts/check-branch.ts"
+      - "scripts/check-closed-upstream.ts"
+      - "scripts/check-closing-keywords.ts"
+      - "scripts/check-issue-labels.ts"
+      - "scripts/check-issue-milestone.ts"
+      - "scripts/check-issue-parent.ts"
+      - "scripts/check-oidc-jobs.ts"
+      - "scripts/check-pr.ts"
+      - "scripts/check-release-note.ts"
+      - "scripts/github-json.ts"
+      - "scripts/live-input-checks.ts"
+      - "scripts/live-input-issues.ts"
+      - "scripts/live-input-probe.ts"
+      - "scripts/live-input-repo.ts"
+      - "scripts/live-input-source.ts"
+      - "scripts/workflow-permissions.ts"
+      - "scripts/workflow-yaml-flow.ts"
+      - "scripts/workflow-yaml.ts"
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  live-input:
+    name: Live input checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history: check:pr diffs each merged PR's commit against its parent.
+          fetch-depth: 0
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          cache: true
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: pnpm check:live
