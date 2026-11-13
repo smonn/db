@@ -87,7 +87,12 @@ describe("a Dev database catch-up that fails after generate wrote current.sql", 
     expect(failure.message).toMatch(
       /^the Dev database didn't catch up, so it was left as it was: current\.sql: .+; run smonndb reset to rebuild it from the files$/su,
     );
-    expect(String(failure.cause)).toMatch(/^Error: current\.sql: /u);
+    expect(failure.cause).toBeInstanceOf(Error);
+    expect(failure.cause).toHaveProperty("message", failure.message);
+    expect(failure.cause).toHaveProperty(
+      "cause.message",
+      expect.stringMatching(/^current\.sql: /u) as unknown,
+    );
     expect(failure.generated).toStrictEqual({
       path: CURRENT,
       sql: WRITTEN,

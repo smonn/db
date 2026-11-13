@@ -92,6 +92,7 @@ describe("smonndb", () => {
     expect(await readFile(file, "utf8")).toContain('drop table "public"."users";\n');
     const output = stdoutOf();
     expect(output).toContain(`kept hand-edited ${relative(process.cwd(), file)}`);
+    expect(output).toMatch(/\n@@ -\d+,\d+ \+\d+,\d+ @@\n/u);
     expect(output).toContain("\n-drop table");
     expect(output).toContain('hazard data_loss: drop table "public"."users";\n');
   });

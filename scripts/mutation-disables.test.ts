@@ -10,26 +10,16 @@ import {
   parseArgs,
   type RunStryker,
 } from "./mutation-disables.ts";
+import {
+  describeOne,
+  type Mutant,
+  marked,
+  mutant,
+  reportOf,
+} from "./mutation-disables.test-helper.ts";
 import { REPORT } from "./mutation-report.ts";
 
 const disabled = "// Stryker disable next-line StringLiteral: 1 survivor: never shown\nf('x');\n";
-const marked = "// Stryker expect next-line StringLiteral: 1 survivor: never shown\nf('x');\n";
-
-type Mutant = { mutatorName: string; status: string; line: number };
-const mutant = (mutatorName: string, status: string, line = 2): Mutant => ({
-  mutatorName,
-  status,
-  line,
-});
-const reportOf = (files: Record<string, { source: string; mutants: Mutant[] }>): string =>
-  JSON.stringify({
-    files: Object.fromEntries(
-      Object.entries(files).map(([file, { source, mutants }]) => [
-        file,
-        { source, mutants: mutants.map((m) => ({ ...m, location: { start: { line: m.line } } })) },
-      ]),
-    ),
-  });
 
 let dir: string;
 const write = (file: string, text: string): void => {
@@ -55,8 +45,6 @@ afterEach(() => {
 const noInterrupt: OnInterrupt = () => () => {};
 const failing: RunStryker = () => Promise.reject(new Error("Stryker failed"));
 
-const describeOne = (mutants: Mutant[], source = marked): string[] =>
-  describeDisables(JSON.parse(reportOf({ "a.ts": { source, mutants } })));
 const survivedAt = (line: number): Mutant[] => [mutant("StringLiteral", "Survived", line)];
 
 describe("describeDisables", () => {

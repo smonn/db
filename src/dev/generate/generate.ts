@@ -10,7 +10,7 @@ import {
   writeCurrent,
 } from "../../runtime/internal/index.ts";
 import type { Connect, Driver, FileSystem, MigrationSource } from "../../runtime/ports/index.ts";
-import { declaredRenames, definitionSchemas, type DefinitionTables } from "../catalog/index.ts";
+import { readDefinition, type CatalogDefinition, type DefinitionTables } from "../catalog/index.ts";
 import type { Hazard } from "../diff/index.ts";
 import { skippedSchemaReason } from "../introspect/index.ts";
 import type { ShadowOptions } from "../shadow/index.ts";
@@ -22,7 +22,7 @@ import {
 } from "./catch-up.ts";
 import { lockWaitNotice, withDevLock } from "./dev-lock.ts";
 import { lineDiff } from "./line-diff.ts";
-import { diffInShadow, type ShadowDiff } from "./shadow-diff.ts";
+import { diffInShadow, strictLeftoverError, type ShadowDiff } from "./shadow-diff.ts";
 
 export type GenerateOptions = ShadowOptions & {
   /** The Dev database, which also creates and drops the Shadow and Definition databases. */
@@ -34,8 +34,11 @@ export type GenerateOptions = ShadowOptions & {
   readonly migrations: string;
   /** The schema `migrate` tracks into. Defaults to `smonn_db`. */
   readonly trackingSchema?: string;
-  /** Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`). */
-  readonly signal?: AbortSignal;
+  /**
+   * Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`).
+   * Only the wait: a run past it goes on to the end.
+   */
+  readonly signal?: AbortSignal | undefined;
   /**
    * Set to refuse a hand edit that leaves a difference from the Definition, before the Dev database
    * changes (ADR-0031). `config` names the config file in the refusal.
@@ -45,17 +48,19 @@ export type GenerateOptions = ShadowOptions & {
 
 export type GenerateResult = {
   readonly path: string;
-  /** The Current migration's body, or `undefined` when there was no diff and the file was deleted. */
+  /** The Current migration's body, or `undefined` when there was no diff and so no file (`removed` or `absent`). */
   readonly sql: string | undefined;
   /**
-   * What generate did to `current.sql`: `kept` when the file already held what generate would
-   * write, or was hand-edited, so a run that changes nothing stays silent (ADR-0032).
+   * What generate did to `current.sql`: `written` or `removed` it; `kept` a file that already held
+   * what generate would write, or was hand-edited, so a run that changes nothing stays silent
+   * (ADR-0032); or found it `absent` when there was no diff and no file to remove.
    */
-  readonly file: "written" | "removed" | "kept";
+  readonly file: "written" | "removed" | "kept" | "absent";
   /**
    * Set when `current.sql` was hand-edited, so generate kept and replayed it as written (ADR-0003):
-   * the lines that differ from what generate would have written, `-` for the file and `+` for the
-   * generation. Empty when they match. `sql` is then the replayed body.
+   * a unified diff from the file to what generate would have written, `-` for the file and `+` for
+   * the generation: `@@ -a,b +c,d @@` hunks with 3 lines of context, and no file headers. Empty when
+   * they match. `sql` is then the replayed body.
    */
   readonly diff?: string;
   /**
@@ -84,15 +89,15 @@ export type GeneratedFiles = Omit<GenerateResult, "devDatabase">;
 /**
  * The Dev database didn't catch up to the files. By then generate had written (or kept, or
  * removed) `current.sql`, so `generated` holds what the CLI prints for it, Hazards included: the
- * next run keeps the file and says nothing more about it. The message and `cause` are the
- * failure's own.
+ * next run keeps the file and says nothing more about it. The message is the failure's own, and
+ * `cause` is the failure itself, with its stack.
  */
 export class CatchUpFailedError extends Error {
   readonly generated: GeneratedFiles;
 
   constructor(failure: unknown, generated: GeneratedFiles) {
     const error = failure instanceof Error ? failure : new Error(String(failure));
-    super(error.message, { cause: error.cause ?? error });
+    super(error.message, { cause: error });
     this.generated = generated;
   }
 }
@@ -108,15 +113,30 @@ export class CatchUpFailedError extends Error {
  * under it.
  */
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
+  // Async, so a Definition the Catalog refuses rejects like every other failure.
+  const definition = readDefinition(options.definition);
+  const result = await generateFromCatalog({ ...options, definition });
+  return result;
+}
+
+/** `generate`'s options, with the Definition read into plain data, as a Worker posts it. */
+export type GenerateFromCatalogOptions = Omit<GenerateOptions, "definition"> & {
+  readonly definition: CatalogDefinition;
+};
+
+/** Runs `generate` on a Definition already read into its Catalog, schema names, and renames. */
+export async function generateFromCatalog(
+  options: GenerateFromCatalogOptions,
+): Promise<GenerateResult> {
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
-  requireModeledSchemas(options.definition, tracking.name);
+  requireModeledSchemas(options.definition.schemas, tracking.name);
   const result = await withDevLock(options.driver, "generate", (driver) =>
     generateLocked({ ...options, driver }),
   );
   return result;
 }
 
-async function generateLocked(options: GenerateOptions): Promise<GenerateResult> {
+async function generateLocked(options: GenerateFromCatalogOptions): Promise<GenerateResult> {
   const {
     driver,
     connect,
@@ -138,23 +158,29 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
   const committed = await readCommitted(fileSystem, migrations);
   const source: MigrationSource = { list: () => Promise.resolve(committed) };
 
-  const declared = declaredRenames(definition);
   const shadowDiff = await diffInShadow({
     driver,
     connect,
     source,
     definition,
-    declared,
     tracking,
     shadowOptions,
     edited,
   });
 
   if (strict !== undefined && shadowDiff.leftover !== undefined) {
-    throw new Error(strictRefusal(shadowDiff.leftover, path, strict.config));
+    throw strictLeftoverError(shadowDiff.leftover, path, strict.config);
   }
 
-  const kept = { driver, source, tracking, committed, path, shadow: shadowDiff.shadow, declared };
+  const kept = {
+    driver,
+    source,
+    tracking,
+    committed,
+    path,
+    shadow: shadowDiff.shadow,
+    declared: definition.renames,
+  };
   if (edited !== undefined) return replayEdited(kept, edited, shadowDiff);
   return writeGenerated({ ...kept, fileSystem, existing }, shadowDiff);
 }
@@ -174,7 +200,7 @@ async function writeGenerated(
   const { path } = kept;
   if (sql === "") {
     if (existing !== undefined) await fileSystem.remove(path);
-    const file = existing === undefined ? "kept" : "removed";
+    const file = existing === undefined ? "absent" : "removed";
     const generated: GeneratedFiles = { path, sql: undefined, file, hazards: [], hints };
     return { ...generated, devDatabase: await catchUpAfter(generated, kept) };
   }
@@ -220,17 +246,9 @@ async function replayEdited(
   return { ...generated, devDatabase: await catchUpAfter(generated, kept, current) };
 }
 
-function strictRefusal(leftover: string, path: string, config: string): string {
-  return [
-    `error: current.sql leaves a difference from the Definition (strict mode, ${config}):`,
-    leftover,
-    `fix the hand edit in ${path}, or set strict: false in ${config}`,
-  ].join("\n");
-}
-
 /** Refuses a schema `introspect` skips, whose tables would otherwise vanish from `current.sql`. */
-function requireModeledSchemas(definition: DefinitionTables, trackingName: string): void {
-  for (const schema of definitionSchemas(definition)) {
+function requireModeledSchemas(schemas: readonly string[], trackingName: string): void {
+  for (const schema of schemas) {
     const reason = skippedSchemaReason(schema, trackingName);
     if (reason !== undefined) {
       throw new Error(

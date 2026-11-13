@@ -160,7 +160,7 @@ describe("replaying new files into a Dev database with no Current migration reco
       /^the Dev database didn't catch up, so it was left as it was: 000002-require-email\.sql: .+; run smonndb reset to rebuild it from the files$/u,
     );
     await expect(failure).rejects.toHaveProperty(
-      "cause.message",
+      "cause.cause.message",
       expect.stringMatching(/^000002-require-email\.sql: /u),
     );
 

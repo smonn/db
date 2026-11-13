@@ -35,6 +35,8 @@ describe("main", () => {
     [["commit", "a", "--accept", ""], 'unknown Hazard kind ""'],
     [["rebase", "main"], "rebase takes no arguments: main"],
     [["verify", "--onto", "main"], "--onto applies only to rebase"],
+    [["commit", "a", "--watch"], "--watch applies only to generate"],
+    [["generate", "--watch", "now"], "generate takes no arguments: now"],
   ])("exits 2 with the usage for %j", async (argv, message) => {
     expect(await main(argv)).toBe(2);
     expect(cli.stderr).toContain(message);

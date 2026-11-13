@@ -8,33 +8,36 @@ import {
   postgresJsTypes,
 } from "../../adapters/postgres-js/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
-import type { Driver } from "../../runtime/ports/index.ts";
-import {
-  CatchUpFailedError,
-  commit,
-  generate,
-  reset,
-  type CommitOptions,
-} from "../generate/index.ts";
+import { commit, generate, reset, type CommitOptions } from "../generate/index.ts";
+import { generateDocument, type SuccessDocument } from "../output/index.ts";
 import type { Project } from "./project.ts";
-import { generatedLines, generateReport, type Outcome } from "./report.ts";
 import { onProcessInterrupt } from "./signals.ts";
 
-/** A command that runs against the Dev database. */
+export type Driver = ReturnType<typeof postgresJsDriver>;
+
+/** A command that runs against the Dev database and returns the document it prints. */
 export type DatabaseCommand = { readonly config: string } & (
-  | { readonly name: "generate" | "migrate" }
+  | { readonly name: "generate"; readonly watch: false }
+  | { readonly name: "migrate" }
   | { readonly name: "commit"; readonly slug: string; readonly accept: CommitOptions["accept"] }
   | { readonly name: "reset"; readonly erase: boolean }
 );
 
-export async function run(command: DatabaseCommand, project: Project): Promise<Outcome> {
+export function run(command: DatabaseCommand, project: Project): Promise<SuccessDocument> {
+  return withDriver(project, (driver) => runOn(driver, command, project));
+}
+
+export async function withDriver<T>(
+  project: Project,
+  use: (driver: Driver) => Promise<T>,
+): Promise<T> {
   const sql = postgres(project.url, {
     onnotice: ignoreNotice,
     types: postgresJsTypes,
     connection: postgresJsConnection,
   });
   try {
-    return await runOn(postgresJsDriver(sql), command, project);
+    return await use(postgresJsDriver(sql));
   } finally {
     // Every statement has settled, and a graceful end() never settles once a backend ended
     // mid-statement (porsager/postgres#1226), which would swallow the error.
@@ -49,10 +52,17 @@ type Context = {
   readonly tracking: { readonly trackingSchema: string };
 };
 
-function runOn(driver: Driver, command: DatabaseCommand, project: Project): Promise<Outcome> {
+function contextOf(driver: Driver, project: Project): Context {
   const { migrationsFolder: migrations, trackingSchema } = project;
-  const tracking = { trackingSchema };
-  const context = { driver, project, migrations, tracking };
+  return { driver, project, migrations, tracking: { trackingSchema } };
+}
+
+function runOn(
+  driver: Driver,
+  command: DatabaseCommand,
+  project: Project,
+): Promise<SuccessDocument> {
+  const context = contextOf(driver, project);
   switch (command.name) {
     case "generate":
       return runGenerate(context);
@@ -68,7 +78,12 @@ function runOn(driver: Driver, command: DatabaseCommand, project: Project): Prom
   }
 }
 
-async function runGenerate({ driver, project, migrations, tracking }: Context): Promise<undefined> {
+async function runGenerate({
+  driver,
+  project,
+  migrations,
+  tracking,
+}: Context): Promise<SuccessDocument> {
   const result = await generate({
     driver,
     connect: postgresJsConnect(project.url, { onnotice: ignoreNotice }),
@@ -79,30 +94,15 @@ async function runGenerate({ driver, project, migrations, tracking }: Context): 
     ...(project.strict === true ? { strict: { config: project.configPath } } : {}),
     log: logToStderr,
     onInterrupt: onProcessInterrupt(),
-  }).catch((error: unknown) => {
-    // The file is settled and the next run keeps it, so this run is the only one to print its Hazards.
-    if (error instanceof CatchUpFailedError) {
-      printLines(generatedLines(error.generated, relativePath(error.generated.path)));
-    }
-    throw error;
   });
-  printLines(generateReport(result, relativePath(result.path)));
-  return undefined;
-}
-
-function relativePath(path: string): string {
-  return relative(process.cwd(), path);
-}
-
-function printLines(lines: readonly string[]): void {
-  for (const line of lines) print(line);
+  return generateDocument(result, relative(process.cwd(), result.path));
 }
 
 async function runCommit(
   { driver, migrations, tracking }: Context,
   slug: string,
   accept: CommitOptions["accept"],
-): Promise<Outcome> {
+): Promise<SuccessDocument> {
   const fileSystem = nodeFileSystem();
   const result = await commit({
     driver,
@@ -119,7 +119,7 @@ async function runCommit(
 async function runReset(
   { driver, migrations, tracking }: Context,
   erase: boolean,
-): Promise<Outcome> {
+): Promise<SuccessDocument> {
   const fileSystem = nodeFileSystem();
   const { committed, current } = await reset({
     driver,
@@ -132,7 +132,7 @@ async function runReset(
   return { command: "reset", ok: true, committed, current };
 }
 
-async function runMigrate({ driver, migrations, tracking }: Context): Promise<Outcome> {
+async function runMigrate({ driver, migrations, tracking }: Context): Promise<SuccessDocument> {
   const source = nodeMigrationSource(migrations);
   const { applied } = await migrate({ driver, source, ...tracking });
   return { command: "migrate", ok: true, applied };
@@ -142,8 +142,8 @@ export function print(line: string): void {
   process.stdout.write(`${line}\n`);
 }
 
-function logToStderr(line: string): void {
+export function logToStderr(line: string): void {
   process.stderr.write(`${line}\n`);
 }
 
-function ignoreNotice(): void {}
+export function ignoreNotice(): void {}
