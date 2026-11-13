@@ -1,12 +1,7 @@
 import { UnmodeledBlockerError, type TrackingSchema } from "../../runtime/internal/index.ts";
 import { migrate } from "../../runtime/migrator/index.ts";
 import type { Connect, Driver, MigrationSource } from "../../runtime/ports/index.ts";
-import {
-  declaredRenames,
-  definitionCatalog,
-  type Catalog,
-  type DefinitionTables,
-} from "../catalog/index.ts";
+import type { Catalog, CatalogDefinition } from "../catalog/index.ts";
 import { diff, refuseTypeChanges, type Diff } from "../diff/index.ts";
 import { introspect } from "../introspect/index.ts";
 import { withShadowDatabases, type ShadowOptions } from "../shadow/index.ts";
@@ -20,7 +15,7 @@ export type ShadowDiffOptions = {
   readonly connect: Connect;
   /** The Committed migrations, replayed into the Shadow database. */
   readonly source: MigrationSource;
-  readonly definition: DefinitionTables;
+  readonly definition: CatalogDefinition;
   readonly tracking: TrackingSchema;
   readonly shadowOptions: ShadowOptions;
   /** A hand-edited Current migration body: the Shadow runs it instead of the generated SQL. */
@@ -52,12 +47,12 @@ export function diffInShadow(options: ShadowDiffOptions): Promise<ShadowDiff> {
     async (databases) => {
       await migrate({ driver: databases.shadow, source, trackingSchema: tracking.name });
       await databases.definition.execute(
-        await definitionSql(databases.definition, definitionCatalog(definition)),
+        await definitionSql(databases.definition, definition.catalog),
       );
       const target = await introspect(databases.definition, tracking);
       const { catalog, renames } = await renameInShadow(
         databases.shadow,
-        declaredRenames(definition),
+        definition.renames,
         tracking,
       );
       const result = diff(catalog, target, renames);

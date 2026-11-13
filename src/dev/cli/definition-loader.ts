@@ -1,12 +1,9 @@
 import { relative } from "node:path";
 import { Worker } from "node:worker_threads";
-import type { Catalog, Rename } from "../catalog/index.ts";
+import type { CatalogDefinition } from "../catalog/index.ts";
 
 /** What a fresh Worker read from the Definition. Plain data, so it survives `postMessage`. */
-export type LoadedDefinition = {
-  readonly catalog: Catalog;
-  readonly schemas: readonly string[];
-  readonly renames: readonly Rename[];
+export type LoadedDefinition = CatalogDefinition & {
   /** The Definition file and every file it imports outside `node_modules`, as absolute paths. */
   readonly files: readonly string[];
 };

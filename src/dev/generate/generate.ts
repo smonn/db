@@ -9,7 +9,7 @@ import {
   writeCurrent,
 } from "../../runtime/internal/index.ts";
 import type { Connect, Driver, FileSystem, MigrationSource } from "../../runtime/ports/index.ts";
-import { declaredRenames, definitionSchemas, type DefinitionTables } from "../catalog/index.ts";
+import { readDefinition, type CatalogDefinition, type DefinitionTables } from "../catalog/index.ts";
 import type { Hazard } from "../diff/index.ts";
 import { skippedSchemaReason } from "../introspect/index.ts";
 import type { ShadowOptions } from "../shadow/index.ts";
@@ -91,15 +91,30 @@ export type GenerateResult = {
  * under it.
  */
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
+  // Async, so a Definition the Catalog refuses rejects like every other failure.
+  const definition = readDefinition(options.definition);
+  const result = await generateFromCatalog({ ...options, definition });
+  return result;
+}
+
+/** `generate`'s options, with the Definition read into plain data, as a Worker posts it. */
+export type GenerateFromCatalogOptions = Omit<GenerateOptions, "definition"> & {
+  readonly definition: CatalogDefinition;
+};
+
+/** Runs `generate` on a Definition already read into its Catalog, schema names, and renames. */
+export async function generateFromCatalog(
+  options: GenerateFromCatalogOptions,
+): Promise<GenerateResult> {
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
-  requireModeledSchemas(options.definition, tracking.name);
+  requireModeledSchemas(options.definition.schemas, tracking.name);
   const result = await withDevLock(options.driver, "generate", (driver) =>
     generateLocked({ ...options, driver }),
   );
   return result;
 }
 
-async function generateLocked(options: GenerateOptions): Promise<GenerateResult> {
+async function generateLocked(options: GenerateFromCatalogOptions): Promise<GenerateResult> {
   const {
     driver,
     connect,
@@ -135,8 +150,15 @@ async function generateLocked(options: GenerateOptions): Promise<GenerateResult>
     throw new Error(strictRefusal(shadowDiff.leftover, path, strict.config));
   }
 
-  const declared = declaredRenames(definition);
-  const kept = { driver, source, tracking, committed, path, shadow: shadowDiff.shadow, declared };
+  const kept = {
+    driver,
+    source,
+    tracking,
+    committed,
+    path,
+    shadow: shadowDiff.shadow,
+    declared: definition.renames,
+  };
   if (edited !== undefined) return replayEdited(kept, edited, shadowDiff);
   return writeGenerated({ ...kept, fileSystem, existing }, shadowDiff);
 }
@@ -199,8 +221,8 @@ function strictRefusal(leftover: string, path: string, config: string): string {
 }
 
 /** Refuses a schema `introspect` skips, whose tables would otherwise vanish from `current.sql`. */
-function requireModeledSchemas(definition: DefinitionTables, trackingName: string): void {
-  for (const schema of definitionSchemas(definition)) {
+function requireModeledSchemas(schemas: readonly string[], trackingName: string): void {
+  for (const schema of schemas) {
     const reason = skippedSchemaReason(schema, trackingName);
     if (reason !== undefined) {
       throw new Error(

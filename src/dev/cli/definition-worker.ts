@@ -4,7 +4,7 @@ import { registerHooks } from "node:module";
 import { relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parentPort, workerData } from "node:worker_threads";
-import { declaredRenames, definitionCatalog, definitionSchemas } from "../catalog/index.ts";
+import { readDefinition } from "../catalog/index.ts";
 import type { LoadedDefinition } from "./definition-loader.ts";
 import { definitionOf, importDefault } from "./definition-file.ts";
 
@@ -25,12 +25,7 @@ async function load(file: string): Promise<LoadedDefinition> {
   });
   try {
     const definition = definitionOf(file, await importNamingModule(file, files));
-    return {
-      catalog: definitionCatalog(definition),
-      schemas: definitionSchemas(definition),
-      renames: declaredRenames(definition),
-      files: [...files],
-    };
+    return { ...readDefinition(definition), files: [...files] };
   } catch (error) {
     // Watch keeps watching a new import that broke, so a fix to it starts the next run.
     throw error instanceof Error ? Object.assign(error, { files: [...files] }) : error;

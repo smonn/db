@@ -1,5 +1,11 @@
 export { commit, type CommitOptions, type CommitResult } from "./commit.ts";
-export { generate, type GenerateOptions, type GenerateResult } from "./generate.ts";
+export {
+  generate,
+  generateFromCatalog,
+  type GenerateFromCatalogOptions,
+  type GenerateOptions,
+  type GenerateResult,
+} from "./generate.ts";
 export { hazardsIn } from "./hazards.ts";
 export { DevDatabaseLockedError } from "./dev-lock.ts";
 export { HazardNotAcceptedError } from "./hazard-refusal.ts";
