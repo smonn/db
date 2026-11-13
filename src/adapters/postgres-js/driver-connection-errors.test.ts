@@ -28,7 +28,7 @@ function rule(matches: (text: string) => boolean, error: unknown, times = Infini
 /** A real error from the server, with the severity and SQLSTATE a test needs it to carry. */
 async function serverError(severity: string, code = "22012"): Promise<postgres.PostgresError> {
   const error = await db.driver.query("select 1 / 0").catch((caught: unknown) => caught);
-  if (!(error instanceof postgres.PostgresError)) throw new Error("expected a PostgresError");
+  if (!(error instanceof postgres.PostgresError)) throw new TypeError("expected a PostgresError");
   return Object.assign(error, { severity, code });
 }
 
