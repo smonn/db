@@ -1,11 +1,12 @@
+import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
-import { definitionCatalog } from "../catalog/index.ts";
-import { loadDefinitionInWorker } from "./definition-loader.ts";
+import { declaredRenames, definitionCatalog } from "../catalog/index.ts";
+import { loadDefinitionInWorker, settledLoad } from "./definition-loader.ts";
 
 const RUNTIME = JSON.stringify(join(import.meta.dirname, "../../runtime/index.ts"));
 
@@ -56,17 +57,19 @@ async function ticksNowAndLater(ticks: string): Promise<[number, number]> {
 }
 
 describe("loadDefinitionInWorker", () => {
-  it("returns the Definition's Catalog, schema names, and module graph", async () => {
-    await write("tables/users.ts", users("id: c.text().primaryKey()"));
+  it("returns the Definition's Catalog, schema names, renames, and module graph", async () => {
+    await write("tables/users.ts", users(`id: c.text().primaryKey().renamedFrom("key")`));
     const file = await write("definition.ts", definition(`app: { users }`));
 
     const loaded = await loadDefinitionInWorker(file);
 
     const expected = defineDatabase({
-      app: { users: defineTable((c) => ({ id: c.text().primaryKey() })) },
+      app: { users: defineTable((c) => ({ id: c.text().primaryKey().renamedFrom("key") })) },
     });
     expect(loaded.catalog).toStrictEqual(definitionCatalog(expected));
     expect(loaded.schemas).toStrictEqual(["app"]);
+    expect(loaded.renames).toStrictEqual(declaredRenames(expected));
+    expect(loaded.renames).not.toHaveLength(0);
     expect(loaded.files.filter((path) => path.startsWith(dir))).toStrictEqual([
       file,
       join(dir, "tables/users.ts"),
@@ -129,13 +132,84 @@ describe("loadDefinitionInWorker", () => {
     expect(later).toBe(now);
   });
 
-  it("names the Definition file when a module it imports throws", async () => {
-    await write("tables/users.ts", `throw new Error("bad table");\nexport const users = {};\n`);
+  it("names the module that throws, not the Definition file importing it", async () => {
+    const table = await write(
+      "tables/users.ts",
+      `throw new Error("bad table");\nexport const users = {};\n`,
+    );
     const file = await write("definition.ts", definition(`public: { users }`));
 
     await expect(loadDefinitionInWorker(file)).rejects.toThrow(
-      `${relative(process.cwd(), file)}: bad table`,
+      `${relative(process.cwd(), table)}: bad table`,
     );
+  });
+
+  it("names the module that fails to parse", async () => {
+    const table = await write("tables/users.ts", "export const users = ;\n");
+    const file = await write("definition.ts", definition(`public: { users }`));
+
+    await expect(loadDefinitionInWorker(file)).rejects.toThrow(
+      `${relative(process.cwd(), table)}: Expression expected`,
+    );
+  });
+
+  it("returns the Catalog when the Worker errors after posting it", async () => {
+    // A timer the Definition left can throw before terminate() lands; a real Worker hits that
+    // window too rarely to test, so a stand-in plays the events in that order.
+    // oxlint-disable-next-line unicorn/prefer-event-target -- it stands in for a Worker, a Node EventEmitter.
+    const worker = Object.assign(new EventEmitter(), { terminate: () => Promise.resolve(0) });
+    const loaded = { catalog: new Map(), schemas: ["public"], renames: [], files: [] };
+
+    const loading = settledLoad(worker, "definition.ts", {});
+    worker.emit("message", loaded);
+    worker.emit("error", new Error("late"));
+    worker.emit("exit", 1);
+
+    await expect(loading).resolves.toBe(loaded);
+  });
+
+  it("rejects and ends the Worker when the Definition doesn't settle in time", async () => {
+    const ticks = join(dir, "ticks");
+    const file = await write("definition.ts", `${ticking(ticks)}await new Promise(() => {});\n`);
+
+    const loading = loadDefinitionInWorker(file, { timeoutMs: 2000 });
+    // A slow runner can reach the timeout before the Worker ticks once, so wait for the first.
+    await vi.waitFor(async () => {
+      expect((await stat(ticks)).size).toBeGreaterThan(0);
+    });
+
+    await expect(loading).rejects.toThrow(
+      `${relative(process.cwd(), file)} didn't load within 2000 ms`,
+    );
+    const [now, later] = await ticksNowAndLater(ticks);
+    expect(later).toBe(now);
+  });
+
+  it("rejects and ends the Worker when the signal aborts", async () => {
+    const ticks = join(dir, "ticks");
+    const file = await write("definition.ts", `${ticking(ticks)}await new Promise(() => {});\n`);
+    const controller = new AbortController();
+
+    const loading = loadDefinitionInWorker(file, { signal: controller.signal });
+    await vi.waitFor(async () => {
+      expect((await stat(ticks)).size).toBeGreaterThan(0);
+    });
+    controller.abort(new Error("interrupted"));
+
+    await expect(loading).rejects.toThrow(`stopped loading ${relative(process.cwd(), file)}`);
+    await expect(loading).rejects.toMatchObject({ cause: { message: "interrupted" } });
+    const [now, later] = await ticksNowAndLater(ticks);
+    expect(later).toBe(now);
+  });
+
+  it("starts no Worker when the signal has already aborted", async () => {
+    const ticks = join(dir, "ticks");
+    const file = await write("definition.ts", `${ticking(ticks)}export default { public: {} };\n`);
+
+    await expect(loadDefinitionInWorker(file, { signal: AbortSignal.abort() })).rejects.toThrow(
+      `stopped loading ${relative(process.cwd(), file)}`,
+    );
+    await expect(stat(ticks)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("keeps the module graph it resolved when the load fails", async () => {
@@ -148,6 +222,17 @@ describe("loadDefinitionInWorker", () => {
 
     await expect(loadDefinitionInWorker(file)).rejects.toMatchObject({
       files: [file, join(dir, "new/table.ts")],
+    });
+  });
+
+  it("keeps a relative import that doesn't exist yet in the module graph", async () => {
+    const file = await write(
+      "definition.ts",
+      `import { users } from "./tables/users.ts";\nexport default { public: { users } };\n`,
+    );
+
+    await expect(loadDefinitionInWorker(file)).rejects.toMatchObject({
+      files: [file, join(dir, "tables/users.ts")],
     });
   });
 

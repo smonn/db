@@ -97,7 +97,7 @@ create table public.orders (id integer primary key, user_id integer references p
       path: CURRENT,
       hints: [],
       sql: undefined,
-      file: "kept",
+      file: "absent",
       devDatabase: { kind: "reset" },
       hazards: [],
     });

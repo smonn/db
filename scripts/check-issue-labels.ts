@@ -4,7 +4,8 @@
  * (`bug` or `enhancement`) on every `ready-for-agent` or `ready-for-human` issue. When an open,
  * human-opened ready issue lacks either, it gets one comment naming the gap. The comment carries
  * a marker, and an issue that already has one gets no second comment. Once the issue complies, or
- * stops being ready, the check deletes its marker comments, so a later break is warned afresh.
+ * stops being ready, the check deletes its marker comments, so a later break is warned afresh. A
+ * comment someone deleted first (404) counts as deleted.
  *
  * Run with `GITHUB_EVENT_PATH` set to an `issues` event payload and `gh` authenticated, as
  * `pnpm check:labels`; the Issue milestone workflow runs it on `labeled` and `unlabeled` for the
@@ -172,8 +173,19 @@ function readEnvEvent(env: NodeJS.ProcessEnv): LabelsEvent | undefined {
   return needsLabelCheck(event) ? event : undefined;
 }
 
+/** Whether `gh` failed because GitHub has no such resource, as when someone deleted a comment first. */
+function isNotFound(error: unknown): boolean {
+  return error instanceof Error && /\(HTTP 404\)/u.test(error.message);
+}
+
 function deleteComments(repo: string, comments: Comment[], gh: Gh): void {
-  for (const { id } of comments) gh(["api", "-X", "DELETE", `repos/${repo}/issues/comments/${id}`]);
+  for (const { id } of comments) {
+    try {
+      gh(["api", "-X", "DELETE", `repos/${repo}/issues/comments/${id}`]);
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
+    }
+  }
 }
 
 export function main(env: NodeJS.ProcessEnv = process.env, gh: Gh = runGh): void {

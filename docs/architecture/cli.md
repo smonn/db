@@ -16,13 +16,17 @@ export default defineConfig({
 });
 ```
 
-Every command takes `--config`, and `util.parseArgs` parses the arguments. There is no `--url` flag: point a command at another Database through the environment the config reads. Watch mode waits for v0.4.
+Every command takes `--config`, and `util.parseArgs` parses the arguments. There is no `--url` flag: point a command at another Database through the environment the config reads. Generate takes `--watch` (ADR-0032).
 
 ## Output
 
 Plain text: results to stdout, errors to stderr, with no colors when stdout isn't a TTY. Exit codes are 0 on success, 1 on any refusal or failure, and 2 on a usage error.
 
-`--json` prints one document on stdout, success or failure, holding `command`, `ok`, and a failure's `error` (`code`, `message`, per-code fields). Exit codes and stderr's progress lines stay; a usage error prints a document. Codes: `usage`, `locked`, `hazard_not_accepted`, `unmodeled_blocker`, `chain_broken`, `not_dev_database`, else `failed`. `@smonn/db/dev` exports the types.
+`generate --watch` prints an append-only log on stdout; a failed run's error and its `kept the Dev database` line go to stderr. Its colors need both streams on a TTY and `NO_COLOR` unset.
+
+`--json` prints one document on stdout, success or failure, holding `command`, `ok`, and a failure's `error` (`code`, `message`, per-code fields). Exit codes and stderr's progress lines stay; a usage error prints a document. Codes: `usage`, `locked`, `hazard_not_accepted`, `catch_up_failed`, `leftover`, `unmodeled_blocker`, `chain_broken`, `not_dev_database`, else `failed`. `@smonn/db/dev` exports the types and the dev errors.
+
+`generate --watch --json` prints NDJSON, one `WatchEvent` per line, told apart by `event`: `started` (`at`, `definition`, `migrations`), then a `run` per run, then `stopped` (`at`). A `run` holds `at`, `trigger` (the paths that started it, empty at start), `durationMs`, and `ok`. A good run adds `outcome` (`initial`, `changed`, `unchanged`, `fixed`) and the `GenerateDocument`. A failed run adds `keptFrom` (the last good run's `at`, null before one) and a `FailureDocument`, whose `catch_up_failed` error holds the file and Hazards generate settled. `stopped` is the last event, and the plain log's `stopped` line the last line: a run still in flight at Ctrl-C reports nothing. A second watcher prints one `locked` failure document (`lock: "watch"`) and exits 1.
 
 ## generate
 
@@ -51,7 +55,7 @@ sequenceDiagram
   Gen->>DB: if behind, replay the new files, or diff it against the Shadow
 ```
 
-Generate writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database. It prints the file it wrote and each Hazard with its statement, then one line when it replayed files into, diffed, or reset the Dev database, and each Hazard it applied.
+Generate writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database. It prints the file it wrote and each Hazard, then one line for the Dev database and each Hazard it applied; a failed catch-up still prints the file and its Hazards, then exits 1. `--json` prints `GenerateDocument`: `file`, `hazards`, `hints`, `devDatabase`.
 
 ### Hand edits
 
@@ -60,6 +64,10 @@ Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body 
 ### Dev database catch-up
 
 Generate compares every hash in `smonn_db.migrations` with the Committed chain, the check `commit` makes, and `smonn_db.current` with the Current migration. Matching markers mean no work, and an empty, unmarked Database resets (ADR-0016). With no Current migration recorded and recorded rows that prefix the Committed chain, it replays the new Committed files and `current.sql` as written. Otherwise it diffs the Dev database against the Shadow holding the Current migration, keeping data, and names files that skipped replay. Steps, markers, and the diff's zero-diff check share one transaction, which a failure rolls back, naming `reset`.
+
+### Watch
+
+`--watch` runs generate at start, then after each change (ADR-0032), loading the Definition in a fresh Worker each run. Non-recursive watchers cover each module-graph folder, the migrations folder, and its parent. A run starts after 100 ms of quiet, and changes during a run queue one rerun. An event on `current.sql` matching watch's own last write, by hash, is skipped. A failed run keeps the last good Dev database, and watch continues.
 
 ## commit
 
@@ -168,3 +176,5 @@ A hand edit can open `current.sql` with `--! no-transaction` (ADR-0020) so it ho
 ## Concurrency
 
 `generate`, `commit`, and `reset` share a `pg_try_advisory_lock` on the Dev database under a key distinct from the migrator's, and a second run exits at once with an error naming the lock. A waiting run would only redo the first run's reset, and failing at once gives quick feedback when several agent sessions share one Dev database. Every reset also takes the migrator's own lock, polled for, so a runtime `migrate` on the Dev database waits for the reset instead of racing its wipe. `generate` holds the migrator's lock from its Dev database check until the run ends, Shadow work included, and `commit` holds it from before its check until the run ends.
+
+Under `--watch`, each run takes the Dev and migrator locks on its own session, and a third advisory key, `WATCH_LOCK_KEY`, held for the whole watch, refuses a second watcher.

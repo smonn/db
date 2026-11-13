@@ -5,8 +5,10 @@ import {
   commentsRoute,
   deleted,
   deletion,
+  deletionRoute,
   event,
   fetched,
+  ghFailure,
   issueRoute,
   labelled,
   posted,
@@ -55,6 +57,23 @@ describe("main reconciling the comment", () => {
     const gh = run(event(unready, "unlabeled", "ready-for-agent"), unready, [[MARKER]]);
     expect(deleted(gh)).toEqual([deletion(101)]);
     expect(posted(gh)).toEqual([]);
+  });
+
+  test("goes on past a marker comment someone already deleted", () => {
+    const failures = { [deletionRoute(101)]: ghFailure("gh: Not Found (HTTP 404)\n") };
+    const gh = run(event(fetched()), fetched(), [[MARKER, MARKER]], failures);
+    expect(deleted(gh)).toEqual([deletion(101), deletion(102)]);
+  });
+
+  test.each([
+    "gh: Forbidden (HTTP 403)\n",
+    "gh: Bad Gateway (HTTP 502)\n",
+    "gh: no route to host\n",
+  ])("fails on a delete refused otherwise: %s", (stderr) => {
+    const failures = { [deletionRoute(101)]: ghFailure(stderr) };
+    expect(() => run(event(fetched()), fetched(), [[MARKER, MARKER]], failures)).toThrow(
+      /Command failed/u,
+    );
   });
 
   test("leaves a human's comment that quotes the marker", () => {
