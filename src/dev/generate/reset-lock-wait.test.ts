@@ -28,4 +28,22 @@ describe("reset and a held migrator's lock", () => {
 
     expect(lines).toStrictEqual(["waiting for the migrator's lock"]);
   });
+
+  it("logs no line when the lock is free", async () => {
+    await db.driver.execute(
+      "drop schema if exists smonn_db cascade; drop schema public cascade; create schema public",
+    );
+    const lines: string[] = [];
+
+    await reset({
+      driver: db.driver,
+      fileSystem: memoryFileSystem(),
+      migrations: "db/migrations",
+      log: (line) => {
+        lines.push(line);
+      },
+    });
+
+    expect(lines).toStrictEqual([]);
+  });
 });

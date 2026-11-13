@@ -90,3 +90,64 @@ describe("refuseTypeChanges for a name that changes kind", () => {
     expect(refusing(withDomain(), withTable())).not.toThrow();
   });
 });
+
+function kindOf(kind: "enum" | "domain"): Catalog {
+  const builder = catalogBuilder();
+  builder.schema("public");
+  if (kind === "enum") builder.enumType("public", "x", { labels: ["a"] });
+  else builder.domain("public", "x", DOMAIN);
+  return builder.build();
+}
+
+function domainOver(base: string): Catalog {
+  const builder = catalogBuilder();
+  builder.schema("public");
+  builder.domain("public", "x", { ...DOMAIN, base });
+  return builder.build();
+}
+
+describe("refuseTypeChanges against the Dev database", () => {
+  it.each<[string, () => [Catalog, Catalog]]>([
+    ["a name that changes kind", () => [kindOf("enum"), kindOf("domain")]],
+    ["a domain's new base type", () => [domainOver("text"), domainOver("integer")]],
+    [
+      "a domain over a swapped enum",
+      () =>
+        swap((builder) => {
+          builder.domain("public", "code", { ...DOMAIN, base: "public.mood" });
+        }),
+    ],
+    [
+      "a stored generated column of a swapped enum",
+      () =>
+        swap((builder) => {
+          builder.column("public", "users", "feeling", { type: "public.mood", notNull: false });
+          builder.columnGenerated("public", "users", "feeling", {
+            expression: "mood",
+            storage: "stored",
+          });
+        }),
+    ],
+  ])(
+    "ends %s with its reason, since generate wrote the files and no migration is left to write",
+    (_name, build) => {
+      const [from, to] = build();
+      const refuse = (): void => {
+        refuseTypeChanges({ from, to }, "dev");
+      };
+
+      expect(refuse).toThrow(/^Generate can't .*[^.]$/su);
+      expect(refuse).not.toThrow(/wrote no migration/u);
+    },
+  );
+});
+
+describe("refuseTypeChanges against the Shadow", () => {
+  it("names the migration to write by hand for a domain's new base type", () => {
+    expect(() => {
+      refuseTypeChanges({ from: domainOver("text"), to: domainOver("integer") });
+    }).toThrow(
+      `Generate can't change the base type of the domain "public"."x" from text to integer: Postgres has no ALTER DOMAIN for it. Generate wrote no migration: write this one by hand, retyping each column off the domain, dropping it, and creating it again over the new base, or give the new domain another name.`,
+    );
+  });
+});

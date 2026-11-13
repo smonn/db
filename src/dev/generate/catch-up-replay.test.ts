@@ -188,9 +188,10 @@ describe("replaying new files into a Dev database with no Current migration reco
     const fileSystem = await committedUsers();
     fileSystem.files.set(CURRENT, "--! no-transaction\nselect 1;\n");
 
-    expect((await generateWith(fileSystem, users)).devDatabase).toMatchObject({
+    expect((await generateWith(fileSystem, users)).devDatabase).toStrictEqual({
       kind: "diffed",
       skipped: ["current.sql"],
+      hazards: [{ kind: "data_loss", statement: 'drop table "public"."junk";' }],
     });
     expect(await recordedCurrent()).toHaveLength(1);
   });
