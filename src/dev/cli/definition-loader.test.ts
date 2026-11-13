@@ -219,6 +219,17 @@ describe("loadDefinitionInWorker", () => {
     });
   });
 
+  it("keeps a relative import that doesn't exist yet in the module graph", async () => {
+    const file = await write(
+      "definition.ts",
+      `import { users } from "./tables/users.ts";\nexport default { public: { users } };\n`,
+    );
+
+    await expect(loadDefinitionInWorker(file)).rejects.toMatchObject({
+      files: [file, join(dir, "tables/users.ts")],
+    });
+  });
+
   it("refuses a default export that isn't a Definition", async () => {
     const file = await write("definition.ts", "export default null;\n");
 
