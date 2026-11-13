@@ -31,11 +31,22 @@ export function event(current: LabelledIssue, action = "labeled", label?: string
   return { action, ...removed, issue: current, repository: { full_name: "smonn/db" } };
 }
 
-/** Answers each call from `routes`, keyed by its last argument; a list route holds its pages. */
-export function fakeGh(routes: Record<string, unknown>): Gh {
-  return vi.fn<(args: string[]) => string>(
-    (args) => JSON.stringify(routes[args.at(-1) ?? ""]) ?? "",
-  );
+/**
+ * Answers each call from `routes`, keyed by its last argument; a list route holds its pages. A
+ * call whose last argument is in `failures` throws that error, as `gh` does when GitHub refuses.
+ */
+export function fakeGh(routes: Record<string, unknown>, failures: Record<string, Error> = {}): Gh {
+  return vi.fn<(args: string[]) => string>((args) => {
+    const route = args.at(-1) ?? "";
+    const failure = failures[route];
+    if (failure !== undefined) throw failure;
+    return JSON.stringify(routes[route]) ?? "";
+  });
+}
+
+/** The error `execFileSync` throws when `gh` exits 1 with `stderr`. */
+export function ghFailure(stderr: string): Error {
+  return Object.assign(new Error(`Command failed: gh api\n${stderr}`), { stderr });
 }
 
 export function writeEvent(payload: unknown, name = "event.json"): string {
@@ -52,19 +63,23 @@ export function run(
   payload: LabelsEvent,
   live: LabelledIssue = payload.issue,
   pages: Remark[][] = [[]],
+  failures: Record<string, Error> = {},
 ): Gh {
   let id = 100;
-  const gh = fakeGh({
-    [issueRoute]: live,
-    [commentsRoute]: pages.map((page) =>
-      page.map((remark) => {
-        id += 1;
-        const { body, human } =
-          typeof remark === "string" ? { body: remark, human: false } : remark;
-        return { id, body, user: { type: human ? "User" : "Bot" } };
-      }),
-    ),
-  });
+  const gh = fakeGh(
+    {
+      [issueRoute]: live,
+      [commentsRoute]: pages.map((page) =>
+        page.map((remark) => {
+          id += 1;
+          const { body, human } =
+            typeof remark === "string" ? { body: remark, human: false } : remark;
+          return { id, body, user: { type: human ? "User" : "Bot" } };
+        }),
+      ),
+    },
+    failures,
+  );
   main({ GITHUB_EVENT_PATH: writeEvent(payload) }, gh);
   return gh;
 }
@@ -77,8 +92,10 @@ export function deleted(gh: Gh): string[][] {
   return gh.mock.calls.map(([args]) => args).filter((args) => args.includes("DELETE"));
 }
 
+export const deletionRoute = (id: number): string => `repos/smonn/db/issues/comments/${id}`;
+
 export function deletion(id: number): string[] {
-  return ["api", "-X", "DELETE", `repos/smonn/db/issues/comments/${id}`];
+  return ["api", "-X", "DELETE", deletionRoute(id)];
 }
 
 export function comment(gap: string): string[] {
