@@ -99,8 +99,11 @@ export type ErrorBody =
   | {
       readonly code: "locked";
       readonly message: string;
-      /** Which advisory lock another run holds: the lock `generate`, `commit`, and `reset` share on the Dev database. */
-      readonly lock: "dev";
+      /**
+       * Which advisory lock another run holds: `dev`, the lock `generate`, `commit`, and `reset`
+       * share on the Dev database, or `watch`, the one a running `generate --watch` holds.
+       */
+      readonly lock: "dev" | "watch";
     }
   | {
       readonly code: "hazard_not_accepted";

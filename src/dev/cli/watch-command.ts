@@ -4,31 +4,36 @@ import type { Project } from "./project.ts";
 import { ignoreNotice, logToStderr, print, withDriver, type Driver } from "./run.ts";
 import { onProcessInterrupt } from "./signals.ts";
 import { watch } from "./watch.ts";
+import { watchEvents } from "./watch-events.ts";
 import { watchLog } from "./watch-log.ts";
 
-/** `generate --watch`, which prints a log of its own until it has events (ADR-0032). */
+/** `generate --watch`: a log of its own, or with `--json` NDJSON events (ADR-0032). */
 export type WatchCommand = {
   readonly name: "generate";
   readonly watch: true;
   readonly config: string;
 };
 
-export function watchGenerate(project: Project): Promise<void> {
-  return withDriver(project, (driver) => runWatch(driver, project));
+export function watchGenerate(project: Project, json: boolean): Promise<void> {
+  return withDriver(project, (driver) => runWatch(driver, project, json));
 }
 
 /**
  * Runs `generate --watch` until SIGINT or SIGTERM. The signal aborts a Definition load or lock
  * wait; the process then dies of it, so Postgres rolls back the run's open transaction.
  */
-async function runWatch(driver: Driver, project: Project): Promise<void> {
+async function runWatch(driver: Driver, project: Project, json: boolean): Promise<void> {
   const controller = new AbortController();
-  const log = watchLog({
-    out: print,
-    err: logToStderr,
-    color: process.stdout.isTTY && process.stderr.isTTY && process.env["NO_COLOR"] === undefined,
-    cwd: process.cwd(),
-  });
+  const cwd = process.cwd();
+  const log = json
+    ? watchEvents({ out: print, cwd })
+    : watchLog({
+        out: print,
+        err: logToStderr,
+        color:
+          process.stdout.isTTY && process.stderr.isTTY && process.env["NO_COLOR"] === undefined,
+        cwd,
+      });
   // One handler for the watch and each run's Shadow cleanup, so the process dies only after all.
   const onInterrupt = onProcessInterrupt();
   const unregister = onInterrupt(() => {

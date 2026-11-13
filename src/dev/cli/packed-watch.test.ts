@@ -105,4 +105,72 @@ describe("the packed package's generate --watch", () => {
       await killIfRunning(child);
     }
   });
+
+  it("prints NDJSON events with --json: a good run, a failed run, a fixed run, and a stop", async () => {
+    await writeDefinition("id: c.integer()");
+    const child = spawn(
+      join(project, "node_modules/.bin/smonndb"),
+      ["generate", "--watch", "--json"],
+      { cwd: project, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let stdout = "";
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    let stderr = "";
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    const events = (): unknown[] =>
+      stdout
+        .split("\n")
+        .filter((line) => line !== "")
+        .map((line): unknown => JSON.parse(line));
+    const untilEvents = (count: number): Promise<void> =>
+      vi.waitFor(
+        () => {
+          expect(events().length).toBeGreaterThanOrEqual(count);
+        },
+        { timeout: 20_000, interval: 50 },
+      );
+    try {
+      const exited = once(child, "exit");
+      await untilEvents(2);
+
+      await writeFile(join(project, "definition.ts"), 'throw new Error("broken definition");\n');
+      await untilEvents(3);
+      await writeDefinition("id: c.integer(), label: c.text()");
+      await untilEvents(4);
+      child.kill("SIGINT");
+
+      expect(await exited).toStrictEqual([null, "SIGINT"]);
+      expect(events()).toMatchObject([
+        { event: "started", definition: "definition.ts", migrations: "migrations" },
+        { event: "run", ok: true, outcome: "initial", trigger: [] },
+        {
+          event: "run",
+          ok: false,
+          trigger: expect.arrayContaining(["definition.ts"]) as unknown,
+          document: {
+            command: "generate",
+            ok: false,
+            error: {
+              code: "failed",
+              message: expect.stringContaining("broken definition") as unknown,
+            },
+          },
+        },
+        { event: "run", ok: true, outcome: "fixed", document: { command: "generate", ok: true } },
+        { event: "stopped" },
+      ]);
+    } catch (error) {
+      throw new Error(`${String(error)}\nchild stdout:\n${stdout}\nchild stderr:\n${stderr}`, {
+        cause: error,
+      });
+    } finally {
+      await killIfRunning(child);
+    }
+  });
 });

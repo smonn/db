@@ -2,7 +2,9 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
+import { nodeFileSystem } from "../../adapters/node/index.ts";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
+import { CatchUpFailedError } from "../generate/index.ts";
 import { errorOf, QUIET_FOR_MS, RUNTIME, useWatchProject } from "./watch.test-helper.ts";
 
 const db = useTestDatabase();
@@ -24,6 +26,26 @@ describe("watch", () => {
 
     expect(run).toMatchObject({ ok: true, changes: [join(project.dir, "tables/widgets.ts")] });
     expect(await project.columnsOfWidgets()).toStrictEqual(["id", "name"]);
+  });
+
+  it("reports no run that ends after the signal aborts, though the run still finishes", async () => {
+    const stopping: Promise<void>[] = [];
+    const real = nodeFileSystem();
+    const watching = project.startWatch({
+      // The abort lands once generate holds its locks and has written current.sql.
+      fileSystem: {
+        ...real,
+        async writeFile(path, content) {
+          await real.writeFile(path, content);
+          stopping.push(watching.stop());
+        },
+      },
+    });
+    await watching.watching;
+    await Promise.all(stopping);
+
+    expect(watching.runs).toStrictEqual([]);
+    expect(await project.columnsOfWidgets()).toStrictEqual(["id"]);
   });
 
   it("calls onWatching once, before the first run reports", async () => {
@@ -62,6 +84,18 @@ describe("watch", () => {
       await writeFile(current, `${await readFile(current, "utf8")}-- note\n`);
     });
     expect(edited).toMatchObject({ ok: true, changes: [current] });
+  });
+
+  it("skips the event of its own write to current.sql when the Dev database fails to catch up", async () => {
+    const watching = project.startWatch();
+    await watching.runAfter(() => project.writeTable("id: c.integer(), name: c.text()"));
+    await db.driver.execute("create view public.names as select name from public.widgets");
+
+    const failed = await watching.runAfter(() => project.writeTable("id: c.integer()"));
+
+    expect(errorOf(failed)).toBeInstanceOf(CatchUpFailedError);
+    const count = watching.runs.length;
+    expect(await watching.quiet()).toBe(count);
   });
 
   it("skips the event of its own removal of current.sql", async () => {

@@ -31,7 +31,8 @@ commands:
                   move the Committed migrations <ref> lacks onto its tip; <ref> defaults
                   to the remote's default branch
 
---json prints one JSON document on stdout instead of text. generate --watch doesn't take it yet.`;
+--json prints one JSON document on stdout instead of text; generate --watch prints one JSON event
+per line.`;
 
 const DEFAULT_CONFIG = "smonndb.config.ts";
 
@@ -64,8 +65,7 @@ function endOfFlags(argv: readonly string[]): number {
 
 async function perform(command: Command, json: boolean): Promise<void> {
   if (command.name === "generate" && command.watch) {
-    if (json) throw new UsageError("generate --watch doesn't take --json yet");
-    await watchGenerate(await loadProject(command.config));
+    await watchGenerate(await loadProject(command.config), json);
     return;
   }
   emit(await execute(command), json);
