@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { defineDatabase, defineTable } from "../../runtime/definition/index.ts";
 import { commit } from "./commit.ts";
-import { generate, StrictLeftoverError } from "./generate.ts";
+import { generate } from "./generate.ts";
 import { memoryFileSystem } from "./memory-file-system.test-helper.ts";
+import { StrictLeftoverError } from "./shadow-diff.ts";
 
 const db = useTestDatabase();
 

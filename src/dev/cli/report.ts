@@ -1,4 +1,4 @@
-import type { GenerateResult } from "../generate/index.ts";
+import type { GeneratedFiles, GenerateResult } from "../generate/index.ts";
 import {
   generateDocument,
   type GenerateDocument,
@@ -32,6 +32,11 @@ function otherLines(document: Exclude<SuccessDocument, GenerateDocument>): strin
 /** The lines `generate --watch` prints for one run, as one-shot `generate` prints them. */
 export function generateReport(result: GenerateResult, path: string): string[] {
   return generateLines(generateDocument(result, path));
+}
+
+/** The lines for what `generate` settled in the files, which a failed catch-up still prints. */
+export function generatedLines(files: GeneratedFiles, path: string): string[] {
+  return generateReport({ ...files, devDatabase: { kind: "none" } }, path);
 }
 
 /**

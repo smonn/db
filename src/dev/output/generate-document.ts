@@ -1,5 +1,5 @@
-import { hazardsIn, type GenerateResult } from "../generate/index.ts";
-import type { GenerateDocument } from "./document.ts";
+import { hazardsIn, type GeneratedFiles, type GenerateResult } from "../generate/index.ts";
+import type { GeneratedPart, GenerateDocument } from "./document.ts";
 
 /**
  * The document `generate --json` prints for a run. `path` is `current.sql` as the document names it,
@@ -7,17 +7,24 @@ import type { GenerateDocument } from "./document.ts";
  * document in each run's event (ADR-0032).
  */
 export function generateDocument(result: GenerateResult, path: string): GenerateDocument {
-  const { diff, leftover } = result;
+  return {
+    command: "generate",
+    ok: true,
+    ...generatedPart(result, path),
+    devDatabase: result.devDatabase,
+  };
+}
+
+/** What the files settled: the part of the document a failed catch-up still has. */
+export function generatedPart(files: GeneratedFiles, path: string): GeneratedPart {
+  const { diff, leftover } = files;
   const edit =
     diff === undefined
       ? ({ handEdited: false } as const)
       : ({ handEdited: true, diff, ...(leftover === undefined ? {} : { leftover }) } as const);
   return {
-    command: "generate",
-    ok: true,
-    file: { path, action: result.file, ...edit },
-    hazards: result.sql === undefined ? [] : hazardsIn(result.sql),
-    hints: result.hints,
-    devDatabase: result.devDatabase,
+    file: { path, action: files.file, ...edit },
+    hazards: files.sql === undefined ? [] : hazardsIn(files.sql),
+    hints: files.hints,
   };
 }

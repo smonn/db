@@ -82,6 +82,8 @@ type Document<Name extends keyof Results> = {
 } & Results[Name];
 
 export type GenerateDocument = Document<"generate">;
+/** The part of a `generate` document that the files settle, before the Dev database catches up. */
+export type GeneratedPart = Pick<Results["generate"], "file" | "hazards" | "hints">;
 export type CommitDocument = Document<"commit">;
 export type ResetDocument = Document<"reset">;
 export type MigrateDocument = Document<"migrate">;
@@ -106,8 +108,12 @@ export type ErrorBody =
       /** The Hazard kinds in `current.sql` that `--accept` doesn't name. */
       readonly kinds: readonly HazardKind[];
     }
-  // No command emits catch_up_failed yet; the catch-up that raises it does.
-  | { readonly code: "catch_up_failed"; readonly message: string }
+  | {
+      readonly code: "catch_up_failed";
+      readonly message: string;
+      /** What generate settled in the files before the Dev database failed to catch up, which the next run keeps and prints nothing more about. */
+      readonly generated: GeneratedPart;
+    }
   | {
       readonly code: "leftover";
       readonly message: string;

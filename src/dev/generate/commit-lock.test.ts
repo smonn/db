@@ -164,3 +164,19 @@ describe("commit and a held migrator's lock", () => {
     expect(lines).toStrictEqual(["waiting for the migrator's lock"]);
   });
 });
+
+describe("commit and a free migrator's lock", () => {
+  it("logs no wait line", async () => {
+    const fileSystem = await generated();
+    const lines: string[] = [];
+
+    await commit({
+      ...commitOptions(fileSystem),
+      log: (line) => {
+        lines.push(line);
+      },
+    });
+
+    expect(lines).toStrictEqual([]);
+  });
+});

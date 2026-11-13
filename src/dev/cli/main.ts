@@ -1,5 +1,7 @@
+import { relative } from "node:path";
 import { parseArgs } from "node:util";
 import { HAZARD_KINDS, type HazardKind } from "../diff/index.ts";
+import { CatchUpFailedError } from "../generate/index.ts";
 import {
   failureDocument,
   UsageError,
@@ -8,7 +10,7 @@ import {
 } from "../output/index.ts";
 import { runOffline, type OfflineCommand } from "./offline.ts";
 import { loadProject } from "./project.ts";
-import { documentLines } from "./report.ts";
+import { documentLines, generatedLines } from "./report.ts";
 import { print, run, type DatabaseCommand } from "./run.ts";
 import { watchGenerate, type WatchCommand } from "./watch-command.ts";
 
@@ -86,15 +88,26 @@ function reportFailure(
   error: unknown,
   { command, json }: { readonly command: CommandName | null; readonly json: boolean },
 ): number {
-  const usage = error instanceof UsageError;
-  if (json) {
-    print(JSON.stringify(failureDocument(command, error)));
-  } else if (usage) {
+  if (json) print(JSON.stringify(failureDocument(command, error, relativePath)));
+  else printFailure(error);
+  return error instanceof UsageError ? 2 : 1;
+}
+
+function relativePath(path: string): string {
+  return relative(process.cwd(), path);
+}
+
+function printFailure(error: unknown): void {
+  if (error instanceof UsageError) {
     process.stderr.write(`${error.message}\n\n${USAGE}\n`);
-  } else {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return;
   }
-  return usage ? 2 : 1;
+  // The files stay as generate settled them, and the next run prints nothing more about them.
+  if (error instanceof CatchUpFailedError) {
+    const { generated } = error;
+    for (const line of generatedLines(generated, relativePath(generated.path))) print(line);
+  }
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
 }
 
 function parseAccept(value: string | undefined): HazardKind[] {

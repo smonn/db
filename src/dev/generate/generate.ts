@@ -5,6 +5,7 @@ import {
   parseCurrent,
   quoteIdentifier,
   readCommitted,
+  type CurrentMigration,
   trackingSchema,
   writeCurrent,
 } from "../../runtime/internal/index.ts";
@@ -21,7 +22,7 @@ import {
 } from "./catch-up.ts";
 import { lockWaitNotice, withDevLock } from "./dev-lock.ts";
 import { lineDiff } from "./line-diff.ts";
-import { diffInShadow, type ShadowDiff } from "./shadow-diff.ts";
+import { diffInShadow, strictLeftoverError, type ShadowDiff } from "./shadow-diff.ts";
 
 export type GenerateOptions = ShadowOptions & {
   /** The Dev database, which also creates and drops the Shadow and Definition databases. */
@@ -80,6 +81,25 @@ export type GenerateResult = {
    */
   readonly hints: readonly string[];
 };
+
+/** What a run did to the files before it touched the Dev database. */
+export type GeneratedFiles = Omit<GenerateResult, "devDatabase">;
+
+/**
+ * The Dev database didn't catch up to the files. By then generate had written (or kept, or
+ * removed) `current.sql`, so `generated` holds what the CLI prints for it, Hazards included: the
+ * next run keeps the file and says nothing more about it. The message is the failure's own, and
+ * `cause` is the failure itself, with its stack.
+ */
+export class CatchUpFailedError extends Error {
+  readonly generated: GeneratedFiles;
+
+  constructor(failure: unknown, generated: GeneratedFiles) {
+    const error = failure instanceof Error ? failure : new Error(String(failure));
+    super(error.message, { cause: error });
+    this.generated = generated;
+  }
+}
 
 /**
  * Diffs the Definition against the Committed migrations, verifies the result in the Shadow
@@ -179,15 +199,28 @@ async function writeGenerated(
   const { path } = kept;
   if (sql === "") {
     if (existing !== undefined) await fileSystem.remove(path);
-    const devDatabase = await catchUp(kept);
     const file = existing === undefined ? "absent" : "removed";
-    return { path, sql: undefined, file, devDatabase, hazards: [], hints };
+    const generated: GeneratedFiles = { path, sql: undefined, file, hazards: [], hints };
+    return { ...generated, devDatabase: await catchUpAfter(generated, kept) };
   }
   const current = await writeCurrent(sql);
   const file = existing === current.content ? "kept" : "written";
   if (file === "written") await fileSystem.writeFile(path, current.content);
-  const devDatabase = await catchUp(kept, current);
-  return { path, sql: current.body, file, devDatabase, hazards, hints };
+  const generated: GeneratedFiles = { path, sql: current.body, file, hazards, hints };
+  return { ...generated, devDatabase: await catchUpAfter(generated, kept, current) };
+}
+
+/** Catches the Dev database up, and ties a failure to the files generate already settled. */
+async function catchUpAfter(
+  generated: GeneratedFiles,
+  kept: KeptEdit,
+  current?: CurrentMigration,
+): Promise<DevDatabaseOutcome> {
+  try {
+    return await catchUp(kept, current);
+  } catch (error) {
+    throw new CatchUpFailedError(error, generated);
+  }
 }
 
 type KeptEdit = CatchUpTarget & { readonly path: string };
@@ -198,39 +231,18 @@ async function replayEdited(
   edited: string,
   { sql, hazards, hints, leftover }: ShadowDiff,
 ): Promise<GenerateResult> {
-  const devDatabase = await catchUp(kept, { body: edited, hash: await currentHash(edited) });
-  const generated = await writeCurrent(sql);
-  const diff = lineDiff(edited, generated.body);
-  return {
+  const diff = lineDiff(edited, (await writeCurrent(sql)).body);
+  const generated = {
     path: kept.path,
     sql: edited,
     file: "kept",
     diff,
     ...(leftover === undefined ? {} : { leftover }),
-    devDatabase,
     hazards,
     hints,
-  };
-}
-
-/** `strict: true` refused a hand edit that leaves a difference from the Definition (ADR-0031). */
-export class StrictLeftoverError extends Error {
-  /** The difference, as `GenerateResult.leftover` words it. */
-  readonly leftover: string;
-
-  constructor(message: string, leftover: string) {
-    super(message);
-    this.leftover = leftover;
-  }
-}
-
-function strictLeftoverError(leftover: string, path: string, config: string): StrictLeftoverError {
-  const message = [
-    `error: current.sql leaves a difference from the Definition (strict mode, ${config}):`,
-    leftover,
-    `fix the hand edit in ${path}, or set strict: false in ${config}`,
-  ].join("\n");
-  return new StrictLeftoverError(message, leftover);
+  } satisfies GeneratedFiles;
+  const current = { body: edited, hash: await currentHash(edited) };
+  return { ...generated, devDatabase: await catchUpAfter(generated, kept, current) };
 }
 
 /** Refuses a schema `introspect` skips, whose tables would otherwise vanish from `current.sql`. */
