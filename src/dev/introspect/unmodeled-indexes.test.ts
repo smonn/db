@@ -52,7 +52,9 @@ describe("introspect skips Unmodeled indexes", () => {
 
   it("skips an index in a tablespace", async () => {
     const space = `smonndb_ts_${db.name}`;
-    await db.driver.execute(`copy (select 1) to program 'mkdir -p /tmp/${space}'`);
+    // The program reads its stdin to the end, so it can't exit before Postgres writes the row and
+    // fail the write with "Broken pipe", as a bare `mkdir` did on a loaded machine (#757).
+    await db.driver.execute(`copy (select 1) to program 'cat > /dev/null; mkdir -p /tmp/${space}'`);
     await db.driver.execute(`create tablespace ${space} location '/tmp/${space}'`);
     try {
       await db.driver.execute(`
