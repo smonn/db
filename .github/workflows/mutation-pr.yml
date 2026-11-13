@@ -1,0 +1,49 @@
+name: Mutation PR
+
+# Not a required check, and Required (ci.yml) doesn't wait on it. It never fails on a survivor: it
+# reports the survivors and the run time in the job summary, so a threshold can be chosen from real
+# numbers (#801). The weekly Mutation workflow (mutation.yml) still runs the full suite.
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "scripts/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  mutation-pr:
+    name: Mutation on changed files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:18@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres"
+          --health-interval 1s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The checked-out merge commit and its first parent (the base), so mutation:pr can diff them.
+          fetch-depth: 2
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          cache: true
+      # Swaps each Stryker disable comment for a marker, so the summary can flag one gone stale (#611).
+      - run: pnpm mutation:mark
+      - run: pnpm mutation:pr
