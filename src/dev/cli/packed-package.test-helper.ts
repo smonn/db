@@ -50,7 +50,7 @@ export function nameOf(manifest: string): string {
   const parsed: unknown = JSON.parse(manifest);
   const name: unknown =
     typeof parsed === "object" && parsed !== null ? Reflect.get(parsed, "name") : undefined;
-  if (typeof name !== "string") throw new Error("package.json has no name");
+  if (typeof name !== "string") throw new TypeError("package.json has no name");
   return name;
 }
 

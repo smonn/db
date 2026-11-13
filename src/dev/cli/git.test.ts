@@ -5,7 +5,7 @@ import { defaultBaseRef } from "./git.ts";
 const repo = useGitRepo();
 
 function causeOf(error: Error): Error {
-  if (!(error.cause instanceof Error)) throw new Error(`${error.message} has no Error cause`);
+  if (!(error.cause instanceof Error)) throw new TypeError(`${error.message} has no Error cause`);
   return error.cause;
 }
 

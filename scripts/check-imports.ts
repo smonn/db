@@ -168,7 +168,8 @@ export async function checkImports(baseDir: string): Promise<Problem[]> {
     validate: true,
     ruleSet: { forbidden: importRules },
   });
-  if (typeof output === "string") throw new Error("dependency-cruiser returned a formatted report");
+  if (typeof output === "string")
+    throw new TypeError("dependency-cruiser returned a formatted report");
   if (!output.modules.some(({ source }) => source.startsWith("src/"))) {
     return [{ from: "src", to: "src", rule: "scanned 0 modules" }];
   }
