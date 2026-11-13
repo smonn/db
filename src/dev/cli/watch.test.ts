@@ -1,8 +1,10 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { nodeFileSystem } from "../../adapters/node/index.ts";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
+import { CatchUpFailedError } from "../generate/index.ts";
 import { errorOf, QUIET_FOR_MS, RUNTIME, useWatchProject } from "./watch.test-helper.ts";
 
 const db = useTestDatabase();
@@ -26,6 +28,48 @@ describe("watch", () => {
     expect(await project.columnsOfWidgets()).toStrictEqual(["id", "name"]);
   });
 
+  it("reports no run that ends after the signal aborts, though the run still finishes", async () => {
+    const stopping: Promise<void>[] = [];
+    const real = nodeFileSystem();
+    const watching = project.startWatch({
+      // The abort lands once generate holds its locks and has written current.sql.
+      fileSystem: {
+        ...real,
+        async writeFile(path, content) {
+          await real.writeFile(path, content);
+          stopping.push(watching.stop());
+        },
+      },
+    });
+    await watching.watching;
+    await Promise.all(stopping);
+
+    expect(watching.runs).toStrictEqual([]);
+    expect(await project.columnsOfWidgets()).toStrictEqual(["id"]);
+  });
+
+  it("calls onWatching once, before the first run reports", async () => {
+    const events: string[] = [];
+
+    project.startWatch({
+      onWatching: () => {
+        events.push("watching");
+      },
+      report: () => {
+        events.push("report");
+      },
+    });
+    await vi.waitFor(
+      () => {
+        expect(events).toContain("report");
+      },
+      { timeout: 20_000, interval: 20 },
+    );
+
+    expect(events.slice(0, 2)).toStrictEqual(["watching", "report"]);
+    expect(events.filter((event) => event === "watching")).toHaveLength(1);
+  });
+
   it("skips the event of its own write to current.sql, and runs on someone else's", async () => {
     const watching = project.startWatch();
 
@@ -40,6 +84,18 @@ describe("watch", () => {
       await writeFile(current, `${await readFile(current, "utf8")}-- note\n`);
     });
     expect(edited).toMatchObject({ ok: true, changes: [current] });
+  });
+
+  it("skips the event of its own write to current.sql when the Dev database fails to catch up", async () => {
+    const watching = project.startWatch();
+    await watching.runAfter(() => project.writeTable("id: c.integer(), name: c.text()"));
+    await db.driver.execute("create view public.names as select name from public.widgets");
+
+    const failed = await watching.runAfter(() => project.writeTable("id: c.integer()"));
+
+    expect(errorOf(failed)).toBeInstanceOf(CatchUpFailedError);
+    const count = watching.runs.length;
+    expect(await watching.quiet()).toBe(count);
   });
 
   it("skips the event of its own removal of current.sql", async () => {

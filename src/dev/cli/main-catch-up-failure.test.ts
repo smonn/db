@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beforeEach, expect, it } from "vitest";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
@@ -53,6 +53,7 @@ it("exits 1 when the Dev database can't catch up, after printing the file and it
   expect(first).toBe(1);
   expect(project.stdout).toMatch(/^wrote .*current\.sql$/mu);
   expect(project.stdout).toContain(`hazard data_loss: ${DROP_EMAIL}`);
+  expect(project.stdout.slice(project.stdout.indexOf("wrote "))).not.toContain("Dev database");
   expect(project.stderr).toMatch(
     /^the Dev database didn't catch up, so it was left as it was: .+; run smonndb reset to rebuild it from the files\n$/su,
   );
@@ -61,4 +62,37 @@ it("exits 1 when the Dev database can't catch up, after printing the file and it
 
   expect(second).toBe(1);
   expect(project.stdout.split(`hazard data_loss: ${DROP_EMAIL}`)).toHaveLength(2);
+});
+
+it("prints a catch_up_failed document with the file and its Hazards under --json", async () => {
+  const config = await projectWithEmail();
+  expect(await main(["reset", "--config", config])).toBe(0);
+  await db.driver.execute("create view public.emails as select email from public.users");
+  const stdout = project.stdout.length;
+
+  const code = await main(["generate", "--json", "--config", config]);
+
+  expect(code).toBe(1);
+  const printed = project.stdout.slice(stdout);
+  expect(printed.trimEnd()).not.toContain("\n");
+  expect(JSON.parse(printed)).toStrictEqual({
+    command: "generate",
+    ok: false,
+    error: {
+      code: "catch_up_failed",
+      message: expect.stringMatching(
+        /^the Dev database didn't catch up, so it was left as it was: /u,
+      ) as unknown,
+      generated: {
+        file: {
+          path: relative(process.cwd(), join(project.dir, "migrations", "current.sql")),
+          action: "written",
+          handEdited: false,
+        },
+        hazards: [{ kind: "data_loss", statement: DROP_EMAIL }],
+        hints: [],
+      },
+    },
+  });
+  expect(project.stderr).toBe("");
 });

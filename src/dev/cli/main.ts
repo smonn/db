@@ -1,13 +1,18 @@
+import { relative } from "node:path";
 import { parseArgs } from "node:util";
-import { nodeFileSystem, nodeMigrationSource } from "../../adapters/node/index.ts";
-import { verify } from "../../runtime/migrator/index.ts";
 import { HAZARD_KINDS, type HazardKind } from "../diff/index.ts";
-import { rebase } from "../generate/index.ts";
-import { failureDocument, UsageError, type CommandName } from "../output/index.ts";
-import { defaultBaseRef, gitMigrationSource, unheldPaths } from "./git.ts";
-import { loadMigrationsFolder, loadProject } from "./project.ts";
-import { documentLines, type Outcome } from "./report.ts";
+import { CatchUpFailedError } from "../generate/index.ts";
+import {
+  failureDocument,
+  UsageError,
+  type CommandName,
+  type SuccessDocument,
+} from "../output/index.ts";
+import { runOffline, type OfflineCommand } from "./offline.ts";
+import { loadProject } from "./project.ts";
+import { documentLines, generatedLines } from "./report.ts";
 import { print, run, type DatabaseCommand } from "./run.ts";
+import { watchGenerate, type WatchCommand } from "./watch-command.ts";
 
 const USAGE = `usage: smonndb <command> [--config <path>]
 
@@ -26,16 +31,12 @@ commands:
                   move the Committed migrations <ref> lacks onto its tip; <ref> defaults
                   to the remote's default branch
 
---json prints one JSON document on stdout instead of text. generate doesn't take it yet.`;
+--json prints one JSON document on stdout instead of text; generate --watch prints one JSON event
+per line.`;
 
 const DEFAULT_CONFIG = "smonndb.config.ts";
 
-type OfflineCommand = { readonly config: string } & (
-  | { readonly name: "verify" }
-  | { readonly name: "rebase"; readonly onto: string | undefined }
-);
-
-type Command = DatabaseCommand | OfflineCommand;
+type Command = DatabaseCommand | WatchCommand | OfflineCommand;
 
 /**
  * Runs one `smonndb` command and resolves to its exit code: 0, 1 on failure, 2 on misuse. With
@@ -50,10 +51,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   try {
     const command = parseCommand(argv);
     name = command.name;
-    if (json && command.name === "generate") {
-      throw new UsageError("generate doesn't take --json yet");
-    }
-    emit(await execute(command), json);
+    await perform(command, json);
     return 0;
   } catch (error) {
     return reportFailure(error, { command: name ?? commandNameIn(argv), json });
@@ -65,50 +63,51 @@ function endOfFlags(argv: readonly string[]): number {
   return end === -1 ? argv.length : end;
 }
 
-async function execute(command: Command): Promise<Outcome> {
+async function perform(command: Command, json: boolean): Promise<void> {
+  if (command.name === "generate" && command.watch) {
+    await watchGenerate(await loadProject(command.config), json);
+    return;
+  }
+  emit(await execute(command), json);
+}
+
+async function execute(command: DatabaseCommand | OfflineCommand): Promise<SuccessDocument> {
   if (command.name === "verify" || command.name === "rebase") return runOffline(command);
   return run(command, await loadProject(command.config));
 }
 
-function emit(outcome: Outcome, json: boolean): void {
-  if (outcome === undefined) return;
+function emit(document: SuccessDocument, json: boolean): void {
   if (json) {
-    print(JSON.stringify(outcome));
+    print(JSON.stringify(document));
     return;
   }
-  for (const line of documentLines(outcome)) print(line);
+  for (const line of documentLines(document)) print(line);
 }
 
 function reportFailure(
   error: unknown,
   { command, json }: { readonly command: CommandName | null; readonly json: boolean },
 ): number {
-  const usage = error instanceof UsageError;
-  if (json) {
-    print(JSON.stringify(failureDocument(command, error)));
-  } else if (usage) {
-    process.stderr.write(`${error.message}\n\n${USAGE}\n`);
-  } else {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  }
-  return usage ? 2 : 1;
+  if (json) print(JSON.stringify(failureDocument(command, error, relativePath)));
+  else printFailure(error);
+  return error instanceof UsageError ? 2 : 1;
 }
 
-/** Runs a command that reads the migrations folder and no database. */
-async function runOffline(command: OfflineCommand): Promise<Outcome> {
-  const migrations = await loadMigrationsFolder(command.config);
-  if (command.name === "verify") {
-    const { verified } = await verify(nodeMigrationSource(migrations));
-    return { command: "verify", ok: true, verified };
+function relativePath(path: string): string {
+  return relative(process.cwd(), path);
+}
+
+function printFailure(error: unknown): void {
+  if (error instanceof UsageError) {
+    process.stderr.write(`${error.message}\n\n${USAGE}\n`);
+    return;
   }
-  const fileSystem = nodeFileSystem();
-  // Git can't run in a missing folder; listing it first fails the way verify does.
-  await fileSystem.list(migrations);
-  const onto = command.onto ?? (await defaultBaseRef(migrations));
-  const unheld = await unheldPaths(migrations);
-  const base = gitMigrationSource(migrations, onto);
-  const { moved } = await rebase({ fileSystem, migrations, base, onto, unheld });
-  return { command: "rebase", ok: true, onto, moved };
+  // The files stay as generate settled them, and the next run prints nothing more about them.
+  if (error instanceof CatchUpFailedError) {
+    const { generated } = error;
+    for (const line of generatedLines(generated, relativePath(generated.path))) print(line);
+  }
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
 }
 
 function parseAccept(value: string | undefined): HazardKind[] {
@@ -213,11 +212,10 @@ const ARGUMENTLESS = {
     config,
   }),
   rebase: (config: string, { onto }: CommandFlags): Command => ({ name: "rebase", config, onto }),
-  generate: (config: string, { watch }: CommandFlags): Command => ({
-    name: "generate",
-    watch: watch === true,
-    config,
-  }),
+  generate: (config: string, { watch }: CommandFlags): Command =>
+    watch === true
+      ? { name: "generate", watch: true, config }
+      : { name: "generate", watch: false, config },
   migrate: (config: string): Command => ({ name: "migrate", config }),
   verify: (config: string): Command => ({ name: "verify", config }),
 };

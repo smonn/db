@@ -22,7 +22,7 @@ import {
 } from "./catch-up.ts";
 import { lockWaitNotice, withDevLock } from "./dev-lock.ts";
 import { lineDiff } from "./line-diff.ts";
-import { diffInShadow, type ShadowDiff } from "./shadow-diff.ts";
+import { diffInShadow, strictLeftoverError, type ShadowDiff } from "./shadow-diff.ts";
 
 export type GenerateOptions = ShadowOptions & {
   /** The Dev database, which also creates and drops the Shadow and Definition databases. */
@@ -48,13 +48,14 @@ export type GenerateOptions = ShadowOptions & {
 
 export type GenerateResult = {
   readonly path: string;
-  /** The Current migration's body, or `undefined` when there was no diff and the file was deleted. */
+  /** The Current migration's body, or `undefined` when there was no diff and so no file (`removed` or `absent`). */
   readonly sql: string | undefined;
   /**
-   * What generate did to `current.sql`: `kept` when the file already held what generate would
-   * write, or was hand-edited, so a run that changes nothing stays silent (ADR-0032).
+   * What generate did to `current.sql`: `written` or `removed` it; `kept` a file that already held
+   * what generate would write, or was hand-edited, so a run that changes nothing stays silent
+   * (ADR-0032); or found it `absent` when there was no diff and no file to remove.
    */
-  readonly file: "written" | "removed" | "kept";
+  readonly file: "written" | "removed" | "kept" | "absent";
   /**
    * Set when `current.sql` was hand-edited, so generate kept and replayed it as written (ADR-0003):
    * the lines that differ from what generate would have written, `-` for the file and `+` for the
@@ -87,15 +88,15 @@ export type GeneratedFiles = Omit<GenerateResult, "devDatabase">;
 /**
  * The Dev database didn't catch up to the files. By then generate had written (or kept, or
  * removed) `current.sql`, so `generated` holds what the CLI prints for it, Hazards included: the
- * next run keeps the file and says nothing more about it. The message and `cause` are the
- * failure's own.
+ * next run keeps the file and says nothing more about it. The message is the failure's own, and
+ * `cause` is the failure itself, with its stack.
  */
 export class CatchUpFailedError extends Error {
   readonly generated: GeneratedFiles;
 
   constructor(failure: unknown, generated: GeneratedFiles) {
     const error = failure instanceof Error ? failure : new Error(String(failure));
-    super(error.message, { cause: error.cause ?? error });
+    super(error.message, { cause: error });
     this.generated = generated;
   }
 }
@@ -167,7 +168,7 @@ async function generateLocked(options: GenerateFromCatalogOptions): Promise<Gene
   });
 
   if (strict !== undefined && shadowDiff.leftover !== undefined) {
-    throw new Error(strictRefusal(shadowDiff.leftover, path, strict.config));
+    throw strictLeftoverError(shadowDiff.leftover, path, strict.config);
   }
 
   const kept = {
@@ -198,7 +199,7 @@ async function writeGenerated(
   const { path } = kept;
   if (sql === "") {
     if (existing !== undefined) await fileSystem.remove(path);
-    const file = existing === undefined ? "kept" : "removed";
+    const file = existing === undefined ? "absent" : "removed";
     const generated: GeneratedFiles = { path, sql: undefined, file, hazards: [], hints };
     return { ...generated, devDatabase: await catchUpAfter(generated, kept) };
   }
@@ -242,14 +243,6 @@ async function replayEdited(
   } satisfies GeneratedFiles;
   const current = { body: edited, hash: await currentHash(edited) };
   return { ...generated, devDatabase: await catchUpAfter(generated, kept, current) };
-}
-
-function strictRefusal(leftover: string, path: string, config: string): string {
-  return [
-    `error: current.sql leaves a difference from the Definition (strict mode, ${config}):`,
-    leftover,
-    `fix the hand edit in ${path}, or set strict: false in ${config}`,
-  ].join("\n");
 }
 
 /** Refuses a schema `introspect` skips, whose tables would otherwise vanish from `current.sql`. */

@@ -22,7 +22,11 @@ Every command takes `--config`, and `util.parseArgs` parses the arguments. There
 
 Plain text: results to stdout, errors to stderr, with no colors when stdout isn't a TTY. Exit codes are 0 on success, 1 on any refusal or failure, and 2 on a usage error.
 
-`--json` prints one document on stdout, success or failure, holding `command`, `ok`, and a failure's `error` (`code`, `message`, per-code fields). Exit codes and stderr's progress lines stay; a usage error prints a document. Codes: `usage`, `locked`, `hazard_not_accepted`, `unmodeled_blocker`, `chain_broken`, `not_dev_database`, else `failed`. `@smonn/db/dev` exports the types.
+`generate --watch` prints an append-only log on stdout; a failed run's error and its `kept the Dev database` line go to stderr. Its colors need both streams on a TTY and `NO_COLOR` unset.
+
+`--json` prints one document on stdout, success or failure, holding `command`, `ok`, and a failure's `error` (`code`, `message`, per-code fields). Exit codes and stderr's progress lines stay; a usage error prints a document. Codes: `usage`, `locked`, `hazard_not_accepted`, `catch_up_failed`, `leftover`, `unmodeled_blocker`, `chain_broken`, `not_dev_database`, else `failed`. `@smonn/db/dev` exports the types and the dev errors.
+
+`generate --watch --json` prints NDJSON, one `WatchEvent` per line, told apart by `event`: `started` (`at`, `definition`, `migrations`), then a `run` per run, then `stopped` (`at`). A `run` holds `at`, `trigger` (the paths that started it, empty at start), `durationMs`, and `ok`. A good run adds `outcome` (`initial`, `changed`, `unchanged`, `fixed`) and the `GenerateDocument`. A failed run adds `keptFrom` (the last good run's `at`, null before one) and a `FailureDocument`, whose `catch_up_failed` error holds the file and Hazards generate settled. `stopped` is the last event, and the plain log's `stopped` line the last line: a run still in flight at Ctrl-C reports nothing. A second watcher prints one `locked` failure document (`lock: "watch"`) and exits 1.
 
 ## generate
 
@@ -51,7 +55,7 @@ sequenceDiagram
   Gen->>DB: if behind, replay the new files, or diff it against the Shadow
 ```
 
-Generate writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database. It prints the file it wrote and each Hazard with its statement, then one line when it replayed files into, diffed, or reset the Dev database, and each Hazard it applied. A failed catch-up still prints the file and its Hazards, then exits 1.
+Generate writes `<migrations>/current.sql`, or deletes it when there is no diff, then catches up the Dev database. It prints the file it wrote and each Hazard, then one line for the Dev database and each Hazard it applied; a failed catch-up still prints the file and its Hazards, then exits 1. `--json` prints `GenerateDocument`: `file`, `hazards`, `hints`, `devDatabase`.
 
 ### Hand edits
 

@@ -57,7 +57,7 @@ describe("watch and the locks", () => {
     });
 
     expect(committed.changes).toContain(path);
-    expect(committed).toMatchObject({ ok: true, result: { file: "kept", sql: undefined } });
+    expect(committed).toMatchObject({ ok: true, result: { file: "absent", sql: undefined } });
   });
 
   it("stops a wait for the migrator's lock when the signal aborts, and reports no run", async () => {

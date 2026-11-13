@@ -84,3 +84,27 @@ async function definitionSql(database: Driver, wanted: Catalog): Promise<string>
   const existing = [...(await introspect(database))].filter(([path]) => wanted.has(path));
   return diff(new Map(existing), wanted).sql;
 }
+
+/** `strict: true` refused a hand edit that leaves a difference from the Definition (ADR-0031). */
+export class StrictLeftoverError extends Error {
+  /** The difference, as `GenerateResult.leftover` words it. */
+  readonly leftover: string;
+
+  constructor(message: string, leftover: string) {
+    super(message);
+    this.leftover = leftover;
+  }
+}
+
+export function strictLeftoverError(
+  leftover: string,
+  path: string,
+  config: string,
+): StrictLeftoverError {
+  const message = [
+    `error: current.sql leaves a difference from the Definition (strict mode, ${config}):`,
+    leftover,
+    `fix the hand edit in ${path}, or set strict: false in ${config}`,
+  ].join("\n");
+  return new StrictLeftoverError(message, leftover);
+}
