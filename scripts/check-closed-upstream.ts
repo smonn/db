@@ -67,7 +67,7 @@ export type Comment = { html_url: string; body: string };
 
 export type Upstream = { state: "open" | "closed"; html_url: string };
 
-const readIssue: Reader<Issue> = (value, path) => {
+export const readIssue: Reader<Issue> = (value, path) => {
   const issue = record(value, path);
   return {
     number: field(issue, "number", number, path),

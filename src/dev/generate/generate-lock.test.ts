@@ -42,7 +42,7 @@ beforeEach(async () => {
 
 /** Runs `before` once, on the first connection generate opens, which is after its first check. */
 function beforeFirstConnect(before: () => Promise<void>): Connect {
-  let pending: Promise<void> | undefined = undefined;
+  let pending: Promise<void> | undefined;
   return async (database) => {
     pending ??= before();
     await pending;

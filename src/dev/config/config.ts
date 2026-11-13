@@ -29,7 +29,7 @@ export function parseConfig(value: unknown, file: string): LoadedConfig {
       `${file}: url is ${url === "" ? "empty" : "undefined"}; set the environment variable it reads, such as DATABASE_URL`,
     );
   }
-  if (typeof url !== "string") throw new Error(`${file}: url must be a string`);
+  if (typeof url !== "string") throw new TypeError(`${file}: url must be a string`);
   return { ...rest, url };
 }
 
@@ -60,13 +60,13 @@ function readFields(value: unknown, file: string): Omit<Config, "url"> & { reado
 
 function trackingSchemaField(file: string, value: unknown): Pick<Config, "trackingSchema"> {
   if (value === undefined) return {};
-  if (typeof value !== "string") throw new Error(`${file}: trackingSchema must be a string`);
+  if (typeof value !== "string") throw new TypeError(`${file}: trackingSchema must be a string`);
   return { trackingSchema: value };
 }
 
 function strictField(file: string, value: unknown): Pick<Config, "strict"> {
   if (value === undefined) return {};
-  if (typeof value !== "boolean") throw new Error(`${file}: strict must be true or false`);
+  if (typeof value !== "boolean") throw new TypeError(`${file}: strict must be true or false`);
   return { strict: value };
 }
 

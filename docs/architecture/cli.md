@@ -65,6 +65,10 @@ Generate writes `--! Generated: sha256:<hex>` over the body it produced. A body 
 
 Generate compares every hash in `smonn_db.migrations` with the Committed chain, the check `commit` makes, and `smonn_db.current` with the Current migration. Matching markers mean no work, and an empty, unmarked Database resets (ADR-0016). With no Current migration recorded and recorded rows that prefix the Committed chain, it replays the new Committed files and `current.sql` as written. Otherwise it diffs the Dev database against the Shadow holding the Current migration, keeping data, and names files that skipped replay. Steps, markers, and the diff's zero-diff check share one transaction, which a failure rolls back, naming `reset`.
 
+### Watch
+
+`--watch` runs generate at start, then after each change (ADR-0032), loading the Definition in a fresh Worker each run. Non-recursive watchers cover each module-graph folder, the migrations folder, and its parent. A run starts after 100 ms of quiet, and changes during a run queue one rerun. An event on `current.sql` matching watch's own last write, by hash, is skipped. A failed run keeps the last good Dev database, and watch continues.
+
 ## commit
 
 ADR-0003, ADR-0008, and ADR-0015.
@@ -172,3 +176,5 @@ A hand edit can open `current.sql` with `--! no-transaction` (ADR-0020) so it ho
 ## Concurrency
 
 `generate`, `commit`, and `reset` share a `pg_try_advisory_lock` on the Dev database under a key distinct from the migrator's, and a second run exits at once with an error naming the lock. A waiting run would only redo the first run's reset, and failing at once gives quick feedback when several agent sessions share one Dev database. Every reset also takes the migrator's own lock, polled for, so a runtime `migrate` on the Dev database waits for the reset instead of racing its wipe. `generate` holds the migrator's lock from its Dev database check until the run ends, Shadow work included, and `commit` holds it from before its check until the run ends.
+
+Under `--watch`, each run takes the Dev and migrator locks on its own session, and a third advisory key, `WATCH_LOCK_KEY`, held for the whole watch, refuses a second watcher.
