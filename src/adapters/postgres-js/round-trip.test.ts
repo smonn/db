@@ -5,9 +5,6 @@ import { useTestDatabase } from "./test-database.test-helper.ts";
 
 const db = useTestDatabase();
 
-// Bounded so the file adds only seconds to the Test job; fast-check prints a failure's seed.
-const numRuns = 100;
-
 type Column = {
   readonly type: string;
   readonly value: fc.Arbitrary<unknown>;
@@ -62,8 +59,9 @@ const text = fc
   .filter((value) => !value.includes("\0"));
 
 // Postgres leaves a non-ASCII space such as U+2000 unquoted in array text, and parseArrayLiteral
-// trims it, so a text[] holding only that space reads back as an empty array.
-const arrayText = text.filter((value) => !/[^\S\t\n\v\f\r ]/u.test(value));
+// trims leading and trailing non-ASCII whitespace, so an element that starts or ends with one
+// reads back shortened, and one holding only that space reads back as an empty array.
+const arrayText = text.filter((value) => !/^[^\S\t\n\v\f\r ]|[^\S\t\n\v\f\r ]$/u.test(value));
 
 function day(value: Date): string {
   const iso = value.toISOString();
@@ -89,6 +87,11 @@ const jsonParam = json.filter((value) => typeof value !== "boolean");
 
 // An element that is a JS array reads as another dimension of the array.
 const jsonElement = json.filter((value) => !Array.isArray(value));
+
+// A box Postgres returns as written when it lists the upper right corner first.
+const box = fc
+  .tuple(fc.integer(), fc.integer(), fc.nat(), fc.nat())
+  .map(([x, y, width, height]) => `(${x + width},${y + height}),(${x},${y})`);
 
 // postgres.js writes -0 as 0.
 const floatParam = (value: fc.Arbitrary<number>): fc.Arbitrary<number> =>
@@ -117,7 +120,9 @@ const columns: readonly Column[] = [
   { type: "text", value: text, element: arrayText },
   { type: "varchar", value: text, element: arrayText },
   { type: "uuid", value: fc.uuid() },
-  { type: "jsonb", value: jsonParam, element: jsonElement },
+  ...["jsonb", "json"].map((type) => ({ type, value: jsonParam, element: jsonElement })),
+  { type: "oid", value: fc.nat(4294967295) },
+  { type: "box", value: box },
   { type: "bytea", value: fc.uint8Array({ maxLength: 16 }), output: true },
   {
     type: "date",
@@ -154,8 +159,6 @@ function grid(element: fc.Arbitrary<unknown>): fc.Arbitrary<unknown> {
     );
 }
 
-const identity = (value: unknown): unknown => value;
-
 function deep(settle: (value: unknown) => unknown): (value: unknown) => unknown {
   return (value) => (Array.isArray(value) ? value.map(deep(settle)) : settle(value));
 }
@@ -169,7 +172,7 @@ type Shape = {
 };
 
 const shapes: readonly Shape[] = columns.flatMap((column) => {
-  const { type, settle = identity, output = false } = column;
+  const { type, settle = (value: unknown): unknown => value, output = false } = column;
   const element = column.element ?? column.value;
   return [
     { name: type, type, value: fc.option(column.value, { nil: null }), settle, output },
@@ -204,7 +207,8 @@ function check(driver: () => Driver, only: (shape: Shape) => boolean): void {
           const read = await roundTrip(driver(), table, value, zone);
           expect(shape.settle(read)).toStrictEqual(value);
         }),
-        { numRuns },
+        // Bounded so the file adds only seconds to the Test job; fast-check prints a failure's seed.
+        { numRuns: 100 },
       );
     },
   );
