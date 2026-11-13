@@ -37,12 +37,15 @@ const statusPattern = /^status:\s*(\S+)\s*$/mu;
 const branchPattern = /^(feature|bugfix|hotfix|release|chore)\/[a-z0-9]+([.-][a-z0-9]+)*$/u;
 const botBranchPrefixes = ["renovate/", "release-please--"];
 
+function isBotBranch(branch: string): boolean {
+  return botBranchPrefixes.some((prefix) => branch.startsWith(prefix));
+}
+
 /** `baseStatus` is the status on the diff base, absent for an ADR the PR adds. */
 export type ChangedAdr = { file: string; status: string; added: boolean; baseStatus?: string };
 
 export function checkBranch(branch: string): string[] {
-  const isBot = botBranchPrefixes.some((prefix) => branch.startsWith(prefix));
-  if (isBot || branchPattern.test(branch)) return [];
+  if (isBotBranch(branch) || branchPattern.test(branch)) return [];
   return [
     `Branch "${branch}" is not a Conventional Branch: feature|bugfix|hotfix|release|chore/<lowercase-kebab>`,
   ];
@@ -69,8 +72,12 @@ export function checkAdrTitle(title: string, adrs: readonly ChangedAdr[]): strin
 const fixTitlePattern = /^fix(\([a-z0-9-]+\))?!?: /u;
 const regressedByPattern = /^Regressed by: (#\d+|n\/a)\s*$/mu;
 
-/** A `fix` PR names the PR that introduced the defect, so a review of escaped defects has data. */
-export function checkRegressedBy(title: string, body: string): string[] {
+/**
+ * A `fix` PR names the PR that introduced the defect, so a review of escaped defects has data.
+ * A bot PR is exempt: Renovate titles a runtime dependency bump `fix(deps): ...`.
+ */
+export function checkRegressedBy(title: string, body: string, branch: string): string[] {
+  if (isBotBranch(branch)) return [];
   if (!fixTitlePattern.test(title) || regressedByPattern.test(body)) return [];
   return [
     "A fix PR needs a body line `Regressed by: #<pr>` (the PR that introduced the defect) or `Regressed by: n/a` (the defect predates every PR, or the code never worked)",
@@ -163,7 +170,7 @@ function allProblems(
     ...releaseNoteProblems(title, base, readFiles),
   ];
   if (body !== undefined) {
-    problems.push(...checkClosingKeywords(body), ...checkRegressedBy(title, body));
+    problems.push(...checkClosingKeywords(body), ...checkRegressedBy(title, body, branch));
   }
   if (adrs !== undefined && number !== undefined) {
     problems.push(...clashProblems(adrs, number, readOpenAdds));
