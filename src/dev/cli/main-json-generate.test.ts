@@ -195,7 +195,7 @@ describe("main generate --json", () => {
         path: SHOWN(),
         action: "kept",
         handEdited: true,
-        diff: '-select 1;\n+create table "public"."users" (\n+  "id" text not null\n+);\n',
+        diff: '@@ -1,1 +1,3 @@\n-select 1;\n+create table "public"."users" (\n+  "id" text not null\n+);\n',
         leftover: expect.stringContaining('table "public"."users" is missing') as unknown,
       },
       hazards: [],
