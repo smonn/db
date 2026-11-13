@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.0](https://github.com/smonn/db/compare/v0.3.0...v0.4.0) (2026-11-13)
+
+
+### Features
+
+* **cli:** add generate --watch ([#812](https://github.com/smonn/db/issues/812)) ([1cf5d6f](https://github.com/smonn/db/commit/1cf5d6f27bee95245ebf59da8ef0168ddb5da37b))
+* **cli:** print a line while generate, reset, and commit wait on the migrator lock ([#793](https://github.com/smonn/db/issues/793)) ([9976513](https://github.com/smonn/db/commit/9976513bc05f77e0e15189d7a05295b8105a4947))
+* **cli:** print an append-only log in generate --watch ([#818](https://github.com/smonn/db/issues/818)) ([1cf5d6f](https://github.com/smonn/db/commit/1cf5d6f27bee95245ebf59da8ef0168ddb5da37b))
+* **cli:** print NDJSON events in generate --watch --json ([#820](https://github.com/smonn/db/issues/820)) ([1cf5d6f](https://github.com/smonn/db/commit/1cf5d6f27bee95245ebf59da8ef0168ddb5da37b))
+* **cli:** print one JSON document with --json for commit, reset, migrate, verify, and rebase ([#789](https://github.com/smonn/db/issues/789)) ([6143c89](https://github.com/smonn/db/commit/6143c895fef7fb04407b189b861ebf149d0b793a))
+* **generate:** print one JSON document with --json ([#816](https://github.com/smonn/db/issues/816)) ([1cf5d6f](https://github.com/smonn/db/commit/1cf5d6f27bee95245ebf59da8ef0168ddb5da37b))
+* **generate:** print the hand-edit diff as unified hunks ([#824](https://github.com/smonn/db/issues/824)) ([cddb1b9](https://github.com/smonn/db/commit/cddb1b968c7ab3ad4cc201c49378f50068aa7559))
+* **generate:** refuse a hand edit's leftover under strict: true ([#795](https://github.com/smonn/db/issues/795)) ([6763335](https://github.com/smonn/db/commit/6763335474d645c9a9179a0eb1510a397b880089))
+* **runtime:** stop a migrator lock wait with an AbortSignal ([#791](https://github.com/smonn/db/issues/791)) ([9976513](https://github.com/smonn/db/commit/9976513bc05f77e0e15189d7a05295b8105a4947))
+
+
+### Bug Fixes
+
+* **commit:** hold the migrator lock through the Dev database check ([#786](https://github.com/smonn/db/issues/786)) ([f486e14](https://github.com/smonn/db/commit/f486e14300892d216aa73e041928de57adafa8ab))
+* **generate:** diff the Dev database against the Shadow instead of resetting ([#794](https://github.com/smonn/db/issues/794)) ([6763335](https://github.com/smonn/db/commit/6763335474d645c9a9179a0eb1510a397b880089))
+* **generate:** print a failed catch-up's Hazards, fix the refusal ([#811](https://github.com/smonn/db/issues/811)) ([48b53b4](https://github.com/smonn/db/commit/48b53b47515dfcb3acaf77f439160744862738bd))
+* **generate:** replay new files into the Dev database instead of resetting ([#792](https://github.com/smonn/db/issues/792)) ([6763335](https://github.com/smonn/db/commit/6763335474d645c9a9179a0eb1510a397b880089))
+* **rebase:** hint how to restore the stashed files ([#819](https://github.com/smonn/db/issues/819)) ([27af925](https://github.com/smonn/db/commit/27af9253d2ac13c95987382a9e84b2f952d4df81))
+
 ## [0.3.0](https://github.com/smonn/db/compare/v0.2.0...v0.3.0) (2026-11-03)
 
 
