@@ -59,10 +59,14 @@ describe("main's orphaned projects", () => {
     expect(console.log).toHaveBeenCalledWith("Removed smonndb-t3-1a2b, whose worktree is gone");
   });
 
-  test("leaves projects whose config file exists or whose name lacks the prefix", () => {
+  test("leaves projects whose worktree directory exists or whose name lacks the prefix", () => {
     docker
       .mockReturnValueOnce(
-        listing({ name: "smonndb-live", files: [live] }, { name: "elsewhere", files: [gone] }),
+        listing(
+          { name: "smonndb-live", files: [live] },
+          { name: "smonndb-no-compose", files: [join(root, "live", "missing.yaml")] },
+          { name: "elsewhere", files: [gone] },
+        ),
       )
       .mockReturnValueOnce(ok("0.0.0.0:32768\n"));
 
