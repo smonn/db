@@ -101,11 +101,10 @@ export class CatchUpFailedError extends Error {
  * Diffs the Definition against the Committed migrations, verifies the result in the Shadow
  * database, writes it to `current.sql`, then catches the Dev database up when it has fallen behind
  * the files, replaying only the new ones where it can and diffing it against the Shadow otherwise,
- * so it keeps its data. A hand-edited
- * `current.sql` is verified in the Shadow instead (a leftover difference is a warning, or a refusal
- * in strict mode), replayed as written and left alone. Holds the Dev lock, so a second run fails at once, and the migrator's lock
- * from the Dev database check on, so a runtime `migrate` waits instead of changing the Database
- * under it.
+ * so it keeps its data. A hand-edited `current.sql` is verified in the Shadow instead (a leftover
+ * difference is a warning, or a refusal in strict mode), replayed as written and left alone. Holds
+ * the Dev lock, so a second run fails at once, and the migrator's lock from the Dev database check
+ * on, so a runtime `migrate` waits instead of changing the Database under it.
  */
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
   const tracking = trackingSchema(options.trackingSchema ?? DEFAULT_TRACKING_SCHEMA);
