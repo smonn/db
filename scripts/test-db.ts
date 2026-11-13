@@ -2,8 +2,9 @@
  * Starts this worktree's own test Postgres and writes its URL to `.env.test`, which
  * vitest.config.ts reads when `DATABASE_URL` is unset. The compose project is named after the
  * worktree's directory, and Docker picks the host port, so parallel worktrees never collide.
- * Rerunning it reuses a running server. Starting also removes the test servers whose compose file
- * is gone, because their worktree was deleted.
+ * Rerunning it reuses a running server. Starting also removes the test servers whose worktree
+ * directory is gone (see `orphanedProjects`); a worktree that only lost or moved its compose file
+ * keeps its server.
  *
  * Run it with `node scripts/test-db.ts`, and `node scripts/test-db.ts stop` to remove the server.
  */

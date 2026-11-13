@@ -1,11 +1,13 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { orphanedProjects, projectPrefix } from "./compose-orphans.ts";
 
 const claudeGone = join("/code", "db", ".claude", "worktrees", "gone", "compose.yaml");
 const t3Gone = join("/home", "me", ".t3", "worktrees", "smonn-db", "t3-1a2b", "compose.yaml");
 const live = join("/home", "me", ".t3", "worktrees", "smonn-db", "t3-live", "compose.yaml");
-const exists = (file: string): boolean => file === live;
+const liveDir = dirname(live);
+// The check asks about directories: a worktree is live while its directory exists.
+const exists = (dir: string): boolean => dir === liveDir;
 
 // `docker compose ls --all --format json` lists each project's config files, comma-separated.
 function listing(...projects: { name: string; files: string[] }[]): string {
@@ -47,6 +49,36 @@ describe("orphanedProjects", () => {
     );
 
     expect(orphanedProjects(projects, exists)).toEqual([]);
+  });
+
+  test("keeps a project whose worktree directory exists without the compose file", () => {
+    // A live worktree on a branch without compose.yaml, or one whose compose file moved.
+    const projects = listing({
+      name: `${projectPrefix}no-compose`,
+      files: [join(liveDir, "compose.yaml")],
+    });
+
+    expect(orphanedProjects(projects, exists)).toEqual([]);
+  });
+
+  test("keeps a project whose path has a comma, which splits into a relative fragment", () => {
+    // The fragments are /home/me/work and 2/db/compose.yaml; neither directory need exist.
+    const projects = listing({
+      name: `${projectPrefix}comma`,
+      files: [join("/home", "me", "work,2", "db", "compose.yaml")],
+    });
+
+    expect(orphanedProjects(projects, () => false)).toEqual([]);
+  });
+
+  test("names a project only when every fragment is an absolute path", () => {
+    const projects = listing(
+      { name: `${projectPrefix}relative`, files: ["compose.yaml"] },
+      { name: `${projectPrefix}relative-second`, files: [t3Gone, "sub/compose.yaml"] },
+      { name: `${projectPrefix}absolute`, files: [t3Gone] },
+    );
+
+    expect(orphanedProjects(projects, exists)).toEqual([`${projectPrefix}absolute`]);
   });
 
   test("skips a prefixed project without config files", () => {
