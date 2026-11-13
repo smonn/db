@@ -33,8 +33,11 @@ export type GenerateOptions = ShadowOptions & {
   readonly migrations: string;
   /** The schema `migrate` tracks into. Defaults to `smonn_db`. */
   readonly trackingSchema?: string;
-  /** Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`). */
-  readonly signal?: AbortSignal;
+  /**
+   * Stops the wait for the migrator's lock; the wait then rejects (see `acquireMigrationLock`).
+   * Only the wait: a run past it goes on to the end.
+   */
+  readonly signal?: AbortSignal | undefined;
   /**
    * Set to refuse a hand edit that leaves a difference from the Definition, before the Dev database
    * changes (ADR-0031). `config` names the config file in the refusal.
