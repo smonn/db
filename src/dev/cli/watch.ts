@@ -40,7 +40,10 @@ export type WatchOptions = {
   readonly signal: AbortSignal;
   /** Called once, when the watcher lock is held and the first run is about to start. */
   readonly onWatching?: (() => void) | undefined;
-  /** Receives every run once it ends, but a failure the signal caused. */
+  /**
+   * Receives every run that ends before `signal` aborts, so nothing reports after the caller has
+   * announced it stopped. A run in flight at the abort still finishes, but reports nothing.
+   */
   readonly report: (run: WatchRun) => void;
   /** Loads the Definition, by default in a fresh Worker. */
   readonly load?: (file: string, options: LoadOptions) => Promise<LoadedDefinition>;
@@ -133,7 +136,7 @@ async function runOnce(
     const loaded = await loadGraph(options, state);
     const result = await generateFromCatalog({ ...generateOptions(options), definition: loaded });
     state.written = await contentAfter(result, before);
-    options.report({ ...timing(), ok: true, result });
+    if (!options.signal.aborted) options.report({ ...timing(), ok: true, result });
   } catch (error) {
     state.written = UNKNOWN;
     if (!options.signal.aborted) options.report({ ...timing(), ok: false, error });

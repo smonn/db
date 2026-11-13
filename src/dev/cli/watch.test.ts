@@ -2,6 +2,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
+import { nodeFileSystem } from "../../adapters/node/index.ts";
 import { useTestDatabase } from "../../adapters/postgres-js/test-database.test-helper.ts";
 import { errorOf, QUIET_FOR_MS, RUNTIME, useWatchProject } from "./watch.test-helper.ts";
 
@@ -21,6 +22,26 @@ describe("watch", () => {
 
     expect(run).toMatchObject({ ok: true, changes: [join(project.dir, "tables/widgets.ts")] });
     expect(await project.columnsOfWidgets()).toStrictEqual(["id", "name"]);
+  });
+
+  it("reports no run that ends after the signal aborts, though the run still finishes", async () => {
+    const stopping: Promise<void>[] = [];
+    const real = nodeFileSystem();
+    const watching = project.startWatch({
+      // The abort lands once generate holds its locks and has written current.sql.
+      fileSystem: {
+        ...real,
+        async writeFile(path, content) {
+          await real.writeFile(path, content);
+          stopping.push(watching.stop());
+        },
+      },
+    });
+    await watching.watching;
+    await Promise.all(stopping);
+
+    expect(watching.runs).toStrictEqual([]);
+    expect(await project.columnsOfWidgets()).toStrictEqual(["id"]);
   });
 
   it("calls onWatching once, before the first run reports", async () => {
