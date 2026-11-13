@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { parentPort, workerData } from "node:worker_threads";
 import { definitionCatalog, definitionSchemas } from "../catalog/index.ts";
 import type { LoadedDefinition } from "./definition-loader.ts";
-import { definitionOf, importDefault } from "./project.ts";
+import { definitionOf, importDefault } from "./definition-file.ts";
 
 // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a worker_threads port, not a window: it takes no target origin.
 parentPort?.postMessage(await load(String(workerData)));

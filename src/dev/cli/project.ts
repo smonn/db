@@ -1,8 +1,8 @@
 import { dirname, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { DEFAULT_TRACKING_SCHEMA } from "../../runtime/internal/index.ts";
 import type { DefinitionTables } from "../catalog/index.ts";
 import { parseConfig, parseOfflineConfig, type LoadedConfig } from "../config/index.ts";
+import { definitionOf, importDefault } from "./definition-file.ts";
 
 export type Project = LoadedConfig & {
   /** The config's `trackingSchema`, or the default one. */
@@ -38,24 +38,4 @@ export async function loadMigrationsFolder(config: string): Promise<string> {
 
 async function loadDefinition(file: string): Promise<DefinitionTables> {
   return definitionOf(file, await importDefault(file));
-}
-
-/** Refuses `value`, the default export of the Definition file at `file`, unless it's a Definition. */
-export function definitionOf(file: string, value: unknown): DefinitionTables {
-  if (!isDefinition(value)) {
-    throw new Error(
-      `${relative(process.cwd(), file)} must export defineDatabase({ ... }) as its default export`,
-    );
-  }
-  return value;
-}
-
-function isDefinition(value: unknown): value is DefinitionTables {
-  return typeof value === "object" && value !== null;
-}
-
-export function importDefault(file: string): Promise<unknown> {
-  return import(pathToFileURL(file).href).then(
-    (module: { readonly default?: unknown }) => module.default,
-  );
 }
