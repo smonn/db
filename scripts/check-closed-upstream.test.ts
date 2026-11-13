@@ -1,13 +1,16 @@
 import { spawnSync } from "node:child_process";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { findReferences, main } from "./check-closed-upstream.ts";
 import {
   commentsPath,
   ghReplies,
   notFound,
   openIssues,
+  own,
+  quietMain,
   recorded,
   recordedReplies,
+  synthetic,
   upstreamPath,
 } from "./check-closed-upstream.test-helper.ts";
 
@@ -62,29 +65,7 @@ describe("findReferences", () => {
 
 describe("main", () => {
   const spawn = vi.mocked(spawnSync);
-  const own = "https://github.com/smonn/db/issues";
-  const synthetic = (overrides: object) => ({
-    number: 3,
-    title: "Waiting",
-    html_url: `${own}/3`,
-    repository_url: "https://api.github.com/repos/smonn/db",
-    body: null,
-    comments: 0,
-    ...overrides,
-  });
-
-  beforeEach(() => {
-    spawn.mockReset();
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    process.exitCode = undefined;
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    process.exitCode = undefined;
-  });
+  quietMain(spawn);
 
   test("lists each closed citation in the recorded open issues and fails", () => {
     ghReplies(spawn, recordedReplies());
