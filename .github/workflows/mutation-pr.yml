@@ -41,7 +41,7 @@ jobs:
         with:
           # The checked-out merge commit and its first parent (the base), so mutation:pr can diff them.
           fetch-depth: 2
-      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+      - uses: pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1 # v3.2.0
         with:
           cache: true
       # Swaps each Stryker disable comment for a marker, so the summary can flag one gone stale (#611).
